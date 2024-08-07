@@ -1,0 +1,6 @@
+# ignore Generated
+.__generated__/
+# ignore nextJS
+.next/
+# ignore graphql
+*.graphql.ts
