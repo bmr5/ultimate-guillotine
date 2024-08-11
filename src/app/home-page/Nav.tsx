@@ -1,5 +1,5 @@
-import { Axe, Home, Notebook } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Axe, Home, Notebook, Trophy } from "lucide-react";
+import { Link, useLocation } from "react-router-dom";
 
 import {
   Tooltip,
@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 const navItems = [
   {
     icon: Home,
-    label: "Dashboard",
+    label: "Overview",
     to: "/",
   },
   {
@@ -19,9 +19,16 @@ const navItems = [
     label: "Rules",
     to: "/rules",
   },
+  {
+    icon: Trophy,
+    label: "History",
+    to: "/history",
+  },
 ];
 
 export const Nav = () => {
+  const location = useLocation();
+
   return (
     <aside className="fixed inset-y-0 left-0 z-10 hidden w-14 flex-col border-r bg-background sm:flex">
       <nav className="flex flex-col items-center gap-4 px-2 sm:py-5">
@@ -30,7 +37,8 @@ export const Nav = () => {
           <span className="sr-only">Ultimate Guillotine</span>
         </div>
         {navItems.map((item) => {
-          const isSelected = window.location.pathname === item.to;
+          const isSelected = location.pathname === item.to;
+
           return (
             <Tooltip key={item.to}>
               <TooltipTrigger asChild>
