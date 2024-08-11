@@ -4,6 +4,7 @@ import ErrorPage from "@/app/error-page";
 import App from "@/app/layout";
 
 import HomePage from "./app/home-page/HomePage";
+import { RulesPage } from "./app/rules/RulesPage";
 
 export const router = createBrowserRouter([
   {
@@ -17,7 +18,7 @@ export const router = createBrowserRouter([
       },
       {
         path: "rules",
-        element: <div>Rules</div>,
+        element: <RulesPage />,
       },
     ],
   },
