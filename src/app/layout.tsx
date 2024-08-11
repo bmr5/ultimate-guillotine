@@ -1,6 +1,6 @@
 import { Outlet } from "react-router-dom";
 
-import { Nav } from "./home-page/Nav";
+import { Nav } from "./home/Nav";
 
 function App() {
   return (

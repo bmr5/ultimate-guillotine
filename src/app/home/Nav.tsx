@@ -12,17 +12,17 @@ const navItems = [
   {
     icon: Home,
     label: "Overview",
-    to: "/",
+    to: `/`,
   },
   {
     icon: Notebook,
     label: "Rules",
-    to: "/rules",
+    to: `/rules`,
   },
   {
     icon: Trophy,
     label: "History",
-    to: "/history",
+    to: `/history`,
   },
 ];
 

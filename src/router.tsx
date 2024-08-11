@@ -3,7 +3,8 @@ import { createBrowserRouter, RouteObject } from "react-router-dom";
 import ErrorPage from "@/app/error-page";
 import App from "@/app/layout";
 
-import HomePage from "./app/home-page/HomePage";
+import { HistoryPage } from "./app/history/HistoryPage";
+import HomePage from "./app/home/HomePage";
 import { RulesPage } from "./app/rules/RulesPage";
 
 export const router = createBrowserRouter([
@@ -19,6 +20,10 @@ export const router = createBrowserRouter([
       {
         path: "rules",
         element: <RulesPage />,
+      },
+      {
+        path: "history",
+        element: <HistoryPage />,
       },
     ],
   },
