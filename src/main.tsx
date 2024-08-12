@@ -14,7 +14,7 @@ import { router } from "./router.tsx";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <ThemeProvider defaultTheme="light" storageKey="vite-ui-theme">
+    <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
       <QueryProvider>
         <TailwindIndicator />
         <TooltipProvider delayDuration={200}>
