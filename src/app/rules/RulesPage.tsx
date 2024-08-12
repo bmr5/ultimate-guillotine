@@ -2,7 +2,7 @@ import { LeagueScheduleTable } from "./LeagueScheduleTable";
 
 export const RulesPage = () => {
   return (
-    <div className="container mx-auto px-4 py-8">
+    <div className="container mx-auto max-w-prose px-4 py-8">
       <h1 className="mb-6 text-4xl font-bold">
         Guillotine Gulag League Rules and Schedule
       </h1>
