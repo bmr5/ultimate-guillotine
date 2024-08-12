@@ -58,19 +58,18 @@ export const RosterTable = ({ type }: Props) => {
           <TableHead>
             <Skull />
           </TableHead>
+          {type === "full" && <TableHead>ID</TableHead>}
           <TableHead>Team Name</TableHead>
           <TableHead>Owner</TableHead>
-          {type === "full" && (
-            <>
-              <TableHead>Players</TableHead>
-            </>
-          )}
+          {type === "full" && <TableHead>Players</TableHead>}
         </TableRow>
       </TableHeader>
       <TableBody>
         {rosterData?.map((team) => (
           <TableRow key={team.rosterId}>
             <TableCell>{team.isEliminated ? <Skull /> : false}</TableCell>
+            {type === "full" && <TableCell>{team.rosterId}</TableCell>}
+
             <TableCell>{team.teamName}</TableCell>
             <TableCell>{team.ownerName}</TableCell>
             {type === "full" && (
