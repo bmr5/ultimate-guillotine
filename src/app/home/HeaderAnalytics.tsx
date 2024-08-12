@@ -16,7 +16,7 @@ export const HeaderAnalytics = () => {
   const emptyGulag = currentGulag.length === 0;
   return (
     <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-2 xl:grid-cols-4">
-      <Card className="sm:col-span-2" x-chunk="dashboard-05-chunk-0">
+      <Card className="sm:col-span-2" x-chunk="dashboard-05-chunk-1">
         <CardHeader className="pb-2">
           <CardDescription>Current Gulag</CardDescription>
           <CardTitle className="flex flex-wrap text-4xl">
@@ -40,7 +40,7 @@ export const HeaderAnalytics = () => {
           </CardTitle>
         </CardHeader>
       </Card>
-      <Card x-chunk="dashboard-05-chunk-1">
+      <Card x-chunk="dashboard-05-chunk-2" className="hidden sm:block">
         <CardHeader className="pb-2">
           <CardDescription>Highest Scoring</CardDescription>
           <CardTitle className="text-4xl">1000</CardTitle>
@@ -51,7 +51,7 @@ export const HeaderAnalytics = () => {
           </div>
         </CardContent>
       </Card>
-      <Card x-chunk="dashboard-05-chunk-2">
+      <Card x-chunk="dashboard-05-chunk-3" className="hidden sm:block">
         <CardHeader className="pb-2">
           <CardDescription>Worst Scoring</CardDescription>
           <CardTitle className="text-4xl">700</CardTitle>

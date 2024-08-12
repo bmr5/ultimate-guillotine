@@ -4,12 +4,13 @@ import { Link } from "react-router-dom";
 import { RosterTable } from "@/components/roster-table/RosterTable";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 
 export const RosterCard = () => {
   return (
     <Card className="overflow-hidden" x-chunk="dashboard-05-chunk-4">
-      <CardHeader className="flex flex-row items-start bg-muted/50">
+      <CardHeader className="flex flex-row items-start">
         <div className="grid gap-0.5">
           <CardTitle className="group flex items-center gap-2 text-lg">
             League Rosters
@@ -27,6 +28,7 @@ export const RosterCard = () => {
           </Link>
         </div>
       </CardHeader>
+      <Separator />
       <CardContent className="p-6 text-sm">
         <RosterTable type="compact" />
       </CardContent>
