@@ -5,6 +5,7 @@ import App from "@/app/layout";
 
 import { HistoryPage } from "./app/history/HistoryPage";
 import HomePage from "./app/home/HomePage";
+import { RostersPage } from "./app/rosters/RostersPage";
 import { RulesPage } from "./app/rules/RulesPage";
 
 export const router = createBrowserRouter([
@@ -16,6 +17,10 @@ export const router = createBrowserRouter([
       {
         path: "",
         element: <HomePage />,
+      },
+      {
+        path: "rosters",
+        element: <RostersPage />,
       },
       {
         path: "rules",

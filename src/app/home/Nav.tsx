@@ -1,4 +1,4 @@
-import { Axe, Home, Notebook, Trophy } from "lucide-react";
+import { Axe, Home, Notebook, Trophy, Users } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 
 import {
@@ -13,6 +13,11 @@ const navItems = [
     icon: Home,
     label: "Overview",
     to: `/`,
+  },
+  {
+    icon: Users,
+    label: "Rosters",
+    to: `/rosters`,
   },
   {
     icon: Notebook,
