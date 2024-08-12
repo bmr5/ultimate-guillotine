@@ -1,6 +1,4 @@
 import React from "react";
-import { ColumnFiltersState, SortingState } from "@tanstack/react-table";
-import { ChevronDown, ChevronUp } from "lucide-react";
 
 import { getOwnerByRosterId } from "@/components/roster-table/getOwnerByRosterId";
 import {
@@ -10,25 +8,12 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 import { CURRENT_WEEK, simulatedOwners } from "../constants";
 import { generateLeagueStatusData } from "./generateLeagueStatusData";
 
-interface LeagueWeekData {
-  week: number;
-  gulagTeams: number[];
-  genPoolTeams: number[];
-  teamsEliminated: number[];
-}
-
 export const MobileLeagueStatus = () => {
-  const [sorting, setSorting] = React.useState<SortingState>([]);
-  const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>(
-    [],
-  );
-
   const data = React.useMemo(
     () => generateLeagueStatusData(simulatedOwners, CURRENT_WEEK),
     [],
