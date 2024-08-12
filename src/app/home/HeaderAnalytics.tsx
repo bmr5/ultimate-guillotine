@@ -18,7 +18,7 @@ export const HeaderAnalytics = () => {
     <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-2 xl:grid-cols-4">
       <Card className="sm:col-span-2" x-chunk="dashboard-05-chunk-1">
         <CardHeader className="pb-2">
-          <CardDescription>Current Gulag</CardDescription>
+          <CardDescription>Week {CURRENT_WEEK} Gulag </CardDescription>
           <CardTitle className="flex flex-wrap text-4xl">
             {emptyGulag ? (
               "No Particants"
