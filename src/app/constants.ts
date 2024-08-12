@@ -8,7 +8,7 @@ export type Owner = {
   gulagWeeks: number[];
 };
 
-export const CURRENT_WEEK = 12;
+export const CURRENT_WEEK = 17;
 
 export const owners: Owner[] = [
   {
@@ -270,7 +270,7 @@ export const simulatedOwners: Owner[] = [
     rosterId: 19,
     id: "987806287201087488",
     name: "Daniel",
-    eliminationWeek: 9,
+    eliminationWeek: 17,
     gulagWeeks: [9],
   },
   {

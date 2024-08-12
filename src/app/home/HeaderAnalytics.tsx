@@ -13,23 +13,30 @@ import { getCurrentGulag } from "./getCurrentGulag";
 
 export const HeaderAnalytics = () => {
   const currentGulag = getCurrentGulag(CURRENT_WEEK);
+  const emptyGulag = currentGulag.length === 0;
   return (
     <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-2 xl:grid-cols-4">
       <Card className="sm:col-span-2" x-chunk="dashboard-05-chunk-0">
         <CardHeader className="pb-2">
           <CardDescription>Current Gulag</CardDescription>
           <CardTitle className="flex flex-wrap text-4xl">
-            {currentGulag.map((team, i) => {
-              const isLast = i === currentGulag.length - 1;
-              return (
-                <div className="flex items-center">
-                  <div key={team.id} className="text-2xl">
-                    {team.name}
-                  </div>
-                  {!isLast && <Swords className="mx-2 text-2xl" />}
-                </div>
-              );
-            })}
+            {emptyGulag ? (
+              "No Particants"
+            ) : (
+              <>
+                {currentGulag.map((team, i) => {
+                  const isLast = i === currentGulag.length - 1;
+                  return (
+                    <div className="flex items-center">
+                      <div key={team.id} className="text-2xl">
+                        {team.name}
+                      </div>
+                      {!isLast && <Swords className="mx-2 text-2xl" />}
+                    </div>
+                  );
+                })}
+              </>
+            )}
           </CardTitle>
         </CardHeader>
       </Card>
