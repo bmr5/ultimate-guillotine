@@ -46,6 +46,7 @@ export const RosterTable = ({ type }: Props) => {
       rosterId: roster.roster_id,
       ownerName: owner?.name,
       isEliminated: owner?.eliminationWeek != null,
+      paid: owner?.paid,
     };
   });
 
@@ -62,6 +63,7 @@ export const RosterTable = ({ type }: Props) => {
           <TableHead>Team Name</TableHead>
           <TableHead>Owner</TableHead>
           {type === "full" && <TableHead>Players</TableHead>}
+          {type === "full" && <TableHead>Paid</TableHead>}
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -80,6 +82,13 @@ export const RosterTable = ({ type }: Props) => {
                       {player}
                     </Badge>
                   ))}
+                </TableCell>
+                <TableCell>
+                  {team.paid ? (
+                    <Badge className="bg-green-500">Paid</Badge>
+                  ) : (
+                    <Badge className="bg-red-500">Unpaid</Badge>
+                  )}
                 </TableCell>
               </>
             )}
