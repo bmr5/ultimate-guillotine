@@ -40,6 +40,7 @@ export const MobileRosterTable = ({ type }: Props) => {
       rosterId: roster.roster_id,
       ownerName: owner?.name,
       isEliminated: owner?.eliminationWeek != null,
+      paid: owner?.paid,
     };
   });
 
@@ -60,9 +61,15 @@ export const MobileRosterTable = ({ type }: Props) => {
               </div>
               {type === "full" && (
                 <>
-                  <div className="mb-2">
+                  <div className="mb-2 flex gap-2">
                     <strong>ID:</strong> {team.rosterId}
+                    {team.paid ? (
+                      <Badge className="bg-green-500">Paid</Badge>
+                    ) : (
+                      <Badge className="bg-red-500">Unpaid</Badge>
+                    )}
                   </div>
+
                   <div>
                     <strong>Players:</strong>
                     <div className="mt-2 flex flex-wrap gap-1">

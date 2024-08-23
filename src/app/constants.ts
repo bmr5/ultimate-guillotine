@@ -50,7 +50,7 @@ export const owners: Owner[] = [
     name: "Nick R",
     eliminationWeek: null,
     gulagWeeks: [],
-    paid: false,
+    paid: true,
   },
   {
     rosterId: 6,
