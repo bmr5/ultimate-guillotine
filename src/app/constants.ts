@@ -34,7 +34,7 @@ export const owners: Owner[] = [
     name: "Nick S",
     eliminationWeek: null,
     gulagWeeks: [],
-    paid: false,
+    paid: true,
   },
   {
     rosterId: 4,
