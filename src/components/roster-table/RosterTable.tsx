@@ -40,7 +40,7 @@ export const RosterTable = ({ type }: Props) => {
 
     return {
       userId: roster.owner_id,
-      teamName: leagueUser?.metadata?.team_name || "Unnamed Team",
+      teamName: leagueUser?.metadata?.team_name || `${owner?.name}'s Team`,
       owners: leagueUser?.display_name || "Unknown Owner",
       players: roster.players,
       rosterId: roster.roster_id,
