@@ -58,7 +58,7 @@ export const owners: Owner[] = [
     name: "Sean",
     eliminationWeek: null,
     gulagWeeks: [],
-    paid: false,
+    paid: true,
   },
   {
     rosterId: 7,
@@ -74,7 +74,7 @@ export const owners: Owner[] = [
     name: "Brandon L",
     eliminationWeek: null,
     gulagWeeks: [],
-    paid: false,
+    paid: true,
   },
   {
     rosterId: 9,
@@ -154,7 +154,7 @@ export const owners: Owner[] = [
     name: "Daniel",
     eliminationWeek: null,
     gulagWeeks: [],
-    paid: false,
+    paid: true,
   },
   {
     rosterId: 20,
