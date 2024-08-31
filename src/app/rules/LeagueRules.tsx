@@ -49,8 +49,8 @@ const LeagueRules = () => {
             game time in the app.
           </li>
           <li>
-            <strong>Weekly Bonus</strong>: $10 a week for surviving (includes
-            gulag/gladiator teams).
+            <strong>Weekly Bonus</strong>: $10 a week for the first 12 weeks
+            (includes gulag/gladiator teams).
           </li>
         </ol>
       </section>
