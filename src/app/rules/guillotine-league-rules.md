@@ -14,7 +14,7 @@ Welcome to the ultimate fantasy football experience - the Guillotine Gulag Leagu
 1. **Team Size**: Maintain exactly 9 players on your roster at all times.
 2. **Starting Lineup**: You don't have to start all your players.
 3. **Player Lock**: Players are locked at their scheduled game time in the app.
-4. **Weekly Bonus**: Win your head-to-head matchup to earn an extra $5 (includes gulag/gladiator teams).
+4. **Weekly Bonus**: $10 a week for the first 12 weeks (includes gulag/gladiator teams).
 
 ## Gulag & Gladiator Rules
 

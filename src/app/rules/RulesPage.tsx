@@ -49,8 +49,8 @@ export const RulesPage = () => {
             game time in the app.
           </li>
           <li>
-            <strong>Weekly Bonus</strong>: Win your head-to-head matchup to earn
-            an extra $5 (includes gulag/gladiator teams).
+            <strong>Weekly Bonus</strong>: $10 a week for the first 12 weeks
+            (includes gulag/gladiator teams).
           </li>
         </ol>
       </section>
