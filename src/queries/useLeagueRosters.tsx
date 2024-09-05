@@ -7,6 +7,15 @@ interface Roster {
   roster_id: number;
   owner_id: string;
   players: string[];
+  settings: {
+    fpts: number;
+    losses: number;
+    ties: number;
+    total_moves: number;
+    waiver_position: number;
+    waiver_budget_used: number;
+    wins: number;
+  };
   // Add more fields as needed based on the Sleeper API response
 }
 

@@ -30,7 +30,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-import { CURRENT_WEEK, simulatedOwners } from "../constants";
+import { CURRENT_WEEK, owners } from "../constants";
 import { generateLeagueStatusData } from "./generateLeagueStatusData";
 
 interface LeagueWeekData {
@@ -118,7 +118,7 @@ export const LeagueStatus = () => {
   const [columnVisibility, setColumnVisibility] = React.useState({});
 
   const data = React.useMemo(
-    () => generateLeagueStatusData(simulatedOwners, CURRENT_WEEK),
+    () => generateLeagueStatusData(owners, CURRENT_WEEK),
     [],
   );
   // const data = React.useMemo(() => generateLeagueStatusData(owners), []);

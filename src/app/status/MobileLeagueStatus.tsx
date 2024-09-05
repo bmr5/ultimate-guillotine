@@ -10,12 +10,12 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-import { CURRENT_WEEK, simulatedOwners } from "../constants";
+import { CURRENT_WEEK, owners } from "../constants";
 import { generateLeagueStatusData } from "./generateLeagueStatusData";
 
 export const MobileLeagueStatus = () => {
   const data = React.useMemo(
-    () => generateLeagueStatusData(simulatedOwners, CURRENT_WEEK),
+    () => generateLeagueStatusData(owners, CURRENT_WEEK),
     [],
   );
 

@@ -7,6 +7,7 @@ import { RouterProvider } from "react-router-dom";
 
 import { ThemeProvider } from "@/components/theme-provider";
 
+import { PlayerDataProvider } from "./app/PlayerDataContext.tsx";
 import { TailwindIndicator } from "./components/tailwind-indicator.tsx";
 import { TooltipProvider } from "./components/ui/tooltip.tsx";
 import { QueryProvider } from "./QueryProvider.tsx";
@@ -18,7 +19,9 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
       <QueryProvider>
         <TailwindIndicator />
         <TooltipProvider delayDuration={200}>
-          <RouterProvider router={router} />
+          <PlayerDataProvider>
+            <RouterProvider router={router} />
+          </PlayerDataProvider>
         </TooltipProvider>
       </QueryProvider>
     </ThemeProvider>
