@@ -28,10 +28,16 @@ export const RosterTable = () => {
     error: usersError,
   } = useLeagueUsers();
 
-  if (rostersLoading || usersLoading) return <div>Loading roster data...</div>;
-  if (rostersError || usersError) return <div>Error loading roster data</div>;
+  const allPlayersOnRosters =
+    rosters?.reduce<string[]>(
+      (acc, roster) => [...acc, ...(roster.players ?? [])],
+      [],
+    ) ?? [];
 
-  // Combine roster and user data
+  const allRostersPlayerData = useGetPlayersFromRoster(
+    allPlayersOnRosters,
+    CURRENT_WEEK,
+  );
   const rosterData: Team[] =
     rosters
       ?.filter((roster) => roster.roster_id !== 18)
@@ -42,9 +48,8 @@ export const RosterTable = () => {
         const owner = getOwnerByRosterId(roster.roster_id);
         const faab = 1000 - (roster.settings.waiver_budget_used ?? 0);
 
-        const players = useGetPlayersFromRoster(
-          roster.players ?? [],
-          CURRENT_WEEK,
+        const players = allRostersPlayerData.filter(
+          (player) => roster.players?.includes(player.id),
         );
 
         return {
@@ -58,6 +63,9 @@ export const RosterTable = () => {
           players,
         };
       }) ?? [];
+
+  if (rostersLoading || usersLoading) return <div>Loading roster data...</div>;
+  if (rostersError || usersError) return <div>Error loading roster data</div>;
 
   return (
     <Table>
