@@ -30,7 +30,7 @@ export const RosterCard = () => {
       </CardHeader>
       <Separator />
       <CardContent className="p-6 text-sm">
-        <RosterTable type="compact" />
+        <RosterTable />
       </CardContent>
     </Card>
   );
