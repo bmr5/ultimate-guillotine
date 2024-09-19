@@ -79,7 +79,7 @@ export const RosterTable = ({ type }: Props) => {
       const owner = getOwnerByRosterId(roster.roster_id);
       const faab = 1000 - roster.settings.waiver_budget_used;
 
-      const players: Player[] = roster.players.map((pID) => {
+      const players: Player[] = (roster.players ?? []).map((pID) => {
         const player = playerData[pID];
         return {
           id: pID,
@@ -98,7 +98,9 @@ export const RosterTable = ({ type }: Props) => {
         players: sortedPlayers,
         rosterId: roster.roster_id,
         ownerName: owner?.name,
-        isEliminated: owner?.eliminationWeek != null,
+        isEliminated:
+          owner?.eliminationWeek != null ||
+          (roster?.players ?? []).length === 0,
         paid: owner?.paid,
         faab,
       };
