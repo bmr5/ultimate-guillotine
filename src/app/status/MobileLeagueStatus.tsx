@@ -9,13 +9,16 @@ import {
 } from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useLeagueGulagData } from "@/queries/useLeagueGulagData";
 
 import { CURRENT_WEEK, owners } from "../constants";
 import { generateLeagueStatusData } from "./generateLeagueStatusData";
 
 export const MobileLeagueStatus = () => {
+  const allGulagData = useLeagueGulagData();
+
   const data = React.useMemo(
-    () => generateLeagueStatusData(owners, CURRENT_WEEK),
+    () => generateLeagueStatusData(owners, CURRENT_WEEK, allGulagData),
     [],
   );
 
