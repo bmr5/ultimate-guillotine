@@ -9,7 +9,7 @@ export type Owner = {
   paid: boolean;
 };
 
-export const CURRENT_WEEK = 1;
+export const CURRENT_WEEK = 3;
 
 export const owners: Owner[] = [
   {
@@ -25,7 +25,7 @@ export const owners: Owner[] = [
     id: "604958001710825472",
     name: "Charlie",
     eliminationWeek: null,
-    gulagWeeks: [],
+    gulagWeeks: [2],
     paid: true,
   },
   {
@@ -40,9 +40,9 @@ export const owners: Owner[] = [
     rosterId: 4,
     id: "339913290731831296",
     name: "Ryan & Adi",
-    eliminationWeek: null,
-    gulagWeeks: [],
-    paid: false,
+    eliminationWeek: 2,
+    gulagWeeks: [2],
+    paid: true,
   },
   {
     rosterId: 5,
@@ -129,7 +129,7 @@ export const owners: Owner[] = [
     id: "300420851122049024",
     name: "Bryan Y",
     eliminationWeek: null,
-    gulagWeeks: [],
+    gulagWeeks: [3],
     paid: true,
   },
   {
@@ -145,7 +145,7 @@ export const owners: Owner[] = [
     id: "340391675220213760",
     name: "Evan",
     eliminationWeek: null,
-    gulagWeeks: [],
+    gulagWeeks: [3],
     paid: true,
   },
   {
