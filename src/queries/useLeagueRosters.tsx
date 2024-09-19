@@ -3,7 +3,7 @@ import axios from "axios";
 
 import { leagueId } from "@/app/constants";
 
-interface Roster {
+export interface Roster {
   roster_id: number;
   owner_id: string;
   players: string[];

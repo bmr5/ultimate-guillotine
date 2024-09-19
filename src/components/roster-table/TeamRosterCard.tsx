@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { Skull } from "lucide-react";
 
 import {
@@ -8,9 +9,13 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import {
+  getProjectedPPRPoints,
+  usePlayerProjections,
+} from "@/queries/usePlayerProjections";
 
 import { Separator } from "../ui/separator";
-import { Player } from "./RosterTable";
+import { Player } from "./useGetPlayersFromRoster";
 
 export type Team = {
   totalPoints: number;
@@ -23,22 +28,41 @@ export type Team = {
 
 type TeamRosterCardProps = {
   team: Team;
+  week: number;
 };
 
 const positionOrder = ["QB", "RB", "WR", "TE", "K", "DEF"];
 
-export const TeamRosterCard = ({ team }: TeamRosterCardProps) => {
+export const TeamRosterCard = ({ team, week }: TeamRosterCardProps) => {
   const { teamName, ownerName, isEliminated, faab, players, totalPoints } =
     team;
 
-  // Calculate player counts for each position
-  const positionCounts = players.reduce(
-    (counts, player) => {
-      counts[player.position] = (counts[player.position] || 0) + 1;
-      return counts;
-    },
-    {} as Record<string, number>,
-  );
+  const playerNames = players.map((player) => player.name);
+  const { data: projections, isLoading: projectionsLoading } =
+    usePlayerProjections(playerNames, week);
+
+  const { positionCounts, positionProjections, totalProjectedPoints } =
+    useMemo(() => {
+      const counts = {} as Record<string, number>;
+      const projectedPoints = {} as Record<string, number>;
+      let total = 0;
+
+      players.forEach((player) => {
+        counts[player.position] = (counts[player.position] || 0) + 1;
+        if (projections) {
+          const points = getProjectedPPRPoints(projections, player.name);
+          projectedPoints[player.position] =
+            (projectedPoints[player.position] || 0) + points;
+          total += points;
+        }
+      });
+
+      return {
+        positionCounts: counts,
+        positionProjections: projectedPoints,
+        totalProjectedPoints: total,
+      };
+    }, [players, projections]);
 
   return (
     <Card
@@ -68,18 +92,37 @@ export const TeamRosterCard = ({ team }: TeamRosterCardProps) => {
         <div className="grid grid-cols-2 gap-4">
           {positionOrder.map((position) => (
             <div key={position} className="space-y-1">
-              <div className="flex space-x-2 font-semibold">
+              <div className="flex gap-1 font-semibold">
                 <span>{position}</span>
                 <span className="text-muted-foreground">
-                  ({positionCounts[position] || 0})
+                  ({positionCounts[position] || 0}){" -"}
+                  {!projectionsLoading && projections && (
+                    <span className="ml-2">
+                      {positionProjections[position]?.toFixed(1) || "0.0"}
+                    </span>
+                  )}
                 </span>
               </div>
               <Separator />
               {players
                 .filter((player) => player.position === position)
                 .map((player) => (
-                  <div key={player.id} className="text-sm">
-                    {player.name} {player.team && `(${player.team})`}
+                  <div key={player.id} className="flex justify-between text-sm">
+                    <span>
+                      {player.name} {player.team && `(${player.team})`}
+                    </span>
+                    {projectionsLoading ? (
+                      <span className="text-muted-foreground">Loading...</span>
+                    ) : (
+                      <span className="text-muted-foreground">
+                        {projections
+                          ? getProjectedPPRPoints(
+                              projections,
+                              player.name,
+                            ).toFixed(1)
+                          : "N/A"}
+                      </span>
+                    )}
                   </div>
                 ))}
             </div>
@@ -87,7 +130,15 @@ export const TeamRosterCard = ({ team }: TeamRosterCardProps) => {
         </div>
       </CardContent>
       <CardFooter className="bg-primary/10 px-4 py-2 text-sm font-medium">
-        Total Points: {totalPoints.toFixed(2)}
+        <div className="flex w-full justify-between">
+          <span>Total Points: {totalPoints.toFixed(2)}</span>
+          <span>
+            Projected:{" "}
+            {projectionsLoading
+              ? "Loading..."
+              : totalProjectedPoints.toFixed(2)}
+          </span>
+        </div>
       </CardFooter>
     </Card>
   );

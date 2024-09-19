@@ -1,89 +1,60 @@
 import { useQuery } from "@tanstack/react-query";
-import axios from "axios";
 
-interface PlayerStatEntry {
-  date: string;
-  stats: {
-    gms_active?: number;
-    pos_rank_half_ppr?: number;
-    pos_rank_ppr?: number;
-    pos_rank_std?: number;
-    bonus_fd_wr?: number;
-    bonus_rec_wr?: number;
-    gp?: number;
-    gs?: number;
-    off_snp?: number;
-    pts_half_ppr?: number;
-    pts_ppr?: number;
-    pts_std?: number;
-    rec?: number;
-    rec_air_yd?: number;
-    rec_fd?: number;
-    rec_lng?: number;
-    rec_tgt?: number;
-    rec_yar?: number;
-    rec_yd?: number;
-    rec_ypr?: number;
-    rec_ypt?: number;
-    rush_rec_yd?: number;
-    tm_def_snp?: number;
-    tm_off_snp?: number;
-    tm_st_snp?: number;
-    anytime_tds?: number;
-    rec_td?: number;
-    rush_att?: number;
-    rush_lng?: number;
-    rush_td?: number;
-    rush_yd?: number;
-    rush_ypa?: number;
-    fum?: number;
-    rec_drop?: number;
-    [key: string]: number | undefined;
-  };
-  category: string;
-  last_modified: number | null;
-  week: number;
-  season: string;
-  season_type: string;
-  sport: string;
-  player_id: string;
-  game_id: string;
-  updated_at: number | null;
+import { supabase } from "@/supabaseClient";
+
+interface PlayerProjection {
+  id: number;
+  fantasy_data_id: number;
+  rank: number;
+  player: string;
   team: string;
-  company: string;
-  opponent: string;
-}
-
-interface PlayerStatsResponse {
-  [week: string]: PlayerStatEntry | null;
+  pos: string;
+  game_week: number;
+  opp: string;
+  pass_yds: number;
+  pass_td: number;
+  pass_int: number;
+  rush_yds: number;
+  rush_td: number;
+  rec: number;
+  rec_yds: number;
+  rec_td: number;
+  def_sck: number;
+  def_int: number;
+  fum_forced: number;
+  fum_recovered: number;
+  fpts_ppr: number;
 }
 
 const fetchPlayerProjections = async (
-  playerId: string,
-  season: string = "2024",
-  seasonType: string = "regular",
-): Promise<PlayerStatsResponse> => {
-  const response = await axios.get<PlayerStatsResponse>(
-    `https://api.sleeper.com/stats/nfl/player/${playerId}?season_type=${seasonType}&season=${season}&grouping=week`,
-  );
-  return response.data;
+  playerNames: string[],
+  week: number,
+): Promise<PlayerProjection[]> => {
+  const { data, error } = await supabase
+    .from("player_projections")
+    .select("*")
+    .in("player", playerNames)
+    .eq("game_week", week);
+
+  if (error) {
+    throw new Error(`Error fetching projections: ${error.message}`);
+  }
+
+  return data || [];
 };
 
-export const usePlayerProjections = (
-  playerId: string,
-  season: string = "2024",
-  seasonType: string = "regular",
-) => {
-  return useQuery<PlayerStatsResponse, Error>({
-    queryKey: ["playerProjections", playerId, season, seasonType],
-    queryFn: () => fetchPlayerProjections(playerId, season, seasonType),
+export const usePlayerProjections = (playerNames: string[], week: number) => {
+  return useQuery<PlayerProjection[], Error>({
+    queryKey: ["playerProjections", playerNames, week],
+    queryFn: () => fetchPlayerProjections(playerNames, week),
   });
 };
 
-export const getProjectedPoints = (
-  projections: PlayerStatsResponse,
-  week: number,
+// Helper function to get projected PPR points for a specific player
+export const getProjectedPPRPoints = (
+  projections: PlayerProjection[],
+  playerName: string,
 ): number => {
-  const projection = projections[week.toString()];
-  return projection ? projection.stats.pts_ppr || 0 : 0;
+  const projection = projections.find((p) => p.player === playerName);
+  return projection ? projection.fpts_ppr : 0;
 };
