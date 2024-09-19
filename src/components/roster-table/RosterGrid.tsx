@@ -16,21 +16,9 @@ import { useLeagueUsers } from "@/queries/useLeagueUsers";
 
 import { getOwnerByRosterId } from "./getOwnerByRosterId";
 import { Player } from "./RosterTable";
-import { TeamRosterCard } from "./TeamRosterCard";
+import { Team, TeamRosterCard } from "./TeamRosterCard";
 
-interface Team {
-  teamName: string;
-  ownerName: string;
-  isEliminated: boolean;
-  faab: number;
-  players: Player[];
-}
-
-type Props = {
-  type: "full" | "compact";
-};
-
-export const RosterGrid = ({ type }: Props) => {
+export const RosterGrid = () => {
   const playerData = useContext(PlayerDataContext);
   const {
     data: rosters,
@@ -43,7 +31,9 @@ export const RosterGrid = ({ type }: Props) => {
     error: usersError,
   } = useLeagueUsers();
 
-  const [sortBy, setSortBy] = useState<"faab" | "teamName">("faab");
+  const [sortBy, setSortBy] = useState<"faab" | "teamName" | "totalPoints">(
+    "faab",
+  );
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [showOnlyActive, setShowOnlyActive] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -84,6 +74,7 @@ export const RosterGrid = ({ type }: Props) => {
         const sortedPlayers = sortPlayersByFantasyOrder(players);
 
         return {
+          totalPoints: roster.settings.fpts,
           teamName:
             leagueUser?.metadata?.team_name ??
             `${owner?.name ?? "Unknown"}'s Team`,
@@ -112,6 +103,10 @@ export const RosterGrid = ({ type }: Props) => {
     .sort((a, b) => {
       if (sortBy === "faab") {
         return sortOrder === "asc" ? a.faab - b.faab : b.faab - a.faab;
+      } else if (sortBy === "totalPoints") {
+        return sortOrder === "asc"
+          ? a.totalPoints - b.totalPoints
+          : b.totalPoints - a.totalPoints;
       } else {
         return sortOrder === "asc"
           ? a.teamName.localeCompare(b.teamName)
@@ -133,7 +128,9 @@ export const RosterGrid = ({ type }: Props) => {
         />
         <Select
           value={sortBy}
-          onValueChange={(value) => setSortBy(value as "faab" | "teamName")}
+          onValueChange={(value) =>
+            setSortBy(value as "faab" | "teamName" | "totalPoints")
+          }
         >
           <SelectTrigger className="w-[180px]">
             <SelectValue placeholder="Sort by" />
@@ -141,6 +138,7 @@ export const RosterGrid = ({ type }: Props) => {
           <SelectContent>
             <SelectItem value="faab">Sort by FAAB</SelectItem>
             <SelectItem value="teamName">Sort by Team Name</SelectItem>
+            <SelectItem value="totalPoints">Sort by Total Points</SelectItem>
           </SelectContent>
         </Select>
         <Select
@@ -169,15 +167,7 @@ export const RosterGrid = ({ type }: Props) => {
         <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2 lg:grid-cols-3">
           {filteredAndSortedRosterData?.map((team, index) => {
             return team != null ? (
-              <TeamRosterCard
-                key={index}
-                teamName={team.teamName}
-                ownerName={team.ownerName}
-                isEliminated={team.isEliminated}
-                faab={team.faab}
-                players={team.players}
-                type={type}
-              />
+              <TeamRosterCard key={index} team={team} />
             ) : null;
           })}
         </div>

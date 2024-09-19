@@ -1,32 +1,38 @@
 import { Skull } from "lucide-react";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
 import { Player } from "./RosterTable";
 
-type TeamRosterCardProps = {
+export type Team = {
+  totalPoints: number;
   teamName: string;
   ownerName: string;
   isEliminated: boolean;
   faab: number;
   players: Player[];
-  type: "full" | "compact";
+};
+
+type TeamRosterCardProps = {
+  team: Team;
 };
 
 const positionOrder = ["QB", "RB", "WR", "TE", "K", "DEF"];
 
-export const TeamRosterCard = ({
-  teamName,
-  ownerName,
-  isEliminated,
-  faab,
-  players,
-}: TeamRosterCardProps) => {
+export const TeamRosterCard = ({ team }: TeamRosterCardProps) => {
+  const { teamName, ownerName, isEliminated, faab, players, totalPoints } =
+    team;
   return (
     <Card
       className={cn(
-        "overflow-hidden",
+        "flex flex-col overflow-hidden",
         isEliminated && "bg-gray-200 opacity-75 dark:bg-gray-800",
       )}
     >
@@ -47,7 +53,7 @@ export const TeamRosterCard = ({
           <span className="text-muted-foreground">FAAB: ${faab}</span>
         </CardTitle>
       </CardHeader>
-      <CardContent className="p-4">
+      <CardContent className="flex-grow p-4">
         <div className="grid grid-cols-2 gap-2">
           {positionOrder.map((position) => (
             <div key={position} className="space-y-1">
@@ -63,6 +69,9 @@ export const TeamRosterCard = ({
           ))}
         </div>
       </CardContent>
+      <CardFooter className="bg-primary/10 px-4 py-2 text-sm font-medium">
+        Total Points: {totalPoints.toFixed(2)}
+      </CardFooter>
     </Card>
   );
 };
