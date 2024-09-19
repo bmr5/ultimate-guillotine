@@ -25,7 +25,6 @@ export const useGetPlayersFromRoster = (
   });
 
   const { data: projections } = usePlayerProjections(playerNames, week);
-  console.log({ playerNames, projections });
 
   const players: Player[] = useMemo(() => {
     return rosterPlayers.map((pID) => {
