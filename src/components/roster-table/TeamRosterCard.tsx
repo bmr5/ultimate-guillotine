@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
+import { Separator } from "../ui/separator";
 import { Player } from "./RosterTable";
 
 export type Team = {
@@ -29,6 +30,16 @@ const positionOrder = ["QB", "RB", "WR", "TE", "K", "DEF"];
 export const TeamRosterCard = ({ team }: TeamRosterCardProps) => {
   const { teamName, ownerName, isEliminated, faab, players, totalPoints } =
     team;
+
+  // Calculate player counts for each position
+  const positionCounts = players.reduce(
+    (counts, player) => {
+      counts[player.position] = (counts[player.position] || 0) + 1;
+      return counts;
+    },
+    {} as Record<string, number>,
+  );
+
   return (
     <Card
       className={cn(
@@ -54,10 +65,16 @@ export const TeamRosterCard = ({ team }: TeamRosterCardProps) => {
         </CardTitle>
       </CardHeader>
       <CardContent className="flex-grow p-4">
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-2 gap-4">
           {positionOrder.map((position) => (
             <div key={position} className="space-y-1">
-              <div className="font-semibold">{position}</div>
+              <div className="flex space-x-2 font-semibold">
+                <span>{position}</span>
+                <span className="text-muted-foreground">
+                  ({positionCounts[position] || 0})
+                </span>
+              </div>
+              <Separator />
               {players
                 .filter((player) => player.position === position)
                 .map((player) => (
