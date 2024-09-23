@@ -14,7 +14,6 @@ import {
 import { useLeagueRosters } from "@/queries/useLeagueRosters";
 import { useLeagueUsers } from "@/queries/useLeagueUsers";
 
-import { getOwnerByRosterId } from "./getOwnerByRosterId";
 import { getRosterData } from "./getRosterData";
 import { Team, TeamRosterCard } from "./TeamRosterCard";
 import { useGetPlayersFromRoster } from "./useGetPlayersFromRoster";
