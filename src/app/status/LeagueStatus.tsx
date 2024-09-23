@@ -29,6 +29,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useLeagueGulagData } from "@/queries/useLeagueGulagData";
 
 import { CURRENT_WEEK, owners } from "../constants";
 import { generateLeagueStatusData } from "./generateLeagueStatusData";
@@ -116,9 +117,10 @@ export const LeagueStatus = () => {
     [],
   );
   const [columnVisibility, setColumnVisibility] = React.useState({});
+  const allGulagData = useLeagueGulagData();
 
   const data = React.useMemo(
-    () => generateLeagueStatusData(owners, CURRENT_WEEK),
+    () => generateLeagueStatusData(owners, CURRENT_WEEK, allGulagData),
     [],
   );
   // const data = React.useMemo(() => generateLeagueStatusData(owners), []);
