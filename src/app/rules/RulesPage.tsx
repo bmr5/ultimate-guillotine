@@ -64,7 +64,7 @@ export const RulesPage = () => {
           </li>
           <li>
             <strong>Champion Substitution</strong>: Pay someone to take your
-            place, but both take the gulag penalty.
+            place, but take the gulag penalty.
           </li>
           <li>
             <strong>Rebuilding</strong>: Rebuild teams through waivers or trades
