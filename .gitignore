@@ -25,3 +25,8 @@ dist-ssr
 
 # IDE
 .env
+
+# Local league-member and contact data
+data/private/*
+!data/private/README.md
+!data/private/league-members.example.json

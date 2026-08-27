@@ -1,0 +1,14 @@
+{
+  "source": "example.xlsx",
+  "sourceSheet": "2022",
+  "members": [
+    {
+      "sourceRow": 2,
+      "firstName": "Example",
+      "lastName": "Member",
+      "email": "member@example.com",
+      "phone": "555-010-0000",
+      "teamNameReservation": "Example Team"
+    }
+  ]
+}
