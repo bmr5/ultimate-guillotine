@@ -28,3 +28,13 @@ python3 scripts/import_league_records.py \
 ```
 
 The real member directory is local-only and must remain ignored by Git.
+
+## Track 2026 dues
+
+From the repository root, run:
+
+```bash
+pnpm dues
+```
+
+This starts a server bound only to `127.0.0.1`, opens the private tracker in the default browser, and saves edits to `data/private/dues-2026.json`. Stop it with `Ctrl+C` in the terminal.

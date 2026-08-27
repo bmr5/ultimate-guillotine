@@ -62,6 +62,16 @@ pnpm check:records
 
 Use `data/private/league-members.example.json` for development that does not need real league data.
 
+## 2026 dues tracker
+
+Launch the private commissioner dues page:
+
+```bash
+pnpm dues
+```
+
+The tracker opens at `http://127.0.0.1:8765`, shows the latest roster, and saves Venmo handles, paid status, timestamps, and notes to ignored `data/private/dues-2026.json`. It is available only on the local Mac unless you deliberately build a separate authenticated remote-access layer.
+
 ## Automation direction
 
 The always-on Mac mini can eventually run scripts and agents for weekly recaps, daily league monitoring, and approved message delivery. Each external integration should begin in dry-run mode, keep secrets outside Git, and separate content generation from the action that sends a message.

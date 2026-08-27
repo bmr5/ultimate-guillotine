@@ -1,0 +1,391 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ultimate Guillotine · League Dues</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --ink: #11130f;
+        --panel: #191c17;
+        --panel-2: #22261f;
+        --line: #393e34;
+        --paper: #f4f0df;
+        --muted: #a7ad9d;
+        --acid: #dbff45;
+        --paid: #54d889;
+        --unpaid: #ff7f5c;
+        --shadow: 0 24px 70px rgba(0, 0, 0, 0.32);
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background:
+          radial-gradient(circle at 90% 0%, rgba(219, 255, 69, 0.12), transparent 28rem),
+          linear-gradient(140deg, #0d0f0c, #151812 62%, #10120e);
+        color: var(--paper);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      button, input { font: inherit; }
+
+      .shell {
+        width: min(1180px, calc(100% - 32px));
+        margin: 0 auto;
+        padding: 52px 0 72px;
+      }
+
+      .eyebrow {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: var(--acid);
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+      }
+
+      .eyebrow::before {
+        content: "";
+        width: 34px;
+        height: 3px;
+        background: var(--acid);
+      }
+
+      h1 {
+        max-width: 760px;
+        margin: 18px 0 12px;
+        font-size: clamp(42px, 8vw, 86px);
+        line-height: 0.9;
+        letter-spacing: -0.065em;
+      }
+
+      .intro {
+        max-width: 680px;
+        margin: 0;
+        color: var(--muted);
+        font-size: 17px;
+        line-height: 1.6;
+      }
+
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+        margin: 36px 0 18px;
+      }
+
+      .stat {
+        min-height: 124px;
+        padding: 22px;
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: rgba(25, 28, 23, 0.82);
+        box-shadow: var(--shadow);
+      }
+
+      .stat-label {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.13em;
+        text-transform: uppercase;
+      }
+
+      .stat-value {
+        display: block;
+        margin-top: 10px;
+        font-size: 44px;
+        font-weight: 800;
+        letter-spacing: -0.05em;
+      }
+
+      .stat.paid .stat-value { color: var(--paid); }
+      .stat.unpaid .stat-value { color: var(--unpaid); }
+
+      .toolbar {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        justify-content: space-between;
+        margin: 18px 0;
+        padding: 12px;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: var(--panel);
+      }
+
+      .search {
+        width: min(440px, 100%);
+        padding: 12px 14px;
+        border: 1px solid var(--line);
+        border-radius: 11px;
+        outline: none;
+        background: #0f110e;
+        color: var(--paper);
+      }
+
+      .search:focus, .field:focus { border-color: var(--acid); }
+
+      .filter {
+        display: inline-flex;
+        align-items: center;
+        gap: 9px;
+        color: var(--muted);
+        font-size: 14px;
+        white-space: nowrap;
+      }
+
+      .list {
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: 20px;
+        background: var(--panel);
+        box-shadow: var(--shadow);
+      }
+
+      .row {
+        display: grid;
+        grid-template-columns: 130px minmax(170px, 1fr) minmax(190px, 1.1fr) minmax(190px, 1.1fr) 58px;
+        gap: 14px;
+        align-items: center;
+        padding: 16px 18px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .row:last-child { border-bottom: 0; }
+      .row.is-paid { background: rgba(84, 216, 137, 0.045); }
+
+      .status {
+        padding: 10px 14px;
+        border: 1px solid transparent;
+        border-radius: 999px;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 900;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .status.unpaid { background: rgba(255, 127, 92, 0.14); color: var(--unpaid); border-color: rgba(255, 127, 92, 0.35); }
+      .status.paid { background: rgba(84, 216, 137, 0.14); color: var(--paid); border-color: rgba(84, 216, 137, 0.35); }
+
+      .name { font-size: 18px; font-weight: 780; letter-spacing: -0.02em; }
+      .sub { margin-top: 5px; color: var(--muted); font-size: 12px; }
+      .missing { color: var(--unpaid); }
+
+      .field {
+        width: 100%;
+        min-width: 0;
+        padding: 11px 12px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        outline: none;
+        background: #11140f;
+        color: var(--paper);
+      }
+
+      .copy {
+        display: grid;
+        place-items: center;
+        width: 42px;
+        height: 42px;
+        border: 1px solid var(--line);
+        border-radius: 11px;
+        background: var(--panel-2);
+        color: var(--paper);
+        cursor: pointer;
+      }
+
+      .copy:hover { border-color: var(--acid); color: var(--acid); }
+
+      .empty, .error { padding: 48px; text-align: center; color: var(--muted); }
+      .error { color: var(--unpaid); }
+
+      .save-state {
+        min-height: 20px;
+        margin-top: 12px;
+        color: var(--muted);
+        font-size: 12px;
+        text-align: right;
+      }
+
+      @media (max-width: 820px) {
+        .shell { width: min(100% - 20px, 680px); padding-top: 30px; }
+        .stats { grid-template-columns: 1fr 1fr; }
+        .stats .stat:first-child { grid-column: 1 / -1; }
+        .toolbar { align-items: stretch; flex-direction: column; }
+        .search { width: 100%; }
+        .row { grid-template-columns: 110px 1fr 52px; }
+        .row .venmo, .row .notes { grid-column: 2 / -1; }
+        .copy { grid-column: 3; grid-row: 1; }
+      }
+
+      @media (max-width: 520px) {
+        .stats { grid-template-columns: 1fr; }
+        .stats .stat:first-child { grid-column: auto; }
+        .stat { min-height: 96px; }
+        .stat-value { font-size: 34px; }
+        .row { grid-template-columns: 1fr 46px; padding: 16px; }
+        .status, .name-block, .row .venmo, .row .notes { grid-column: 1 / -1; }
+        .copy { grid-column: 2; grid-row: 2; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="shell">
+      <div class="eyebrow">Commissioner desk · private</div>
+      <h1><span id="season">2026</span> League Dues</h1>
+      <p class="intro">Keep the whole league in one place. Add each Venmo handle once, copy whatever you need for a request, and mark dues paid as they arrive.</p>
+
+      <section class="stats" aria-label="Dues summary">
+        <article class="stat"><span class="stat-label">League</span><strong class="stat-value" id="total">—</strong></article>
+        <article class="stat paid"><span class="stat-label">Paid</span><strong class="stat-value" id="paid">—</strong></article>
+        <article class="stat unpaid"><span class="stat-label">Still owed</span><strong class="stat-value" id="unpaid">—</strong></article>
+      </section>
+
+      <section class="toolbar">
+        <input class="search" id="search" type="search" placeholder="Find someone by name, Venmo, email, or phone" aria-label="Search members" />
+        <label class="filter"><input id="unpaid-only" type="checkbox" /> Show unpaid only</label>
+      </section>
+
+      <section class="list" id="list" aria-live="polite"><div class="empty">Loading the league…</div></section>
+      <div class="save-state" id="save-state">Changes save to your private local data.</div>
+    </main>
+
+    <script>
+      const state = { tracker: null, query: "", unpaidOnly: false };
+      const elements = {
+        list: document.querySelector("#list"),
+        search: document.querySelector("#search"),
+        unpaidOnly: document.querySelector("#unpaid-only"),
+        season: document.querySelector("#season"),
+        total: document.querySelector("#total"),
+        paid: document.querySelector("#paid"),
+        unpaid: document.querySelector("#unpaid"),
+        saveState: document.querySelector("#save-state"),
+      };
+
+      const el = (tag, className, text) => {
+        const node = document.createElement(tag);
+        if (className) node.className = className;
+        if (text !== undefined) node.textContent = text;
+        return node;
+      };
+
+      async function patchMember(member, changes) {
+        elements.saveState.textContent = `Saving ${member.name}…`;
+        const response = await fetch(`/api/members/${encodeURIComponent(member.id)}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(changes),
+        });
+        if (!response.ok) throw new Error((await response.json()).error || "Could not save change");
+        Object.assign(member, await response.json());
+        elements.saveState.textContent = `Saved ${member.name}`;
+        render();
+      }
+
+      function contactLine(member) {
+        return [member.phone, member.email].filter(Boolean).join(" · ") || "Contact missing — add Venmo handle";
+      }
+
+      function searchable(member) {
+        return [member.name, member.venmoHandle, member.phone, member.email, member.notes]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+      }
+
+      function render() {
+        const members = state.tracker.members;
+        const paid = members.filter((member) => member.paid).length;
+        elements.season.textContent = state.tracker.season;
+        elements.total.textContent = members.length;
+        elements.paid.textContent = paid;
+        elements.unpaid.textContent = members.length - paid;
+
+        const visible = members
+          .filter((member) => !state.unpaidOnly || !member.paid)
+          .filter((member) => searchable(member).includes(state.query))
+          .sort((a, b) => Number(a.paid) - Number(b.paid) || a.name.localeCompare(b.name));
+
+        elements.list.replaceChildren();
+        if (!visible.length) {
+          elements.list.append(el("div", "empty", "No league members match that filter."));
+          return;
+        }
+
+        for (const member of visible) {
+          const row = el("article", `row${member.paid ? " is-paid" : ""}`);
+          const status = el("button", `status ${member.paid ? "paid" : "unpaid"}`, member.paid ? "Paid" : "Unpaid");
+          status.type = "button";
+          status.setAttribute("aria-label", `${member.name}: ${member.paid ? "paid" : "unpaid"}. Toggle status.`);
+          status.addEventListener("click", () => patchMember(member, { paid: !member.paid }).catch(showError));
+
+          const nameBlock = el("div", "name-block");
+          nameBlock.append(el("div", "name", member.name));
+          const contact = el("div", `sub${member.phone || member.email ? "" : " missing"}`, contactLine(member));
+          nameBlock.append(contact);
+
+          const venmo = el("input", "field venmo");
+          venmo.value = member.venmoHandle || "";
+          venmo.placeholder = "Venmo username";
+          venmo.setAttribute("aria-label", `${member.name} Venmo username`);
+          venmo.addEventListener("change", () => patchMember(member, { venmoHandle: venmo.value }).catch(showError));
+
+          const notes = el("input", "field notes");
+          notes.value = member.notes || "";
+          notes.placeholder = "Optional note";
+          notes.setAttribute("aria-label", `${member.name} dues note`);
+          notes.addEventListener("change", () => patchMember(member, { notes: notes.value }).catch(showError));
+
+          const copy = el("button", "copy", "⧉");
+          copy.type = "button";
+          copy.title = "Copy Venmo lookup details";
+          copy.setAttribute("aria-label", `Copy Venmo lookup details for ${member.name}`);
+          copy.addEventListener("click", async () => {
+            const details = [member.name, member.venmoHandle ? `@${member.venmoHandle}` : null, member.phone, member.email].filter(Boolean).join(" · ");
+            await navigator.clipboard.writeText(details);
+            elements.saveState.textContent = `Copied ${member.name}`;
+          });
+
+          row.append(status, nameBlock, venmo, notes, copy);
+          elements.list.append(row);
+        }
+      }
+
+      function showError(error) {
+        elements.saveState.textContent = error.message;
+        elements.saveState.style.color = "var(--unpaid)";
+      }
+
+      elements.search.addEventListener("input", () => {
+        state.query = elements.search.value.trim().toLowerCase();
+        render();
+      });
+      elements.unpaidOnly.addEventListener("change", () => {
+        state.unpaidOnly = elements.unpaidOnly.checked;
+        render();
+      });
+
+      fetch("/api/dues", { cache: "no-store" })
+        .then((response) => {
+          if (!response.ok) throw new Error("Could not load private dues data");
+          return response.json();
+        })
+        .then((tracker) => {
+          state.tracker = tracker;
+          render();
+        })
+        .catch((error) => {
+          elements.list.replaceChildren(el("div", "error", error.message));
+        });
+    </script>
+  </body>
+</html>

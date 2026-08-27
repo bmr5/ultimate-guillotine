@@ -7,6 +7,7 @@
     "build": "pnpm --filter @ultimate-guillotine/web build",
     "lint": "pnpm --filter @ultimate-guillotine/web lint",
     "preview": "pnpm --filter @ultimate-guillotine/web preview",
+    "dues": "python3 scripts/dues_tracker.py --season 2026",
     "test:records": "python3 -m unittest discover -s scripts/tests -v",
     "check:records": "python3 scripts/import_league_records.py history/league/ultimate-guillotine-records.xlsx --check"
   }
