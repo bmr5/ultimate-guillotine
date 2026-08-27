@@ -18,6 +18,7 @@ from openpyxl import load_workbook
 
 
 EDITABLE_FIELDS = {"paid", "venmoHandle", "notes"}
+DUES_EXEMPTIONS = {"ben-ray": "Commissioner"}
 
 
 def member_key(first_name: str, last_name: str) -> str:
@@ -50,9 +51,11 @@ def seed_members(history_path: Path, contacts_path: Path) -> list[dict[str, Any]
         first_name = str(first_value).strip()
         last_name = str(last_value).strip()
         contact = contacts.get(member_key(first_name, last_name), {})
+        current_member_id = member_id(first_name, last_name)
+        exemption_reason = DUES_EXEMPTIONS.get(current_member_id)
         members.append(
             {
-                "id": member_id(first_name, last_name),
+                "id": current_member_id,
                 "name": f"{first_name} {last_name}",
                 "firstName": first_name,
                 "lastName": last_name,
@@ -62,6 +65,8 @@ def seed_members(history_path: Path, contacts_path: Path) -> list[dict[str, Any]
                 "paid": False,
                 "paidAt": None,
                 "notes": "",
+                "duesRequired": exemption_reason is None,
+                "exemptionReason": exemption_reason,
             }
         )
     return members
@@ -95,7 +100,10 @@ def load_tracker(
     members = seed_members(history_path, contacts_path)
     for member in members:
         previous = existing_members.get(member["id"], {})
-        for field in ("venmoHandle", "paid", "paidAt", "notes"):
+        preserved_fields = ["venmoHandle", "notes"]
+        if member["duesRequired"]:
+            preserved_fields.extend(["paid", "paidAt"])
+        for field in preserved_fields:
             if field in previous:
                 member[field] = previous[field]
 
@@ -127,6 +135,8 @@ def update_member(
         paid = changes["paid"]
         if not isinstance(paid, bool):
             raise ValueError("paid must be a boolean")
+        if paid and not member.get("duesRequired", True):
+            raise ValueError("exempt member cannot be marked paid")
         member["paid"] = paid
         member["paidAt"] = (
             now or datetime.now().astimezone().isoformat(timespec="seconds")

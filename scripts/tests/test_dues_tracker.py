@@ -43,22 +43,49 @@ class DuesTrackerTests(unittest.TestCase):
         self.assertIsNone(tracker["members"][2]["email"])
         self.assertIsNone(tracker["members"][2]["phone"])
 
+    def test_commissioner_is_exempt_and_not_counted_as_owing_dues(self) -> None:
+        tracker = load_tracker(self.history, self.contacts, self.state, season=2026)
+
+        ben, daniel, new_person = tracker["members"]
+        self.assertFalse(ben["duesRequired"])
+        self.assertEqual(ben["exemptionReason"], "Commissioner")
+        self.assertTrue(daniel["duesRequired"])
+        self.assertIsNone(daniel["exemptionReason"])
+        self.assertTrue(new_person["duesRequired"])
+
+    def test_exempt_commissioner_cannot_be_marked_paid(self) -> None:
+        load_tracker(self.history, self.contacts, self.state, season=2026)
+
+        with self.assertRaisesRegex(ValueError, "exempt member cannot be marked paid"):
+            update_member(self.state, "ben-ray", {"paid": True})
+
+    def test_reseed_clears_stale_payment_for_exempt_commissioner(self) -> None:
+        tracker = load_tracker(self.history, self.contacts, self.state, season=2026)
+        tracker["members"][0]["paid"] = True
+        tracker["members"][0]["paidAt"] = "2026-08-01T12:00:00-07:00"
+        self.state.write_text(json.dumps(tracker), encoding="utf-8")
+
+        reseeded = load_tracker(self.history, self.contacts, self.state, season=2026)
+
+        self.assertFalse(reseeded["members"][0]["paid"])
+        self.assertIsNone(reseeded["members"][0]["paidAt"])
+
     def test_reseed_preserves_2026_payment_and_venmo_fields(self) -> None:
         load_tracker(self.history, self.contacts, self.state, season=2026)
         update_member(
             self.state,
-            "ben-ray",
-            {"paid": True, "venmoHandle": "@benray", "notes": "Paid in August"},
+            "daniel-ripple",
+            {"paid": True, "venmoHandle": "@daniel", "notes": "Paid in August"},
             now="2026-08-27T12:00:00-07:00",
         )
 
         tracker = load_tracker(self.history, self.contacts, self.state, season=2026)
-        ben = tracker["members"][0]
+        daniel = tracker["members"][1]
 
-        self.assertTrue(ben["paid"])
-        self.assertEqual(ben["paidAt"], "2026-08-27T12:00:00-07:00")
-        self.assertEqual(ben["venmoHandle"], "benray")
-        self.assertEqual(ben["notes"], "Paid in August")
+        self.assertTrue(daniel["paid"])
+        self.assertEqual(daniel["paidAt"], "2026-08-27T12:00:00-07:00")
+        self.assertEqual(daniel["venmoHandle"], "daniel")
+        self.assertEqual(daniel["notes"], "Paid in August")
 
     def test_update_rejects_unknown_member(self) -> None:
         load_tracker(self.history, self.contacts, self.state, season=2026)
@@ -108,7 +135,7 @@ class DuesTrackerTests(unittest.TestCase):
         self.assertFalse(tracker["members"][0]["paid"])
 
         request = urllib.request.Request(
-            f"{base_url}/api/members/ben-ray",
+            f"{base_url}/api/members/daniel-ripple",
             data=json.dumps({"paid": True}).encode(),
             headers={"Content-Type": "application/json"},
             method="PATCH",
@@ -118,7 +145,7 @@ class DuesTrackerTests(unittest.TestCase):
 
         self.assertTrue(updated["paid"])
         persisted = json.loads(self.state.read_text(encoding="utf-8"))
-        self.assertTrue(persisted["members"][0]["paid"])
+        self.assertTrue(persisted["members"][1]["paid"])
 
     def _write_history(self) -> None:
         workbook = Workbook()

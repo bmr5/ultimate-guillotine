@@ -16,6 +16,7 @@
         --acid: #dbff45;
         --paid: #54d889;
         --unpaid: #ff7f5c;
+        --exempt: #9ba7ff;
         --shadow: 0 24px 70px rgba(0, 0, 0, 0.32);
       }
 
@@ -75,7 +76,7 @@
 
       .stats {
         display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-columns: repeat(4, minmax(0, 1fr));
         gap: 12px;
         margin: 36px 0 18px;
       }
@@ -107,6 +108,7 @@
 
       .stat.paid .stat-value { color: var(--paid); }
       .stat.unpaid .stat-value { color: var(--unpaid); }
+      .stat.exempt .stat-value { color: var(--exempt); }
 
       .toolbar {
         display: flex;
@@ -160,6 +162,7 @@
 
       .row:last-child { border-bottom: 0; }
       .row.is-paid { background: rgba(84, 216, 137, 0.045); }
+      .row.is-exempt { background: rgba(155, 167, 255, 0.045); }
 
       .status {
         padding: 10px 14px;
@@ -174,6 +177,7 @@
 
       .status.unpaid { background: rgba(255, 127, 92, 0.14); color: var(--unpaid); border-color: rgba(255, 127, 92, 0.35); }
       .status.paid { background: rgba(84, 216, 137, 0.14); color: var(--paid); border-color: rgba(84, 216, 137, 0.35); }
+      .status.exempt { background: rgba(155, 167, 255, 0.14); color: var(--exempt); border-color: rgba(155, 167, 255, 0.35); cursor: default; }
 
       .name { font-size: 18px; font-weight: 780; letter-spacing: -0.02em; }
       .sub { margin-top: 5px; color: var(--muted); font-size: 12px; }
@@ -218,7 +222,6 @@
       @media (max-width: 820px) {
         .shell { width: min(100% - 20px, 680px); padding-top: 30px; }
         .stats { grid-template-columns: 1fr 1fr; }
-        .stats .stat:first-child { grid-column: 1 / -1; }
         .toolbar { align-items: stretch; flex-direction: column; }
         .search { width: 100%; }
         .row { grid-template-columns: 110px 1fr 52px; }
@@ -228,7 +231,6 @@
 
       @media (max-width: 520px) {
         .stats { grid-template-columns: 1fr; }
-        .stats .stat:first-child { grid-column: auto; }
         .stat { min-height: 96px; }
         .stat-value { font-size: 34px; }
         .row { grid-template-columns: 1fr 46px; padding: 16px; }
@@ -247,6 +249,7 @@
         <article class="stat"><span class="stat-label">League</span><strong class="stat-value" id="total">—</strong></article>
         <article class="stat paid"><span class="stat-label">Paid</span><strong class="stat-value" id="paid">—</strong></article>
         <article class="stat unpaid"><span class="stat-label">Still owed</span><strong class="stat-value" id="unpaid">—</strong></article>
+        <article class="stat exempt"><span class="stat-label">Exempt</span><strong class="stat-value" id="exempt">—</strong></article>
       </section>
 
       <section class="toolbar">
@@ -268,6 +271,7 @@
         total: document.querySelector("#total"),
         paid: document.querySelector("#paid"),
         unpaid: document.querySelector("#unpaid"),
+        exempt: document.querySelector("#exempt"),
         saveState: document.querySelector("#save-state"),
       };
 
@@ -292,11 +296,12 @@
       }
 
       function contactLine(member) {
+        if (!member.duesRequired) return `${member.exemptionReason || "Exempt"} · Dues exempt`;
         return [member.phone, member.email].filter(Boolean).join(" · ") || "Contact missing — add Venmo handle";
       }
 
       function searchable(member) {
-        return [member.name, member.venmoHandle, member.phone, member.email, member.notes]
+        return [member.name, member.venmoHandle, member.phone, member.email, member.notes, member.exemptionReason]
           .filter(Boolean)
           .join(" ")
           .toLowerCase();
@@ -304,16 +309,22 @@
 
       function render() {
         const members = state.tracker.members;
-        const paid = members.filter((member) => member.paid).length;
+        const paid = members.filter((member) => member.duesRequired && member.paid).length;
+        const unpaid = members.filter((member) => member.duesRequired && !member.paid).length;
+        const exempt = members.filter((member) => !member.duesRequired).length;
         elements.season.textContent = state.tracker.season;
         elements.total.textContent = members.length;
         elements.paid.textContent = paid;
-        elements.unpaid.textContent = members.length - paid;
+        elements.unpaid.textContent = unpaid;
+        elements.exempt.textContent = exempt;
 
         const visible = members
-          .filter((member) => !state.unpaidOnly || !member.paid)
+          .filter((member) => !state.unpaidOnly || (member.duesRequired && !member.paid))
           .filter((member) => searchable(member).includes(state.query))
-          .sort((a, b) => Number(a.paid) - Number(b.paid) || a.name.localeCompare(b.name));
+          .sort((a, b) => {
+            const statusRank = (member) => member.duesRequired ? (member.paid ? 1 : 0) : 2;
+            return statusRank(a) - statusRank(b) || a.name.localeCompare(b.name);
+          });
 
         elements.list.replaceChildren();
         if (!visible.length) {
@@ -322,11 +333,18 @@
         }
 
         for (const member of visible) {
-          const row = el("article", `row${member.paid ? " is-paid" : ""}`);
-          const status = el("button", `status ${member.paid ? "paid" : "unpaid"}`, member.paid ? "Paid" : "Unpaid");
+          const statusName = member.duesRequired ? (member.paid ? "paid" : "unpaid") : "exempt";
+          const statusLabel = member.duesRequired ? (member.paid ? "Paid" : "Unpaid") : "Exempt";
+          const row = el("article", `row${member.paid ? " is-paid" : ""}${member.duesRequired ? "" : " is-exempt"}`);
+          const status = el("button", `status ${statusName}`, statusLabel);
           status.type = "button";
-          status.setAttribute("aria-label", `${member.name}: ${member.paid ? "paid" : "unpaid"}. Toggle status.`);
-          status.addEventListener("click", () => patchMember(member, { paid: !member.paid }).catch(showError));
+          if (member.duesRequired) {
+            status.setAttribute("aria-label", `${member.name}: ${statusName}. Toggle status.`);
+            status.addEventListener("click", () => patchMember(member, { paid: !member.paid }).catch(showError));
+          } else {
+            status.disabled = true;
+            status.setAttribute("aria-label", `${member.name}: dues exempt as ${member.exemptionReason || "league exemption"}.`);
+          }
 
           const nameBlock = el("div", "name-block");
           nameBlock.append(el("div", "name", member.name));
