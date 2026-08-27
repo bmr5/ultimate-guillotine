@@ -52,9 +52,13 @@ agents/
   weekly-storyteller/
   league-concierge/
 packages/
-  league-core/            # deterministic rules and shared domain types
-  sleeper-client/         # read-only Sleeper adapter
-  supabase-data/          # generated types and repositories
+  league-automation/      # one Python distribution with focused modules
+    src/ultimate_guillotine/
+      core/               # deterministic rules and shared domain types
+      sleeper/            # read-only Sleeper adapter
+      data/               # Postgres repositories and generated types
+      messages/           # Messages database and AppleScript adapters
+      runtime/            # durable job and delivery orchestration
 services/
   mac-worker/             # Messages ingestion/sending and queue consumer
 supabase/
@@ -64,7 +68,7 @@ scripts/
   mac-mini/               # installation, launchd, permission, and health scripts
 ```
 
-The existing website remains under `apps/web`. Shared packages are introduced only when the foundation implementation begins and two consumers genuinely share the code.
+The existing website remains under `apps/web`. The Python boundaries begin as focused modules in one installable distribution; they split into independent packages only if deployment or ownership later requires it.
 
 ## Supabase Data Model
 
@@ -105,8 +109,8 @@ League facts are append-oriented. A correction creates a compensating event and 
 
 - Enable Row Level Security on every table in an exposed schema.
 - Anonymous website access may read only explicitly public league tables.
-- A dedicated Supabase Auth identity represents the Mac worker. Authorization is stored in app metadata, not user-editable metadata.
-- The worker receives only the grants and Queue operations it needs. It does not use a database superuser.
+- A dedicated least-privilege Postgres login represents the Mac worker through Supavisor. Its password is generated during deployment and stored only in macOS Keychain.
+- The login inherits an `automation_worker` role with only the private-table and Queue operations it needs. It does not use `postgres`, a database superuser, or the browser-facing Supabase secret key.
 - Supabase secret/service credentials, Apple automation configuration, AI credentials, and chat GUIDs live in macOS Keychain or ignored local environment files.
 - No secret key is bundled into the website.
 - Views exposed to the website use `security_invoker = true`.
@@ -207,4 +211,3 @@ The first production agent will be Trade Registrar because its trigger is narrow
 - Running an authoritative local database.
 - Automatically changing league rules from chat discussion.
 - Guaranteeing a projection percentage when projection coverage is below the approved threshold.
-
