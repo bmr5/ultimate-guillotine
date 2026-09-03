@@ -121,7 +121,7 @@ export const LeagueStatus = () => {
 
   const data = React.useMemo(
     () => generateLeagueStatusData(owners, CURRENT_WEEK, allGulagData),
-    [],
+    [allGulagData],
   );
   // const data = React.useMemo(() => generateLeagueStatusData(owners), []);
 

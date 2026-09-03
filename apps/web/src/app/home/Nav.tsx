@@ -1,4 +1,4 @@
-import { Axe, Home, Notebook, Trophy, Users } from "lucide-react";
+import { Axe } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 
 import {
@@ -9,29 +9,7 @@ import {
 import { cn } from "@/lib/utils";
 
 import { MobileNav } from "./MobileNav";
-
-export const navItems = [
-  {
-    icon: Home,
-    label: "Overview",
-    to: `/`,
-  },
-  {
-    icon: Users,
-    label: "Rosters",
-    to: `/rosters`,
-  },
-  {
-    icon: Notebook,
-    label: "Rules",
-    to: `/rules`,
-  },
-  {
-    icon: Trophy,
-    label: "History",
-    to: `/history`,
-  },
-];
+import { navItems } from "./nav-items";
 
 export const Nav = () => {
   const location = useLocation();

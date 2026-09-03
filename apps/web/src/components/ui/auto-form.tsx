@@ -3,9 +3,35 @@
 // DOCUMENTATION
 // AutoForm is a React component that automatically creates a @shadcn/ui form based on a zod schema.
 // https://github.com/vantezzen/auto-form/tree/main
-
 import React from "react";
+import { zodResolver } from "@hookform/resolvers/zod";
+import {
+  ControllerRenderProps,
+  DefaultValues,
+  FieldPath,
+  FieldValues,
+  useForm,
+} from "react-hook-form";
 import { z } from "zod";
+
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { cn } from "@/lib/utils";
+
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "./accordion";
+import { Button } from "./button";
+import { Checkbox } from "./checkbox";
+import { DatePicker } from "./date-picker";
 import {
   Form,
   FormControl,
@@ -15,34 +41,10 @@ import {
   FormLabel,
   FormMessage,
 } from "./form";
-import {
-  ControllerRenderProps,
-  DefaultValues,
-  FieldValues,
-  useForm,
-} from "react-hook-form";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { Button } from "./button";
 import { Input } from "./input";
-import { Checkbox } from "./checkbox";
-import { DatePicker } from "./date-picker";
-import { cn } from "@/lib/utils";
+import { RadioGroup, RadioGroupItem } from "./radio-group";
 import { Switch } from "./switch";
 import { Textarea } from "./textarea";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "./accordion";
-import { RadioGroup, RadioGroupItem } from "./radio-group";
 
 /**
  * Beautify a camelCase string.
@@ -58,12 +60,20 @@ function beautifyObjectName(string: string) {
  * Get the lowest level Zod type.
  * This will unpack optionals, refinements, etc.
  */
-function getBaseSchema(schema: z.ZodAny): z.ZodAny {
-  if ("innerType" in schema._def) {
-    return getBaseSchema(schema._def.innerType as z.ZodAny);
+type WrappedZodDefinition = z.ZodTypeDef & {
+  defaultValue?: () => unknown;
+  innerType?: z.ZodTypeAny;
+  schema?: z.ZodTypeAny;
+  typeName?: z.ZodFirstPartyTypeKind;
+};
+
+function getBaseSchema(schema: z.ZodTypeAny): z.ZodTypeAny {
+  const definition = schema._def as WrappedZodDefinition;
+  if (definition.innerType) {
+    return getBaseSchema(definition.innerType);
   }
-  if ("schema" in schema._def) {
-    return getBaseSchema(schema._def.schema as z.ZodAny);
+  if (definition.schema) {
+    return getBaseSchema(definition.schema);
   }
   return schema;
 }
@@ -72,31 +82,25 @@ function getBaseSchema(schema: z.ZodAny): z.ZodAny {
  * Get the type name of the lowest level Zod type.
  * This will unpack optionals, refinements, etc.
  */
-function getBaseType(schema: z.ZodAny): string {
+function getBaseType(schema: z.ZodTypeAny): string {
   return getBaseSchema(schema)._def.typeName;
 }
 
 /**
  * Search for a "ZodDefult" in the Zod stack and return its value.
  */
-function getDefaultValueInZodStack(schema: z.ZodAny): any {
-  const typedSchema = schema as unknown as z.ZodDefault<
-    z.ZodNumber | z.ZodString
-  >;
+function getDefaultValueInZodStack(schema: z.ZodTypeAny): unknown {
+  const definition = schema._def as WrappedZodDefinition;
 
-  if (typedSchema._def.typeName === "ZodDefault") {
-    return typedSchema._def.defaultValue();
+  if (definition.typeName === "ZodDefault" && definition.defaultValue) {
+    return definition.defaultValue();
   }
 
-  if ("innerType" in typedSchema._def) {
-    return getDefaultValueInZodStack(
-      typedSchema._def.innerType as unknown as z.ZodAny,
-    );
+  if (definition.innerType) {
+    return getDefaultValueInZodStack(definition.innerType);
   }
-  if ("schema" in typedSchema._def) {
-    return getDefaultValueInZodStack(
-      (typedSchema._def as any).schema as z.ZodAny,
-    );
+  if (definition.schema) {
+    return getDefaultValueInZodStack(definition.schema);
   }
   return undefined;
 }
@@ -104,43 +108,38 @@ function getDefaultValueInZodStack(schema: z.ZodAny): any {
 /**
  * Get all default values from a Zod schema.
  */
-function getDefaultValues<Schema extends z.ZodObject<any, any>>(
-  schema: Schema,
-) {
+function getDefaultValues<Schema extends z.AnyZodObject>(schema: Schema) {
   const { shape } = schema;
   type DefaultValuesType = DefaultValues<Partial<z.infer<Schema>>>;
-  const defaultValues = {} as DefaultValuesType;
+  const defaultValues: Record<string, unknown> = {};
 
   for (const key of Object.keys(shape)) {
-    const item = shape[key] as z.ZodAny;
+    const item = shape[key] as z.ZodTypeAny;
 
     if (getBaseType(item) === "ZodObject") {
       const defaultItems = getDefaultValues(
-        item as unknown as z.ZodObject<any, any>,
+        getBaseSchema(item) as z.AnyZodObject,
       );
       for (const defaultItemKey of Object.keys(defaultItems)) {
-        const pathKey = `${key}.${defaultItemKey}` as keyof DefaultValuesType;
+        const pathKey = `${key}.${defaultItemKey}`;
         defaultValues[pathKey] = defaultItems[defaultItemKey];
       }
     } else {
       const defaultValue = getDefaultValueInZodStack(item);
       if (defaultValue !== undefined) {
-        defaultValues[key as keyof DefaultValuesType] = defaultValue;
+        defaultValues[key] = defaultValue;
       }
     }
   }
 
-  return defaultValues;
+  return defaultValues as DefaultValuesType;
 }
 
-function getObjectFormSchema(
-  schema: ZodObjectOrWrapped,
-): z.ZodObject<any, any> {
-  if (schema._def.typeName === "ZodEffects") {
-    const typedSchema = schema as z.ZodEffects<z.ZodObject<any, any>>;
-    return getObjectFormSchema(typedSchema._def.schema);
+function getObjectFormSchema(schema: ZodObjectOrWrapped): z.AnyZodObject {
+  if (schema instanceof z.ZodEffects) {
+    return getObjectFormSchema(schema.innerType());
   }
-  return schema as z.ZodObject<any, any>;
+  return schema;
 }
 
 /**
@@ -148,40 +147,41 @@ function getObjectFormSchema(
  * Once submitted, the schema will be validated completely.
  */
 function zodToHtmlInputProps(
-  schema:
-    | z.ZodNumber
-    | z.ZodString
-    | z.ZodOptional<z.ZodNumber | z.ZodString>
-    | any,
+  schema: z.ZodTypeAny,
 ): React.InputHTMLAttributes<HTMLInputElement> {
-  if (["ZodOptional", "ZodNullable"].includes(schema._def.typeName)) {
-    const typedSchema = schema as z.ZodOptional<z.ZodNumber | z.ZodString>;
+  const definition = schema._def as WrappedZodDefinition;
+  if (
+    (definition.typeName === "ZodOptional" ||
+      definition.typeName === "ZodNullable") &&
+    definition.innerType
+  ) {
     return {
-      ...zodToHtmlInputProps(typedSchema._def.innerType),
+      ...zodToHtmlInputProps(definition.innerType),
       required: false,
     };
   }
 
-  const typedSchema = schema as z.ZodNumber | z.ZodString;
-
-  if (!("checks" in typedSchema._def)) return {};
-
-  const { checks } = typedSchema._def;
   const inputProps: React.InputHTMLAttributes<HTMLInputElement> = {
     required: true,
   };
-  const type = getBaseType(schema);
+  const baseSchema = getBaseSchema(schema);
 
-  for (const check of checks) {
+  if (
+    !(baseSchema instanceof z.ZodString || baseSchema instanceof z.ZodNumber)
+  ) {
+    return {};
+  }
+
+  for (const check of baseSchema._def.checks) {
     if (check.kind === "min") {
-      if (type === "ZodString") {
+      if (baseSchema instanceof z.ZodString) {
         inputProps.minLength = check.value;
       } else {
         inputProps.min = check.value;
       }
     }
     if (check.kind === "max") {
-      if (type === "ZodString") {
+      if (baseSchema instanceof z.ZodString) {
         inputProps.maxLength = check.value;
       } else {
         inputProps.max = check.value;
@@ -190,6 +190,22 @@ function zodToHtmlInputProps(
   }
 
   return inputProps;
+}
+
+function getEnumValues(schema: z.ZodTypeAny): string[] {
+  const baseSchema = getBaseSchema(schema);
+
+  if (baseSchema instanceof z.ZodEnum) {
+    return [...baseSchema.options];
+  }
+
+  if (baseSchema instanceof z.ZodNativeEnum) {
+    return Object.values(baseSchema.enum).filter(
+      (value): value is string => typeof value === "string",
+    );
+  }
+
+  return [];
 }
 
 export type FieldConfigItem = {
@@ -204,10 +220,10 @@ export type FieldConfigItem = {
   }) => React.ReactElement | null;
 };
 
-export type FieldConfig<SchemaType extends z.infer<z.ZodObject<any, any>>> = {
+export type FieldConfig<SchemaType extends Record<string, unknown>> = {
   // If SchemaType.key is an object, create a nested FieldConfig, otherwise FieldConfigItem
-  [Key in keyof SchemaType]?: SchemaType[Key] extends object
-    ? FieldConfig<z.infer<SchemaType[Key]>>
+  [Key in keyof SchemaType]?: SchemaType[Key] extends Record<string, unknown>
+    ? FieldConfig<SchemaType[Key]>
     : FieldConfigItem;
 };
 
@@ -216,12 +232,12 @@ export type FieldConfig<SchemaType extends z.infer<z.ZodObject<any, any>>> = {
  */
 export type AutoFormInputComponentProps = {
   zodInputProps: React.InputHTMLAttributes<HTMLInputElement>;
-  field: ControllerRenderProps<FieldValues, any>;
+  field: ControllerRenderProps<FieldValues, FieldPath<FieldValues>>;
   fieldConfigItem: FieldConfigItem;
   label: string;
   isRequired: boolean;
-  fieldProps: any;
-  zodItem: z.ZodAny;
+  fieldProps: Record<string, unknown>;
+  zodItem: z.ZodTypeAny;
 };
 
 function AutoFormInput({
@@ -237,7 +253,10 @@ function AutoFormInput({
         {isRequired && <span className="text-destructive"> *</span>}
       </FormLabel>
       <FormControl>
-        <Input type="text" {...fieldProps} />
+        <Input
+          type="text"
+          {...(fieldProps as React.ComponentProps<typeof Input>)}
+        />
       </FormControl>
       {fieldConfigItem.description && (
         <FormDescription>{fieldConfigItem.description}</FormDescription>
@@ -272,7 +291,7 @@ function AutoFormTextarea({
         {isRequired && <span className="text-destructive"> *</span>}
       </FormLabel>
       <FormControl>
-        <Textarea {...fieldProps} />
+        <Textarea {...(fieldProps as React.ComponentProps<typeof Textarea>)} />
       </FormControl>
       {fieldConfigItem.description && (
         <FormDescription>{fieldConfigItem.description}</FormDescription>
@@ -295,7 +314,7 @@ function AutoFormCheckbox({
         <Checkbox
           checked={field.value}
           onCheckedChange={field.onChange}
-          {...fieldProps}
+          {...(fieldProps as React.ComponentProps<typeof Checkbox>)}
         />
       </FormControl>
       <div className="space-y-1 leading-none">
@@ -324,7 +343,7 @@ function AutoFormSwitch({
         <Switch
           checked={field.value}
           onCheckedChange={field.onChange}
-          {...fieldProps}
+          {...(fieldProps as React.ComponentProps<typeof Switch>)}
         />
       </FormControl>
       <div className="space-y-1 leading-none">
@@ -347,7 +366,7 @@ function AutoFormRadioGroup({
   zodItem,
   fieldProps,
 }: AutoFormInputComponentProps) {
-  const values = (zodItem as unknown as z.ZodEnum<any>)._def.values;
+  const values = getEnumValues(zodItem);
 
   return (
     <FormItem className="space-y-3">
@@ -360,9 +379,9 @@ function AutoFormRadioGroup({
           onValueChange={field.onChange}
           defaultValue={field.value}
           className="flex flex-col space-y-1"
-          {...fieldProps}
+          {...(fieldProps as React.ComponentProps<typeof RadioGroup>)}
         >
-          {values.map((value: any) => (
+          {values.map((value) => (
             <FormItem
               className="flex items-center space-x-3 space-y-0"
               key={value}
@@ -395,9 +414,11 @@ function AutoFormDate({
       </FormLabel>
       <FormControl>
         <DatePicker
+          {...(fieldProps as unknown as Partial<
+            React.ComponentProps<typeof DatePicker>
+          >)}
           date={field.value}
           setDate={field.onChange}
-          {...fieldProps}
         />
       </FormControl>
       {fieldConfigItem.description && (
@@ -415,12 +436,7 @@ function AutoFormEnum({
   fieldConfigItem,
   zodItem,
 }: AutoFormInputComponentProps) {
-  let values = (getBaseSchema(zodItem) as unknown as z.ZodEnum<any>)._def
-    .values;
-
-  if (!Array.isArray(values)) {
-    values = Object.values(values);
-  }
+  const values = getEnumValues(zodItem);
 
   return (
     <FormItem>
@@ -436,7 +452,7 @@ function AutoFormEnum({
             </SelectValue>
           </SelectTrigger>
           <SelectContent>
-            {values.map((value: any) => (
+            {values.map((value) => (
               <SelectItem value={value} key={value}>
                 {value}
               </SelectItem>
@@ -481,7 +497,7 @@ function DefaultParent({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-function AutoFormObject<SchemaType extends z.ZodObject<any, any>>({
+function AutoFormObject<SchemaType extends z.AnyZodObject>({
   schema,
   form,
   fieldConfig,
@@ -497,7 +513,7 @@ function AutoFormObject<SchemaType extends z.ZodObject<any, any>>({
   return (
     <Accordion type="multiple" className="space-y-5">
       {Object.keys(shape).map((name) => {
-        const item = shape[name] as z.ZodAny;
+        const item = shape[name] as z.ZodTypeAny;
         const zodBaseType = getBaseType(item);
         const itemName = item._def.description ?? beautifyObjectName(name);
         const key = `${path.join(".")}.${name}`;
@@ -508,7 +524,7 @@ function AutoFormObject<SchemaType extends z.ZodObject<any, any>>({
               <AccordionTrigger>{itemName}</AccordionTrigger>
               <AccordionContent className="p-2">
                 <AutoFormObject
-                  schema={item as unknown as z.ZodObject<any, any>}
+                  schema={getBaseSchema(item) as z.AnyZodObject}
                   form={form}
                   fieldConfig={
                     (fieldConfig?.[name] ?? {}) as FieldConfig<
@@ -580,9 +596,7 @@ export function AutoFormSubmit({ children }: { children?: React.ReactNode }) {
 }
 
 // TODO: This should support recursive ZodEffects but TypeScript doesn't allow circular type definitions.
-type ZodObjectOrWrapped =
-  | z.ZodObject<any, any>
-  | z.ZodEffects<z.ZodObject<any, any>>;
+type ZodObjectOrWrapped = z.AnyZodObject | z.ZodEffects<z.AnyZodObject>;
 
 function AutoForm<SchemaType extends ZodObjectOrWrapped>({
   formSchema,

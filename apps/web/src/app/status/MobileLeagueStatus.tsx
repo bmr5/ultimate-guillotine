@@ -19,7 +19,7 @@ export const MobileLeagueStatus = () => {
 
   const data = React.useMemo(
     () => generateLeagueStatusData(owners, CURRENT_WEEK, allGulagData),
-    [],
+    [allGulagData],
   );
 
   const sortedData = React.useMemo(() => {

@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 
-import { navItems } from "./Nav";
+import { navItems } from "./nav-items";
 
 export const MobileNav = () => {
   return (

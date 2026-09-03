@@ -3,7 +3,9 @@ import React, { useEffect, useState } from "react";
 const LOCAL_JSON_PATH = "/nfl_players.json";
 
 export const PlayerDataManager: React.FC = () => {
-  const [playerData, setPlayerData] = useState<any>(null);
+  const [playerData, setPlayerData] = useState<Record<string, unknown> | null>(
+    null,
+  );
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -15,7 +17,7 @@ export const PlayerDataManager: React.FC = () => {
         if (!response.ok) {
           throw new Error("Failed to fetch player data");
         }
-        const data = await response.json();
+        const data = (await response.json()) as Record<string, unknown>;
         setPlayerData(data);
         setLastUpdated(
           new Date(
@@ -24,8 +26,7 @@ export const PlayerDataManager: React.FC = () => {
         );
         setLoading(false);
       } catch (err) {
-        // @ts-ignore
-        setError(err.message);
+        setError(err instanceof Error ? err.message : "Unknown error");
         setLoading(false);
       }
     };

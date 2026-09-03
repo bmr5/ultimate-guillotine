@@ -53,4 +53,4 @@ const Spinner = ({ className, variant, size, ...props }: SpinnerProps) => (
   </svg>
 );
 
-export { Spinner, spinnerVariants };
+export { Spinner };

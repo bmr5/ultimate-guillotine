@@ -1,6 +1,6 @@
 import { createEnv } from "@t3-oss/env-core";
 import { z } from "zod";
- 
+
 export const env = createEnv({
   /**
    * Specify what prefix the client-side variables must have.
@@ -14,6 +14,7 @@ export const env = createEnv({
    * What object holds the environment variables at runtime.
    * Often `process.env` or `import.meta.env`
    */
-  // @ts-ignore
-  runtimeEnv: import.meta.env,
+  runtimeEnvStrict: {
+    VITE_PUBLIC_APOLLO_API_URL: import.meta.env.VITE_PUBLIC_APOLLO_API_URL,
+  },
 });

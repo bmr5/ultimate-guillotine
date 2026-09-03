@@ -2,7 +2,7 @@ import { SquareArrowOutUpRight } from "lucide-react";
 import { Link } from "react-router-dom";
 
 import { RosterTable } from "@/components/roster-table/RosterTable";
-import { buttonVariants } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button-variants";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
