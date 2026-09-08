@@ -11,9 +11,10 @@ fi
 mkdir -p "$HERMES_HOME/skills/guillotine-ops" "$HERMES_HOME/scripts"
 cp "$REPO/hermes/guillotine/SOUL.md" "$HERMES_HOME/SOUL.md"
 cp "$REPO/hermes/guillotine/skills/guillotine-ops/SKILL.md" "$HERMES_HOME/skills/guillotine-ops/SKILL.md"
+REPO_SED=$(printf '%s\n' "$REPO" | sed -e 's/[\\&#]/\\&/g')
 for template in "$REPO"/hermes/guillotine/scripts/*.sh.template; do
   target="$HERMES_HOME/scripts/$(basename "${template%.template}")"
-  sed "s#__REPO__#$REPO#g" "$template" > "$target"
+  sed "s#__REPO__#$REPO_SED#g" "$template" > "$target"
   chmod 755 "$target"
 done
 cd "$REPO"

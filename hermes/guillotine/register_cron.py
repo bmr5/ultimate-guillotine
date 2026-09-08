@@ -8,10 +8,14 @@ from pathlib import Path
 import yaml
 
 
-def existing_from_state(state: dict) -> dict[str, str]:
-    jobs = state.get("jobs", state)
-    if isinstance(jobs, dict):
-        jobs = list(jobs.values())
+def existing_from_state(state: dict | list) -> dict[str, str]:
+    # Accept bare list, dict with "jobs" key (list or dict value), or dict of jobs
+    if isinstance(state, list):
+        jobs = state
+    else:
+        jobs = state.get("jobs", state)
+        if isinstance(jobs, dict):
+            jobs = list(jobs.values())
     return {
         j["name"]: j["id"]
         for j in jobs
