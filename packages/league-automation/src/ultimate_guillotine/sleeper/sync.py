@@ -38,21 +38,22 @@ def sync_season(
     Runs inside a single transaction; the caller is responsible for
     committing (or rolling back) the connection.
     """
-    with conn.cursor() as cur:
+    # Fetch from Sleeper before opening the transaction.
+    league = client.get_league(league_id)
+    users = client.get_users(league_id)
+    rosters = client.get_rosters(league_id)
+    users_by_id = {user.user_id: user for user in users}
+
+    with conn.transaction(), conn.cursor() as cur:
+        # Look up the season inside the transaction.
         cur.execute("select id, expected_rosters from public.seasons where year = %s", (year,))
         row = cur.fetchone()
         if row is None:
             raise ValueError(f"no season row for year {year}")
         season_id, expected_rosters = row
 
-    league = client.get_league(league_id)
-    validate_league(league, expected_id=league_id, expected_rosters=expected_rosters)
+        validate_league(league, expected_id=league_id, expected_rosters=expected_rosters)
 
-    users = client.get_users(league_id)
-    rosters = client.get_rosters(league_id)
-    users_by_id = {user.user_id: user for user in users}
-
-    with conn.transaction(), conn.cursor() as cur:
         member_ids: dict[str, int] = {}
         for user in users:
             cur.execute(
@@ -73,7 +74,7 @@ def sync_season(
         for roster in rosters:
             user = users_by_id.get(roster.owner_id)
             if user is None:
-                continue
+                raise ValueError(f"roster {roster.roster_id} has no matching user")
             member_id = member_ids[user.user_id]
             cur.execute(
                 """
@@ -88,5 +89,8 @@ def sync_season(
                 (season_id, member_id, user.user_id, roster.roster_id, user.team_name),
             )
             teams_synced += 1
+
+        if teams_synced != expected_rosters:
+            raise ValueError(f"expected {expected_rosters} teams, synced {teams_synced}")
 
     return SyncReport(members=len(member_ids), teams=teams_synced)
