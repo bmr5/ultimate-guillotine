@@ -27,6 +27,8 @@ __pycache__/
 
 # IDE
 .env
+.env.*
+!*.env.example
 
 # Local league-member and contact data
 data/private/*
