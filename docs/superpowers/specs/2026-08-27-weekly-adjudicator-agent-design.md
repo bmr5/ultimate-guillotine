@@ -71,7 +71,7 @@ Commissioner overrides require an explicit authenticated operation or structured
 - Missing roster mapping or duplicate Sleeper identity: enter `unresolved` and alert Ben directly.
 - Sleeper outage: retain the prior snapshot, defer finalization, and retry.
 - Stat correction after finalization: create a new state version and post only if materially different.
-- Queue or Messages outage: preserve the final state and pending outbound job without recomputing a new decision.
+- Supabase or BlueBubbles outage: preserve the final state and pending outbound reservation without recomputing a new decision.
 
 ## Test and Rollout
 

@@ -1,5 +1,7 @@
 # Automation Foundation Implementation Plan
 
+> **Superseded 2026-09-08.** The foundation spec was revised to run on the Hermes Agent gateway, BlueBubbles iMessage transport, and a Discord operations console instead of Supabase Cron, Supabase Queue, and a custom Mac worker. Tasks 1, 2, 3, and 5 remain largely valid. Tasks 4, 6, 7, and 8 must be rewritten against the revised spec before execution. Do not execute this plan as written.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Reconnect the existing Supabase project and build the secure, resumable Mac mini runtime shared by all league agents.

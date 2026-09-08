@@ -44,7 +44,7 @@ The tone may be playful and competitive, but it must not invent quotes, trades, 
 
 ## Chat Highlight Selection
 
-The Mac worker prefilters candidates using league relevance signals such as reactions, replies, league keywords, trade alerts, and bot interactions. The model selects only from that candidate set. The chosen source IDs are stored with the recap for audit and correction.
+A repository CLI prefilters candidates using league relevance signals such as reactions, replies, league keywords, trade alerts, and bot interactions. The model selects only from that candidate set. The chosen source IDs are stored with the recap for audit and correction.
 
 ## Factual Validation
 

@@ -55,7 +55,7 @@ Monday's Game Pulse is explicitly provisional. Weekly Adjudicator owns the later
 
 ## Deduplication
 
-The unique publication identity is season, week, game window, score snapshot version, and model version. Repeated queue delivery with the same identity sends nothing. A corrected source may create a replacement only when ranking or displayed estimates change materially.
+The unique publication identity is season, week, game window, score snapshot version, and model version. A repeated scheduled run with the same identity sends nothing. A corrected source may create a replacement only when ranking or displayed estimates change materially.
 
 ## Failure Behavior
 

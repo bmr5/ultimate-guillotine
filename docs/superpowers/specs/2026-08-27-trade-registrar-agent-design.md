@@ -13,7 +13,7 @@ A message becomes a trade candidate only when it contains:
 1. the red alert emoji `🚨`; and
 2. trade language or recognizable transaction terms such as sends, receives, trades, buys, sells, rents, swaps, FAAB, option, protection, or named player movement.
 
-The watcher processes candidates within approximately 15 seconds while the Mac worker is healthy. Messages outside the production league chat cannot create production trades.
+The BlueBubbles webhook listener on the Mac mini applies this rule deterministically and runs the agent inline, so candidates are normally processed within a few seconds. A gap-fill cron job on the `guillotine` Hermes profile re-reads allowlisted chats after any listener downtime and feeds missed messages through the same rule. Messages outside the production league chat cannot create production trades.
 
 ## Extraction Contract
 
@@ -79,15 +79,15 @@ Supabase uniqueness constraints, not prompt behavior, enforce idempotency.
 
 - Unavailable AI: leave the candidate queued and alert the commissioner channel after bounded retries.
 - Unknown member or player: ask for clarification.
-- Supabase unavailable: do not send a confirmation; reread from the last cursor after reconnecting.
-- Messages unavailable after persistence: keep the outbound job pending and reconcile before retrying.
+- Supabase unavailable: do not send a confirmation; the gap-fill job replays the message after reconnecting.
+- BlueBubbles unavailable after persistence: keep the outbound reservation pending and reconcile against recent sent messages before retrying.
 - Duplicate source or trade: mark the run duplicate and send nothing.
 
 ## Test and Rollout
 
 Fixtures cover permanent trades, FAAB-only trades, rentals, multi-party trades, options, no-trade payments, duplicate reposts, amended terms, rescissions, and ambiguous alerts. Historical 2025 contract rows provide replay fixtures.
 
-Production activation requires successful self-test delivery, a forced worker restart between send and receipt recording, and a replay demonstrating that no duplicate trade or message is created.
+Production activation requires successful self-test delivery, a forced listener restart between send and receipt recording, a replayed webhook and a gap-fill pass that each create no duplicate trade or message, and the confirmation mirrored to `#guillotine-feed`.
 
 ## Out of Scope
 

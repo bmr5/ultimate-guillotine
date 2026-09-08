@@ -14,7 +14,9 @@ The agent responds when an inbound league-chat message begins with or clearly in
 - `Guillotine Bot:`
 - `bot:`
 
-There are no per-member rate limits. Queue ordering and a single-flight conversation lock prevent overlapping responses from corrupting context, but they do not throttle individual league members.
+The BlueBubbles webhook listener matches these tags deterministically before any model runs; untagged league chatter never reaches the agent. Hermes's own iMessage adapter is disabled, so this listener is the only path from the league chat to the Concierge.
+
+There are no per-member rate limits. Per-chat ordering and a single-flight conversation lock in the listener prevent overlapping responses from corrupting context, but they do not throttle individual league members.
 
 The agent ignores messages carrying the bot signature, matching an outbound reservation, or originating outside an allowlisted chat.
 
@@ -71,14 +73,14 @@ Answers are short enough for group chat, followed by a source line and `— 🤖
 
 A direct follow-up without a repeated tag may be associated with the immediately preceding bot answer only when it arrives in the same chat and clearly refers to that answer. Context expires after the bounded thread window and is stored as source references rather than an unlimited transcript.
 
-There is no member-level throttling. Operational safeguards still prevent duplicate queue processing, bot loops, and multiple concurrent answers to the same source message.
+There is no member-level throttling. Operational safeguards still prevent duplicate webhook processing, bot loops, and multiple concurrent answers to the same source message.
 
 ## Failure Behavior
 
 - Missing or conflicting source: state uncertainty and do not guess.
-- AI outage: send no answer and retry while the question remains timely; alert Ben after repeated failure.
+- AI outage: send no answer and retry while the question remains timely; alert `#guillotine-alerts` after repeated failure.
 - Database outage: retain the source message for later processing but do not answer from stale memory.
-- Messages outage: reconcile before retrying.
+- BlueBubbles outage: reconcile against recent sent messages before retrying.
 - Unsupported commissioner action: explain the boundary without executing it.
 
 ## Test and Rollout
