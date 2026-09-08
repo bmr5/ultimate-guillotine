@@ -45,6 +45,32 @@ def test_processes_new_message_and_beats() -> None:
     assert beats.beats == 1
 
 
+def test_healthz_is_ok_without_a_database_check() -> None:
+    client = TestClient(create_app(FakeProcessor(), FakeHeartbeats(), "secret"))
+    response = client.get("/healthz")
+    assert response.status_code == 200
+    assert response.json() == {"ok": True}
+
+
+def test_healthz_is_ok_when_the_database_check_passes() -> None:
+    client = TestClient(
+        create_app(FakeProcessor(), FakeHeartbeats(), "secret", check_db=lambda: True)
+    )
+    response = client.get("/healthz")
+    assert response.status_code == 200
+    assert response.json() == {"ok": True}
+
+
+def test_healthz_is_unavailable_when_the_database_check_fails() -> None:
+    """`ug ops doctor` and launchd both read /healthz; a listener whose connection is
+    gone is not healthy just because its HTTP server still answers."""
+    client = TestClient(
+        create_app(FakeProcessor(), FakeHeartbeats(), "secret", check_db=lambda: False)
+    )
+    response = client.get("/healthz")
+    assert response.status_code == 503
+
+
 def test_non_message_events_are_acknowledged() -> None:
     processor = FakeProcessor()
     client = TestClient(create_app(processor, FakeHeartbeats(), "secret"))

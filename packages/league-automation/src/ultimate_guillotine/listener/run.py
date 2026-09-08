@@ -4,6 +4,10 @@
 messages through the exact same trigger pipeline the live listener uses.
 """
 
+import logging
+import threading
+from time import sleep
+
 import httpx
 import uvicorn
 
@@ -26,6 +30,36 @@ from ultimate_guillotine.listener.processing import (
 from ultimate_guillotine.messages.bluebubbles import BlueBubblesClient
 from ultimate_guillotine.messages.delivery import DeliveryService
 from ultimate_guillotine.ops.notify import HermesNotifier
+
+log = logging.getLogger(__name__)
+
+HEARTBEAT_INTERVAL_SECONDS = 120
+
+
+def _heartbeat_loop(heartbeats) -> None:
+    """Beat for the listener on a fixed interval, forever.
+
+    Beating only on webhook receipt meant a quiet league chat looked identical to a
+    dead listener: the health job reported a stale heartbeat every night and `ug ops
+    doctor` failed. Failures here are logged by exception class name only and never
+    kill the thread — a heartbeat that cannot be written is exactly the condition the
+    health job is meant to notice.
+    """
+    while True:
+        try:
+            heartbeats.beat("listener")
+        except Exception as exc:  # noqa: BLE001 - a heartbeat must never crash the listener
+            log.warning("listener heartbeat failed: %s", exc.__class__.__name__)
+        sleep(HEARTBEAT_INTERVAL_SECONDS)
+
+
+def start_heartbeat_thread(heartbeats) -> threading.Thread:
+    """Start the background heartbeat as a daemon thread so it never blocks shutdown."""
+    thread = threading.Thread(
+        target=_heartbeat_loop, args=(heartbeats,), name="listener-heartbeat", daemon=True
+    )
+    thread.start()
+    return thread
 
 
 def build_processor(
@@ -83,10 +117,21 @@ def main() -> None:
         commit=conn.commit,
     )
     processor, _allowed = build_processor(settings, conn, client, delivery, notifier)
+    heartbeats = CommittingRepo(HeartbeatRepository(conn), conn)
+    start_heartbeat_thread(heartbeats)
+
+    def check_db() -> bool:
+        with conn.cursor() as cur:
+            cur.execute("select 1")
+            ok = cur.fetchone() is not None
+        conn.rollback()
+        return ok
+
     app = create_app(
         processor,
-        CommittingRepo(HeartbeatRepository(conn), conn),
+        heartbeats,
         settings.webhook_password.get_secret_value(),
+        check_db=check_db,
     )
     uvicorn.run(
         app,

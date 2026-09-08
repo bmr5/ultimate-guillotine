@@ -1,15 +1,28 @@
 import secrets
+from collections.abc import Callable
 
 from fastapi import FastAPI, HTTPException, Request
 
 from ultimate_guillotine.messages.bluebubbles import parse_webhook
 
 
-def create_app(processor, heartbeats, webhook_password: str) -> FastAPI:
+def create_app(
+    processor,
+    heartbeats,
+    webhook_password: str,
+    check_db: Callable[[], bool] | None = None,
+) -> FastAPI:
+    """Build the listener's HTTP app.
+
+    `check_db`, when given, is what makes /healthz mean "this process can still
+    reach Supabase" rather than only "this process is still answering HTTP".
+    """
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 
     @app.get("/healthz")
     def healthz() -> dict:
+        if check_db is not None and not check_db():
+            raise HTTPException(status_code=503)
         return {"ok": True}
 
     @app.post("/bluebubbles-webhook")
