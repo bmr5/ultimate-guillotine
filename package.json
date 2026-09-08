@@ -11,6 +11,6 @@
     "test:records": "python3 -m unittest discover -s scripts/tests -v",
     "check:records": "python3 scripts/import_league_records.py history/league/ultimate-guillotine-records.xlsx --check",
     "test:agents": "uv run --project packages/league-automation pytest packages/league-automation/tests",
-    "lint:agents": "uv run --project packages/league-automation ruff check packages/league-automation services"
+    "lint:agents": "uv run --project packages/league-automation ruff check packages/league-automation services hermes"
   }
 }

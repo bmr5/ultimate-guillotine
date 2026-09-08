@@ -1,0 +1,28 @@
+# hermes/guillotine/cron.yaml
+# Script-only jobs run repo CLIs with no language model in the loop.
+# Empty stdout means Hermes delivers nothing; only problems reach Discord.
+jobs:
+  - name: guillotine-health
+    agent: health
+    schedule: "every 5m"
+    script: guillotine_health.sh
+    deliver: "discord:#guillotine-ops"
+    max_gap_minutes: 15
+  - name: guillotine-gap-fill
+    agent: gap-fill
+    schedule: "every 3m"
+    script: guillotine_gap_fill.sh
+    deliver: local
+    max_gap_minutes: 15
+  - name: guillotine-sleeper-sync
+    agent: sleeper-sync
+    schedule: "0 */6 * * *"
+    script: guillotine_sleeper_sync.sh
+    deliver: "discord:#guillotine-ops"
+    max_gap_minutes: 420
+  - name: guillotine-run-audit
+    agent: run-audit
+    schedule: "0 8 * * *"
+    script: guillotine_run_audit.sh
+    deliver: "discord:#guillotine-ops"
+    max_gap_minutes: 1500
