@@ -11,6 +11,7 @@ from ultimate_guillotine.data.repositories import (
     TargetRepository,
 )
 from ultimate_guillotine.listener.app import create_app
+from ultimate_guillotine.listener.committing import CommittingRepo
 from ultimate_guillotine.listener.processing import (
     InboundProcessor,
     TriggerRegistry,
@@ -19,23 +20,6 @@ from ultimate_guillotine.listener.processing import (
 from ultimate_guillotine.messages.bluebubbles import BlueBubblesClient
 from ultimate_guillotine.messages.delivery import DeliveryService
 from ultimate_guillotine.ops.notify import HermesNotifier
-
-
-class CommittingRepo:
-    """Wrap a repository so every call commits; the listener runs one operation per request."""
-
-    def __init__(self, repo, conn):
-        self._repo, self._conn = repo, conn
-
-    def __getattr__(self, name):
-        method = getattr(self._repo, name)
-
-        def call(*args, **kwargs):
-            result = method(*args, **kwargs)
-            self._conn.commit()
-            return result
-
-        return call
 
 
 def main() -> None:
