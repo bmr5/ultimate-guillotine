@@ -38,19 +38,19 @@ def build_deps() -> Deps:
 
 def run_scheduled(
     conn: psycopg.Connection, agent: str, now: datetime, action: Callable[[int], int]
-) -> int:
+) -> int | None:
     """Reserve a run for `agent` at this UTC minute, run `action(run_id)`, and finish it.
 
-    Returns 0 immediately, recording nothing further, when a run for this agent at this
-    minute was already reserved (idempotency key collision). Otherwise finishes the run
-    (`succeeded` when `action` returns 0, `failed` otherwise), commits the connection once,
-    and returns `action`'s exit code. If `action` raises, the run is finished `failed`,
-    the connection is committed, and the exception is re-raised.
+    Returns `None` immediately, recording nothing further, when a run for this agent at
+    this minute was already reserved (idempotency key collision) — `action` is not called.
+    Otherwise finishes the run (`succeeded` when `action` returns 0, `failed` otherwise),
+    commits the connection once, and returns `action`'s exit code. If `action` raises, the
+    run is finished `failed`, the connection is committed, and the exception is re-raised.
     """
     runs = RunRepository(conn)
     run_id = runs.reserve(agent, "cron", f"{agent}:{now:%Y%m%dT%H%M}")
     if run_id is None:
-        return 0
+        return None
     try:
         exit_code = action(run_id)
     except Exception as exc:

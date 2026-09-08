@@ -46,6 +46,7 @@ def build_processor(
         if t
     }
     registry = TriggerRegistry()
+    # Agents from later plans register their triggers here, next to ping_trigger.
     if settings.delivery_mode is DeliveryMode.TEST and settings.test_chat_guid:
         registry.register(ping_trigger(delivery, settings.test_chat_guid))
     processor = InboundProcessor(

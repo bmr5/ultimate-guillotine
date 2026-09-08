@@ -6,7 +6,7 @@ import logging
 import os
 import subprocess
 import sys
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
@@ -26,12 +26,12 @@ from ultimate_guillotine.data.repositories import (
 from ultimate_guillotine.messages.bluebubbles import BlueBubblesClient
 from ultimate_guillotine.messages.delivery import DeliveryDisabled, DeliveryService, TargetMismatch
 from ultimate_guillotine.messages.fingerprint import participant_fingerprint
-from ultimate_guillotine.ops.health import check_health
+from ultimate_guillotine.ops.health import LISTENER_STALE_AFTER, check_health
+from ultimate_guillotine.ops.notify import HermesNotifier
 
 log = logging.getLogger(__name__)
 
 PYTHON_VERSION = (3, 12)
-HEARTBEAT_STALE_AFTER = timedelta(minutes=10)
 
 
 def register(subparsers) -> None:
@@ -86,9 +86,23 @@ def cmd_heartbeat(args: argparse.Namespace) -> int:
 
 
 def cmd_health(args: argparse.Namespace) -> int:
-    deps = build_deps()
-    conn = deps.conn
     now = datetime.now(UTC)
+    try:
+        deps = build_deps()
+    except Exception as exc:  # noqa: BLE001 - never let a health check crash Hermes
+        message = f"Health check could not start: {exc.__class__.__name__}"
+        print(message)
+        if args.escalate:
+            settings = None
+            try:
+                settings = load_settings()
+            except Exception:  # noqa: BLE001 - settings themselves are what failed
+                settings = None
+            if settings is not None:
+                HermesNotifier.from_settings(settings).alerts(message)
+        return 0
+
+    conn = deps.conn
 
     def action(run_id: int) -> int:
         problems = check_health(
@@ -261,7 +275,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
 
     def check_listener_heartbeat() -> None:
         conn = need("conn")
-        stale = HeartbeatRepository(conn).stale(HEARTBEAT_STALE_AFTER, datetime.now(UTC))
+        stale = HeartbeatRepository(conn).stale(LISTENER_STALE_AFTER, datetime.now(UTC))
         if "listener" in stale:
             raise RuntimeError("listener heartbeat is stale")
 

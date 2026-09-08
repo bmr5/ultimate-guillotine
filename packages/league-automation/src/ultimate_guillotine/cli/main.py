@@ -22,7 +22,13 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
-    sys.exit(args.handler(args) or 0)
+    try:
+        exit_code = args.handler(args)
+    except Exception as exc:  # noqa: BLE001 - last-resort guard, never a traceback
+        command = f"{args.group} {args.command}"
+        print(f"ug {command} failed: {exc.__class__.__name__}", file=sys.stderr)
+        sys.exit(1)
+    sys.exit(exit_code or 0)
 
 
 if __name__ == "__main__":
