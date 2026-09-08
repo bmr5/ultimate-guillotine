@@ -11,6 +11,9 @@ from ultimate_guillotine.data.repositories import (
 from ultimate_guillotine.listener.run import build_processor
 
 DEFAULT_SINCE_MINUTES = 60
+GAP_FILL_PAGE_SIZE = 100
+MAX_GAP_FILL_PAGES = 20
+EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 
 
 def register(subparsers) -> None:
@@ -36,14 +39,22 @@ def cmd_gap_fill(args: argparse.Namespace) -> int:
         sources = SourceMessageRepository(conn)
         total = handled = 0
         for guid in allowed:
-            since = sources.latest_sent_at(chat_guid_hash(guid)) or (
-                now - timedelta(minutes=args.since_minutes)
-            )
-            for msg in deps.client.messages_after(guid, since):
-                outcome = processor.process(msg, msg.guid)
-                total += 1
-                if outcome.startswith("handled"):
-                    handled += 1
+            # `latest_sent_at` only sees messages that already qualified for a trigger,
+            # so it can sit days in the past. Floor the window at --since-minutes so a
+            # replay stays bounded instead of walking the whole chat history.
+            latest = sources.latest_sent_at(chat_guid_hash(guid)) or EPOCH
+            cursor = max(latest, now - timedelta(minutes=args.since_minutes))
+            for _page in range(MAX_GAP_FILL_PAGES):
+                batch = deps.client.messages_after(guid, cursor, limit=GAP_FILL_PAGE_SIZE)
+                for msg in batch:
+                    outcome = processor.process(msg, msg.guid)
+                    total += 1
+                    if outcome.startswith("handled"):
+                        handled += 1
+                # A short page is the end of the chat; a full one may not be.
+                if len(batch) < GAP_FILL_PAGE_SIZE:
+                    break
+                cursor = batch[-1].sent_at + timedelta(milliseconds=1)
         print(f"gap-fill: {total} messages, {handled} handled")
         return 0
 
