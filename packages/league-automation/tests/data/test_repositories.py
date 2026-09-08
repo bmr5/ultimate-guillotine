@@ -6,6 +6,8 @@ from ultimate_guillotine.data.repositories import (
     OutboundRepository,
     ReceiptRepository,
     RunRepository,
+    SourceMessage,
+    SourceMessageRepository,
     TargetRepository,
 )
 
@@ -40,3 +42,38 @@ def test_stale_heartbeats(conn) -> None:
     now = datetime.now(UTC)
     assert beats.stale(timedelta(minutes=5), now) == []
     assert beats.stale(timedelta(seconds=-1), now) == ["listener"]
+
+
+def test_source_message_composite_key_collision(conn) -> None:
+    sources = SourceMessageRepository(conn)
+    now = datetime.now(UTC)
+
+    # Insert first message with source_guid="guid1"
+    msg1 = SourceMessage(
+        source_guid="guid1",
+        chat_guid_hash="chat_hash1",
+        sender_hash="sender1",
+        direction="inbound",
+        sent_at=now,
+        content_fingerprint="fingerprint1",
+        excerpt="hello",
+        trigger_name=None,
+    )
+    result1 = sources.upsert(msg1)
+    assert result1 is True
+
+    # Insert second message with different source_guid but same composite key
+    # (chat_guid_hash, content_fingerprint, sent_at)
+    msg2 = SourceMessage(
+        source_guid="guid2",
+        chat_guid_hash="chat_hash1",
+        sender_hash="sender2",
+        direction="inbound",
+        sent_at=now,
+        content_fingerprint="fingerprint1",
+        excerpt="hello",
+        trigger_name=None,
+    )
+    # This should return False without raising UniqueViolation
+    result2 = sources.upsert(msg2)
+    assert result2 is False

@@ -158,7 +158,8 @@ class TargetRepository:
                 (mode_value, chat_guid, guid_hash, participant_fingerprint, label),
             )
             row = cur.fetchone()
-            assert row is not None
+            if row is None:
+                raise RuntimeError("insert returned no id")
             return row[0]
 
 
@@ -185,7 +186,8 @@ class OutboundRepository:
                 (run_id, target_id, content, content_hash),
             )
             row = cur.fetchone()
-            assert row is not None
+            if row is None:
+                raise RuntimeError("insert returned no id")
             return row[0]
 
     def set_state(
@@ -259,7 +261,8 @@ class SourceMessageRepository:
 
     def upsert(self, msg: SourceMessage) -> bool:
         """Insert a source message once. Returns ``False`` if it already
-        existed (by ``source_guid``)."""
+        existed (by ``source_guid`` or the composite key on
+        ``chat_guid_hash``, ``content_fingerprint``, ``sent_at``)."""
         with self._conn.cursor() as cur:
             cur.execute(
                 """
@@ -267,7 +270,7 @@ class SourceMessageRepository:
                     (source_guid, chat_guid_hash, sender_hash, direction, sent_at,
                      content_fingerprint, excerpt, trigger_name)
                 values (%s, %s, %s, %s, %s, %s, %s, %s)
-                on conflict (source_guid) do nothing
+                on conflict do nothing
                 returning id
                 """,
                 (
