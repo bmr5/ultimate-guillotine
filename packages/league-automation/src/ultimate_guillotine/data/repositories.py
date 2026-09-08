@@ -332,9 +332,11 @@ class ExpectedRunRepository:
     def replace_all(self, rows: list[ExpectedRun]) -> None:
         """Replace the entire expected-runs table with ``rows``.
 
-        This requires DELETE privilege on ``private.expected_runs``, which
-        ``automation_worker`` is not granted. It is therefore run only under
-        the developer login during install, never by a cron job.
+        This requires DELETE privilege on ``private.expected_runs``. Unlike
+        every other table in the private schema, ``automation_worker`` is
+        granted DELETE on this one table, because it holds installer-managed
+        configuration (the cron schedule), not a league fact: the installer
+        runs this under the worker login, never under a cron job.
         """
         with self._conn.cursor() as cur:
             cur.execute("delete from private.expected_runs")

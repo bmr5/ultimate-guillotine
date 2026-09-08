@@ -1,5 +1,5 @@
 begin;
-select plan(8);
+select plan(9);
 
 -- (a) The private schema and its automation-critical tables exist.
 select has_schema('private', 'private schema exists');
@@ -17,13 +17,26 @@ select is_empty(
   'anon holds no grants on private tables'
 );
 
--- (d) automation_worker never holds DELETE, in private or in public.
+-- (d) automation_worker never holds DELETE, in private or in public, except
+-- on private.expected_runs: that table is installer-managed configuration,
+-- not a league fact, so the worker login may replace its contents.
 select is_empty(
   $$select 1 from information_schema.role_table_grants
      where grantee = 'automation_worker'
        and table_schema in ('private', 'public')
+       and privilege_type = 'DELETE'
+       and not (table_schema = 'private' and table_name = 'expected_runs')$$,
+  'automation_worker holds no DELETE grant in private or public, aside from expected_runs'
+);
+
+-- (d2) automation_worker does hold DELETE on private.expected_runs.
+select isnt_empty(
+  $$select 1 from information_schema.role_table_grants
+     where grantee = 'automation_worker'
+       and table_schema = 'private'
+       and table_name = 'expected_runs'
        and privilege_type = 'DELETE'$$,
-  'automation_worker holds no DELETE grant in private or public'
+  'automation_worker holds a DELETE grant on private.expected_runs'
 );
 
 -- (e) No queue/scheduler extension is installed.

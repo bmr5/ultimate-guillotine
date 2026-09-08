@@ -94,6 +94,12 @@ supabase test db
 
 Repository tests (via `pnpm test:agents`) read the `TEST_DATABASE_URL` environment variable to connect to the local database. Tests are skipped when the environment variable is unset. Project credentials (API keys, database passwords) live outside Git in the local `.env` file or environment variables.
 
+Run `pnpm test:agents` for the Python test suite and `pnpm lint:agents` for lint checks.
+
+### Mac mini install
+
+See [`docs/runbooks/mac-mini.md`](docs/runbooks/mac-mini.md) for the full installation runbook: hosted Supabase, BlueBubbles Server, the `launchd` listener, and the Hermes gateway.
+
 ## Automation direction
 
 The always-on Mac mini can eventually run scripts and agents for weekly recaps, daily league monitoring, and approved message delivery. Each external integration should begin in dry-run mode, keep secrets outside Git, and separate content generation from the action that sends a message.
