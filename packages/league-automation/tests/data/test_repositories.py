@@ -36,6 +36,25 @@ def test_outbound_pending_sending_lookup(conn) -> None:
     assert outbound.pending_sending(target_id, "abc").id == oid
 
 
+def test_stuck_sending_lists_stale_reservations(conn) -> None:
+    targets = TargetRepository(conn)
+    target_id = targets.upsert(DeliveryMode.TEST, "iMessage;+;chat-test", None, "self-test")
+    outbound = OutboundRepository(conn)
+    oid = outbound.reserve(None, target_id, "hello", "abc")
+    now = datetime.now(UTC)
+
+    # A reserved-but-not-sending row is not stuck.
+    assert outbound.stuck_sending(timedelta(seconds=-1), now) == []
+
+    outbound.set_state(oid, "sending")
+    assert outbound.stuck_sending(timedelta(minutes=10), now) == []
+    assert outbound.stuck_sending(timedelta(seconds=-1), now) == [oid]
+
+    # A finished send is no longer stuck.
+    outbound.set_state(oid, "sent", bluebubbles_guid="guid-1")
+    assert outbound.stuck_sending(timedelta(seconds=-1), now) == []
+
+
 def test_stale_heartbeats(conn) -> None:
     beats = HeartbeatRepository(conn)
     beats.beat("listener")

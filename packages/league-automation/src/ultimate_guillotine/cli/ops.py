@@ -19,6 +19,7 @@ from ultimate_guillotine.data.repositories import (
     ExpectedRun,
     ExpectedRunRepository,
     HeartbeatRepository,
+    OutboundRepository,
     RunRepository,
     TargetRepository,
 )
@@ -110,6 +111,7 @@ def cmd_health(args: argparse.Namespace) -> int:
             RunRepository(conn),
             ExpectedRunRepository(conn),
             deps.client,
+            OutboundRepository(conn),
         )
         for problem in problems:
             print(problem)
@@ -171,18 +173,30 @@ def cmd_self_test(args: argparse.Namespace) -> int:
     now = datetime.now(UTC)
     delivery = build_delivery(deps, crash_after_send=args.crash_after_send)
 
+    # Minute precision, so a retry inside the same minute reproduces the content hash
+    # of the reservation a crashed attempt left behind and reconciles against it
+    # instead of sending twice.
+    content = f"Self-test {now:%Y-%m-%dT%H:%M}"
+
     def action(run_id: int) -> int:
         try:
-            result = delivery.deliver(
-                run_id, "self-test", f"Self-test {now.isoformat(timespec='seconds')}"
-            )
+            result = delivery.deliver(run_id, "self-test", content)
         except (DeliveryDisabled, TargetMismatch) as exc:
             print(str(exc))
             return 1
         print(f"{result.status} {result.outbound_id}")
         return 0
 
-    return run_scheduled(conn, "self-test", now, action)
+    # Per-attempt run key: the self-test is invoked by hand, and Gate 0 re-runs it
+    # deliberately within the same minute, so it must never be skipped as a duplicate.
+    return run_scheduled(
+        conn,
+        "self-test",
+        now,
+        action,
+        trigger="cli",
+        idempotency_key=f"self-test:{now:%Y%m%dT%H%M%S%f}",
+    )
 
 
 def cmd_doctor(args: argparse.Namespace) -> int:

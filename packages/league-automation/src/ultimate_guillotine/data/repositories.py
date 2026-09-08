@@ -215,6 +215,25 @@ class OutboundRepository:
                 (state, bluebubbles_guid, error, state, outbound_id),
             )
 
+    def stuck_sending(self, older_than: timedelta, now: datetime) -> list[int]:
+        """Return the ids of outbound messages still in ``sending`` whose reservation
+        is older than ``older_than`` relative to ``now``.
+
+        A row in this state means a send crossed the Messages boundary without its
+        outcome ever being recorded, so the health job reports it for a human.
+        """
+        cutoff = now - older_than
+        with self._conn.cursor() as cur:
+            cur.execute(
+                """
+                select id from private.outbound_messages
+                where state = 'sending' and reserved_at < %s
+                order by id
+                """,
+                (cutoff,),
+            )
+            return [row[0] for row in cur.fetchall()]
+
     def pending_sending(self, target_id: int, content_hash: str) -> OutboundRecord | None:
         """Return the most recent in-flight (``sending``) outbound message
         for this target/content, if any."""

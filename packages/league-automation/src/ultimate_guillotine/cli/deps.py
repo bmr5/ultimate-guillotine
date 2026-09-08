@@ -61,18 +61,29 @@ def build_delivery(deps: Deps, crash_after_send: bool = False) -> DeliveryServic
 
 
 def run_scheduled(
-    conn: psycopg.Connection, agent: str, now: datetime, action: Callable[[int], int]
+    conn: psycopg.Connection,
+    agent: str,
+    now: datetime,
+    action: Callable[[int], int],
+    trigger: str = "cron",
+    idempotency_key: str | None = None,
 ) -> int | None:
     """Reserve a run for `agent` at this UTC minute, run `action(run_id)`, and finish it.
 
-    Returns `None` immediately, recording nothing further, when a run for this agent at
-    this minute was already reserved (idempotency key collision) — `action` is not called.
+    `idempotency_key` defaults to one key per agent per UTC minute, which is what a
+    scheduled job wants: a second cron fire inside the same minute is a duplicate.
+    Commands a human re-runs on purpose (the self-test after a forced crash) pass a
+    per-attempt key instead, so the retry actually runs.
+
+    Returns `None` immediately, recording nothing further, when that idempotency key
+    was already reserved (idempotency key collision) — `action` is not called.
     Otherwise finishes the run (`succeeded` when `action` returns 0, `failed` otherwise),
     commits the connection once, and returns `action`'s exit code. If `action` raises, the
     run is finished `failed`, the connection is committed, and the exception is re-raised.
     """
     runs = RunRepository(conn)
-    run_id = runs.reserve(agent, "cron", f"{agent}:{now:%Y%m%dT%H%M}")
+    key = idempotency_key or f"{agent}:{now:%Y%m%dT%H%M}"
+    run_id = runs.reserve(agent, trigger, key)
     if run_id is None:
         return None
     try:
