@@ -27,6 +27,10 @@ def content_hash(text: str) -> str:
     return hashlib.sha256(sign(text).encode()).hexdigest()
 
 
+def _normalized(text: str) -> str:
+    return " ".join(text.split())
+
+
 class DeliveryService:
     def __init__(
         self,
@@ -81,9 +85,13 @@ class DeliveryService:
         if pending is not None:
             since = pending.reserved_at - timedelta(minutes=1)
             for msg in self._client.messages_after(target.chat_guid, since):
-                if msg.is_from_me and msg.text.strip() == signed.strip():
+                if msg.is_from_me and _normalized(msg.text) == _normalized(signed):
                     self._outbound.set_state(
                         pending.id, "reconciled", bluebubbles_guid=msg.guid
+                    )
+                    self._notifier.feed(
+                        f"[{agent}] [{self._settings.delivery_mode}] "
+                        f"outbound #{pending.id} (reconciled after crash)\n{signed}"
                     )
                     return DeliveryResult("reconciled", pending.id, msg.guid)
             self._outbound.set_state(

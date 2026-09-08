@@ -150,6 +150,46 @@ def test_crash_after_send_then_retry_reconciles() -> None:
             sent_at=datetime.now(UTC),
         )
     ]
+    retry, _, _, retry_notifier = make(
+        DeliveryMode.TEST, client=client, outbound=outbound
+    )
+    result = retry.deliver(None, "self-test", "hello")
+    assert result.status == "reconciled"
+    assert len(client.sent) == 1
+    assert outbound.records[1]["state"] == "reconciled"
+    reconciled_posts = [
+        post for post in retry_notifier.feed_posts if "reconciled" in post
+    ]
+    assert len(reconciled_posts) == 1
+
+
+def test_reconciliation_ignores_whitespace_differences() -> None:
+    service, client, outbound, _ = make(
+        DeliveryMode.TEST, crash_after_send=True
+    )
+    with pytest.raises(RuntimeError):
+        service.deliver(None, "self-test", "hello")
+    assert outbound.records[1]["state"] == "sending"
+    outbound.pending = OutboundRecord(
+        1,
+        "sending",
+        datetime.now(UTC),
+        content_hash("hello"),
+        None,
+    )
+    signed = sign("hello")
+    whitespace_variant = "  ".join(signed.split(" ")) + "\n"
+    client.history = [
+        InboundMessage(
+            guid="g1",
+            chat_guid=TEST_GUID,
+            sender_address=None,
+            text=whitespace_variant,
+            is_from_me=True,
+            is_group=True,
+            sent_at=datetime.now(UTC),
+        )
+    ]
     retry, _, _, _ = make(
         DeliveryMode.TEST, client=client, outbound=outbound
     )
