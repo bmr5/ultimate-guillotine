@@ -1,5 +1,5 @@
 begin;
-select plan(23);
+select plan(25);
 
 -- (a) All nine public tables exist.
 select has_table('public', 'seasons', 'public.seasons table exists');
@@ -83,9 +83,33 @@ select results_eq(
 );
 
 -- Existing policy-name, primary-key, and seed assertions.
-select policies_are('public', 'seasons', array['Public seasons are readable']);
+select policies_are(
+  'public', 'seasons',
+  array['Public seasons are readable', 'Automation writes seasons']
+);
 select col_is_pk('public', 'seasons', 'id', 'public.seasons.id is the primary key');
 select results_eq('select count(*)::int from public.seasons where year = 2026', array[1]);
+
+-- (d) automation_worker can write the public league tables through RLS, but is
+-- still denied DELETE on private automation history. Both role changes are undone
+-- by the rollback at the end of this test transaction.
+grant automation_worker to postgres;
+-- pgTAP lives in the `extensions` schema; automation_worker needs USAGE on it only
+-- so the assertion functions stay visible while the role is set. No table privilege
+-- is granted here, and the rollback below undoes this.
+grant usage on schema extensions to automation_worker;
+set role automation_worker;
+select lives_ok(
+  $$insert into public.members (display_name) values ('rls-write-probe')$$,
+  'automation_worker can insert into public.members under row level security'
+);
+select throws_ok(
+  $$delete from private.agent_runs$$,
+  '42501'::char(5),
+  null,
+  'automation_worker cannot delete from private.agent_runs'
+);
+reset role;
 
 select * from finish();
 rollback;
