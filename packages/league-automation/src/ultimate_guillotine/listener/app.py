@@ -1,9 +1,27 @@
+import logging
+import os
 import secrets
 from collections.abc import Callable
+from typing import NoReturn
 
+import psycopg
 from fastapi import FastAPI, HTTPException, Request
 
 from ultimate_guillotine.messages.bluebubbles import parse_webhook
+
+log = logging.getLogger(__name__)
+
+
+def _die_on_lost_connection(exc: psycopg.OperationalError) -> NoReturn:
+    """Leave the process for launchd to restart.
+
+    The listener holds one long-lived connection; once it is gone every later request
+    fails the same way and nothing in-process can mend it. Exiting non-zero hands the
+    restart to launchd's KeepAlive, which reconnects. Only the exception class name is
+    logged — the message can carry the connection string.
+    """
+    log.error("listener lost its database connection: %s", exc.__class__.__name__)
+    os._exit(1)
 
 
 def create_app(
@@ -21,7 +39,11 @@ def create_app(
 
     @app.get("/healthz")
     def healthz() -> dict:
-        if check_db is not None and not check_db():
+        try:
+            healthy = check_db is None or check_db()
+        except psycopg.OperationalError as exc:
+            _die_on_lost_connection(exc)
+        if not healthy:
             raise HTTPException(status_code=503)
         return {"ok": True}
 
@@ -31,10 +53,13 @@ def create_app(
         if not secrets.compare_digest(supplied, webhook_password):
             raise HTTPException(status_code=401)
         payload = await request.json()
-        heartbeats.beat("listener")
-        msg = parse_webhook(payload)
-        if msg is None:
-            return {"outcome": "ignored_event"}
-        return {"outcome": processor.process(msg, msg.guid)}
+        try:
+            heartbeats.beat("listener")
+            msg = parse_webhook(payload)
+            if msg is None:
+                return {"outcome": "ignored_event"}
+            return {"outcome": processor.process(msg, msg.guid)}
+        except psycopg.OperationalError as exc:
+            _die_on_lost_connection(exc)
 
     return app
