@@ -10,14 +10,24 @@ never in Git.
 
 ## 1. Hosted Supabase
 
+**Everything in steps 1a to 1c runs on Ben's development machine, in his
+own checkout — never on the Mac mini.** The superuser database password
+and the Supabase access token are what schema migrations and role
+creation need; the Mac mini is a least-privilege worker and must never
+hold either one. The only Supabase secret that ever reaches the mini is
+the worker `DATABASE_URL` written in step 1e.
+
+### 1a. Create the project (development machine)
+
 Ben creates the free Supabase project under his personal account and
 notes its project ref from the dashboard.
 
-The repository is a git worktree of a checkout that already has
-`SUPABASE_ACCESS_TOKEN` and `SUPABASE_DB_PASSWORD` in the repo-root
-`.env`. Pass them on the command line rather than running the
-machine-wide `supabase login`, so that login can stay pointed at other
-projects:
+### 1b. Link and push the schema (development machine)
+
+The development checkout already has `SUPABASE_ACCESS_TOKEN` and
+`SUPABASE_DB_PASSWORD` in its repo-root `.env`. Pass them on the command
+line rather than running the machine-wide `supabase login`, so that login
+can stay pointed at other projects:
 
 ```bash
 SUPABASE_ACCESS_TOKEN=<value from repo .env> \
@@ -29,6 +39,8 @@ SUPABASE_DB_PASSWORD=<value from repo .env> \
 supabase db push
 ```
 
+### 1c. Create the worker login (development machine)
+
 Create the `ultimate_guillotine_mac` worker login by running
 `scripts/configure_worker_role.sql.example` through `psql`, connected via
 the project's Supavisor **session pooler** (not the direct connection
@@ -36,7 +48,7 @@ the project's Supavisor **session pooler** (not the direct connection
 Connect panel:
 
 ```bash
-openssl rand -hex 24   # generate the worker password once, keep it only in .env
+openssl rand -hex 24   # generate the worker password once
 
 psql "<Supavisor session pooler connection string from the dashboard Connect panel>"
 ```
@@ -48,13 +60,26 @@ At the `psql` prompt:
 \i scripts/configure_worker_role.sql.example
 ```
 
-Write `DATABASE_URL` for that login into the repo `.env`. Because the
-Supavisor session pooler expects the role name suffixed with the project
-ref, the URL takes the form:
+### 1d. Confirm the private schema is not exposed (dashboard)
+
+In the dashboard, open **Settings → API → Exposed schemas** and confirm
+the list is `public` and `graphql_public` only. `private` must not appear
+there: everything in it — chat GUIDs, hashed handles, message excerpts,
+outbound content — would otherwise be reachable over PostgREST.
+
+### 1e. Give the Mac mini its worker URL (Mac mini)
+
+On the Mac mini, write only `DATABASE_URL` for the worker login into the
+repo `.env`. Because the Supavisor session pooler expects the role name
+suffixed with the project ref, the URL takes the form:
 
 ```
 DATABASE_URL=postgresql://ultimate_guillotine_mac.<ref>:<generated password>@<pooler host from the Connect panel>:5432/postgres
 ```
+
+The mini's `.env` must never contain `SUPABASE_DB_PASSWORD` or
+`SUPABASE_ACCESS_TOKEN`. Nothing on the mini runs `supabase link`,
+`supabase db push`, or any migration; it only connects as the worker.
 
 Confirm with `uv run --project packages/league-automation ug ops doctor` —
 the `database` check should report `PASS`.
