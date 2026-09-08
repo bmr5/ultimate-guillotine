@@ -9,8 +9,13 @@ import psycopg
 
 from ultimate_guillotine.config import Settings, load_settings
 from ultimate_guillotine.data.database import connect
-from ultimate_guillotine.data.repositories import RunRepository
+from ultimate_guillotine.data.repositories import (
+    OutboundRepository,
+    RunRepository,
+    TargetRepository,
+)
 from ultimate_guillotine.messages.bluebubbles import BlueBubblesClient
+from ultimate_guillotine.messages.delivery import DeliveryService
 from ultimate_guillotine.ops.notify import HermesNotifier
 
 
@@ -34,6 +39,25 @@ def build_deps() -> Deps:
     )
     notifier = HermesNotifier.from_settings(settings)
     return Deps(settings=settings, conn=conn, client=client, notifier=notifier)
+
+
+def build_delivery(deps: Deps, crash_after_send: bool = False) -> DeliveryService:
+    """Build the delivery service every `ug` subcommand sends through.
+
+    The connection is not autocommit, so `deps.conn.commit` is handed to the service
+    as its commit hook: without it the reservation, the `sending` transition, and the
+    send itself would all sit in one uncommitted transaction, and a crash after the
+    send would lose the reservation the retry needs in order to reconcile.
+    """
+    return DeliveryService(
+        deps.settings,
+        deps.client,
+        TargetRepository(deps.conn),
+        OutboundRepository(deps.conn),
+        deps.notifier,
+        crash_after_send=crash_after_send,
+        commit=deps.conn.commit,
+    )
 
 
 def run_scheduled(

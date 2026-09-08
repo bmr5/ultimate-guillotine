@@ -1,4 +1,5 @@
 import hashlib
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Literal
@@ -41,6 +42,7 @@ class DeliveryService:
         notifier,
         clock=lambda: datetime.now(UTC),
         crash_after_send: bool = False,
+        commit: Callable[[], None] | None = None,
     ) -> None:
         self._settings = settings
         self._client = client
@@ -49,6 +51,12 @@ class DeliveryService:
         self._notifier = notifier
         self._clock = clock
         self._crash_after_send = crash_after_send
+        self._commit = commit
+
+    def _persist(self) -> None:
+        """Make the writes so far durable, when the caller gave us a commit hook."""
+        if self._commit is not None:
+            self._commit()
 
     def _resolve_target(self):
         mode = self._settings.delivery_mode
@@ -78,6 +86,13 @@ class DeliveryService:
     def deliver(
         self, run_id: int | None, agent: str, content: str
     ) -> DeliveryResult:
+        """Deliver signed content to the configured chat, effectively once.
+
+        When a `commit` hook was supplied, the reservation is durable before the
+        send: the outbound row and its `sending` state are each committed before
+        `send_text` crosses the Messages boundary, so a crash mid-send leaves a
+        reservation the next attempt can reconcile instead of double-sending.
+        """
         target = self._resolve_target()
         signed = sign(content)
         digest = content_hash(content)
@@ -98,7 +113,9 @@ class DeliveryService:
                 pending.id, "failed", error="unreconciled send; retrying"
             )
         outbound_id = self._outbound.reserve(run_id, target.id, signed, digest)
+        self._persist()
         self._outbound.set_state(outbound_id, "sending")
+        self._persist()
         guid = self._client.send_text(target.chat_guid, signed)
         if self._crash_after_send:
             raise RuntimeError("simulated crash after send")

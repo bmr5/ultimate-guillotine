@@ -197,3 +197,31 @@ def test_reconciliation_ignores_whitespace_differences() -> None:
     assert result.status == "reconciled"
     assert len(client.sent) == 1
     assert outbound.records[1]["state"] == "reconciled"
+
+
+def test_reservation_is_committed_before_send() -> None:
+    """The reservation and the `sending` transition must both be durable before the
+    send crosses the Messages boundary: a crash after send otherwise loses the
+    reservation and the retry double-sends."""
+    events: list[str] = []
+
+    class RecordingClient(FakeClient):
+        def send_text(self, chat_guid, text):
+            events.append("send")
+            return super().send_text(chat_guid, text)
+
+    service, _client, outbound, _ = make(
+        DeliveryMode.TEST,
+        client=RecordingClient(),
+        commit=lambda: events.append("commit"),
+    )
+    result = service.deliver(None, "self-test", "hello")
+    assert result.status == "sent"
+    assert events == ["commit", "commit", "send"]
+    assert outbound.records[1]["state"] == "sent"
+
+
+def test_delivery_without_commit_callback_still_sends() -> None:
+    service, client, _, _ = make(DeliveryMode.TEST)
+    assert service.deliver(None, "self-test", "hello").status == "sent"
+    assert client.sent == [(TEST_GUID, sign("hello"))]

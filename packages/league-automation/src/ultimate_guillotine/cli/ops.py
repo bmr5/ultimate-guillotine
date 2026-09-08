@@ -12,19 +12,18 @@ from pathlib import Path
 import httpx
 import yaml
 
-from ultimate_guillotine.cli.deps import build_deps, run_scheduled
+from ultimate_guillotine.cli.deps import build_delivery, build_deps, run_scheduled
 from ultimate_guillotine.config import DeliveryMode, load_settings
 from ultimate_guillotine.data.database import connect
 from ultimate_guillotine.data.repositories import (
     ExpectedRun,
     ExpectedRunRepository,
     HeartbeatRepository,
-    OutboundRepository,
     RunRepository,
     TargetRepository,
 )
 from ultimate_guillotine.messages.bluebubbles import BlueBubblesClient
-from ultimate_guillotine.messages.delivery import DeliveryDisabled, DeliveryService, TargetMismatch
+from ultimate_guillotine.messages.delivery import DeliveryDisabled, TargetMismatch
 from ultimate_guillotine.messages.fingerprint import participant_fingerprint
 from ultimate_guillotine.ops.health import LISTENER_STALE_AFTER, check_health
 from ultimate_guillotine.ops.notify import HermesNotifier
@@ -170,16 +169,7 @@ def cmd_self_test(args: argparse.Namespace) -> int:
 
     conn = deps.conn
     now = datetime.now(UTC)
-    targets = TargetRepository(conn)
-    outbound = OutboundRepository(conn)
-    delivery = DeliveryService(
-        settings,
-        deps.client,
-        targets,
-        outbound,
-        deps.notifier,
-        crash_after_send=args.crash_after_send,
-    )
+    delivery = build_delivery(deps, crash_after_send=args.crash_after_send)
 
     def action(run_id: int) -> int:
         try:

@@ -3,15 +3,12 @@
 import argparse
 from datetime import UTC, datetime, timedelta
 
-from ultimate_guillotine.cli.deps import build_deps, run_scheduled
+from ultimate_guillotine.cli.deps import build_delivery, build_deps, run_scheduled
 from ultimate_guillotine.data.repositories import (
-    OutboundRepository,
     SourceMessageRepository,
-    TargetRepository,
     chat_guid_hash,
 )
 from ultimate_guillotine.listener.run import build_processor
-from ultimate_guillotine.messages.delivery import DeliveryService
 
 DEFAULT_SINCE_MINUTES = 60
 
@@ -34,9 +31,7 @@ def cmd_gap_fill(args: argparse.Namespace) -> int:
     now = datetime.now(UTC)
 
     def action(run_id: int) -> int:
-        targets = TargetRepository(conn)
-        outbound = OutboundRepository(conn)
-        delivery = DeliveryService(settings, deps.client, targets, outbound, deps.notifier)
+        delivery = build_delivery(deps)
         processor, allowed = build_processor(settings, conn, deps.client, delivery, deps.notifier)
         sources = SourceMessageRepository(conn)
         total = handled = 0

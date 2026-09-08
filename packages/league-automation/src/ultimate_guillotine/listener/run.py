@@ -75,7 +75,12 @@ def main() -> None:
     targets = TargetRepository(conn)
     notifier = HermesNotifier.from_settings(settings)
     delivery = DeliveryService(
-        settings, client, targets, CommittingRepo(OutboundRepository(conn), conn), notifier
+        settings,
+        client,
+        targets,
+        CommittingRepo(OutboundRepository(conn), conn),
+        notifier,
+        commit=conn.commit,
     )
     processor, _allowed = build_processor(settings, conn, client, delivery, notifier)
     app = create_app(
