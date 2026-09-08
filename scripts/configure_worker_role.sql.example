@@ -1,0 +1,5 @@
+-- scripts/configure_worker_role.sql.example
+-- Run interactively against the hosted project with a freshly generated password.
+-- Never commit the substituted value.
+create role ultimate_guillotine_mac login password :'worker_password';
+grant automation_worker to ultimate_guillotine_mac;
