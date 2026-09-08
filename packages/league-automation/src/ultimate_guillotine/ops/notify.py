@@ -9,7 +9,12 @@ log = logging.getLogger(__name__)
 
 
 class HermesNotifier:
-    def __init__(self, profile_home: str, runner=subprocess.run, channels: dict[str, str] | None = None) -> None:
+    def __init__(
+        self,
+        profile_home: str,
+        runner=subprocess.run,
+        channels: dict[str, str] | None = None,
+    ) -> None:
         self._home = str(Path(profile_home).expanduser())
         self._runner = runner
         self._channels = channels or {}
@@ -26,7 +31,13 @@ class HermesNotifier:
     def send(self, channel: str, text: str) -> bool:
         env = {**os.environ, "HERMES_HOME": self._home}
         try:
-            result = self._runner(["hermes", "send", "--to", f"discord:{channel}", "--quiet", text], env=env, capture_output=True, text=True, timeout=30)
+            result = self._runner(
+                ["hermes", "send", "--to", f"discord:{channel}", "--quiet", text],
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
             if result.returncode != 0:
                 log.warning("hermes send to %s failed with code %s", channel, result.returncode)
                 return False
