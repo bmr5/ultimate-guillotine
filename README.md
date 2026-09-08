@@ -72,6 +72,28 @@ pnpm dues
 
 The tracker opens at `http://127.0.0.1:8765`, shows the latest roster, and saves Venmo handles, paid status, timestamps, and notes to ignored `data/private/dues-2026.json`. It is available only on the local Mac unless you deliberately build a separate authenticated remote-access layer.
 
+## League automation
+
+The `packages/league-automation` workspace contains Python agents and automation scripts for the Ultimate Guillotine league.
+
+### Local database setup
+
+Start Docker Desktop and the local Supabase stack:
+
+```bash
+open -a Docker
+supabase start
+```
+
+Reset the database and run database tests:
+
+```bash
+supabase db reset
+supabase test db
+```
+
+Repository tests (via `pnpm test:agents`) read the `TEST_DATABASE_URL` environment variable to connect to the local database. Tests are skipped when the environment variable is unset. Project credentials (API keys, database passwords) live outside Git in the local `.env` file or environment variables.
+
 ## Automation direction
 
 The always-on Mac mini can eventually run scripts and agents for weekly recaps, daily league monitoring, and approved message delivery. Each external integration should begin in dry-run mode, keep secrets outside Git, and separate content generation from the action that sends a message.
