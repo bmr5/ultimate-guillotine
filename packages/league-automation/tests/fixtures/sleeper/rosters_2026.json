@@ -1,0 +1,164 @@
+[
+  {
+    "roster_id": 1,
+    "owner_id": "user-01",
+    "settings": {
+      "wins": 0,
+      "losses": 0,
+      "ties": 0
+    }
+  },
+  {
+    "roster_id": 2,
+    "owner_id": "user-02",
+    "settings": {
+      "wins": 0,
+      "losses": 0,
+      "ties": 0
+    }
+  },
+  {
+    "roster_id": 3,
+    "owner_id": "user-03",
+    "settings": {
+      "wins": 0,
+      "losses": 0,
+      "ties": 0
+    }
+  },
+  {
+    "roster_id": 4,
+    "owner_id": "user-04",
+    "settings": {
+      "wins": 0,
+      "losses": 0,
+      "ties": 0
+    }
+  },
+  {
+    "roster_id": 5,
+    "owner_id": "user-05",
+    "settings": {
+      "wins": 0,
+      "losses": 0,
+      "ties": 0
+    }
+  },
+  {
+    "roster_id": 6,
+    "owner_id": "user-06",
+    "settings": {
+      "wins": 0,
+      "losses": 0,
+      "ties": 0
+    }
+  },
+  {
+    "roster_id": 7,
+    "owner_id": "user-07",
+    "settings": {
+      "wins": 0,
+      "losses": 0,
+      "ties": 0
+    }
+  },
+  {
+    "roster_id": 8,
+    "owner_id": "user-08",
+    "settings": {
+      "wins": 0,
+      "losses": 0,
+      "ties": 0
+    }
+  },
+  {
+    "roster_id": 9,
+    "owner_id": "user-09",
+    "settings": {
+      "wins": 0,
+      "losses": 0,
+      "ties": 0
+    }
+  },
+  {
+    "roster_id": 10,
+    "owner_id": "user-10",
+    "settings": {
+      "wins": 0,
+      "losses": 0,
+      "ties": 0
+    }
+  },
+  {
+    "roster_id": 11,
+    "owner_id": "user-11",
+    "settings": {
+      "wins": 0,
+      "losses": 0,
+      "ties": 0
+    }
+  },
+  {
+    "roster_id": 12,
+    "owner_id": "user-12",
+    "settings": {
+      "wins": 0,
+      "losses": 0,
+      "ties": 0
+    }
+  },
+  {
+    "roster_id": 13,
+    "owner_id": "user-13",
+    "settings": {
+      "wins": 0,
+      "losses": 0,
+      "ties": 0
+    }
+  },
+  {
+    "roster_id": 14,
+    "owner_id": "user-14",
+    "settings": {
+      "wins": 0,
+      "losses": 0,
+      "ties": 0
+    }
+  },
+  {
+    "roster_id": 15,
+    "owner_id": "user-15",
+    "settings": {
+      "wins": 0,
+      "losses": 0,
+      "ties": 0
+    }
+  },
+  {
+    "roster_id": 16,
+    "owner_id": "user-16",
+    "settings": {
+      "wins": 0,
+      "losses": 0,
+      "ties": 0
+    }
+  },
+  {
+    "roster_id": 17,
+    "owner_id": "user-17",
+    "settings": {
+      "wins": 0,
+      "losses": 0,
+      "ties": 0
+    }
+  },
+  {
+    "roster_id": 18,
+    "owner_id": "user-18",
+    "settings": {
+      "wins": 0,
+      "losses": 0,
+      "ties": 0
+    }
+  }
+]
