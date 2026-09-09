@@ -6,9 +6,11 @@ messages through the exact same trigger pipeline the live listener uses.
 
 import logging
 import threading
+from collections.abc import Callable
 from time import sleep
 
 import httpx
+import psycopg
 import uvicorn
 
 from ultimate_guillotine.config import DeliveryMode, Settings, load_settings
@@ -20,7 +22,7 @@ from ultimate_guillotine.data.repositories import (
     SourceMessageRepository,
     TargetRepository,
 )
-from ultimate_guillotine.listener.app import create_app
+from ultimate_guillotine.listener.app import _die_on_lost_connection, create_app
 from ultimate_guillotine.listener.committing import CommittingRepo
 from ultimate_guillotine.listener.processing import (
     InboundProcessor,
@@ -36,30 +38,62 @@ log = logging.getLogger(__name__)
 HEARTBEAT_INTERVAL_SECONDS = 120
 
 
-def _heartbeat_loop(heartbeats) -> None:
-    """Beat for the listener on a fixed interval, forever.
+def _heartbeat_loop(connection_factory: Callable[[], psycopg.Connection]) -> None:
+    """Beat for the listener on a fixed interval, forever, on its own connection.
 
     Beating only on webhook receipt meant a quiet league chat looked identical to a
     dead listener: the health job reported a stale heartbeat every night and `ug ops
-    doctor` failed. Failures here are logged by exception class name only and never
-    kill the thread — a heartbeat that cannot be written is exactly the condition the
-    health job is meant to notice.
+    doctor` failed. The connection is opened here, inside the thread, rather than
+    shared with the request path or the `/healthz` probe — a rollback on either of
+    those can no longer discard this thread's uncommitted heartbeat. A dead
+    connection is fatal: `psycopg.OperationalError` exits the process the same way a
+    dead request-path connection does, for launchd to restart. Any other failure is
+    logged by exception class name only and never kills the thread — a heartbeat
+    that cannot be written for some other reason is exactly the condition the health
+    job is meant to notice.
     """
+    conn = connection_factory()
+    heartbeats = CommittingRepo(HeartbeatRepository(conn), conn)
     while True:
         try:
             heartbeats.beat("listener")
-        except Exception as exc:  # noqa: BLE001 - a heartbeat must never crash the listener
+        except psycopg.OperationalError as exc:
+            _die_on_lost_connection(exc)
+        except Exception as exc:  # noqa: BLE001 - only a lost connection is fatal here
             log.warning("listener heartbeat failed: %s", exc.__class__.__name__)
         sleep(HEARTBEAT_INTERVAL_SECONDS)
 
 
-def start_heartbeat_thread(heartbeats) -> threading.Thread:
-    """Start the background heartbeat as a daemon thread so it never blocks shutdown."""
+def start_heartbeat_thread(
+    settings: Settings,
+    connection_factory: Callable[[], psycopg.Connection] | None = None,
+) -> threading.Thread:
+    """Start the background heartbeat as a daemon thread so it never blocks shutdown.
+
+    Opens its own connection via `connection_factory` (default: a fresh connection
+    from `settings`) instead of sharing the request-path connection.
+    """
+    factory = connection_factory or (lambda: connect(settings))
     thread = threading.Thread(
-        target=_heartbeat_loop, args=(heartbeats,), name="listener-heartbeat", daemon=True
+        target=_heartbeat_loop, args=(factory,), name="listener-heartbeat", daemon=True
     )
     thread.start()
     return thread
+
+
+def _check_db(connection_factory: Callable[[], psycopg.Connection]) -> bool:
+    """Probe the database on a short-lived connection of its own.
+
+    Never touches the request-path connection, so a `/healthz` probe can no longer
+    roll back another thread's uncommitted work. A lost connection here is not
+    fatal — it just means the process reports itself unhealthy; nothing exits.
+    """
+    try:
+        with connection_factory() as probe:
+            probe.execute("select 1")
+    except psycopg.OperationalError:
+        return False
+    return True
 
 
 def build_processor(
@@ -118,14 +152,10 @@ def main() -> None:
     )
     processor, _allowed = build_processor(settings, conn, client, delivery, notifier)
     heartbeats = CommittingRepo(HeartbeatRepository(conn), conn)
-    start_heartbeat_thread(heartbeats)
+    start_heartbeat_thread(settings)
 
     def check_db() -> bool:
-        with conn.cursor() as cur:
-            cur.execute("select 1")
-            ok = cur.fetchone() is not None
-        conn.rollback()
-        return ok
+        return _check_db(lambda: connect(settings))
 
     app = create_app(
         processor,
