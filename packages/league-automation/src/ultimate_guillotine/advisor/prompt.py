@@ -36,7 +36,11 @@ from ultimate_guillotine.advisor.candidates import (
 )
 from ultimate_guillotine.advisor.detect import Ask
 from ultimate_guillotine.advisor.models import TradeAdviceResponse
-from ultimate_guillotine.advisor.pricing import PricePoint, comparables_for
+from ultimate_guillotine.advisor.pricing import (
+    COMPARABLE_KINDS,
+    PricePoint,
+    comparables_for,
+)
 from ultimate_guillotine.advisor.scoring import POSITIONS, TeamScore
 from ultimate_guillotine.advisor.state import LeagueSnapshot
 from ultimate_guillotine.ai.hermes import HermesStructuredClient
@@ -187,15 +191,27 @@ def _candidate_lines(
     return lines or ["- no legal trade answers this ask"]
 
 
-def _history_lines(points: Sequence[PricePoint]) -> list[str]:
+def _history_lines(points: Sequence[PricePoint], *, rental: bool) -> list[str]:
+    """The prices this ask may be compared against, and no others.
+
+    Read out of the same population
+    :func:`~ultimate_guillotine.advisor.candidates._price` priced the
+    candidates from, so the history block and the FAAB beside each candidate
+    can never disagree: a rental ask is shown what the league has paid to
+    borrow a position, a permanent one what it has paid to keep one. Handing
+    the model both would invite it to argue an offer down against a loan.
+    """
+    kinds = ("rental",) if rental else COMPARABLE_KINDS
+    verb = "was rented for" if rental else "went for"
     lines: list[str] = []
     for position in POSITIONS:
-        for point in comparables_for(points, position, limit=2):
+        for point in comparables_for(points, position, limit=2, kinds=kinds):
             lines.append(
                 f"- {point.trade_code} ({point.season}): a {position} "
-                f"({point.player_name}) went for {point.faab} FAAB"
+                f"({point.player_name}) {verb} {point.faab} FAAB"
             )
-    return lines or ["- no comparable FAAB prices on file"]
+    kind_word = "rental " if rental else ""
+    return lines or [f"- no comparable {kind_word}FAAB prices on file"]
 
 
 def build_facts(
@@ -233,7 +249,7 @@ def build_facts(
             *_team_lines(snapshot, scores, known),
             "",
             "LEAGUE PRICE HISTORY",
-            *_history_lines(points),
+            *_history_lines(points, rental=ask.rental),
             "",
             "CANDIDATES",
             *_candidate_lines(snapshot, candidates, known),

@@ -54,7 +54,12 @@ from statistics import median
 from typing import Literal
 
 from ultimate_guillotine.advisor.detect import Ask
-from ultimate_guillotine.advisor.pricing import PricePoint, comparables_for, median_faab
+from ultimate_guillotine.advisor.pricing import (
+    COMPARABLE_KINDS,
+    PricePoint,
+    comparables_for,
+    median_faab,
+)
 from ultimate_guillotine.advisor.scoring import (
     LEAGUE_TEAMS,
     NO_POINTS,
@@ -343,9 +348,21 @@ def _median_budget(snapshot: LeagueSnapshot) -> int:
 
 
 def _price(
-    points: Sequence[PricePoint], position: str, budget: int, anchor: int
+    points: Sequence[PricePoint],
+    position: str,
+    budget: int,
+    anchor: int,
+    *,
+    kinds: tuple[str, ...] = COMPARABLE_KINDS,
 ) -> tuple[int, PriceBasis, str | None] | None:
     """What this position has cost, clamped to what the buyer actually has.
+
+    ``kinds`` is the population the price is read out of, and it is the ask's
+    own structure: a rental is priced off what the league has paid to *borrow*
+    that position, never off what it has paid to keep one. The comparable and
+    the median come from the one population, so a rental with no rental history
+    falls through to the league-median default rather than quoting a permanent
+    acquisition at somebody who asked to borrow.
 
     ``anchor`` is the league's median remaining budget, and it is the *only*
     thing a price with no history is derived from. Deriving it from ``budget``
@@ -363,11 +380,11 @@ def _price(
     """
     if budget < FAAB_FLOOR:
         return None
-    comparables = comparables_for(points, position, limit=1)
+    comparables = comparables_for(points, position, limit=1, kinds=kinds)
     if comparables:
         asked, basis, code = comparables[0].faab or 0, "comparable", comparables[0].trade_code
     else:
-        typical = median_faab(points, position)
+        typical = median_faab(points, position, kinds=kinds)
         if typical is not None:
             asked, basis, code = typical, "median", None
         else:
@@ -656,6 +673,17 @@ class _Run:
     return_week: int | None
     return_condition: str | None
 
+    @property
+    def kinds(self) -> tuple[str, ...]:
+        """The trade kinds this run's prices may be read out of.
+
+        A rental is a loan and the league has paid loan prices for those.
+        Quoting a permanent acquisition to a manager borrowing a back for three
+        weeks would tell him a rental costs what keeping the player costs,
+        which is the one number he did not ask for.
+        """
+        return ("rental",) if self.structure == "rental" else COMPARABLE_KINDS
+
 
 def generate_candidates(
     snapshot: LeagueSnapshot,
@@ -819,7 +847,9 @@ def _acquire(
     """
     if not _wants(asker, position, known=run.known):
         return []
-    price = _price(run.points, position, asker_team.faab_remaining, run.anchor)
+    price = _price(
+        run.points, position, asker_team.faab_remaining, run.anchor, kinds=run.kinds
+    )
     if price is None:
         return []
     fit_base = (
@@ -856,7 +886,9 @@ def _move(
     """
     if not _wants(other, position, known=run.known):
         return []
-    price = _price(run.points, position, other_team.faab_remaining, run.anchor)
+    price = _price(
+        run.points, position, other_team.faab_remaining, run.anchor, kinds=run.kinds
+    )
     if price is None:
         return []
     fit_base = (

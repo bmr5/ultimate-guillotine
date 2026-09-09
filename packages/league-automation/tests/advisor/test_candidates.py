@@ -24,7 +24,15 @@ import pytest
 from tests.advisor.fixture import (
     ELIMINATED_MEMBER_ID,
     NEAR_CUT_MEMBER_ID,
+    PERMANENT_CODE,
+    PERMANENT_FAAB,
+    PERMANENT_ROW,
+    RENTAL_CODE,
+    RENTAL_FAAB,
+    RENTAL_ROW,
     fixture_snapshot,
+    price_history,
+    trade_row,
 )
 from ultimate_guillotine.advisor.candidates import (
     DEFAULT_PRICE_SHARE,
@@ -39,7 +47,6 @@ from ultimate_guillotine.advisor.candidates import (
     generate_candidates,
 )
 from ultimate_guillotine.advisor.detect import Ask
-from ultimate_guillotine.advisor.pricing import price_points
 from ultimate_guillotine.advisor.scoring import LEAGUE_TEAMS, score_league
 from ultimate_guillotine.advisor.state import LAST_REGULAR_WEEK
 
@@ -126,50 +133,14 @@ ACQUIRE_RB_PROJECTIONS = {
     "p05b0": Decimal("11.00"),
 }
 
-#: A single accepted trade: member 2 bought member 1's spare running back --
-#: ``p01b0``, ``Bench 01-0`` -- for 80 FAAB. One player, one payment, so the
-#: price point is the whole 80.
-COMPARABLE_CODE = "T-2026-001"
-COMPARABLE_FAAB = 80
+#: A single accepted trade: member 1 sold his spare running back -- ``p01b0``,
+#: ``Bench 01-0`` -- for 80 FAAB. One player, one payment, so the price point is
+#: the whole 80. Built in :mod:`tests.advisor.fixture`, because the prompt tests
+#: price the same two trades.
+COMPARABLE_CODE = PERMANENT_CODE
+COMPARABLE_FAAB = PERMANENT_FAAB
 #: More FAAB than any fixture team has left, so the price has to be clamped.
 UNAFFORDABLE_FAAB = 500
-
-
-def _comparable_rows(faab: int) -> list[dict]:
-    return [
-        {
-            "trade_code": COMPARABLE_CODE,
-            "season": 2026,
-            "terms": {
-                "kind": "permanent",
-                "effective_week": 4,
-                "assets": [
-                    {
-                        "kind": "player",
-                        "from_member_id": 1,
-                        "to_member_id": 2,
-                        "player_id": "p01b0",
-                        "player_name": "Bench 01-0",
-                        "amount": None,
-                        "unit": None,
-                        "description": None,
-                    },
-                    {
-                        "kind": "faab",
-                        "from_member_id": 2,
-                        "to_member_id": 1,
-                        "player_id": None,
-                        "player_name": None,
-                        "amount": faab,
-                        "unit": "faab",
-                        "description": None,
-                    },
-                ],
-                "parties": [],
-                "special_terms": [],
-            },
-        }
-    ]
 
 
 #: Asks that no honest trade answers, and why each one is empty. Every row is a
@@ -224,9 +195,20 @@ def _blank(player_id, snapshot=None):
 
 
 def _priced_points(faab=COMPARABLE_FAAB):
-    snapshot = fixture_snapshot()
-    positions = {h.sleeper_player_id: h.position for t in snapshot.teams for h in t.holdings}
-    return price_points(_comparable_rows(faab), positions)
+    """The league's history: one permanent sale of a running back, at ``faab``."""
+    row = trade_row(
+        code=COMPARABLE_CODE, faab=faab, player_id="p01b0", player_name="Bench 01-0"
+    )
+    return price_history([row])
+
+
+def _mixed_points():
+    """Both populations at once: one permanent sale and one rental of a back.
+
+    The two prices differ, so which one a candidate quotes says which population
+    it was read out of rather than merely that it found something.
+    """
+    return price_history([PERMANENT_ROW, RENTAL_ROW])
 
 
 @pytest.mark.parametrize(
@@ -495,6 +477,51 @@ def test_a_comparable_price_sets_the_faab_when_history_has_one() -> None:
     assert priced and all(c.faab_total(ASKER) == COMPARABLE_FAAB for c in priced)
     assert all(c.reasons.price_basis == "comparable" for c in priced)
     assert all(c.reasons.price_faab == COMPARABLE_FAAB for c in priced)
+
+
+def test_a_rental_ask_is_priced_off_the_rental_and_never_the_permanent_sale() -> None:
+    """A loan is quoted at what the league has paid for loans.
+
+    Both trades are on file at the same position and only the structure of the
+    ask separates them, so the FAAB and the trade code together say which
+    population the price came out of. Pricing a three-week loan off a permanent
+    acquisition would quote 80 FAAB for something the league has only ever paid
+    30 for.
+    """
+    _, candidates = _generate(RENT_RB, points=_mixed_points())
+
+    assert candidates
+    assert all(c.structure == "rental" for c in candidates)
+    assert all(c.comparable_trade_code == RENTAL_CODE for c in candidates)
+    assert all(c.faab_total(ASKER) == RENTAL_FAAB for c in candidates)
+    assert all(c.reasons.price_basis == "comparable" for c in candidates)
+
+
+def test_a_permanent_ask_is_priced_off_the_sale_with_the_rental_on_the_same_file(
+) -> None:
+    """The other half of the same rule: a rental never cheapens a real purchase."""
+    _, candidates = _generate(ACQUIRE_RB, points=_mixed_points())
+
+    assert candidates
+    assert all(c.structure == "permanent" for c in candidates)
+    assert all(c.comparable_trade_code == COMPARABLE_CODE for c in candidates)
+    assert all(c.faab_total(ASKER) == COMPARABLE_FAAB for c in candidates)
+
+
+def test_a_rental_with_no_rental_history_falls_back_to_the_default_price() -> None:
+    """An empty population is priced like an empty one: the league median.
+
+    The permanent sale on file is not a rental comparable and not a rental
+    median either, so filtering it out has to leave the default standing rather
+    than leave the candidate unpriced -- there is always a price to offer.
+    """
+    _, candidates = _generate(RENT_RB, points=_priced_points())
+
+    assert candidates
+    assert all(c.comparable_trade_code is None for c in candidates)
+    assert all(c.reasons.price_basis == "default" for c in candidates)
+    assert all(c.reasons.price_faab == DEFAULT_PRICE for c in candidates)
+    assert all(c.faab_total(ASKER) == DEFAULT_PRICE for c in candidates)
 
 
 def test_a_price_the_asker_cannot_pay_is_clamped_and_stops_quoting_history() -> None:

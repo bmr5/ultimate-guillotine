@@ -7,7 +7,16 @@ from decimal import Decimal
 
 import pytest
 
-from tests.advisor.fixture import fixture_snapshot
+from tests.advisor.fixture import (
+    PERMANENT_CODE,
+    PERMANENT_FAAB,
+    PERMANENT_ROW,
+    RENTAL_CODE,
+    RENTAL_FAAB,
+    RENTAL_ROW,
+    fixture_snapshot,
+    price_history,
+)
 from ultimate_guillotine.advisor.candidates import generate_candidates
 from ultimate_guillotine.advisor.detect import Ask
 from ultimate_guillotine.advisor.models import AdvisedTrade, OfferLeg, TradeAdviceResponse
@@ -273,6 +282,46 @@ def test_facts_name_the_whole_term_a_rental_point_change_covers() -> None:
     assert "asker point change (Weeks 6–9): " in facts
     assert "counterparty point change (Weeks 6–9): " in facts
     assert "point change (Week 6):" not in facts
+
+
+def test_the_history_block_quotes_permanent_prices_to_a_permanent_ask() -> None:
+    """One population per ask, in the facts as well as in the candidates.
+
+    The model is handed the price history to argue an offer against, so a
+    rental listed beside a permanent ask is an invitation to talk the number
+    down to what a loan costs.
+    """
+    snapshot, scores, candidates = _setup()
+    points = price_history([PERMANENT_ROW, RENTAL_ROW])
+
+    facts = build_facts(snapshot, scores, ASKER, ASK, candidates, points)
+
+    assert f"{PERMANENT_CODE} (2026)" in facts
+    assert f"went for {PERMANENT_FAAB} FAAB" in facts
+    assert RENTAL_CODE not in facts
+    assert f"{RENTAL_FAAB} FAAB" not in facts
+
+
+def test_the_history_block_quotes_rental_prices_to_a_rental_ask() -> None:
+    snapshot, scores, candidates = _setup(RENTAL_ASK, horizon_weeks=4)
+    points = price_history([PERMANENT_ROW, RENTAL_ROW])
+
+    facts = build_facts(snapshot, scores, ASKER, RENTAL_ASK, candidates, points)
+
+    assert f"{RENTAL_CODE} (2026)" in facts
+    assert f"was rented for {RENTAL_FAAB} FAAB" in facts
+    assert PERMANENT_CODE not in facts
+    assert f"{PERMANENT_FAAB} FAAB" not in facts
+
+
+def test_a_rental_ask_with_no_rental_history_says_so_rather_than_quoting_a_sale() -> None:
+    snapshot, scores, candidates = _setup(RENTAL_ASK, horizon_weeks=4)
+    points = price_history([PERMANENT_ROW])
+
+    facts = build_facts(snapshot, scores, ASKER, RENTAL_ASK, candidates, points)
+
+    assert "no comparable rental FAAB prices on file" in facts
+    assert PERMANENT_CODE not in facts
 
 
 def test_advise_makes_exactly_one_call_with_the_versioned_prompt() -> None:
