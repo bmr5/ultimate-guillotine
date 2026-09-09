@@ -3,6 +3,7 @@ import { AlertTriangle } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
+import { injuryTag } from "../derive/availability";
 import {
   groupRosterBySlot,
   SLOT_LABELS,
@@ -18,6 +19,44 @@ const PLAYER_PROJECTION_DECIMALS = 1;
 
 /** Separator between a player's position and NFL team, so `QB · KC` reads as one line. */
 const META_SEPARATOR = " · ";
+
+/**
+ * The injury tag, after the position and NFL team a reader already scans for.
+ *
+ * Ben's addendum: a starter who is out and a starter nobody has projected read identically on
+ * the board. `Out`, `IR`, `Q`, `D` and the rest sit on the row itself so the reason is on the
+ * roster, not only in the count on the collapsed card. The six unavailable statuses take the
+ * warning token, because they are the ones that cost points this week; `Q` and `D` stay muted.
+ *
+ * The short tag is what shows; the full wording rides along as the native `title` a reader
+ * hovers and as the visually hidden text a screen reader gets whether or not it is hovered.
+ */
+const InjuryTag = memo(function InjuryTag({
+  status,
+}: {
+  status: string | null;
+}) {
+  const tag = injuryTag(status);
+  if (tag === null) {
+    return null;
+  }
+  return (
+    <span
+      // The state's stable handle: restyling the tag must not mean rewriting the test.
+      data-injury={tag.status}
+      title={tag.title}
+      className={cn(
+        "ml-1.5 rounded border px-1 text-[0.6875rem] font-medium",
+        tag.isUnavailable
+          ? "border-destructive/40 text-destructive"
+          : "border-border text-muted-foreground",
+      )}
+    >
+      <span aria-hidden="true">{tag.tag}</span>
+      <span className="sr-only">{tag.title}</span>
+    </span>
+  );
+});
 
 /** Shown when a team has a card but no roster rows behind it yet. */
 export const EMPTY_ROSTER_LABEL =
@@ -56,6 +95,7 @@ const PlayerRow = memo(function PlayerRow({
         {meta === "" ? null : (
           <span className="ml-2 text-muted-foreground">{meta}</span>
         )}
+        <InjuryTag status={player.injuryStatus} />
       </span>
       <span className="shrink-0 tabular-nums text-muted-foreground">
         {player.projectedPoints === null

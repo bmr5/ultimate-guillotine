@@ -528,6 +528,60 @@ describe("TeamCard empty starter slots", () => {
 });
 
 /**
+ * Ben's addendum: an injured starter and a starter nobody has projected read identically on a
+ * roster row, so the row carries Sleeper's own flag after the position.
+ */
+describe("TeamCard injury tags", () => {
+  const injured = (status: string | null) => ({
+    roster: [
+      player({
+        sleeperPlayerId: "4046",
+        fullName: "Broken Tightend",
+        position: "TE",
+        nflTeam: "ATL",
+        injuryStatus: status,
+      }),
+    ],
+  });
+
+  it("tags an out starter after the position, in the warning token", () => {
+    renderCard(injured("Out"), { open: true });
+    const row = screen.getByText("Broken Tightend").closest("li");
+    expect(row?.textContent).toContain("TE · ATL");
+    const tag = row?.querySelector("[data-injury]");
+    expect(tag).not.toBeNull();
+    expect(tag).toHaveAttribute("data-injury", "Out");
+    expect(tag).toHaveAttribute("title", "Out");
+    expect(tag?.className).toContain("text-destructive");
+  });
+
+  it("spells IR out in the tag's title, and Q and D in short", () => {
+    renderCard(injured("IR"), { open: true });
+    expect(screen.getByText("IR").closest("[data-injury]")).toHaveAttribute(
+      "title",
+      "Injured reserve",
+    );
+    // The full wording reaches a screen reader whether or not the title is hovered.
+    expect(screen.getByText("Injured reserve").className).toContain("sr-only");
+  });
+
+  it.each([
+    ["Questionable", "Q"],
+    ["Doubtful", "D"],
+  ])("marks a %s starter with %s, but not as a warning", (status, tag) => {
+    renderCard(injured(status), { open: true });
+    const element = screen.getByText(tag).closest("[data-injury]");
+    expect(element).toHaveAttribute("title", status);
+    expect(element?.className).not.toContain("text-destructive");
+  });
+
+  it("leaves a fit player untagged", () => {
+    const { container } = renderCard(injured(null), { open: true });
+    expect(container.querySelector("[data-injury]")).toBeNull();
+  });
+});
+
+/**
  * Ben's card change 3: "the partial badge should sit under the number it is about, and say why
  * it is there." So it moved into the projection block and grew a tooltip that names the two
  * figures behind the caveat.

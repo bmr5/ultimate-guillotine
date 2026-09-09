@@ -3,7 +3,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { positionView } from "../derive/position";
 import type { BoardTeam, RosterPlayer } from "../types";
-import { LIKELY_BIDDER_LABEL, PositionView } from "./PositionView";
+import {
+  LIKELY_BIDDER_LABEL,
+  LIKELY_BIDDER_REASONS,
+  PositionView,
+} from "./PositionView";
 
 /** The league's own lineup, as `seasons.roster_positions` spells it. */
 const LEAGUE_SLOTS = ["QB", "RB", "RB", "WR", "WR", "TE", "FLEX", "K", "DEF"];
@@ -163,6 +167,48 @@ describe("PositionView", () => {
     const badges = screen.getAllByText(LIKELY_BIDDER_LABEL);
     expect(badges).toHaveLength(1);
     expect(badges[0].closest("li")).toHaveTextContent("benray");
+  });
+
+  /**
+   * Ben's addendum: "my TE just got injured and I need to figure out who would bid on his
+   * replacement." A team starting a tight end who is not playing is in that market too.
+   */
+  it("badges a team whose starter at the position is out, and says why", () => {
+    renderView({
+      teams: [
+        TEAMS[0],
+        team({
+          teamId: 3,
+          ownerName: "hurt",
+          roster: [
+            player({
+              sleeperPlayerId: "broken",
+              fullName: "Broken Tightend",
+              slot: "starter",
+              slotIndex: 5,
+              lineupPosition: "TE",
+              projectedPoints: null,
+              injuryStatus: "Out",
+            }),
+          ],
+        }),
+      ],
+    });
+    const badge = screen
+      .getAllByText(LIKELY_BIDDER_LABEL)
+      .find((element) => element.closest("li")?.textContent?.includes("hurt"));
+    expect(badge).toBeDefined();
+    expect(badge).toHaveAttribute("data-bidder-reason", "starter out");
+    expect(badge).toHaveAttribute(
+      "title",
+      LIKELY_BIDDER_REASONS["starter out"],
+    );
+    // The row itself carries the tag, so the reason is visible without the tooltip.
+    const tag = screen
+      .getByText("Broken Tightend")
+      .closest("[data-player]")
+      ?.querySelector("[data-injury]");
+    expect(tag).toHaveAttribute("data-injury", "Out");
   });
 
   it("keeps every tap on the 44px floor", () => {

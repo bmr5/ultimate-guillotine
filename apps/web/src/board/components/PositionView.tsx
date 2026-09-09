@@ -6,13 +6,26 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 
-import type { PositionRow } from "../derive/position";
+import { injuryTag } from "../derive/availability";
+import type { LikelyBidderReason, PositionRow } from "../derive/position";
 import { layoutStarters } from "../derive/roster";
 import type { PositionFilter } from "../types";
 import { RosterPanel } from "./RosterPanel";
 
 /** The badge a team likely to bid on this position carries; also what the tests assert on. */
 export const LIKELY_BIDDER_LABEL = "likely bidder";
+
+/**
+ * Why the badge is there, in words, as the badge's `title`.
+ *
+ * The reason is the half of the answer a reader acts on: a team whose starter is out will bid
+ * this week whatever his season looks like, and a team that is merely thin might not.
+ */
+export const LIKELY_BIDDER_REASONS: Record<LikelyBidderReason, string> = {
+  "starter out": "Their starter at this position is out",
+  "empty slot": "They have an empty slot this position could fill",
+  "below median": "Their best starter here projects below the visible median",
+};
 
 /** Decimals a player projection is shown with, matching every other number on the board. */
 const PLAYER_PROJECTION_DECIMALS = 1;
@@ -141,6 +154,26 @@ const PositionTeamRow = memo(function PositionTeamRow({
                       <span className="tabular-nums text-muted-foreground">
                         {projectionText(player.projectedPoints)}
                       </span>
+                      {/* The same tag the roster panel shows, so the quick view answers
+                          "who is hurt at this position" without expanding a row. */}
+                      {(() => {
+                        const tag = injuryTag(player.injuryStatus);
+                        return tag === null ? null : (
+                          <span
+                            data-injury={tag.status}
+                            title={tag.title}
+                            className={cn(
+                              "ml-1 rounded border px-1 text-[0.6875rem] font-medium",
+                              tag.isUnavailable
+                                ? "border-destructive/40 text-destructive"
+                                : "border-border text-muted-foreground",
+                            )}
+                          >
+                            <span aria-hidden="true">{tag.tag}</span>
+                            <span className="sr-only">{tag.title}</span>
+                          </span>
+                        );
+                      })()}
                       {player.isStarter ? (
                         <>
                           <span aria-hidden="true">{` ${STARTER_MARK}`}</span>
@@ -179,7 +212,17 @@ const PositionTeamRow = memo(function PositionTeamRow({
 
           {row.likelyBidder ? (
             <div className="flex flex-wrap gap-2 px-4 pb-3">
-              <Badge variant="outline">{LIKELY_BIDDER_LABEL}</Badge>
+              <Badge
+                variant="outline"
+                data-bidder-reason={row.likelyBidderReason ?? undefined}
+                title={
+                  row.likelyBidderReason === null
+                    ? undefined
+                    : LIKELY_BIDDER_REASONS[row.likelyBidderReason]
+                }
+              >
+                {LIKELY_BIDDER_LABEL}
+              </Badge>
             </div>
           ) : null}
 
