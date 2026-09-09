@@ -8,6 +8,15 @@ The writes here take a connection and never open a transaction of their own:
 Task 10 runs this and the team-week recompute inside one ``conn.transaction()``,
 so a week's player rows and the team totals derived from them land together or
 not at all.
+
+**A player who leaves the feed keeps his row and loses his points.** A sync never
+deletes: any stored row of the same ``(season, week)`` that this run's payload did
+not carry has ``league_points`` set to null in the same transaction as the upsert.
+Deleting would make a vanished player indistinguishable from one who was never
+there, and leaving the old number standing would let a stale projection be read as
+this run's. Null is the honest third answer: the row and its stat line stay, and
+downstream counts the player as missing rather than as zero. ``synced_at`` is left
+at the run that last carried him, so how stale the row is stays legible.
 """
 
 from dataclasses import dataclass
@@ -169,8 +178,15 @@ class ProjectionRepository:
         version: str,
         now: datetime,
     ) -> ProjectionReport:
-        """Write one week of scored rows. ``league_points`` is null, never zero, when
-        the league's settings cannot score a stat line."""
+        """Write one week of scored rows, and null the points of the ones that left.
+
+        ``league_points`` is null, never zero, when the league's settings cannot
+        score a stat line. Stored rows of this ``(season, week)`` that this run's
+        payload did not carry are not deleted: their ``league_points`` is set to
+        null in the same transaction, so downstream reads them as missing rather
+        than as a stale number. Their ``synced_at`` is left at the run that last
+        carried them.
+        """
         points = [score_stat_line(r.stat_line, scoring_settings) for r in rows]
         with self._conn.cursor() as cur:
             cur.executemany(
@@ -205,6 +221,16 @@ class ProjectionRepository:
                     for row, value in zip(rows, points, strict=True)
                 ],
             )
+            cur.execute(
+                """
+                update public.player_projections
+                set league_points = null
+                where season = %s and week = %s
+                  and not (sleeper_player_id = any(%s))
+                  and league_points is not null
+                """,
+                (season, week, [row.sleeper_player_id for row in rows]),
+            )
         return _report(points, [r.stat_line for r in rows], version)
 
     def rescore(
@@ -215,7 +241,18 @@ class ProjectionRepository:
         version: str,
         now: datetime,
     ) -> ProjectionReport:
-        """Recompute points from stored stat lines. No network call."""
+        """Rescore every stored row of the week from its stat line. No network call.
+
+        Only ``league_points`` and ``scoring_version`` change. ``synced_at`` is left
+        alone: a rescore is not a sync, nothing was refetched, and moving the stamp
+        would make a week of untouched numbers look freshly pulled from Sleeper.
+
+        Refuses a week with no stored rows — there is nothing to rescore, and
+        silently reporting zero rows would read as a successful replay.
+
+        ``now`` is accepted so the signature matches ``upsert_many`` and the caller
+        need not know which path it is on; it is deliberately unused.
+        """
         with self._conn.cursor() as cur:
             cur.execute(
                 "select sleeper_player_id, stat_line from public.player_projections "
@@ -223,15 +260,17 @@ class ProjectionRepository:
                 (season, week),
             )
             stored = cur.fetchall()
+            if not stored:
+                raise RuntimeError(f"no stored projections for {season} week {week}")
             points = [score_stat_line(line, scoring_settings) for _pid, line in stored]
             cur.executemany(
                 """
                 update public.player_projections
-                set league_points = %s, scoring_version = %s, synced_at = %s
+                set league_points = %s, scoring_version = %s
                 where season = %s and week = %s and sleeper_player_id = %s
                 """,
                 [
-                    (value, version, now, season, week, pid)
+                    (value, version, season, week, pid)
                     for (pid, _line), value in zip(stored, points, strict=True)
                 ],
             )
@@ -269,6 +308,11 @@ def sync_projections(
 
     ``rescore`` skips the fetch entirely: the stat lines are already stored, and
     a scoring change is not a reason to ask Sleeper for the same numbers again.
+    It rewrites only ``league_points`` and ``scoring_version``, leaving ``synced_at``
+    at the sync that actually fetched the row, and refuses a week with no rows.
+
+    On the fetch path, a stored row of this week that the payload did not carry
+    keeps its stat line but has ``league_points`` nulled — see the module docstring.
     """
     version = scoring_version(scoring_settings)
     repo = ProjectionRepository(conn)
@@ -297,6 +341,14 @@ def sync_current_week_projections(
     The season and week are read from state rather than passed in, so a scheduled
     run cannot drift onto a week the league is not actually playing. The state read
     happens before the fetch, so a preseason run costs nothing and writes nothing.
+
+    **This call is not atomic on its own.** Unlike ``sync_projections``, it reaches
+    ``current_week``, which may refresh ``public.nfl_state`` in a ``conn.transaction()``
+    of its own; called outside a caller transaction that refresh commits before the
+    projection write runs, so a later failure leaves the new state row behind. A
+    caller that needs the state refresh and the projection write to land together
+    must wrap this call in its own ``conn.transaction()``, inside which the refresh
+    nests as a savepoint.
     """
     season, week = projection_week(current_week(client, conn, now))
     return sync_projections(client, conn, season, week, scoring_settings, now, rescore=rescore)

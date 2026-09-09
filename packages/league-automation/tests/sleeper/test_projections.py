@@ -1,5 +1,5 @@
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -17,6 +17,7 @@ from ultimate_guillotine.sleeper.state import parse_nfl_state
 
 FIXTURE = Path(__file__).parent.parent / "fixtures" / "sleeper" / "projections_2026_w1.json"
 NOW = datetime(2026, 9, 9, 12, 0, tzinfo=UTC)
+LATER = NOW + timedelta(hours=6)
 SETTINGS = json.loads(
     (Path(__file__).parent.parent / "fixtures" / "sleeper" / "league_2026.json").read_text()
 )["scoring_settings"]
@@ -51,6 +52,17 @@ class FakeProjClient:
 
     def get_nfl_state(self) -> dict:
         return self.state
+
+
+class OutageClient:
+    """Sleeper is down: the fetch raises instead of answering."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def get_projections(self, season: int, week: int) -> list[dict]:
+        self.calls += 1
+        raise ConnectionError("sleeper is unreachable")
 
 
 class Boom(Exception):
@@ -174,6 +186,78 @@ def test_rescore_recomputes_from_stored_stat_lines_without_refetching(conn) -> N
         points, version = cur.fetchone()
     assert points == Decimal("26.38")  # 19.55 + 6.83 extra reception points
     assert version == scoring_version(doubled)
+
+
+def test_rescore_leaves_synced_at_alone(conn) -> None:
+    """A rescore refetches nothing, so it must not claim the row was synced again."""
+    client = FakeProjClient(bulk(payload(), 250))
+    sync_projections(client, conn, 2026, 1, SETTINGS, NOW)
+    with conn.cursor() as cur:
+        cur.execute(
+            "select sleeper_player_id, synced_at from public.player_projections "
+            "where season = 2026 and week = 1 order by sleeper_player_id"
+        )
+        before = cur.fetchall()
+    sync_projections(client, conn, 2026, 1, {**SETTINGS, "rec": 2.0}, LATER, rescore=True)
+    with conn.cursor() as cur:
+        cur.execute(
+            "select sleeper_player_id, synced_at from public.player_projections "
+            "where season = 2026 and week = 1 order by sleeper_player_id"
+        )
+        assert cur.fetchall() == before
+    assert {stamp for _pid, stamp in before} == {NOW}
+
+
+def test_rescore_refuses_a_week_with_nothing_stored(conn) -> None:
+    with pytest.raises(RuntimeError, match="no stored projections for 2026 week 4"):
+        sync_projections(FakeProjClient([]), conn, 2026, 4, SETTINGS, NOW, rescore=True)
+
+
+def test_a_player_who_leaves_the_feed_keeps_his_row_and_loses_his_points(conn) -> None:
+    """Missing is not zero and not gone: null the points, keep the row and its stamp."""
+    sync_projections(FakeProjClient(bulk(payload(), 250)), conn, 2026, 1, SETTINGS, NOW)
+    without_9488 = [r for r in payload() if r["player_id"] != "9488"]
+    sync_projections(FakeProjClient(bulk(without_9488, 250)), conn, 2026, 1, SETTINGS, LATER)
+    with conn.cursor() as cur:
+        cur.execute(
+            "select league_points, synced_at, stat_line->>'rec' "
+            "from public.player_projections "
+            "where season = 2026 and week = 1 and sleeper_player_id = '9488'"
+        )
+        points, synced_at, rec = cur.fetchone()
+        cur.execute(
+            "select league_points, synced_at from public.player_projections "
+            "where season = 2026 and week = 1 and sleeper_player_id = '12517'"
+        )
+        kept_points, kept_synced_at = cur.fetchone()
+        cur.execute("select count(*) from public.player_projections where week = 1")
+        total = cur.fetchone()[0]
+    # The row survives, with its stat line and the stamp of the run that last carried it.
+    assert points is None and synced_at == NOW and float(rec) == 6.83
+    # A player still in the feed is rescored and restamped as usual, and nothing is deleted.
+    assert kept_points is not None and kept_synced_at == LATER
+    assert total == 257
+
+
+def test_a_fetch_outage_leaves_the_prior_runs_rows_untouched(conn) -> None:
+    sync_projections(FakeProjClient(bulk(payload(), 250)), conn, 2026, 1, SETTINGS, NOW)
+    with conn.cursor() as cur:
+        cur.execute(
+            "select sleeper_player_id, league_points, scoring_version, synced_at "
+            "from public.player_projections where week = 1 order by sleeper_player_id"
+        )
+        before = cur.fetchall()
+    client = OutageClient()
+    with pytest.raises(ConnectionError):
+        sync_projections(client, conn, 2026, 1, SETTINGS, LATER)
+    assert client.calls == 1
+    with conn.cursor() as cur:
+        cur.execute(
+            "select sleeper_player_id, league_points, scoring_version, synced_at "
+            "from public.player_projections where week = 1 order by sleeper_player_id"
+        )
+        assert cur.fetchall() == before
+    assert {stamp for *_rest, stamp in before} == {NOW}
 
 
 def test_flag_coverage_marks_the_runs_rows(conn) -> None:
