@@ -45,7 +45,10 @@ from ultimate_guillotine.trades.resolve import (
 )
 
 AGENT = "trade-registrar"
-TRADE_CODE = re.compile(r"T-\d{4}-\d{3}")
+#: A trade code as it is written in the chat. Gate traffic carries `TEST-`
+#: codes so a rehearsal never consumes a real trade number, and a rescission
+#: of one has to be recognised the same way.
+TRADE_CODE = re.compile(r"(?:TEST|T)-\d{4}-\d{3}")
 EXCERPT_LIMIT = 2000
 NO_CODE_REASON = "Which trade is rescinded? Include its T- code"
 
@@ -287,8 +290,13 @@ def _member_line(member) -> str:
     return f"{member.display_name}: {', '.join(member.aliases) or 'no known nicknames'}"
 
 
-def trade_trigger(registrar: TradeRegistrar) -> Trigger:
-    """Register the registrar on every unsigned 🚨 alert.
+def trade_trigger(registrar: TradeRegistrar, chat_guid: str) -> Trigger:
+    """Register the registrar on every unsigned 🚨 alert in one chat.
+
+    ``chat_guid`` is the chat the registrar answers in -- the test chat in test
+    mode, the production target in production. The listener accepts webhooks
+    from both, so without this an alert in the test chat would be logged and
+    announced into the league (or the other way round).
 
     Ben's own alerts count: he announces trades in the chat like everyone else,
     so ``is_from_me`` is not a reason to skip. The bot's own posts are excluded
@@ -297,7 +305,11 @@ def trade_trigger(registrar: TradeRegistrar) -> Trigger:
     """
 
     def matches(msg: InboundMessage) -> bool:
-        return is_trade_candidate(msg.text) and not is_signed(msg.text)
+        return (
+            msg.chat_guid == chat_guid
+            and is_trade_candidate(msg.text)
+            and not is_signed(msg.text)
+        )
 
     def handle(msg: InboundMessage) -> None:
         registrar.handle(msg)

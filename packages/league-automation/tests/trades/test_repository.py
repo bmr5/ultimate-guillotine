@@ -239,3 +239,13 @@ def test_find_by_context_ignores_trades_older_than_the_window(conn) -> None:
         )
     assert repo.find_by_context(context) is None
     assert repo.find_by_context(context, within_hours=200) == created.trade_id
+
+
+def test_code_prefixes_are_counted_independently(conn) -> None:
+    """Gate traffic writes `TEST-` codes so it never consumes a real trade number."""
+    live = TradeRepository(conn)
+    gate = TradeRepository(conn, code_prefix="TEST")
+    assert live.accept(make(conn)).trade_code == "T-2026-001"
+    assert gate.accept(payment(conn, 20, "g2")).trade_code == "TEST-2026-001"
+    assert live.accept(payment(conn, 35, "g3")).trade_code == "T-2026-002"
+    assert gate.accept(payment(conn, 50, "g4")).trade_code == "TEST-2026-002"

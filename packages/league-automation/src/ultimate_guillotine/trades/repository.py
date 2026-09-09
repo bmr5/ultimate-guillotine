@@ -22,6 +22,7 @@ from typing import Any, Literal
 import psycopg
 from psycopg.types.json import Jsonb
 
+from ultimate_guillotine.config import DeliveryMode
 from ultimate_guillotine.trades.fingerprint import trade_context_key, trade_fingerprint
 from ultimate_guillotine.trades.models import TradeProposal
 
@@ -65,9 +66,21 @@ def _trade_row(row: tuple) -> dict:
     }
 
 
+def code_prefix_for(mode: DeliveryMode) -> str:
+    """The trade-code prefix a given delivery mode writes under.
+
+    Rehearsing the gate in test mode must not burn real trade numbers, so test
+    mode writes ``TEST-2026-001`` and everything else writes ``T-2026-001``.
+    The two sequences are counted separately, so the first real trade of the
+    season is ``T-2026-001`` however many gate runs came before it.
+    """
+    return "TEST" if mode is DeliveryMode.TEST else "T"
+
+
 class TradeRepository:
-    def __init__(self, conn: psycopg.Connection) -> None:
+    def __init__(self, conn: psycopg.Connection, code_prefix: str = "T") -> None:
         self._conn = conn
+        self._code_prefix = code_prefix
 
     def accept(self, proposal: TradeProposal) -> TradeAcceptance:
         """Record ``proposal``, reporting whether it created, duplicated, or
@@ -238,9 +251,17 @@ class TradeRepository:
                 revision = self._insert_revision(cur, trade_id, terms, fingerprint, proposal)
                 return TradeAcceptance("revised", trade_id, trade_code, revision, previous_terms)
 
-            cur.execute("select count(*) from public.trades where season_id = %s", (season_id,))
+            # Only this prefix's trades are counted, so gate traffic and real
+            # trades each number from 001 without ever colliding.
+            cur.execute(
+                """
+                select count(*) from public.trades
+                where season_id = %s and trade_code like %s
+                """,
+                (season_id, f"{self._code_prefix}-%"),
+            )
             sequence = cur.fetchone()[0] + 1
-            trade_code = f"T-{proposal.season}-{sequence:03d}"
+            trade_code = f"{self._code_prefix}-{proposal.season}-{sequence:03d}"
             cur.execute(
                 """
                 insert into public.trades (season_id, trade_code, context_key)

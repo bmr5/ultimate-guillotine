@@ -20,8 +20,8 @@ from ultimate_guillotine.trades.resolve import MemberRef
 CHAT = "iMessage;+;chat-test"
 
 
-def msg(text: str, guid: str = "g1", from_me: bool = False) -> InboundMessage:
-    return InboundMessage(guid=guid, chat_guid=CHAT, sender_address="+15555550100", text=text,
+def msg(text: str, guid: str = "g1", from_me: bool = False, chat: str = CHAT) -> InboundMessage:
+    return InboundMessage(guid=guid, chat_guid=chat, sender_address="+15555550100", text=text,
                           is_from_me=from_me, is_group=True, sent_at=datetime.now(UTC))
 
 
@@ -246,7 +246,7 @@ def test_rescission_by_code_rescinds_without_calling_the_model() -> None:
 
 def test_trigger_matches_alerts_and_ignores_signed_bot_text() -> None:
     reg, _, _ = build(FakeAI(good_extraction()))
-    trigger = trade_trigger(reg)
+    trigger = trade_trigger(reg, CHAT)
     assert trigger.name == "trade-registrar"
     assert trigger.matches(msg("🚨 Member01 sends Player Alpha to Member02"))
     assert not trigger.matches(msg("🚨 Trade T-2026-001 logged\nMember02 receives: Player Alpha\n— 🤖 Guillotine Bot", from_me=True))
@@ -297,3 +297,23 @@ def test_a_sleeper_outage_degrades_to_an_empty_roster_index() -> None:
     assert reg.handle(msg("🚨 Member01 sends Player Alpha to Member02 for 450 FAAB")) == "created"
     assert notifier.ops_sent == ["Trade Registrar could not load rosters: TimeoutError"]
     assert runs.finished[0][1] == "succeeded"
+
+
+def test_trigger_ignores_alerts_from_another_chat() -> None:
+    """The registrar answers in one chat only: an alert in any other conversation
+    the listener can see must never reach it."""
+    reg, _, _ = build(FakeAI(error=AssertionError("model must not be called")))
+    trigger = trade_trigger(reg, CHAT)
+    assert not trigger.matches(
+        msg("🚨 Member01 sends Player Alpha to Member02", chat="iMessage;+;chat-elsewhere")
+    )
+
+
+def test_rescission_by_a_test_mode_code_is_recognised() -> None:
+    """Gate trades carry `TEST-` codes; rescinding one must work like any other."""
+    delivery, trades = FakeDelivery(), FakeTrades()
+    reg, _, _ = build(FakeAI(error=AssertionError("model must not be called")),
+                      trades=trades, delivery=delivery)
+    assert reg.handle(msg("🚨 Trade TEST-2026-001 is rescinded")) == "rescinded"
+    assert trades.rescinded == ["TEST-2026-001"]
+    assert delivery.sent[0][1] == "🚨 Trade TEST-2026-001 rescinded"

@@ -11,6 +11,7 @@ connection could otherwise discard another thread's uncommitted work between its
 """
 
 import os
+from datetime import UTC, datetime
 from typing import Self
 
 import psycopg
@@ -18,6 +19,7 @@ import pytest
 
 from ultimate_guillotine.config import Settings
 from ultimate_guillotine.listener import run as run_module
+from ultimate_guillotine.messages.bluebubbles import InboundMessage
 
 
 class StopLoop(Exception):
@@ -316,3 +318,40 @@ def test_build_processor_treats_a_blank_key_as_no_key() -> None:
 
     assert "trade-registrar" not in _registry_names(processor)
     assert notifier.ops_sent == ["Trade Registrar disabled: OPENROUTER_API_KEY not set"]
+
+
+def _alert(chat_guid: str) -> InboundMessage:
+    return InboundMessage(
+        guid="g1", chat_guid=chat_guid, sender_address="+15555550100",
+        text="🚨 Member01 sends Player Alpha to Member02", is_from_me=False, is_group=True,
+        sent_at=datetime.now(UTC),
+    )
+
+
+def _trade_trigger(processor):
+    return next(t for t in processor._registry._triggers if t.name == "trade-registrar")
+
+
+def test_the_registrar_trigger_is_gated_on_the_delivery_chat() -> None:
+    """A listener that can see more than one chat must answer trades in one."""
+    processor, _allowed = run_module.build_processor(
+        _settings(openrouter_api_key="sk-test"), EmptyConnection(), None, None,
+        RecordingNotifier(),
+    )
+
+    trigger = _trade_trigger(processor)
+
+    assert trigger.matches(_alert("iMessage;+;chat-test"))
+    assert not trigger.matches(_alert("iMessage;+;chat-elsewhere"))
+
+
+def test_build_processor_skips_the_registrar_when_no_chat_is_configured() -> None:
+    notifier = RecordingNotifier()
+
+    processor, _allowed = run_module.build_processor(
+        _settings(delivery_mode="disabled", test_chat_guid=None, openrouter_api_key="sk-test"),
+        EmptyConnection(), None, None, notifier,
+    )
+
+    assert "trade-registrar" not in _registry_names(processor)
+    assert notifier.ops_sent == ["Trade Registrar disabled: no target chat for disabled"]

@@ -286,20 +286,27 @@ Mac mini, and rename the status heading once every box is checked.
 
 ### Gate pending
 
-With `DELIVERY_MODE=test` and the listener restarted:
+With `DELIVERY_MODE=test` and the listener restarted. Test mode writes
+trade codes prefixed `TEST-`, counted in their own sequence, so
+rehearsing the gate never consumes a real trade number: the league's
+first real trade is still `T-2026-001`. The gate rows stay in
+`public.trades` and `public.trade_revisions` until Ben deletes them from
+the Supabase dashboard afterwards — the automation worker holds no
+DELETE grant on those tables by design, so nothing in this repository
+can clear them.
 
 - [ ] Send `🚨 Trade Alert 🚨` on one line and `<Ben> sends Player Alpha
   to <second handle name> for 100 FAAB` on the next, from the second
   handle, using two real member display names from `public.members` and
-  a real active player name. Expect a signed `🚨 Trade T-2026-001
+  a real active player name. Expect a signed `🚨 Trade TEST-2026-001
   logged` reply and a mirror in `#guillotine-feed`.
 - [ ] Send the same text again. Expect no reply; `ug ops audit-runs`
   prints nothing; `select status from private.agent_runs where agent =
   'trade-registrar' order by id desc limit 1` is `duplicate`.
 - [ ] Send the same trade with a different FAAB amount. Expect
-  `🚨 Trade T-2026-001 updated`.
-- [ ] Send `🚨 Trade T-2026-001 is rescinded`. Expect
-  `🚨 Trade T-2026-001 rescinded`.
+  `🚨 Trade TEST-2026-001 updated`.
+- [ ] Send `🚨 Trade TEST-2026-001 is rescinded`. Expect
+  `🚨 Trade TEST-2026-001 rescinded`.
 - [ ] Send `🚨 Player Alpha rented for 10`. Expect a clarification reply
   and no new trade.
 - [ ] Restart the listener between the send and the run completion once

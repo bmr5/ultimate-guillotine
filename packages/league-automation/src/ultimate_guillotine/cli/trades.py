@@ -31,7 +31,7 @@ from ultimate_guillotine.trades.detect import ALERT, is_trade_candidate
 from ultimate_guillotine.trades.extract import PROMPT_VERSION, extract_trade
 from ultimate_guillotine.trades.models import TradeProposal
 from ultimate_guillotine.trades.registrar import TradeRegistrar
-from ultimate_guillotine.trades.repository import TradeRepository
+from ultimate_guillotine.trades.repository import TradeRepository, code_prefix_for
 from ultimate_guillotine.trades.resolve import (
     RosterIndex,
     Unresolved,
@@ -212,7 +212,7 @@ def cmd_retry(args: argparse.Namespace) -> int:
         deps.notifier,
         MemberAliasRepository(conn),
         PlayerRepository(conn),
-        TradeRepository(conn),
+        TradeRepository(conn, code_prefix_for(deps.settings.delivery_mode)),
         RunRepository(conn),
         sleeper_client=SleeperClient(httpx.Client()),
     )
@@ -352,7 +352,7 @@ def cmd_replay(args: argparse.Namespace) -> int:
         deps.notifier,
         MemberAliasRepository(conn),
         PlayerRepository(conn),
-        TradeRepository(conn),
+        TradeRepository(conn, code_prefix_for(deps.settings.delivery_mode)),
         RunRepository(conn),
         clock=lambda: REPLAY_CLOCK,
     )
