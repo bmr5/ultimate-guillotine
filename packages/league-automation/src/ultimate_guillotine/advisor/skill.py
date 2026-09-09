@@ -13,6 +13,13 @@ stale, and a question asked after the trade deadline are each answered from one
 fixed line without paying for a model call at all. Only a question that clears
 all four is priced.
 
+**The gates are one method, and everything that answers a question goes through
+it.** :meth:`TradeAdvisor.answer_message` is the whole guarded pipeline; the
+listener wraps it in a reserved run and a delivery, and ``ug advisor ask`` wraps
+it in nothing at all. Neither one re-implements a gate, so a dry run cannot be
+handed a question the chat would have been refused -- which is what a second
+entry point drifting from the first would eventually allow.
+
 **One model call per question, and none at all where there is nothing to ask
 about.** A question the candidate generator answers with an empty board is
 answered from one fixed line: a model handed no candidates can only invent one.
@@ -68,6 +75,7 @@ from ultimate_guillotine.core.signature import is_signed
 from ultimate_guillotine.data.repositories import handle_hash
 from ultimate_guillotine.listener.processing import Trigger
 from ultimate_guillotine.messages.bluebubbles import InboundMessage
+from ultimate_guillotine.trades.models import MemberRef
 
 AGENT = "trade-advisor"
 
@@ -194,12 +202,55 @@ class TradeAdvisor:
             self._price_points(snapshot),
         )
 
-    def answer(self, snapshot: LeagueSnapshot, asker_member_id: int, text: str) -> Answer:
-        """The whole pipeline minus the side effects: one :class:`Answer`.
+    def answer_message(
+        self, text: str, member: MemberRef | None, now: datetime | None = None
+    ) -> Answer:
+        """One question, every gate, no side effects: the guarded entry point.
 
-        No run, no delivery, no commit -- which is exactly what ``ug advisor
-        ask`` needs, since a dry run must be able to print the proposals with no
-        chance of sending them. The outcome is one of ``ok``,
+        The listener calls this with the member a hashed handle resolved to and
+        ``ug advisor ask`` calls it with the member named on the command line;
+        neither adds a check of its own, so the dry run refuses exactly what the
+        chat refuses. The gates run cheapest first -- a hostile message is
+        answered from its own text, before a sender is placed, before the league
+        is read and long before a model is asked anything.
+
+        The snapshot is loaded here rather than passed in, so a refused or
+        unplaceable question never touches the league data at all;
+        :class:`~ultimate_guillotine.advisor.state.SnapshotUnavailable` is left
+        to the caller, because "the data layer is down" is an operational answer
+        and the two callers give it differently. ``now`` defaults to this
+        advisor's clock.
+        """
+        if is_injection_attempt(text):
+            # Answered from the text alone: an attempt to overrule the Advisor
+            # or to have it commit a trade never reaches the model, and never
+            # reaches the league data either.
+            return Answer("refused", format_refusal(), None)
+        if member is None:
+            return Answer("unknown_asker", format_unknown_asker(), None)
+
+        snapshot = self._snapshots.load(horizon_weeks=horizon_weeks(text))
+        moment = self._clock() if now is None else now
+        if snapshot.is_stale(moment):
+            minutes = int(snapshot.age(moment).total_seconds() // 60)
+            return Answer("stale", format_stale(minutes), None)
+        if snapshot.team_for_member(member.member_id) is None:
+            # The member is known but has no team this season, so there is no
+            # roster to plan for and nothing to guess from.
+            return Answer("unknown_asker", format_unknown_asker(), None)
+        if deadline_passed(snapshot):
+            # Checked here rather than left to `verify`, so a question asked
+            # after the deadline costs nothing.
+            return Answer("rejected", format_deadline_passed(), None)
+        return self.answer(snapshot, member.member_id, text)
+
+    def answer(self, snapshot: LeagueSnapshot, asker_member_id: int, text: str) -> Answer:
+        """The priced half of the pipeline, for a question that cleared the gates.
+
+        No run, no delivery, no commit. Callers that start from a message want
+        :meth:`answer_message`, which runs the gates and then this; this one is
+        public for the tests that drive the pricing directly. The outcome is one
+        of ``ok``,
         ``no_good_trades``, ``insufficient_data`` or ``rejected``;
         :class:`~ultimate_guillotine.ai.structured.AIUnavailable` and
         :class:`~ultimate_guillotine.ai.structured.AIInvalidOutput` are left to
@@ -248,41 +299,24 @@ class TradeAdvisor:
     # -- internals ------------------------------------------------------
 
     def _process(self, run_id: int, msg: InboundMessage) -> str:
-        if is_injection_attempt(msg.text):
-            # Answered from the text alone: an attempt to overrule the Advisor
-            # or to have it commit a trade never reaches the model, and never
-            # reaches the league data either.
-            return self._respond(run_id, "refused", format_refusal())
+        """The message half: place the sender, answer through the gates, reply.
 
-        if not msg.sender_address:
-            # A webhook with no sender is nobody: hashing the empty string would
-            # look up a digest no handle can ever have produced.
-            return self._respond(run_id, "unknown_asker", format_unknown_asker())
-
-        member = self._contacts.member_for_handle_hash(handle_hash(msg.sender_address))
-        if member is None:
-            return self._respond(run_id, "unknown_asker", format_unknown_asker())
-
+        A webhook with no sender is nobody, and hashing the empty string would
+        look up a digest no handle can ever have produced -- so an empty sender
+        is passed on as the unplaceable member it is, without a lookup.
+        """
+        member = (
+            self._contacts.member_for_handle_hash(handle_hash(msg.sender_address))
+            if msg.sender_address
+            else None
+        )
         try:
-            snapshot = self._snapshots.load(horizon_weeks=horizon_weeks(msg.text))
+            answer = self.answer_message(msg.text, member)
         except SnapshotUnavailable as exc:
+            # The only outcome the chat and the terminal word differently: ops
+            # hears the reason, the league hears the fallback line.
             self._notifier.ops(f"Trade Advisor has no snapshot: {exc.reason}")
             return self._respond(run_id, "insufficient_data", format_rejected())
-
-        now = self._clock()
-        if snapshot.is_stale(now):
-            minutes = int(snapshot.age(now).total_seconds() // 60)
-            return self._respond(run_id, "stale", format_stale(minutes))
-        if snapshot.team_for_member(member.member_id) is None:
-            # The handle is known but this member has no team this season, so
-            # there is no roster to plan for and nothing to guess from.
-            return self._respond(run_id, "unknown_asker", format_unknown_asker())
-        if deadline_passed(snapshot):
-            # Checked here rather than left to `verify`, so a question asked
-            # after the deadline costs nothing.
-            return self._respond(run_id, "rejected", format_deadline_passed())
-
-        answer = self.answer(snapshot, member.member_id, msg.text)
         return self._respond(
             run_id, answer.outcome, answer.text, _input_version(answer.model)
         )

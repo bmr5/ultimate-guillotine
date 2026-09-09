@@ -3,10 +3,17 @@
 The point of this command is that it is *impossible* for it to post. It builds a
 :class:`~ultimate_guillotine.advisor.skill.TradeAdvisor` with no delivery
 service, no run repository and no database connection, and calls
-:meth:`~ultimate_guillotine.advisor.skill.TradeAdvisor.answer`, which reserves
-nothing, commits nothing and delivers nothing. A prompt change or a scoring
-change can be checked against the real league without the chat ever seeing it,
-by construction rather than by discipline.
+:meth:`~ultimate_guillotine.advisor.skill.TradeAdvisor.answer_message`, which
+reserves nothing, commits nothing and delivers nothing. A prompt change or a
+scoring change can be checked against the real league without the chat ever
+seeing it, by construction rather than by discipline.
+
+``answer_message`` is also the listener's own entry point, and this command adds
+no check of its own and skips none: a hostile question, a stale snapshot, a
+member with no team this season and a question asked after the deadline are
+refused here exactly as they are refused in the chat, in the same words. A dry
+run that answered something the chat would have refused would be a dry run of a
+different skill.
 
 Three flags shape what it costs. ``--json`` prints the candidate set instead of
 the advice, which is the whole of what the model would have been handed and
@@ -19,7 +26,9 @@ to be tried against first. Together they are free and offline.
 The asker is named on the command line rather than matched from a message, so no
 contact repository is built and no handle is hashed. ``--as`` matches a display
 name or any of the member's aliases; an alias is matched but never printed back,
-the same rule ``ug members`` follows.
+the same rule ``ug members`` follows. Every match is collected rather than the
+first one taken: two members answering to one nickname is a roster problem, and
+answering as whichever of them the query happened to sort first would hide it.
 
 Ops notes go to stderr, not to Discord. A rejected answer is a thing the
 operator running the dry run needs to see and `#guillotine-ops` does not: a note
@@ -118,20 +127,26 @@ class StderrNotifier:
         return True
 
 
-def resolve_member(members, wanted: str) -> MemberRef | None:
-    """Match a display name or an alias, the way message resolution does.
+def matching_members(members, wanted: str) -> list[MemberRef]:
+    """Every member a display name or an alias matches, the way resolution does.
 
     Normalized on both sides, so ``member18``, ``Member18`` and ``Member 18``
     are one member and the operator does not have to spell a nickname the way
-    the roster stores it.
+    the roster stores it. All of them rather than the first: an alias two
+    members both answer to makes "as whom?" a question the command cannot
+    answer, and picking one would answer it silently and wrongly half the time.
+    :func:`~ultimate_guillotine.trades.resolve.resolve_member` breaks the same
+    tie from the players a trade names; a dry run has no evidence like that in
+    hand, so it says so and stops.
     """
     target = normalize_name(wanted)
+    matched = []
     for member in members:
         keys = {normalize_name(member.display_name)}
         keys |= {normalize_name(alias) for alias in member.aliases}
         if target in keys:
-            return member
-    return None
+            matched.append(member)
+    return matched
 
 
 def _leg(leg) -> dict:
@@ -168,16 +183,38 @@ def candidate_json(candidate: Candidate) -> dict:
     }
 
 
-def _client(settings: Settings):
-    """The Advisor's own client, with the Advisor's own timeout.
+class LazyClient:
+    """The Advisor's own client, built by the first question that needs one.
 
-    Built here rather than through `build_ai` so a dry run and the listener ask
-    the same model the same way; a missing CLI is a setup problem, and a plain
-    message beats a traceback out of `subprocess`.
+    Built at all rather than through `build_ai` so a dry run and the listener ask
+    the same model the same way, with the Advisor's own timeout; a missing CLI is
+    a setup problem, and a plain message beats a traceback out of `subprocess`.
+
+    Built *late* because most outcomes never call a model: a refusal, a sender
+    with no roster, a stale snapshot, a passed deadline and an empty board are
+    each one fixed line, and a dry run of one of those must not need the Hermes
+    CLI installed or a configured league to read a profile out of. It is also
+    what makes "a hostile ``--text`` never reaches a model" a thing an operator
+    can see rather than take on trust: on a machine with no Hermes at all, the
+    refusal still prints and the command still exits 0.
     """
-    if find_hermes_binary() is None:
-        raise SystemExit("hermes CLI not found")
-    return advisor_client(settings.hermes_profile_home, model=settings.hermes_model)
+
+    def __init__(self, settings: Settings | None) -> None:
+        self._settings = settings
+        self._client = None
+
+    def parse(self, system: str, user: str, schema, schema_name: str):
+        if self._client is None:
+            # The binary first: it is the failure an operator can fix without
+            # reading a stack trace, and `--fixture` has no settings to load
+            # until something actually wants a profile out of them.
+            if find_hermes_binary() is None:
+                raise SystemExit("hermes CLI not found")
+            settings = self._settings or load_settings()
+            self._client = advisor_client(
+                settings.hermes_profile_home, model=settings.hermes_model
+            )
+        return self._client.parse(system, user, schema, schema_name)
 
 
 def cmd_ask(args: argparse.Namespace) -> int:
@@ -193,31 +230,23 @@ def cmd_ask(args: argparse.Namespace) -> int:
         snapshots = SnapshotRepository(deps.conn)
         prices = PriceRepository(deps.conn)
 
-    member = resolve_member(members_repo.all_members(), args.member)
-    if member is None:
+    matched = matching_members(members_repo.all_members(), args.member)
+    if not matched:
         print(f"unknown member: {args.member}", file=sys.stderr)
         return 2
-
-    try:
-        snapshot = snapshots.load(horizon_weeks=horizon_weeks(args.text))
-    except SnapshotUnavailable as exc:
-        print(f"no snapshot: {exc.reason}", file=sys.stderr)
-        return 1
-
-    # Built only where it is needed: `--json` never reaches a model, so it never
-    # needs the Hermes CLI installed or the settings that name the profile.
-    ai = None
-    if not args.as_json:
-        settings = settings or load_settings()
-        ai = _client(settings)
+    if len(matched) > 1:
+        print(f"ambiguous member: {args.member}", file=sys.stderr)
+        return 2
+    member = matched[0]
 
     advisor = TradeAdvisor(
         settings,
         # No connection, no delivery service, no contact repository and no run
         # repository: this command cannot send, cannot write and cannot record a
-        # run, because it holds nothing that could.
+        # run, because it holds nothing that could. `--json` gets no client at
+        # all, since it never reaches the point of asking one anything.
         None,
-        ai,
+        None if args.as_json else LazyClient(settings),
         None,
         StderrNotifier(),
         None,
@@ -227,13 +256,16 @@ def cmd_ask(args: argparse.Namespace) -> int:
         None,
     )
 
-    if args.as_json:
-        candidates = advisor.candidates_for(snapshot, member.member_id, args.text)
-        print(json.dumps([candidate_json(c) for c in candidates], indent=2))
-        return 0
-
     try:
-        answer = advisor.answer(snapshot, member.member_id, args.text)
+        if args.as_json:
+            snapshot = snapshots.load(horizon_weeks=horizon_weeks(args.text))
+            candidates = advisor.candidates_for(snapshot, member.member_id, args.text)
+            print(json.dumps([candidate_json(c) for c in candidates], indent=2))
+            return 0
+        answer = advisor.answer_message(args.text, member)
+    except SnapshotUnavailable as exc:
+        print(f"no snapshot: {exc.reason}", file=sys.stderr)
+        return 1
     except (AIUnavailable, AIInvalidOutput) as exc:
         # Only the class name: an invalid-output error chains a validation error
         # whose body quotes the model's answer back.
