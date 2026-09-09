@@ -19,8 +19,16 @@ import { RosterPanel } from "./RosterPanel";
  */
 export const TEAM_CARD_CLASS = "board-team-card";
 
-/** Decimals the points-for figure is shown with. */
-const POINTS_FOR_DECIMALS = 1;
+/** Decimals the season total is shown with. */
+const TOTAL_POINTS_DECIMALS = 1;
+
+/**
+ * Ben's card change 1: the card line leads with the season total rather than a win-loss record.
+ * The visible word is the short one; the accessible label says which total it is, because
+ * "Total 301.5" read out on its own could be a total of anything.
+ */
+const TOTAL_POINTS_TEXT = "Total";
+const TOTAL_POINTS_LABEL = "Total points";
 
 /** Shown in place of the FAAB figure when the team has no `team_season_state` row. */
 const FAAB_UNKNOWN_TEXT = "FAAB —";
@@ -86,9 +94,7 @@ export const TeamCard = memo(function TeamCard({
   );
   const emptySlots = resolveEmptySlotCount(team.emptySlots, starterSlots);
   const projection = resolveProjectionDisplay(team);
-  const record = `${team.wins}-${team.losses}${
-    team.ties > 0 ? `-${team.ties}` : ""
-  }`;
+  const totalPoints = team.pointsFor.toFixed(TOTAL_POINTS_DECIMALS);
   const faab =
     team.faabRemaining === null
       ? FAAB_UNKNOWN_TEXT
@@ -148,8 +154,14 @@ export const TeamCard = memo(function TeamCard({
                 {team.teamName}
               </span>
               <span className="mt-1 block text-xs text-muted-foreground">
-                {record} · {team.pointsFor.toFixed(POINTS_FOR_DECIMALS)} PF ·{" "}
-                {faab}
+                {/*
+                  Ben's card change 1: the season total, not a record and not "points for".
+                  The visible word is `Total`; the sr-only copy names the figure in full, so
+                  the line is not read out as a total of something unstated.
+                */}
+                <span aria-hidden="true">{`${TOTAL_POINTS_TEXT} ${totalPoints}`}</span>
+                <span className="sr-only">{`${TOTAL_POINTS_LABEL} ${totalPoints}`}</span>
+                {` · ${faab}`}
               </span>
             </span>
             <span className="shrink-0 text-right">

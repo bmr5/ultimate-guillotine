@@ -31,10 +31,9 @@ const team = (over: Partial<BoardTeam> = {}): BoardTeam => ({
   isProvisional: false,
   projectionComputedAt: "2026-09-09T12:00:00Z",
   faabRemaining: 75,
-  wins: 2,
-  losses: 1,
-  ties: 0,
   pointsFor: 301.5,
+  startersProjected: 9,
+  starterSlots: 9,
   isEliminated: false,
   eliminatedWeek: null,
   eliminationSource: null,
@@ -203,16 +202,32 @@ describe("TeamCard states", () => {
 });
 
 describe("TeamCard", () => {
-  it("shows owner, team, projection, FAAB and record", () => {
+  it("shows owner, team, projection, the season total and FAAB", () => {
     renderCard();
     expect(screen.getByText("benray")).toBeInTheDocument();
     expect(screen.getByText("The Choppers")).toBeInTheDocument();
     expect(screen.getByText("112.4")).toBeInTheDocument();
+    // Ben's card change 1: the total leads the line, and FAAB follows it.
+    expect(screen.getByText("Total 301.5")).toBeInTheDocument();
     // FAAB is a Sleeper waiver budget, not money: no dollar sign anywhere on the card.
     expect(screen.getByText(/\b75 FAAB\b/)).toBeInTheDocument();
     expect(screen.queryByText(/\$/)).toBeNull();
-    expect(screen.getByText(/2-1/)).toBeInTheDocument();
-    expect(screen.getByText(/301\.5 PF/)).toBeInTheDocument();
+  });
+
+  it("names the total in full for a reader who cannot see the line", () => {
+    renderCard();
+    expect(screen.getByText("Total points 301.5")).toBeInTheDocument();
+    expect(screen.getByText("Total points 301.5").className).toContain(
+      "sr-only",
+    );
+  });
+
+  // Ben's card change 2: no record anywhere on the card — not the text, not a tooltip.
+  it("shows no win-loss record at all", () => {
+    const { container } = renderCard();
+    expect(screen.queryByText(/\d+-\d+/)).toBeNull();
+    expect(screen.queryByText(/ PF\b/)).toBeNull();
+    expect(container.textContent).not.toMatch(/Points for/i);
   });
 
   it("gives the summary toggle the same focus ring as the header controls", () => {

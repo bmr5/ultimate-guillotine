@@ -9,7 +9,7 @@ import { resolveProjectionDisplay } from "./projection";
  */
 const UNKNOWN_ELIMINATION_WEEK = 0;
 
-/** The sort mode used when a projection sort has nothing to sort by. */
+/** The sort mode used when a projection sort has nothing to sort by: the season total. */
 export const SORT_FALLBACK_MODE: SortMode = "points_for";
 
 /** null means "not comparable" and always sorts last — never coerced to zero. */
@@ -26,7 +26,7 @@ export function sortValue(team: BoardTeam, mode: SortMode): number | null {
 
 /**
  * A total order, so the same board renders the same way every time: the mode's key descending,
- * then points for descending, then team name ascending, then team id ascending. Teams with no
+ * then the season total descending, then team name ascending, then team id ascending. Teams with no
  * comparable key sort after every team that has one and fall through to the same tie-breaks.
  * Only comparing a team with itself returns 0.
  */
@@ -101,7 +101,7 @@ export function sortBoardTeams(
   };
 }
 
-/** With projections off entirely, projection sort is meaningless; say so and use points for. */
+/** With projections off, projection sort is meaningless; say so and fall back to the total. */
 export function selectEffectiveSortMode(
   teams: BoardTeam[],
   requested: SortMode,

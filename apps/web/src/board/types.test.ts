@@ -39,9 +39,6 @@ describe("Database row types", () => {
       faab_budget: 100,
       faab_used: 25,
       faab_remaining: 75,
-      wins: 2,
-      losses: 1,
-      ties: 0,
       points_for: 301.5,
       points_against: 288.25,
       is_eliminated: false,
@@ -135,7 +132,7 @@ describe("parseSortMode", () => {
     expect(SORT_MODES.map((mode) => SORT_MODE_LABELS[mode])).toEqual([
       "Projection",
       "FAAB",
-      "Points for",
+      "Total",
     ]);
   });
 });

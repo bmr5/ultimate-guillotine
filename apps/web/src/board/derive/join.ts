@@ -211,10 +211,12 @@ export function joinBoardTeams(raw: BoardRawData): BoardTeam[] {
       isProvisional: projection === null ? true : projection.is_provisional,
       projectionComputedAt: projection === null ? null : projection.computed_at,
       faabRemaining: state === null ? null : state.faab_remaining,
-      wins: state?.wins ?? 0,
-      losses: state?.losses ?? 0,
-      ties: state?.ties ?? 0,
+      // No wins, losses or ties: the board carries no record at all (Ben's card change 2), and
+      // `weekly_results` has no opponent column to derive one from in the first place.
       pointsFor: state === null ? summary?.pointsFor ?? 0 : state.points_for,
+      startersProjected:
+        projection === null ? null : projection.starters_projected,
+      starterSlots: projection === null ? null : projection.starter_slots,
       isEliminated,
       eliminatedWeek:
         state?.eliminated_week ?? snapshot?.eliminated_week ?? null,

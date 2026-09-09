@@ -246,7 +246,7 @@ export function BoardHeader({
         >
           {/*
             A position view answers "who can bid and who needs one", so it offers the two sorts
-            that speak to that and drops points for, which speaks to neither.
+            that speak to that and drops the season total, which speaks to neither.
           */}
           {(positionFilter === null ? SORT_MODES : POSITION_SORT_MODES).map(
             (mode) => (
@@ -309,7 +309,7 @@ export function BoardHeader({
 
       {sortFellBack ? (
         <p className="text-xs text-muted-foreground">
-          No projections available, so teams are sorted by points for.
+          No projections available, so teams are sorted by total points.
         </p>
       ) : null}
     </header>

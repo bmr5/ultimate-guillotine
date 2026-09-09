@@ -44,10 +44,9 @@ const team = (over: Partial<BoardTeam> & { teamId: number }): BoardTeam => ({
   isProvisional: false,
   projectionComputedAt: "2026-09-09T12:00:00Z",
   faabRemaining: 50,
-  wins: 1,
-  losses: 0,
-  ties: 0,
   pointsFor: 100,
+  startersProjected: 9,
+  starterSlots: 9,
   isEliminated: false,
   eliminatedWeek: null,
   eliminationSource: null,
@@ -390,7 +389,7 @@ describe("BoardPage", () => {
     renderPage();
     expect(
       screen.getByText(
-        "No projections available, so teams are sorted by points for.",
+        "No projections available, so teams are sorted by total points.",
       ),
     ).toBeInTheDocument();
   });
@@ -499,7 +498,7 @@ describe("BoardPage position quick view", () => {
     expect(
       screen.getByRole("radio", { name: "Projection" }),
     ).toBeInTheDocument();
-    expect(screen.queryByRole("radio", { name: "Points for" })).toBeNull();
+    expect(screen.queryByRole("radio", { name: "Total" })).toBeNull();
   });
 
   it("defaults the position view to FAAB and re-sorts on the projection toggle", async () => {
@@ -551,7 +550,7 @@ describe("BoardPage position quick view", () => {
     renderPage("/?pos=TE");
     expect(
       screen.queryByText(
-        "No projections available, so teams are sorted by points for.",
+        "No projections available, so teams are sorted by total points.",
       ),
     ).toBeNull();
   });

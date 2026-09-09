@@ -161,7 +161,9 @@ export function fetchTeamSeasonState(
     client
       .from("team_season_state")
       .select(
-        "season_id, team_id, faab_budget, faab_used, faab_remaining, wins, losses, ties, points_for, points_against, is_eliminated, eliminated_week, elimination_source, state_version, synced_at",
+        // No wins/losses/ties: nothing on the board reads a record any more (card change 2),
+        // and the typed `Database` no longer names them, so selecting them would not compile.
+        "season_id, team_id, faab_budget, faab_used, faab_remaining, points_for, points_against, is_eliminated, eliminated_week, elimination_source, state_version, synced_at",
       )
       .eq("season_id", seasonId),
     "team_season_state",

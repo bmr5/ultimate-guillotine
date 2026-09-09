@@ -118,9 +118,11 @@ export interface Database {
         faab_used: number;
         /** A stored generated column (`faab_budget - faab_used`); read-only in every sense. */
         faab_remaining: number;
-        wins: number;
-        losses: number;
-        ties: number;
+        /**
+         * The season total the board shows. `wins`, `losses` and `ties` exist on the table but
+         * are neither typed nor selected here: Ben's card change 2 removed every record concept
+         * from the board, and a column no view reads is a column the board should not fetch.
+         */
         points_for: number;
         points_against: number;
         is_eliminated: boolean;
@@ -197,10 +199,20 @@ export interface BoardTeam {
   isProvisional: boolean;
   projectionComputedAt: string | null;
   faabRemaining: number | null;
-  wins: number;
-  losses: number;
-  ties: number;
+  /**
+   * The season's total points — `team_season_state.points_for`, or the fold of
+   * `weekly_results` when the team has no state row. The card calls it `Total`; there is no
+   * win-loss record on the board at all (Ben's card change 2).
+   */
   pointsFor: number;
+  /**
+   * `team_week_projections.starters_projected` and `.starter_slots` for the week: how many of
+   * the lineup's slots Sleeper actually has a projection for, out of how many there are. They
+   * exist so the partial badge can say *why* it is there rather than only that it is. null when
+   * the week has no projection row, in which case there is no partial state to explain either.
+   */
+  startersProjected: number | null;
+  starterSlots: number | null;
   isEliminated: boolean;
   eliminatedWeek: number | null;
   eliminationSource: EliminationSource | null;
@@ -215,6 +227,11 @@ export interface BoardTeam {
   roster: RosterPlayer[];
 }
 
+/**
+ * `points_for` is the URL value the season-total sort has always been shared under, and it stays
+ * that way: the label changed to `Total` (Ben's card change 1), but a link someone already sent
+ * to the league carries the old spelling and must keep resolving to the same sort.
+ */
 export const SORT_MODES = ["projection", "faab", "points_for"] as const;
 export type SortMode = (typeof SORT_MODES)[number];
 export const DEFAULT_SORT_MODE: SortMode = "projection";
@@ -222,7 +239,7 @@ export const DEFAULT_SORT_MODE: SortMode = "projection";
 export const SORT_MODE_LABELS: Record<SortMode, string> = {
   projection: "Projection",
   faab: "FAAB",
-  points_for: "Points for",
+  points_for: "Total",
 };
 
 export function parseSortMode(raw: string | null | undefined): SortMode {
@@ -259,8 +276,8 @@ export function parsePositionFilter(
 }
 
 /**
- * The two sorts a position view offers. Points for is not among them: the question the view
- * answers is who can bid and who needs the position, and a season total answers neither.
+ * The two sorts a position view offers. The season total is not among them: the question the
+ * view answers is who can bid and who needs the position, and a total answers neither.
  */
 export const POSITION_SORT_MODES = ["faab", "projection"] as const;
 

@@ -20,9 +20,6 @@ const raw = (over: Partial<BoardRawData> = {}): BoardRawData => ({
       faab_budget: 100,
       faab_used: 25,
       faab_remaining: 75,
-      wins: 2,
-      losses: 1,
-      ties: 0,
       points_for: 301.5,
       points_against: 288.25,
       is_eliminated: false,
@@ -119,9 +116,10 @@ describe("joinBoardTeams", () => {
     expect(team.isProvisional).toBe(false);
     expect(team.projectionComputedAt).toBe("2026-09-09T12:00:00Z");
     expect(team.faabRemaining).toBe(75);
-    expect(team.wins).toBe(2);
-    expect(team.losses).toBe(1);
     expect(team.pointsFor).toBe(301.5);
+    // The two figures the partial badge's tooltip is written from.
+    expect(team.startersProjected).toBe(9);
+    expect(team.starterSlots).toBe(9);
   });
 
   it("orders the roster and attaches per-player projections", () => {
@@ -157,11 +155,10 @@ describe("joinBoardTeams", () => {
     expect(team.ownerName).toBe("benray");
   });
 
-  it("falls back to weekly_results for points for when there is no state row", () => {
+  it("falls back to weekly_results for the total when there is no state row", () => {
     const [team] = joinBoardTeams(raw({ teamSeasonState: [] }));
     expect(team.pointsFor).toBe(301.5);
     expect(team.faabRemaining).toBeNull();
-    expect(team.wins).toBe(0);
     expect(team.isEliminated).toBe(false);
   });
 
@@ -170,6 +167,28 @@ describe("joinBoardTeams", () => {
     expect(team.projectedPoints).toBeNull();
     expect(team.coveragePct).toBeNull();
     expect(team.isProvisional).toBe(true);
+    // Null rather than zero: nobody counted the starters, which is not the same statement as
+    // "none of them are projected", and the badge's tooltip has nothing to say either way.
+    expect(team.startersProjected).toBeNull();
+    expect(team.starterSlots).toBeNull();
+  });
+
+  it("carries the week's starter counts onto the team", () => {
+    const base = raw();
+    const [team] = joinBoardTeams({
+      ...base,
+      teamWeekProjections: [
+        {
+          ...base.teamWeekProjections[0],
+          starters_projected: 6,
+          starter_slots: 9,
+          coverage_pct: 66.67,
+        },
+      ],
+    });
+    expect(team.startersProjected).toBe(6);
+    expect(team.starterSlots).toBe(9);
+    expect(team.coveragePct).toBe(66.67);
   });
 
   it("carries the week's empty_slots count onto the team", () => {
@@ -494,8 +513,6 @@ describe("joinBoardTeams", () => {
           ...base.teamSeasonState[0],
           team_id: 9,
           faab_remaining: 12,
-          wins: 0,
-          losses: 3,
           points_for: 190.25,
           is_eliminated: true,
           eliminated_week: 4,
@@ -560,9 +577,6 @@ describe("joinBoardTeams", () => {
     expect(bare.roster).toEqual([]);
     expect(bare.pointsFor).toBe(0);
     expect(bare.faabRemaining).toBeNull();
-    expect(bare.wins).toBe(0);
-    expect(bare.losses).toBe(0);
-    expect(bare.ties).toBe(0);
     expect(bare.projectedPoints).toBeNull();
     expect(bare.coveragePct).toBeNull();
     expect(bare.isProvisional).toBe(true);
