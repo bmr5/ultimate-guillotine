@@ -1,0 +1,66 @@
+{
+  "4046": {
+    "full_name": "Mike Williams",
+    "first_name": "Mike",
+    "last_name": "Williams",
+    "position": "WR",
+    "team": "LAC",
+    "active": true
+  },
+  "7564": {
+    "full_name": "Mike Williams",
+    "first_name": "Mike",
+    "last_name": "Williams",
+    "position": "WR",
+    "team": "NYJ",
+    "active": true
+  },
+  "1234": {
+    "full_name": "Justin Jefferson",
+    "first_name": "Justin",
+    "last_name": "Jefferson",
+    "position": "WR",
+    "team": "MIN",
+    "active": true
+  },
+  "KC": {
+    "full_name": null,
+    "first_name": "Kansas City",
+    "last_name": "Chiefs",
+    "position": "DEF",
+    "team": "KC",
+    "active": true
+  },
+  "9999": {
+    "full_name": "Old Running Back",
+    "first_name": "Old",
+    "last_name": "Running Back",
+    "position": "RB",
+    "team": "FA",
+    "active": false
+  },
+  "8888": {
+    "full_name": "Some Lineman",
+    "first_name": "Some",
+    "last_name": "Lineman",
+    "position": "OL",
+    "team": "DAL",
+    "active": true
+  },
+  "5555": {
+    "full_name": null,
+    "first_name": "Travis",
+    "last_name": "Kelce",
+    "position": "TE",
+    "team": "KC",
+    "active": true
+  },
+  "6666": {
+    "full_name": "Patrick Mahomes",
+    "first_name": "Patrick",
+    "last_name": "Mahomes",
+    "position": "QB",
+    "team": "KC",
+    "active": true
+  }
+}

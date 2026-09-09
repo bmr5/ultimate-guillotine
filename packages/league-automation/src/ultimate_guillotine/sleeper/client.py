@@ -62,3 +62,14 @@ class SleeperClient:
         response.raise_for_status()
         result: dict[str, Any] = response.json()
         return result
+
+    def get_players(self) -> dict[str, dict[str, Any]]:
+        """Fetch the full NFL player directory, keyed by Sleeper player id.
+
+        This payload is large and slow to generate, so it gets a longer
+        timeout than the rest of the client's calls.
+        """
+        response = self._http.get("/players/nfl", timeout=60.0)
+        response.raise_for_status()
+        result: dict[str, dict[str, Any]] = response.json()
+        return result

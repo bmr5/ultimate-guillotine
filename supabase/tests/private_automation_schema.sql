@@ -18,15 +18,18 @@ select is_empty(
 );
 
 -- (d) automation_worker never holds DELETE, in private or in public, except
--- on private.expected_runs: that table is installer-managed configuration,
--- not a league fact, so the worker login may replace its contents.
+-- on private.expected_runs and private.member_aliases: those tables are
+-- installer-managed configuration, not league facts, so the worker login may
+-- replace their contents.
 select is_empty(
   $$select 1 from information_schema.role_table_grants
      where grantee = 'automation_worker'
        and table_schema in ('private', 'public')
        and privilege_type = 'DELETE'
-       and not (table_schema = 'private' and table_name = 'expected_runs')$$,
-  'automation_worker holds no DELETE grant in private or public, aside from expected_runs'
+       and not (table_schema = 'private'
+                and table_name in ('expected_runs', 'member_aliases'))$$,
+  'automation_worker holds no DELETE grant in private or public, aside from '
+  'expected_runs and member_aliases'
 );
 
 -- (d2) automation_worker does hold DELETE on private.expected_runs.

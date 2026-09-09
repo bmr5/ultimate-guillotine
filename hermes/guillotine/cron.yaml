@@ -26,3 +26,9 @@ jobs:
     script: guillotine_run_audit.sh
     deliver: "discord:#guillotine-ops"
     max_gap_minutes: 1500
+  - name: guillotine-players-sync
+    agent: players-sync
+    schedule: "30 5 * * *"
+    script: guillotine_players_sync.sh
+    deliver: "discord:#guillotine-ops"
+    max_gap_minutes: 1500
