@@ -1,4 +1,5 @@
 """The single language-model step: one versioned prompt, one structured-output call."""
+from functools import lru_cache
 from pathlib import Path
 
 from ultimate_guillotine.ai.openrouter import AIUsage, StructuredOutputClient
@@ -8,8 +9,9 @@ PROMPT_VERSION = "2026.1"
 _PROMPT_PATH = Path(__file__).resolve().parents[5] / "agents" / "trade-registrar" / "prompt.md"
 
 
+@lru_cache(maxsize=1)
 def load_prompt() -> str:
-    return _PROMPT_PATH.read_text()
+    return _PROMPT_PATH.read_text(encoding="utf-8")
 
 
 def extract_trade(
