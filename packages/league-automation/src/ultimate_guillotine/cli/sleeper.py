@@ -161,6 +161,16 @@ def cmd_projections(args: argparse.Namespace) -> int:
     posted only when a flag actually changes state -- this job fires every five
     minutes during a game window, and a note per run is a wall of identical lines
     nobody reads.
+
+    **Team totals are only recomputed for the week the league is playing.**
+    ``public.roster_holdings`` is current-state only: it holds the rosters as they
+    are now, not as they were in week 3. Recomputing an older week from it would
+    restate that week's team totals over today's lineups and call the result week
+    3. So ``--week N`` for a past week rescores or refetches that week's *player*
+    rows -- those are keyed by NFL week and are the honest thing to fix -- and
+    leaves ``team_week_projections`` for week N exactly as the run that computed it
+    live left it. Nothing is stamped and no coverage note fires, because no
+    coverage was measured.
     """
     deps = build_deps()
     conn = deps.conn
@@ -180,6 +190,8 @@ def cmd_projections(args: argparse.Namespace) -> int:
                 print(f"projections: skipped, season_type={state.season_type}")
             return 0
         week = args.week if args.week is not None else state.week
+        # Only the live week can be recomputed from the rosters -- see the docstring.
+        is_live_week = week == state.week
         season_id, scoring_settings = _season_row(conn, state.season)
         version = scoring_version(scoring_settings)
         repo = ProjectionRepository(conn)
@@ -189,6 +201,11 @@ def cmd_projections(args: argparse.Namespace) -> int:
         # Outside the transaction on purpose -- see the docstring.
         fetched = None if args.rescore else fetch_projection_rows(client, state.season, week, now)
 
+        rows: list = []
+        run_pct: Decimal | None = None
+        # A week that is not recomputed measures no coverage, so it can announce no
+        # change in one: the comparison below has to be a no-op, not a false edge.
+        coverage_flagged = before.coverage_flagged
         with conn.transaction():
             if fetched is None:
                 report = repo.rescore(state.season, week, scoring_settings, version, now)
@@ -196,9 +213,10 @@ def cmd_projections(args: argparse.Namespace) -> int:
                 report = repo.upsert_many(
                     state.season, week, fetched, scoring_settings, version, now
                 )
-            rows, run_pct = recompute_team_week(conn, season_id, state.season, week, now)
-            coverage_flagged = run_pct < COVERAGE_GATE
-            repo.flag_coverage(state.season, week, run_pct, flagged=coverage_flagged)
+            if is_live_week:
+                rows, run_pct = recompute_team_week(conn, season_id, state.season, week, now)
+                coverage_flagged = run_pct < COVERAGE_GATE
+                repo.flag_coverage(state.season, week, run_pct, flagged=coverage_flagged)
 
         if coverage_flagged != before.coverage_flagged:
             if coverage_flagged:
@@ -231,10 +249,16 @@ def cmd_projections(args: argparse.Namespace) -> int:
                     f"more than {DRIFT_POINTS} points",
                 )
         if not args.quiet:
+            coverage = f", coverage {run_pct}%" if is_live_week else ""
             print(
                 f"projections: week {week}, {report.rows} players "
-                f"({report.unscored} unscored), coverage {run_pct}%"
+                f"({report.unscored} unscored){coverage}"
             )
+            if not is_live_week:
+                print(
+                    f"team totals for week {week} left unchanged "
+                    f"(rosters are current-state only)"
+                )
         return 0
 
     return run_scheduled_with_notes(deps, "projections-sync", now, action)

@@ -1,6 +1,8 @@
 from datetime import UTC, datetime
 from decimal import Decimal
 
+from psycopg.types.json import Jsonb
+
 from ultimate_guillotine.sleeper.team_projections import (
     StarterTally,
     build_team_week,
@@ -183,4 +185,70 @@ def _eliminated_team(conn, season_id: int) -> int:
             "faab_used, is_eliminated, synced_at) values (%s, %s, 100, 0, true, now())",
             (season_id, team_id),
         )
+        # An eliminated team is projected from the roster it went out with, so the
+        # snapshot the sync freezes is what the tally reads. It holds the same
+        # unprojected starter the live roster does, here.
+        cur.execute(
+            "insert into public.final_rosters (season_id, team_id, eliminated_week, "
+            "holdings, frozen_at) values (%s, %s, 3, %s, now())",
+            (season_id, team_id, Jsonb(_starter("p9"))),
+        )
     return team_id
+
+
+def _starter(player_id: str) -> list[dict[str, object]]:
+    """A one-starter `final_rosters.holdings` body, in `holdings_payload` shape."""
+    return [
+        {
+            "sleeper_player_id": player_id,
+            "slot": "starter",
+            "slot_index": 0,
+            "lineup_position": "QB",
+        }
+    ]
+
+
+def test_an_eliminated_team_projects_from_its_frozen_roster_not_its_live_one(conn) -> None:
+    """A manager who is out goes on dropping and adding, and `roster_holdings` is
+    current-state only. The roster he was eliminated with is the one that counts."""
+    season_id, _live_id = _seed(conn)
+    dead_id = _eliminated_team(conn, season_id)
+    with conn.cursor() as cur:
+        # Frozen with p1, who is projected for 20.00.
+        cur.execute(
+            "update public.final_rosters set holdings = %s where team_id = %s",
+            (Jsonb(_starter("p1")), dead_id),
+        )
+        # Live roster since changed to p3, who is projected for 30.00.
+        cur.execute("delete from public.roster_holdings where team_id = %s", (dead_id,))
+        cur.execute(
+            "insert into public.roster_holdings (season_id, team_id, sleeper_player_id, "
+            "slot, slot_index, lineup_position, synced_at) "
+            "values (%s, %s, 'p3', 'starter', 0, 'QB', now())",
+            (season_id, dead_id),
+        )
+
+    rows, _run_pct = recompute_team_week(conn, season_id, 2026, 1, NOW)
+
+    dead = next(r for r in rows if r.team_id == dead_id)
+    assert dead.projected_points == Decimal("20.00")
+    assert (dead.filled_slots, dead.starters_projected) == (1, 1)
+    assert dead.coverage_pct == Decimal("100.00")
+
+
+def test_a_live_teams_starters_still_come_from_roster_holdings(conn) -> None:
+    """A frozen snapshot for a team that is still alive must not be read: nobody
+    freezes one, and if one existed the live roster is still the truth."""
+    season_id, team_id = _seed(conn)
+    with conn.cursor() as cur:
+        cur.execute(
+            "insert into public.final_rosters (season_id, team_id, eliminated_week, "
+            "holdings, frozen_at) values (%s, %s, null, %s, now())",
+            (season_id, team_id, Jsonb(_starter("p3"))),
+        )
+
+    rows, _run_pct = recompute_team_week(conn, season_id, 2026, 1, NOW)
+
+    row = next(r for r in rows if r.team_id == team_id)
+    assert (row.filled_slots, row.starters_projected) == (2, 1)
+    assert row.projected_points == Decimal("20.00")

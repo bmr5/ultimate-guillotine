@@ -15,6 +15,16 @@ The starter-slot count comes from ``public.seasons.roster_positions`` and the
 filled slots from ``public.roster_holdings`` -- both read here, from the database,
 rather than carried over from the Sleeper payload the sync parsed.
 
+**An eliminated team is projected from its frozen roster, not its live one.**
+``roster_holdings`` is current-state only, and a manager who is out goes on
+dropping and adding; reading it would project a team on players it did not go out
+with. ``public.final_rosters.holdings`` is the roster it was eliminated with,
+written once and never rewritten, so the starter entries in that snapshot are what
+an eliminated team's points and coverage are tallied from. The sync freezes that
+snapshot the first time it sees a team eliminated, so the row is there by the time
+this runs; a team marked eliminated by hand and never synced since has no snapshot
+and therefore no starters, which reads as an empty lineup until the next sync.
+
 Every write runs on the caller's connection and inside the caller's transaction;
 nothing here opens or commits one of its own, so Task 10 can wrap Task 8's player
 write and this recompute in a single ``conn.transaction()`` and have a week's
@@ -140,29 +150,52 @@ class TeamWeekRepository:
         exists with null points is counted as missing, exactly like one with no
         row at all. The projections join is keyed on the plain season year,
         because a projection is a property of the NFL week, not of this league.
+
+        A live team's starters come from ``roster_holdings``; an eliminated team's
+        come from the starter entries of its ``final_rosters`` snapshot -- see the
+        module docstring. The two arms are a ``union all`` over the same team list,
+        and the ``is_eliminated`` filter on each is what makes them disjoint, so no
+        team can be counted twice however its rows happen to sit.
         """
         with self._conn.cursor() as cur:
             cur.execute(
                 """
-                select t.id,
-                       count(h.sleeper_player_id) as filled,
+                with team_flags as (
+                    select t.id as team_id,
+                           coalesce(s.is_eliminated, false) as is_eliminated
+                    from public.teams t
+                    left join public.team_season_state s
+                      on s.team_id = t.id and s.season_id = t.season_id
+                    where t.season_id = %s
+                ),
+                starters as (
+                    select f.team_id, h.sleeper_player_id
+                    from team_flags f
+                    join public.roster_holdings h
+                      on h.team_id = f.team_id and h.season_id = %s and h.slot = 'starter'
+                    where not f.is_eliminated
+                    union all
+                    select f.team_id, entry.value ->> 'sleeper_player_id'
+                    from team_flags f
+                    join public.final_rosters r
+                      on r.team_id = f.team_id and r.season_id = %s
+                    cross join lateral jsonb_array_elements(r.holdings) as entry
+                    where f.is_eliminated and entry.value ->> 'slot' = 'starter'
+                )
+                select f.team_id,
+                       count(st.sleeper_player_id) as filled,
                        count(p.league_points) as projected,
                        coalesce(sum(p.league_points), 0) as points,
-                       coalesce(bool_or(s.is_eliminated), false) as eliminated
-                from public.teams t
-                left join public.roster_holdings h
-                  on h.team_id = t.id and h.season_id = t.season_id
-                     and h.slot = 'starter'
+                       f.is_eliminated
+                from team_flags f
+                left join starters st on st.team_id = f.team_id
                 left join public.player_projections p
-                  on p.sleeper_player_id = h.sleeper_player_id
+                  on p.sleeper_player_id = st.sleeper_player_id
                      and p.season = %s and p.week = %s
-                left join public.team_season_state s
-                  on s.team_id = t.id and s.season_id = t.season_id
-                where t.season_id = %s
-                group by t.id
-                order by t.id
+                group by f.team_id, f.is_eliminated
+                order by f.team_id
                 """,
-                (season_year, week, season_id),
+                (season_id, season_id, season_id, season_year, week),
             )
             return [StarterTally(*row) for row in cur.fetchall()]
 

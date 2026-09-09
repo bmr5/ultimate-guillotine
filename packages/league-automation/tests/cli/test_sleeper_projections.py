@@ -442,6 +442,62 @@ def test_an_explicit_week_overrides_the_state_week(
     assert "upsert 2026w1 9400 rows" in conn.events
 
 
+def test_the_live_week_recomputes_the_team_totals(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Asking for the week the league is actually playing is the ordinary path,
+    whether the week was named on the command line or read from `nfl_state`."""
+    conn = FakeConn()
+    _wire(monkeypatch, conn=conn, week=3)
+
+    assert sleeper_cli.cmd_projections(_args(week=3)) == 0
+
+    assert conn.events == [
+        "begin",
+        "upsert 2026w3 9400 rows",
+        "recompute",
+        "flag 100.00 flagged=False",
+        "commit",
+    ]
+
+
+def test_a_past_week_rescores_the_players_and_leaves_the_team_totals_alone(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    """`roster_holdings` is current-state only. Recomputing week 3 in week 5 would
+    restate week 3's team totals over today's lineups, so the player rows are fixed
+    and the team rows are left as the run that computed them live left them."""
+    conn = FakeConn()
+    notifier = _wire(monkeypatch, conn=conn, week=5)
+
+    assert sleeper_cli.cmd_projections(_args(week=3, rescore=True, quiet=False)) == 0
+
+    assert conn.events == ["begin", "rescore 2026w3", "commit"]
+    assert notifier.notes == []
+    out = capsys.readouterr().out
+    assert "projections: week 3, 9400 players (0 unscored)\n" in out
+    assert "team totals for week 3 left unchanged (rosters are current-state only)" in out
+
+
+def test_a_past_week_announces_no_coverage_edge_it_did_not_measure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The week was flagged for coverage by an earlier run and nothing here measured
+    coverage again, so there is no recovery to announce and no stamp to rewrite."""
+    conn = FakeConn()
+    notifier = _wire(
+        monkeypatch,
+        conn=conn,
+        week=5,
+        before=WeekFlags(coverage_flagged=True, drift_flagged=False),
+    )
+
+    assert sleeper_cli.cmd_projections(_args(week=2, rescore=True)) == 0
+
+    assert conn.events == ["begin", "rescore 2026w2", "commit"]
+    assert notifier.notes == []
+
+
 def test_a_season_with_no_scoring_settings_refuses(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
