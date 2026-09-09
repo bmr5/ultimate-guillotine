@@ -9,6 +9,7 @@ import subprocess
 import sys
 from pathlib import Path
 from types import SimpleNamespace
+from typing import ClassVar
 
 import psycopg
 import pytest
@@ -18,7 +19,7 @@ from ultimate_guillotine.history.repository import HistoryRowRejected
 
 #: Every word the loader is allowed to print. A member name, a player name or a line of
 #: chat would all fail this, which is the point.
-ALLOWED_WORDS = {"catalog", "rows", "unresolved", "parties", "unmapped", "conditions"}
+ALLOWED_WORDS = {"catalog", "rows", "updated", "unresolved", "parties", "unmapped", "conditions"}
 
 
 def _assert_counts_only(text: str) -> None:
@@ -51,6 +52,9 @@ class FakeRepo:
     """Records what the loader wrote, and can refuse a row the way Postgres would."""
 
     refuse: tuple[str, ...] = ()
+    #: Ids a previous run in this test wrote. The real repository answers "updated" from
+    #: Postgres' own `xmax = 0`; this is the same answer, one run later.
+    written: ClassVar[set[str]] = set()
 
     def __init__(self, conn) -> None:
         self.rows: list = []
@@ -62,13 +66,16 @@ class FakeRepo:
         if row.catalog_id in self.refuse:
             raise HistoryRowRejected(f"trade_catalog row {row.catalog_id} was refused")
         self.rows.append(row)
-        return "inserted"
+        outcome = "updated" if row.catalog_id in FakeRepo.written else "inserted"
+        FakeRepo.written.add(row.catalog_id)
+        return outcome
 
 
 @pytest.fixture
 def stack(monkeypatch: pytest.MonkeyPatch):
     """The loader's whole world, minus a database."""
     conn = SimpleNamespace(transaction=contextlib.nullcontext)
+    monkeypatch.setattr(FakeRepo, "written", set())
     monkeypatch.setattr(history_cli, "build_deps", lambda: SimpleNamespace(conn=conn))
     monkeypatch.setattr(history_cli, "HistoryRepository", FakeRepo)
     monkeypatch.setattr(
@@ -104,8 +111,23 @@ def test_load_catalog_prints_counts_only(
 
     out = capsys.readouterr().out
     assert exit_code == 0
-    assert out.strip() == "catalog: 1 rows, 1 unresolved parties, 1 unmapped conditions"
+    assert out.strip() == "catalog: 1 rows, 0 updated, 1 unresolved parties, 1 unmapped conditions"
     assert "SENTINEL" not in out
+    _assert_counts_only(out)
+
+
+def test_a_rerun_reports_the_rows_it_updated(
+    tmp_path: Path, stack, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Ben fixes an alias and reruns; "1 updated" says the table was corrected, not doubled."""
+    path = _write(tmp_path, _record())
+
+    assert history_cli.cmd_load_catalog(argparse.Namespace(path=path)) == 0
+    capsys.readouterr()
+    assert history_cli.cmd_load_catalog(argparse.Namespace(path=path)) == 0
+
+    out = capsys.readouterr().out
+    assert out.strip() == "catalog: 1 rows, 1 updated, 1 unresolved parties, 1 unmapped conditions"
     _assert_counts_only(out)
 
 
@@ -127,10 +149,38 @@ def test_a_refused_row_does_not_stop_the_rest(
 
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == "catalog: 1 rows, 1 unresolved parties, 2 unmapped conditions"
+    assert captured.out.strip() == (
+        "catalog: 1 rows, 0 updated, 1 unresolved parties, 2 unmapped conditions"
+    )
     # The refusal names the row's own id and never the payload that tripped it.
     assert "2025-001" in captured.err
     assert "SENTINEL" not in captured.err
+
+
+def test_a_record_the_reader_refuses_does_not_stop_the_rest(
+    tmp_path: Path, stack, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A record refused before it reaches the database is reported the same way.
+
+    Its own counts go with it: the loader can say nothing about a record it would not
+    read, so the line describes the file minus that record.
+    """
+    path = _write(
+        tmp_path,
+        _record(id="2025-003", structure="SENTINEL " * 20),
+        _record(id="2025-004", parties=[]),
+    )
+
+    exit_code = history_cli.cmd_load_catalog(argparse.Namespace(path=path))
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert captured.out.strip() == (
+        "catalog: 1 rows, 0 updated, 0 unresolved parties, 1 unmapped conditions"
+    )
+    assert "2025-003" in captured.err
+    assert "SENTINEL" not in captured.err
+    _assert_counts_only(captured.out)
 
 
 def test_every_row_refused_exits_1(tmp_path: Path, stack, monkeypatch: pytest.MonkeyPatch) -> None:

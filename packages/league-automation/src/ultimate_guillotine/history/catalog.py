@@ -25,10 +25,10 @@ from ultimate_guillotine.sleeper.players import SKILL_POSITIONS, Player
 from ultimate_guillotine.trades.models import MemberRef
 from ultimate_guillotine.trades.names import normalize_name
 
-# The catalog matches player names exactly the way the registrar does -- including its
-# defense and bare-surname rules -- so it calls the registrar's matcher rather than
-# growing a second one that drifts from it.
-from ultimate_guillotine.trades.resolve import Unresolved, _resolve_player
+# The team-defense spelling ("KC defense") is the registrar's own rule, and reusing it
+# keeps one definition of what a defense is called. Its bare-surname rule is deliberately
+# not reused -- see `PlayerIndex`.
+from ultimate_guillotine.trades.resolve import _match_defense
 
 #: The only keys read from a classification record. `notes` and `source_texts` are absent
 #: on purpose and adding either is a privacy regression, not a feature. `source` is absent
@@ -89,6 +89,10 @@ MAX_NAME_LENGTH = 120
 AMBIGUOUS = None
 
 
+class CatalogRecordRefused(ValueError):
+    """A record the reader will not publish. Names the record's id, never its text."""
+
+
 @dataclass(frozen=True)
 class CatalogReading:
     """One classification record, read down to what a public row may carry.
@@ -105,11 +109,20 @@ class CatalogReading:
 class PlayerIndex:
     """Sleeper ids for the player names the analyst typed, where there is no doubt.
 
-    A name that matches no active player, or two of them, resolves to nothing and the
-    row keeps the name with a null id: the pages can still render "who was traded", and
-    nobody is credited with a player they never held. The cache is keyed by the
-    normalized name because the file spells the same player several ways across five
-    seasons and the directory is a few thousand rows.
+    A match is the full name spelled out, or the registrar's team-defense spelling, and
+    nothing else. A name that matches no active player, or two of them, resolves to
+    nothing and the row keeps the name with a null id: the pages can still render "who
+    was traded", and nobody is credited with a player they never held.
+
+    A single token is never matched on surname. The registrar may do that -- it is
+    reading a message about a trade happening now, between two rosters it can see, where
+    "Jefferson" is almost certainly the Jefferson somebody holds. The catalog is reading
+    five seasons of chat against today's active players, where the only Jefferson on file
+    may have entered the league after the trade was made. A wrong id here is a wrong
+    player published on a permanent page, so a bare surname keeps the name and no id.
+
+    The cache is keyed by the normalized name because the file spells the same player
+    several ways across five seasons and the directory is a few thousand rows.
     """
 
     def __init__(self, players: list[Player]) -> None:
@@ -119,11 +132,17 @@ class PlayerIndex:
     def id_for(self, name: str) -> str | None:
         key = normalize_name(name)
         if key not in self._cache:
-            try:
-                self._cache[key] = _resolve_player(name, self._players)
-            except Unresolved:
-                self._cache[key] = None
+            self._cache[key] = self._match(key)
         return self._cache[key]
+
+    def _match(self, key: str) -> str | None:
+        exact = [p for p in self._players if normalize_name(p.full_name) == key]
+        if len(exact) == 1:
+            return exact[0].sleeper_player_id
+        if exact:
+            return None
+        defense = _match_defense(key, self._players)
+        return defense.sleeper_player_id if defense is not None else None
 
 
 def build_label_index(members: list[MemberRef]) -> dict[str, int | None]:
@@ -195,7 +214,12 @@ def _player_assets(assets: dict[str, Any], players: PlayerIndex) -> list[dict[st
     positions = assets.get("positions") or []
     built: list[dict[str, Any]] = []
     for i, raw in enumerate(names):
-        name = str(raw).strip()
+        # A name is a string the analyst typed. An object or a number in this list is a
+        # shape the reader does not understand, and `str()` on it would publish whatever
+        # repr it happens to have rather than admit the entry was unreadable.
+        if not isinstance(raw, str):
+            continue
+        name = raw.strip()
         if not name or len(name) > MAX_NAME_LENGTH:
             continue
         position = positions[i] if i < len(positions) else None
@@ -247,8 +271,13 @@ def read_record(
     season_id: int | None,
     loaded_at: datetime,
 ) -> CatalogReading:
-    """Build one public row from one classification record."""
+    """Build one public row from one classification record.
+
+    Raises `CatalogRecordRefused` for a record the reader will not publish at all, which
+    the loader reports by id and skips.
+    """
     picked = {key: record.get(key) for key in CATALOG_FIELDS}
+    catalog_id = str(picked["id"])
     week, occurred_on = _week_and_date(picked["week_or_date"])
     parties = list(picked["parties"] or [])
     member_ids, unresolved = resolve_parties(parties, index)
@@ -258,18 +287,32 @@ def read_record(
     assets = _player_assets(raw_assets, players) + _faab_assets(raw_assets) + conditions
 
     confidence = picked["confidence"] if picked["confidence"] in CONFIDENCE_VALUES else "low"
+
+    # `type` and `structure` are the analyst's own vocabulary and stay his -- but a label
+    # is a label. Past the cap the file's field is holding a sentence, not a taxonomy
+    # term, and the columns are plain `text`, so nothing downstream would refuse it. The
+    # record is refused whole rather than truncated: half a sentence is still a sentence.
+    trade_type = str(picked["type"] or "trade")
+    structure = str(picked["structure"] or "unknown")
+    for label, value in (("trade_type", trade_type), ("structure", structure)):
+        if len(value) > MAX_NAME_LENGTH:
+            raise CatalogRecordRefused(
+                f"trade_catalog row {catalog_id} was refused: "
+                f"{label} is longer than {MAX_NAME_LENGTH} characters"
+            )
+
     return CatalogReading(
         row=CatalogRow(
-            catalog_id=str(picked["id"]),
+            catalog_id=catalog_id,
             season=int(picked["season"]),
             season_id=season_id,
             week=week,
             occurred_on=occurred_on,
-            # `type` and `structure` are the analyst's own vocabulary and stay his: the
-            # taxonomy is still growing, and a column that refused a new kind of deal
-            # would drop the deal rather than learn the word.
-            trade_type=str(picked["type"] or "trade"),
-            structure=str(picked["structure"] or "unknown"),
+            # Stored verbatim: the taxonomy is still growing, and a closed vocabulary
+            # that refused a new kind of deal would drop the deal rather than learn the
+            # word.
+            trade_type=trade_type,
+            structure=structure,
             party_member_ids=member_ids,
             party_count=len(parties),
             assets=assets,

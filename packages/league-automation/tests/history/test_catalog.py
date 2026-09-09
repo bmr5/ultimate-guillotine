@@ -13,6 +13,8 @@ from ultimate_guillotine.history.catalog import (
     CATALOG_FIELDS,
     CONDITION_LABELS,
     CONDITION_PHRASES,
+    MAX_NAME_LENGTH,
+    CatalogRecordRefused,
     PlayerIndex,
     build_label_index,
     read_record,
@@ -178,6 +180,70 @@ def test_a_player_name_two_players_answer_to_keeps_the_name_and_no_id() -> None:
     assert reading.row.assets == [
         {"kind": "player", "sleeper_player_id": None, "name": "Rookie One", "position": "RB"}
     ]
+
+
+def test_a_bare_surname_never_becomes_a_player_id() -> None:
+    """One "One" on today's roster is not evidence about a trade made three seasons ago.
+
+    The registrar may match a surname -- it is reading a live message about two rosters
+    it can see. The catalog reads five seasons of chat against today's active players,
+    so a single token keeps the name and no id rather than credit the wrong man.
+    """
+    players = PlayerIndex([Player("4034", "Rookie One", "RB", "KC", True)])
+    assert players.id_for("One") is None
+
+    reading = read_record(
+        _record(assets={
+            "players": ["One"], "positions": ["RB"], "faab": [], "return_conditions": [],
+        }),
+        {}, players, season_id=None, loaded_at=LOADED_AT,
+    )
+    assert reading.row.assets == [
+        {"kind": "player", "sleeper_player_id": None, "name": "One", "position": "RB"}
+    ]
+
+
+def test_a_team_defense_still_resolves() -> None:
+    """The one spelling that is not a full name and still means exactly one player."""
+    players = PlayerIndex([Player("KC", "Kansas City Chiefs", "DEF", "KC", True)])
+    assert players.id_for("KC defense") == "KC"
+
+
+def test_a_players_entry_that_is_not_a_string_is_not_a_name() -> None:
+    """A number or an object in the names list is unreadable, not a name to stringify."""
+    reading = read_record(
+        _record(assets={
+            "players": [12, None, {"name": "SENTINEL"}, "Rookie One"],
+            "positions": ["RB", "RB", "RB", "WR"],
+            "faab": [], "return_conditions": [],
+        }),
+        {}, NO_PLAYERS, season_id=None, loaded_at=LOADED_AT,
+    )
+    assert reading.row.assets == [
+        {"kind": "player", "sleeper_player_id": None, "name": "Rookie One", "position": "WR"}
+    ]
+    assert "SENTINEL" not in repr(reading)
+
+
+@pytest.mark.parametrize("field", ["type", "structure"])
+def test_a_type_or_structure_longer_than_a_label_refuses_the_record(field: str) -> None:
+    """Past the cap the field is holding a sentence, and the column would take it."""
+    with pytest.raises(CatalogRecordRefused) as refusal:
+        read_record(
+            _record(**{field: "SENTINEL " * 20}), {}, NO_PLAYERS,
+            season_id=None, loaded_at=LOADED_AT,
+        )
+    assert "2025-014" in str(refusal.value)
+    assert "SENTINEL" not in str(refusal.value)
+
+
+@pytest.mark.parametrize("field", ["type", "structure"])
+def test_a_type_or_structure_at_the_cap_is_published(field: str) -> None:
+    reading = read_record(
+        _record(**{field: "x" * MAX_NAME_LENGTH}), {}, NO_PLAYERS,
+        season_id=None, loaded_at=LOADED_AT,
+    )
+    assert getattr(reading.row, "trade_type" if field == "type" else field) == "x" * MAX_NAME_LENGTH
 
 
 def test_a_player_name_longer_than_a_name_is_dropped_whole() -> None:

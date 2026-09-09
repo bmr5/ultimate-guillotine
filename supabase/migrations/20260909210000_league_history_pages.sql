@@ -6,10 +6,10 @@
 -- anybody adding a column for it, so the shapes are closed: an unknown key, an unknown asset
 -- kind, or a free-text condition label is refused by the database, not only by the loader.
 
--- Every shape the trade catalog may publish, and nothing else. The loader
--- (`ultimate_guillotine.history.catalog._clean_asset`) copies these fields through an
--- allowlist; this constraint is the same allowlist restated where it cannot be edited out
--- of a Python file by accident.
+-- Every shape the trade catalog may publish, and nothing else. The loader builds these
+-- fields through an allowlist (`ultimate_guillotine.history.catalog._player_assets`,
+-- `_faab_assets` and `_condition_assets`); this constraint is the same allowlist restated
+-- where it cannot be edited out of a Python file by accident.
 create function public.trade_catalog_assets_ok(assets jsonb)
 returns boolean
 language plpgsql
