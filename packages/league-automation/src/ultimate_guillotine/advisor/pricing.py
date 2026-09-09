@@ -12,7 +12,16 @@ comparables. A trade paid in dollars or draft dollars is still recorded -- it
 is a real thing the league did -- but it never prices a suggestion, and a
 payment that mixed dollars in alongside FAAB is quoted on its FAAB leg alone so
 the currency the Advisor may actually propose is never inflated by one it
-may not.
+may not. Such a payment is recorded *unit-only*: the ``unit`` survives on the
+price point but the amount does not, because :attr:`PricePoint.faab` is the
+only field a number can live in and putting dollars there would make them
+quotable. The history therefore says the league once paid in dollars without
+saying how many; a reader who needs the figure reads the trade.
+
+Only permanent acquisitions price a suggestion. Rentals and payments are
+aggregated the same way and kept, but :func:`comparables_for` and
+:func:`median_faab` leave them out unless a caller names them, because a
+rental's FAAB buys a few weeks of a player rather than the player.
 
 A price point carries ids and never labels. The terms document has a
 ``display_name`` on every party, but a comparable is shown to whoever asked and
@@ -41,6 +50,11 @@ DEFAULT_LIMIT = 200
 #: Asset kinds that carry an amount. Only ``faab`` ever prices a suggestion;
 #: the other two are recorded so the history reads honestly.
 CURRENCY_KINDS = ("faab", "usd", "draft_dollars")
+
+#: The trade kinds a comparable may be drawn from. A rental is a loan and a
+#: payment settles an earlier deal; neither is what a permanent acquisition
+#: costs, so neither prices one unless a caller asks for it by name.
+COMPARABLE_KINDS: tuple[str, ...] = ("permanent",)
 
 
 @dataclass(frozen=True)
@@ -83,6 +97,10 @@ def price_points(
     The split is :class:`~decimal.Decimal` arithmetic and lands on a whole
     number of FAAB, because FAAB is a whole number of dollars in this league and
     a float share of it would quote a price nobody could bid.
+
+    Every trade kind is aggregated here, including rentals and payments; it is
+    the reading functions that decide which kinds may be quoted. A player whose
+    sender the extractor could not name is recorded with no price at all.
     """
     points: list[PricePoint] = []
     for row in rows:
@@ -92,7 +110,11 @@ def price_points(
         money = _money_assets(assets)
         for asset in players:
             sender = asset.get("from_member_id")
-            paid = [
+            # An unnamed sender is nobody money can flow back to. Matching
+            # ``None`` against every payment with an unstated recipient would
+            # conjure a price out of two things the extractor failed to
+            # attribute, so an unattributed move is recorded with no price.
+            paid: list[dict] = [] if sender is None else [
                 m for m in money
                 if m.get("to_member_id") == sender and m.get("amount") is not None
             ]
@@ -122,17 +144,43 @@ def price_points(
 
 
 def comparables_for(
-    points: Sequence[PricePoint], position: str, *, limit: int = 3
+    points: Sequence[PricePoint],
+    position: str,
+    *,
+    limit: int = 3,
+    kinds: tuple[str, ...] = COMPARABLE_KINDS,
 ) -> list[PricePoint]:
-    """FAAB-priced points at one position, newest season and biggest price first."""
-    matching = [p for p in points if p.position == position and p.faab is not None]
+    """FAAB-priced points at one position, newest season and biggest price first.
+
+    Restricted to permanent acquisitions unless the caller says otherwise. A
+    rental at 30 FAAB is a real price the league set, but it is the price of
+    borrowing a player for a few weeks; quoting it beside a permanent
+    acquisition would tell a manager that position goes for less than it does.
+    A caller who wants those asks for them by name: ``kinds=("rental",)``.
+    """
+    matching = [
+        p for p in points
+        if p.position == position and p.faab is not None and p.kind in kinds
+    ]
     matching.sort(key=lambda p: (-p.season, -(p.faab or 0), p.trade_code))
     return matching[:limit]
 
 
-def median_faab(points: Sequence[PricePoint], position: str) -> int | None:
-    """The league's typical FAAB price at a position, or ``None`` with no history."""
-    prices = [p.faab for p in points if p.position == position and p.faab is not None]
+def median_faab(
+    points: Sequence[PricePoint],
+    position: str,
+    *,
+    kinds: tuple[str, ...] = COMPARABLE_KINDS,
+) -> int | None:
+    """The league's typical FAAB price at a position, or ``None`` with no history.
+
+    Filtered by trade kind on the same terms as :func:`comparables_for`, so a
+    median and the comparables shown beneath it always come from one population.
+    """
+    prices = [
+        p.faab for p in points
+        if p.position == position and p.faab is not None and p.kind in kinds
+    ]
     return int(median(prices)) if prices else None
 
 

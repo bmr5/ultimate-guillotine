@@ -15,6 +15,7 @@ from ultimate_guillotine.advisor.pricing import (
     median_faab,
     price_points,
 )
+from ultimate_guillotine.trades.models import TradeProposal
 
 POSITIONS = {"pa": "RB", "pb": "WR", "pc": "RB"}
 
@@ -23,15 +24,42 @@ POSITIONS = {"pa": "RB", "pb": "WR", "pc": "RB"}
 SENTINEL_SEASON = 2099
 
 
-def _terms(assets: list[dict], week: int | None = 5, kind: str = "permanent") -> dict:
+def _terms(
+    assets: list[dict],
+    week: int | None = 5,
+    kind: str = "permanent",
+    season: int = 2025,
+) -> dict:
+    """A whole ``TradeProposal.model_dump(mode="json")``, field for field.
+
+    The extractor writes every one of these keys into ``trade_revisions.terms``,
+    so a fixture carrying only the handful this module reads would let a rename
+    or a new required field pass unnoticed here and fail in production. The
+    season is a parameter because the repository test seeds a sentinel season
+    and its terms have to agree with the row they hang off.
+    """
     return {
-        "season": 2025, "effective_week": week, "kind": kind,
+        "season": season,
+        "effective_week": week,
+        "kind": kind,
         "parties": [
             {"member_id": 1, "display_name": "Member01"},
             {"member_id": 2, "display_name": "Member02"},
         ],
-        "assets": assets, "special_terms": [],
+        "assets": assets,
+        "rental_return_condition": None,
+        "special_terms": [],
+        "referenced_trade_code": None,
+        "source_message_guid": "guid-0001",
+        "evidence_excerpt": "Alpha for 120 FAAB",
+        "prompt_version": "trade-extract-v1",
+        "model": "claude-test",
     }
+
+
+def test_the_fixture_terms_are_a_whole_trade_proposal() -> None:
+    """Guards the mirror: a field added to the model must be added here too."""
+    assert set(_terms([])) == set(TradeProposal.model_fields)
 
 
 def _asset(kind, from_id, to_id, player_id=None, player_name=None, amount=None, unit=None):
@@ -146,11 +174,39 @@ def test_a_season_with_no_trades_has_no_prices_rather_than_an_error() -> None:
     assert median_faab([], "RB") is None
 
 
+def test_a_rental_is_recorded_but_never_priced_against_a_permanent() -> None:
+    """A rental's FAAB buys a few weeks, so it is not what the player costs."""
+    rows = [{"trade_code": "T-2025-009", "season": 2025, "terms": _terms([
+        _asset("player", 1, 2, "pa", "Alpha"),
+        _asset("faab", 2, 1, amount=30, unit="faab"),
+    ], kind="rental")}]
+    points = price_points(rows, POSITIONS)
+    assert points[0].kind == "rental" and points[0].faab == 30
+    assert comparables_for(points, "RB") == []
+    assert median_faab(points, "RB") is None
+    rentals = comparables_for(points, "RB", kinds=("rental",))
+    assert [p.trade_code for p in rentals] == ["T-2025-009"]
+    assert median_faab(points, "RB", kinds=("rental",)) == 30
+
+
+def test_money_from_an_unnamed_party_never_prices_a_player() -> None:
+    """Two unattributed halves of a trade do not add up to a price."""
+    rows = [{"trade_code": "T-2025-010", "season": 2025, "terms": _terms([
+        _asset("player", None, 2, "pa", "Alpha"),
+        _asset("faab", 2, None, amount=200, unit="faab"),
+    ])}]
+    point = price_points(rows, POSITIONS)[0]
+    assert point.player_name == "Alpha" and point.from_member_id is None
+    assert point.faab is None and point.unit is None
+    assert comparables_for([point], "RB") == []
+
+
 def test_accepted_terms_reads_only_live_trades(conn) -> None:
     _seed_trades(conn)
     rows = PriceRepository(conn).accepted_terms([SENTINEL_SEASON])
     assert [row["trade_code"] for row in rows] == ["T-2099-001"]
     assert rows[0]["season"] == SENTINEL_SEASON
+    assert rows[0]["terms"]["season"] == SENTINEL_SEASON
     assert rows[0]["terms"]["assets"][0]["player_id"] == "pa"
     assert PriceRepository(conn).accepted_terms([SENTINEL_SEASON - 1]) == []
 
@@ -195,7 +251,7 @@ def _seed_trades(conn) -> None:
                 (trade_id, json.dumps(_terms([
                     _asset("player", 1, 2, "pa", "Alpha"),
                     _asset("faab", 2, 1, amount=120, unit="faab"),
-                ]))),
+                ], season=SENTINEL_SEASON))),
             )
             revision_id = cur.fetchone()[0]
             cur.execute(
