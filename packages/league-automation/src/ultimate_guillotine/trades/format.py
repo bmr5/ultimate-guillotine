@@ -6,7 +6,7 @@ which appends its own signature -- nothing here ever does.
 
 from typing import Any
 
-from ultimate_guillotine.trades.models import TradeProposal
+from ultimate_guillotine.trades.models import TradeAsset, TradeProposal
 
 __all__ = [
     "format_clarification",
@@ -21,12 +21,30 @@ _AMOUNT_KINDS = ("faab", "usd", "draft_dollars")
 _UNIT_LABELS = {"faab": "FAAB", "draft_dollars": "draft dollars"}
 
 
-def _format_amount(kind: str, amount: object, unit: str | None) -> str:
+def _format_amount(kind: str, amount: int | None, unit: str | None) -> str:
+    """``450 FAAB``, ``$25``, ``-$25``, ``30 draft dollars``."""
     unit = unit or (kind if kind in _AMOUNT_KINDS else None)
     if unit == "usd":
-        return f"${amount}"
+        sign, magnitude = ("-", -amount) if amount is not None and amount < 0 else ("", amount)
+        return f"{sign}${magnitude}"
     label = _UNIT_LABELS.get(unit or "")
     return f"{amount} {label}" if label else f"{amount}"
+
+
+def _asset_part(asset: TradeAsset) -> str | None:
+    """One asset as chat text, or ``None`` when it has nothing to say.
+
+    The kind decides the shape: a player is a name, a numeric kind is an
+    amount, and everything else (``protection``, ``other``) is its description
+    even when it also carries a number -- a bare ``1`` would read as nonsense.
+    """
+    if asset.kind == "player":
+        return asset.player_name or asset.player_id or "a player"
+    if asset.kind in _AMOUNT_KINDS:
+        if asset.amount is None:
+            return None
+        return _format_amount(asset.kind, asset.amount, asset.unit)
+    return asset.description or asset.kind
 
 
 def _receives(proposal: TradeProposal, member_id: int) -> str:
@@ -37,16 +55,34 @@ def _receives(proposal: TradeProposal, member_id: int) -> str:
     for asset in proposal.assets:
         if asset.to_member_id != member_id:
             continue
+        part = _asset_part(asset)
+        if part is None:
+            continue
         if asset.kind == "player":
-            name = asset.player_name or asset.player_id
-            if name:
-                players.append(name)
-        elif asset.amount is not None:
-            amounts.append(_format_amount(asset.kind, asset.amount, asset.unit))
-        elif asset.kind not in _AMOUNT_KINDS:
-            others.append(asset.description or asset.kind)
+            players.append(part)
+        elif asset.kind in _AMOUNT_KINDS:
+            amounts.append(part)
+        else:
+            others.append(part)
     parts = players + amounts + others
     return " + ".join(parts) if parts else "nothing"
+
+
+def _unassigned(proposal: TradeProposal) -> list[str]:
+    """Assets no listed party receives, in proposal order.
+
+    A missing or unrecognised ``to_member_id`` would otherwise drop the asset
+    out of the message entirely; the chat sees it under ``Also:`` instead.
+    """
+    recipients = {party.member_id for party in proposal.parties}
+    parts: list[str] = []
+    for asset in proposal.assets:
+        if asset.to_member_id in recipients:
+            continue
+        part = _asset_part(asset)
+        if part is not None:
+            parts.append(part)
+    return parts
 
 
 def _kind_label(proposal: TradeProposal) -> str:
@@ -60,6 +96,9 @@ def _body(proposal: TradeProposal) -> list[str]:
         f"{party.display_name} receives: {_receives(proposal, party.member_id)}"
         for party in proposal.parties
     ]
+    unassigned = _unassigned(proposal)
+    if unassigned:
+        lines.append("Also: " + " + ".join(unassigned))
     week = "?" if proposal.effective_week is None else proposal.effective_week
     lines.append(f"Week {week} · {_kind_label(proposal)}")
     if proposal.special_terms:
