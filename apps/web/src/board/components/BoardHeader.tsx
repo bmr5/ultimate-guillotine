@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
+import { X } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
@@ -23,11 +25,30 @@ interface BoardHeaderProps {
   onSearchTermChange: (term: string) => void;
   /** When the projections were pulled — `team_week_projections.computed_at`. */
   projectionsUpdatedAt: number | null;
-  isRealtimeConnected: boolean;
+  /**
+   * True only once the socket has been up and has since gone down. A cold load is not a
+   * reconnect, so the page computes this from `hasConnectedOnce && !isConnected` rather than
+   * handing the header a bare `isConnected` it would otherwise misread on first paint.
+   */
+  isReconnecting: boolean;
 }
 
 /** Shown in place of the week number before `nfl_state` resolves. */
 const UNKNOWN_WEEK_LABEL = "Week —";
+
+/** The header's own label for a dropped socket, beside the week. */
+const RECONNECTING_LABEL = "reconnecting";
+
+/** One label for the search box and its clear button, so the two cannot drift apart. */
+const SEARCH_LABEL = "Search owner, team, or player";
+const CLEAR_SEARCH_LABEL = "Clear search";
+
+/**
+ * The 44px floor every control in this header sits on. The sort toggles and the search box are
+ * the two things a member taps on a phone while scrolling a live board, and the `sm` toggle
+ * variant and the `h-10` input both land under the floor on their own.
+ */
+const TOUCH_TARGET_CLASS = "min-h-[44px]";
 
 /**
  * The board's own header: the week, the sort, the search box and the last-pull indicator. It is
@@ -45,7 +66,7 @@ export function BoardHeader({
   searchTerm,
   onSearchTermChange,
   projectionsUpdatedAt,
-  isRealtimeConnected,
+  isReconnecting,
 }: BoardHeaderProps) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -59,16 +80,29 @@ export function BoardHeader({
   // The indicator ticks every second but only announces on a minute boundary: see
   // `crossesMinuteBoundary` for why a per-second announcement is worse than none.
   const [announced, setAnnounced] = useState("");
-  const previousElapsedRef = useRef(0);
+  /**
+   * Seeded lazily rather than at zero. A board opened onto an hour-old pull starts with a large
+   * elapsed, and a ref seeded at `0` would read that first render as a minute boundary and
+   * announce the pull time to a reader who has only just arrived — the one moment the header
+   * has nothing new to say. `null` means "no previous tick", and the first run only records.
+   */
+  const previousElapsedRef = useRef<number | null>(null);
   const elapsed =
     projectionsUpdatedAt === null ? 0 : Math.max(0, now - projectionsUpdatedAt);
   useEffect(() => {
-    if (crossesMinuteBoundary(previousElapsedRef.current, elapsed)) {
+    const previousElapsed = previousElapsedRef.current;
+    previousElapsedRef.current = elapsed;
+    if (previousElapsed === null) {
+      return;
+    }
+    if (crossesMinuteBoundary(previousElapsed, elapsed)) {
       setAnnounced(
-        `${formatUpdatedAt(projectionsUpdatedAt, now)}, ${formatUpdatedAgo(projectionsUpdatedAt, now)}`,
+        `${formatUpdatedAt(projectionsUpdatedAt, now)}, ${formatUpdatedAgo(
+          projectionsUpdatedAt,
+          now,
+        )}`,
       );
     }
-    previousElapsedRef.current = elapsed;
   }, [elapsed, projectionsUpdatedAt, now]);
 
   const stale = isStale(projectionsUpdatedAt, now);
@@ -99,8 +133,10 @@ export function BoardHeader({
           {formatUpdatedAgo(projectionsUpdatedAt, now)}
         </span>
         {stale ? <Badge variant="outline">Stale data</Badge> : null}
-        {!isRealtimeConnected ? (
-          <span className="text-xs text-muted-foreground">reconnecting</span>
+        {isReconnecting ? (
+          <span className="text-xs text-muted-foreground">
+            {RECONNECTING_LABEL}
+          </span>
         ) : null}
       </div>
 
@@ -128,20 +164,41 @@ export function BoardHeader({
               key={mode}
               value={mode}
               aria-label={SORT_MODE_LABELS[mode]}
+              className={TOUCH_TARGET_CLASS}
             >
               {SORT_MODE_LABELS[mode]}
             </ToggleGroupItem>
           ))}
         </ToggleGroup>
 
-        <Input
-          type="search"
-          value={searchTerm}
-          onChange={(event) => onSearchTermChange(event.target.value)}
-          placeholder="Search owner, team, or player"
-          aria-label="Search owner, team, or player"
-          className="sm:max-w-xs"
-        />
+        <div className="flex items-center gap-2 sm:w-auto">
+          <Input
+            type="search"
+            value={searchTerm}
+            onChange={(event) => onSearchTermChange(event.target.value)}
+            placeholder={SEARCH_LABEL}
+            aria-label={SEARCH_LABEL}
+            className={`${TOUCH_TARGET_CLASS} sm:w-64`}
+          />
+          {/*
+            An explicit clear button, rendered only when there is something to clear. The `x`
+            some browsers put inside `type="search"` is not on any of them — mobile Safari and
+            Firefox render none — so without this the only way back to the full board on a phone
+            is to hold backspace.
+          */}
+          {searchTerm === "" ? null : (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label={CLEAR_SEARCH_LABEL}
+              onClick={() => onSearchTermChange("")}
+              className={`${TOUCH_TARGET_CLASS} min-w-[44px] shrink-0`}
+            >
+              <X className="h-4 w-4" aria-hidden="true" />
+            </Button>
+          )}
+        </div>
       </div>
 
       {sortFellBack ? (

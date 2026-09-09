@@ -3,12 +3,18 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { BoardTeam } from "@/board/types";
+import { MS_PER_MINUTE, STALE_AFTER_MS } from "@/board/derive/time";
+import type { BoardTeam, RosterPlayer } from "@/board/types";
 import type { BoardDataResult } from "@/board/useBoardData";
 
-const boardData = vi.hoisted(() => ({ current: null as BoardDataResult | null }));
+import { BoardPage } from "./BoardPage";
+
+const boardData = vi.hoisted(() => ({
+  current: null as BoardDataResult | null,
+}));
 const realtime = vi.hoisted(() => ({
   isConnected: true,
+  hasConnectedOnce: true,
   refreshNow: vi.fn(),
 }));
 
@@ -19,12 +25,14 @@ vi.mock("@/board/useBoardData", () => ({
 vi.mock("@/board/useLeagueBoardRealtime", () => ({
   useLeagueBoardRealtime: () => ({
     isConnected: realtime.isConnected,
+    hasConnectedOnce: realtime.hasConnectedOnce,
     reconnectAttempts: 0,
     refreshNow: realtime.refreshNow,
   }),
 }));
 
-import { BoardPage } from "./BoardPage";
+const PAUSED_BANNER_TEXT = "Live updates are paused. Polling every 60 seconds.";
+const SEARCH_LABEL = "Search owner, team, or player";
 
 const team = (over: Partial<BoardTeam> & { teamId: number }): BoardTeam => ({
   isRosterFrozen: false,
@@ -44,6 +52,18 @@ const team = (over: Partial<BoardTeam> & { teamId: number }): BoardTeam => ({
   eliminatedWeek: null,
   eliminationSource: null,
   roster: [],
+  ...over,
+});
+
+const player = (
+  over: Partial<RosterPlayer> & { sleeperPlayerId: string; fullName: string },
+): RosterPlayer => ({
+  position: "QB",
+  nflTeam: "KC",
+  slot: "starter",
+  slotIndex: 0,
+  lineupPosition: "QB",
+  projectedPoints: 22.5,
   ...over,
 });
 
@@ -72,19 +92,24 @@ function renderPage() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  return render(
+  // A fresh element every call, so `rerenderPage` really re-renders: React bails out of a
+  // re-render handed the identical element it already holds.
+  const ui = () => (
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={["/"]}>
         <BoardPage />
         <LocationProbe />
       </MemoryRouter>
-    </QueryClientProvider>,
+    </QueryClientProvider>
   );
+  const view = render(ui());
+  return { ...view, rerenderPage: () => view.rerender(ui()) };
 }
 
 describe("BoardPage", () => {
   beforeEach(() => {
     realtime.isConnected = true;
+    realtime.hasConnectedOnce = true;
     realtime.refreshNow = vi.fn();
     boardData.current = result();
   });
@@ -174,9 +199,50 @@ describe("BoardPage", () => {
     realtime.isConnected = false;
     boardData.current = result({ teams: [team({ teamId: 1 })] });
     renderPage();
-    expect(
-      screen.getByText("Live updates are paused. Polling every 60 seconds."),
-    ).toBeInTheDocument();
+    expect(screen.getByText(PAUSED_BANNER_TEXT)).toBeInTheDocument();
+  });
+
+  it("says nothing about the socket on a cold load, and speaks only after a real drop", () => {
+    // A cold load: the socket has never been up, so neither the banner nor the label is true.
+    realtime.isConnected = false;
+    realtime.hasConnectedOnce = false;
+    boardData.current = result({ teams: [team({ teamId: 1 })] });
+    const { rerenderPage } = renderPage();
+    expect(screen.queryByText(PAUSED_BANNER_TEXT)).not.toBeInTheDocument();
+    expect(screen.queryByText("reconnecting")).not.toBeInTheDocument();
+
+    // The socket comes up: still nothing.
+    realtime.isConnected = true;
+    realtime.hasConnectedOnce = true;
+    rerenderPage();
+    expect(screen.queryByText(PAUSED_BANNER_TEXT)).not.toBeInTheDocument();
+    expect(screen.queryByText("reconnecting")).not.toBeInTheDocument();
+
+    // And now it drops — the one state both are about.
+    realtime.isConnected = false;
+    rerenderPage();
+    expect(screen.getByText(PAUSED_BANNER_TEXT)).toBeInTheDocument();
+    expect(screen.getByText("reconnecting")).toBeInTheDocument();
+  });
+
+  it("badges a pull older than the stale threshold", () => {
+    boardData.current = result({
+      teams: [team({ teamId: 1 })],
+      projectionsUpdatedAt: Date.now() - STALE_AFTER_MS - MS_PER_MINUTE,
+    });
+    renderPage();
+    expect(screen.getByText("Stale data")).toBeInTheDocument();
+  });
+
+  it("announces nothing on mount, even for a pull made an hour ago", () => {
+    boardData.current = result({
+      teams: [team({ teamId: 1 })],
+      projectionsUpdatedAt: Date.now() - 60 * MS_PER_MINUTE,
+    });
+    const { container } = renderPage();
+    const liveRegion = container.querySelector('[aria-live="polite"]');
+    expect(liveRegion).not.toBeNull();
+    expect(liveRegion).toBeEmptyDOMElement();
   });
 
   it("refreshes through the realtime hook, not a bare refetch", () => {
@@ -194,13 +260,98 @@ describe("BoardPage", () => {
       teams: [team({ teamId: 1 }), team({ teamId: 2, ownerName: "charlie" })],
     });
     renderPage();
-    fireEvent.change(screen.getByLabelText("Search owner, team, or player"), {
+    fireEvent.change(screen.getByLabelText(SEARCH_LABEL), {
       target: { value: "charlie" },
     });
     await waitFor(() => {
       expect(screen.queryByText("owner1")).not.toBeInTheDocument();
     });
     expect(screen.getByText("charlie")).toBeInTheDocument();
+  });
+
+  it("auto-expands the one team a player search matched and highlights the row", async () => {
+    boardData.current = result({
+      teams: [
+        team({
+          teamId: 1,
+          roster: [player({ sleeperPlayerId: "p1", fullName: "Puka Nacua" })],
+        }),
+        team({
+          teamId: 2,
+          roster: [
+            player({ sleeperPlayerId: "p2", fullName: "Bijan Robinson" }),
+          ],
+        }),
+      ],
+    });
+    const { container } = renderPage();
+    fireEvent.change(screen.getByLabelText(SEARCH_LABEL), {
+      target: { value: "nacua" },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Puka Nacua")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Bijan Robinson")).not.toBeInTheDocument();
+    expect(screen.getByText("owner1")).toBeInTheDocument();
+    expect(screen.queryByText("owner2")).not.toBeInTheDocument();
+    expect(container.querySelectorAll("[data-highlighted]")).toHaveLength(1);
+    expect(screen.getByRole("button", { expanded: true })).toBeInTheDocument();
+  });
+
+  it("lets a search-expanded card be closed and opened again", async () => {
+    boardData.current = result({
+      teams: [
+        team({
+          teamId: 1,
+          roster: [player({ sleeperPlayerId: "p1", fullName: "Puka Nacua" })],
+        }),
+      ],
+    });
+    renderPage();
+    fireEvent.change(screen.getByLabelText(SEARCH_LABEL), {
+      target: { value: "nacua" },
+    });
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { expanded: true }),
+      ).toBeInTheDocument();
+    });
+
+    // The tap the auto-expand used to swallow: an explicit close outranks it.
+    fireEvent.click(screen.getByRole("button", { expanded: true }));
+    expect(screen.getByRole("button", { expanded: false })).toBeInTheDocument();
+    expect(screen.queryByText("Puka Nacua")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { expanded: false }));
+    expect(screen.getByRole("button", { expanded: true })).toBeInTheDocument();
+    expect(screen.getByText("Puka Nacua")).toBeInTheDocument();
+  });
+
+  it("clears the search from the clear button, which appears only with a term", async () => {
+    boardData.current = result({
+      teams: [team({ teamId: 1 }), team({ teamId: 2, ownerName: "charlie" })],
+    });
+    renderPage();
+    expect(
+      screen.queryByRole("button", { name: "Clear search" }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(SEARCH_LABEL), {
+      target: { value: "charlie" },
+    });
+    await waitFor(() => {
+      expect(screen.queryByText("owner1")).not.toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear search" }));
+    expect(screen.getByLabelText(SEARCH_LABEL)).toHaveValue("");
+    await waitFor(() => {
+      expect(screen.getByText("owner1")).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByRole("button", { name: "Clear search" }),
+    ).not.toBeInTheDocument();
   });
 
   it("changes the sort and records it in the URL", async () => {

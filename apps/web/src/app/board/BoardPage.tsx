@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import { BoardHeader } from "@/board/components/BoardHeader";
@@ -35,9 +35,18 @@ export function BoardPage() {
 
   const [rawSearch, setRawSearch] = useState("");
   const searchTerm = useDebouncedValue(rawSearch, SEARCH_DEBOUNCE_MS);
-  const [openTeamIds, setOpenTeamIds] = useState<ReadonlySet<number>>(
-    () => new Set(),
-  );
+  /**
+   * A team's card is open when the search auto-expanded it — unless the reader has since said
+   * otherwise about that team, which is what this map records.
+   *
+   * A plain "explicitly opened" set cannot express the case the reader hits first: a search that
+   * auto-expands a card leaves the card open no matter what the set says, so tapping it does
+   * nothing and the roster cannot be put away. `false` here is a real, storable answer, so an
+   * auto-expanded card closes on the first tap and opens again on the second.
+   */
+  const [openOverrides, setOpenOverrides] = useState<
+    ReadonlyMap<number, boolean>
+  >(() => new Map());
 
   /**
    * The poll is only the fallback for a dead socket, so it is derived from the socket's own
@@ -88,14 +97,21 @@ export function BoardPage() {
     [filtered.autoExpandTeamIds],
   );
 
+  /**
+   * The toggle has to know whether the card it is closing was auto-expanded, but it must stay
+   * referentially stable across a search — it is a prop on every memoized `TeamCard`, and a new
+   * identity on every keystroke would re-render the whole board. A ref carries the current
+   * auto-expand set into a callback that depends on nothing.
+   */
+  const autoExpandedRef = useRef(autoExpanded);
+  autoExpandedRef.current = autoExpanded;
+
   const handleToggle = useCallback((teamId: number) => {
-    setOpenTeamIds((current) => {
-      const next = new Set(current);
-      if (next.has(teamId)) {
-        next.delete(teamId);
-      } else {
-        next.add(teamId);
-      }
+    setOpenOverrides((current) => {
+      const wasOpen =
+        current.get(teamId) ?? autoExpandedRef.current.has(teamId);
+      const next = new Map(current);
+      next.set(teamId, !wasOpen);
       return next;
     });
   }, []);
@@ -111,9 +127,17 @@ export function BoardPage() {
   );
 
   const isOpen = (teamId: number) =>
-    openTeamIds.has(teamId) || autoExpanded.has(teamId);
+    openOverrides.get(teamId) ?? autoExpanded.has(teamId);
 
   const showList = !board.isPending && !board.isEmpty;
+
+  /**
+   * A cold load is not a dropped socket: `isConnected` is false for every board's first paint,
+   * so gating the paused banner and the header's "reconnecting" label on it alone flashed both
+   * on every single visit. They appear only once the socket has been up and has since gone
+   * down — the only state either of them describes truthfully.
+   */
+  const isReconnecting = realtime.hasConnectedOnce && !realtime.isConnected;
 
   return (
     <main className="px-4 pb-10 sm:px-0">
@@ -125,15 +149,15 @@ export function BoardPage() {
         searchTerm={rawSearch}
         onSearchTermChange={setRawSearch}
         projectionsUpdatedAt={board.projectionsUpdatedAt}
-        isRealtimeConnected={realtime.isConnected}
+        isReconnecting={isReconnecting}
       />
 
       <div className="space-y-3">
-        {realtime.isConnected ? null : (
+        {isReconnecting ? (
           // `refreshNow`, not `refetchAll`: the button also rebuilds the channel, which is the
           // only way to skip a pending backoff timer.
           <RealtimeBanner onRefresh={realtime.refreshNow} />
-        )}
+        ) : null}
 
         <BoardErrors errors={board.errors} onRetry={board.refetchAll} />
 

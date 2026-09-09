@@ -1,5 +1,5 @@
-import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { supabase } from "@/supabaseClient";
 
@@ -7,11 +7,11 @@ import { boardKeys } from "./queryKeys";
 import {
   backoffDelayMs,
   BOARD_REALTIME_TABLES,
-  type BoardRealtimeTable,
   keysForTable,
   REALTIME_DEBOUNCE_MS,
   REALTIME_MAX_EVENTS_PER_BURST,
   REALTIME_MAX_WAIT_MS,
+  type BoardRealtimeTable,
 } from "./realtime";
 
 /** The slice of a Supabase RealtimeChannel the board uses, so tests can supply a fake. */
@@ -40,8 +40,17 @@ export interface UseLeagueBoardRealtimeArgs {
 }
 
 export interface LeagueBoardRealtime {
-  /** The header turns this into the "reconnecting" label, and the page into its poll interval. */
+  /** The page turns this into its poll interval. */
   isConnected: boolean;
+  /**
+   * True from the first successful subscribe onwards, and never false again.
+   *
+   * `isConnected` is false for the whole of a cold load — the socket cannot have come up before
+   * the page mounted — so a paused banner and a "reconnecting" label gated on `!isConnected`
+   * alone flash on every single visit and say something untrue while they do. Both are gated on
+   * `hasConnectedOnce && !isConnected` instead, which is the only state that means *dropped*.
+   */
+  hasConnectedOnce: boolean;
   reconnectAttempts: number;
   /**
    * Refetches the whole board and rebuilds the channel immediately. The disconnected banner's
@@ -71,10 +80,12 @@ let nextMountId = 0;
 export function useLeagueBoardRealtime(
   args: UseLeagueBoardRealtimeArgs,
 ): LeagueBoardRealtime {
-  const { seasonId, season, week, transport, onConnectionChange, random } = args;
+  const { seasonId, season, week, transport, onConnectionChange, random } =
+    args;
   const queryClient = useQueryClient();
 
   const [isConnected, setIsConnected] = useState(false);
+  const [hasConnectedOnce, setHasConnectedOnce] = useState(false);
   const [reconnectAttempts, setReconnectAttempts] = useState(0);
   /**
    * Bumped once per reconnect attempt and used as the effect's only changing dependency. The
@@ -174,7 +185,10 @@ export function useLeagueBoardRealtime(
       // A steady write just under the debounce would otherwise reset the trailing timer
       // forever; this ceiling on the wait is what guarantees the board still refetches.
       if (maxWaitTimerRef.current === null) {
-        maxWaitTimerRef.current = window.setTimeout(flush, REALTIME_MAX_WAIT_MS);
+        maxWaitTimerRef.current = window.setTimeout(
+          flush,
+          REALTIME_MAX_WAIT_MS,
+        );
       }
     },
     [flush],
@@ -185,7 +199,9 @@ export function useLeagueBoardRealtime(
     let retryTimer: number | null = null;
     let cancelled = false;
 
-    const channel = active.channel(`league-board-${mountIdRef.current}-${reconnectNonce}`);
+    const channel = active.channel(
+      `league-board-${mountIdRef.current}-${reconnectNonce}`,
+    );
     // Unfiltered on purpose: `roster_holdings`, `team_season_state` and `team_week_projections`
     // all carry a `season_id`, but the league runs exactly one live season at a time, so every
     // event on them belongs to the season the board is showing. `keysForTable` scopes the
@@ -193,9 +209,13 @@ export function useLeagueBoardRealtime(
     // would cost a redundant refetch and nothing else. If a second live season ever exists, add
     // `filter: \`season_id=eq.${seasonId}\`` here (and gate the subscribe on a resolved id).
     for (const table of BOARD_REALTIME_TABLES) {
-      channel.on("postgres_changes", { event: "*", schema: "public", table }, () => {
-        enqueue(table);
-      });
+      channel.on(
+        "postgres_changes",
+        { event: "*", schema: "public", table },
+        () => {
+          enqueue(table);
+        },
+      );
     }
 
     channel.subscribe((status) => {
@@ -204,6 +224,9 @@ export function useLeagueBoardRealtime(
       }
       if (status === "SUBSCRIBED") {
         setIsConnected(true);
+        // Latches on the first subscribe and stays latched: past this point a `false`
+        // `isConnected` is a drop, which is the only thing the board's paused chrome may say.
+        setHasConnectedOnce(true);
         attemptsRef.current = 0;
         setReconnectAttempts(0);
         onConnectionChangeRef.current?.(true);
@@ -218,12 +241,15 @@ export function useLeagueBoardRealtime(
         setIsConnected(false);
         onConnectionChangeRef.current?.(false);
         if (retryTimer === null) {
-          retryTimer = window.setTimeout(() => {
-            retryTimer = null;
-            attemptsRef.current += 1;
-            setReconnectAttempts(attemptsRef.current);
-            setReconnectNonce((nonce) => nonce + 1);
-          }, backoffDelayMs(attemptsRef.current, randomRef.current));
+          retryTimer = window.setTimeout(
+            () => {
+              retryTimer = null;
+              attemptsRef.current += 1;
+              setReconnectAttempts(attemptsRef.current);
+              setReconnectNonce((nonce) => nonce + 1);
+            },
+            backoffDelayMs(attemptsRef.current, randomRef.current),
+          );
         }
       }
     });
@@ -242,5 +268,5 @@ export function useLeagueBoardRealtime(
     };
   }, [clearTimers, enqueue, invalidateAll, reconnectNonce, transport]);
 
-  return { isConnected, reconnectAttempts, refreshNow };
+  return { isConnected, hasConnectedOnce, reconnectAttempts, refreshNow };
 }
