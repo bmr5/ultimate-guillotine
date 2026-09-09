@@ -23,6 +23,7 @@ from ultimate_guillotine.data.repositories import (
     MemberAliasRepository,
     MemberContactRepository,
     handle_hash,
+    normalize_handle,
 )
 
 
@@ -109,6 +110,9 @@ def cmd_handles_load(args: argparse.Namespace) -> int:
     skipped, matching `aliases load`: a typo in one row should not block the
     rest. Every entry being skipped means nothing was loaded, so that exits 1.
 
+    A handle that is blank once normalized is not a handle, and an entry left
+    with none of them is skipped as an unfinished row rather than loaded.
+
     The whole file lands in one transaction. A conflicting handle aborts the
     load part-way through, and a database holding the first half of an edited
     handle file is worse than one still holding yesterday's: the commissioner
@@ -123,7 +127,16 @@ def cmd_handles_load(args: argparse.Namespace) -> int:
     with deps.conn.transaction():
         for entry in document.get("members", []):
             username = entry.get("sleeper_username", "")
-            digests = [handle_hash(h) for h in entry.get("handles") or [] if h]
+            # Filtered on the *normalized* handle, because that is what would
+            # be hashed: `" "` is truthy and normalizes to nothing, and hashing
+            # it would store the digest of the empty string as a contact row --
+            # a row every future blank handle in the file would then collide
+            # with, reported as a member claiming another member's handle.
+            digests = [
+                handle_hash(h)
+                for h in entry.get("handles") or []
+                if h and normalize_handle(h)
+            ]
             if not digests:
                 # `replace_handles` is wholesale, so an empty list would wipe
                 # this member's handles. A row with no handles is an unfinished

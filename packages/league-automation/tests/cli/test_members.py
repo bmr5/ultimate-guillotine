@@ -225,6 +225,36 @@ def test_handles_load_skips_an_entry_with_no_handles(
     assert [name for name, _ in contact_cli.calls] == ["Member01"]
 
 
+def test_handles_load_never_hashes_a_handle_that_is_only_whitespace(
+    tmp_path: Path, contact_cli, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A blank handle is a hole in the file, not a contact to store.
+
+    `" "` is truthy, so filtering on the raw string kept it: it normalizes to
+    nothing and would have been stored as `sha256("")` -- a row no sender can
+    ever match and one that every other blank handle in the league would
+    collide with, surfacing as a bogus conflict.
+    """
+    contact_cli.known = {"Member01", "Member02"}
+    path = _handles_file(
+        tmp_path,
+        [
+            {"sleeper_username": "Member01", "handles": [" \t ", HANDLE]},
+            {"sleeper_username": "Member02", "handles": ["   "]},
+        ],
+    )
+
+    assert members_cli.cmd_handles_load(argparse.Namespace(path=path)) == 0
+
+    captured = capsys.readouterr()
+    assert "handles: 1 members, 1 handles" in captured.out
+    assert "no handles: Member02" in captured.err
+    assert [(name, digests) for name, digests in contact_cli.calls] == [
+        ("Member01", [handle_hash(HANDLE)])
+    ]
+    assert handle_hash("") not in [d for _, digests in contact_cli.calls for d in digests]
+
+
 def test_handles_load_propagates_a_conflicting_handle(tmp_path: Path, contact_cli) -> None:
     """An unknown name is a stale row; a handle claimed by two members is a real
     contradiction in the file, and swallowing it would map the wrong person."""
