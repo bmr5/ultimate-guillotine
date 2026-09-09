@@ -1,12 +1,21 @@
-import { memo, useId, useMemo } from "react";
+import { memo, useId, useMemo, useState } from "react";
 import { ChevronDown } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
-import { resolveProjectionDisplay } from "../derive/projection";
+import {
+  partialCoverageExplanation,
+  resolveProjectionDisplay,
+} from "../derive/projection";
 import { layoutStarters, resolveEmptySlotCount } from "../derive/roster";
 import { formatComputedTitle } from "../derive/time";
 import type { BoardTeam } from "../types";
@@ -58,6 +67,75 @@ export const FROZEN_ROSTER_LABEL = "Final roster, frozen at elimination";
 /** What the empty-slot count is called for a reader who cannot see it sitting under `proj`. */
 const EMPTY_SLOTS_DESCRIPTION = "empty starter slots";
 
+interface PartialCoverageBadgeProps {
+  /** The sentence that says why the badge is there; the tooltip's whole point. */
+  description: string;
+  /** What the badge is called; the same wording the screen reader hears. */
+  label: string;
+  /** When the projection was computed, already in words. Omitted when it is not known. */
+  computedText: string | undefined;
+}
+
+/**
+ * The `partial` badge, under the projection it is about.
+ *
+ * Ben's card change 3: the badge used to sit in the row of badges below the summary, far enough
+ * from the number that it read as a property of the card rather than of the projection, and it
+ * never said why it was there. So it moved under the big number, and it explains itself.
+ *
+ * The tooltip is controlled rather than left to Radix's hover-and-focus default: Radix suppresses
+ * tooltips opened by touch, and this badge is read on a phone as often as anywhere. Hover and
+ * keyboard focus still open it through `onOpenChange`; the click handler adds tap. The sentence
+ * is also mounted as visually hidden text and named by `aria-describedby`, so a screen reader
+ * gets it whether or not the tooltip is open.
+ */
+function PartialCoverageBadge({
+  description,
+  label,
+  computedText,
+}: PartialCoverageBadgeProps) {
+  const [open, setOpen] = useState(false);
+  const descriptionId = useId();
+
+  return (
+    <TooltipProvider>
+      <Tooltip open={open} onOpenChange={setOpen}>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            aria-describedby={descriptionId}
+            onClick={() => setOpen((wasOpen) => !wasOpen)}
+            className={cn(
+              "inline-flex min-h-[44px] items-center justify-end rounded-md",
+              FOCUS_RING_CLASS,
+            )}
+          >
+            {/* Below the gate the number still shows; the badge is only a footnote. */}
+            <span
+              aria-hidden="true"
+              className="rounded-md border px-2 py-0.5 text-xs font-medium text-muted-foreground"
+            >
+              {PARTIAL_BADGE_TEXT}
+            </span>
+            <span className="sr-only">{label}</span>
+          </button>
+        </TooltipTrigger>
+        <TooltipContent className="max-w-[16rem] text-left">
+          <span className="block">{description}</span>
+          {computedText === undefined ? null : (
+            <span className="mt-1 block text-xs text-muted-foreground">
+              {computedText}
+            </span>
+          )}
+        </TooltipContent>
+      </Tooltip>
+      <span id={descriptionId} className="sr-only">
+        {description}
+      </span>
+    </TooltipProvider>
+  );
+}
+
 interface TeamCardProps {
   team: BoardTeam;
   rank: number;
@@ -99,16 +177,22 @@ export const TeamCard = memo(function TeamCard({
     team.faabRemaining === null
       ? FAAB_UNKNOWN_TEXT
       : `${team.faabRemaining} FAAB`;
-  // Only the partial badge carries a computed-at tooltip: it is the one caveat where the age of
+  // Only the partial badge carries a computed-at line: it is the one caveat where the age of
   // the number is the follow-up question. `Projection unavailable` means there is no number to
   // have been computed, so a "computed at" time on it would be a lie about a row that is absent.
   // A raw ISO timestamp is never surfaced (see `derive/time`), so it is formatted in the
   // viewer's own locale and timezone like every other time on the board.
-  const computedTitle =
+  const computedText =
     projection.caveat === "partial" && team.projectionComputedAt !== null
       ? formatComputedTitle(Date.parse(team.projectionComputedAt))
       : undefined;
-  const hasBadges = projection.caveatLabel !== null || team.isEliminated;
+  // The partial caveat left this row when it moved under the projection, so the row below the
+  // summary is now the unavailable caveat and the elimination badge — and nothing at all for a
+  // live team with a good projection, which is most of the board.
+  const isPartial = projection.caveat === "partial";
+  const coverageExplanation = partialCoverageExplanation(team);
+  const hasBadges =
+    (projection.caveatLabel !== null && !isPartial) || team.isEliminated;
 
   return (
     <li>
@@ -128,82 +212,101 @@ export const TeamCard = memo(function TeamCard({
       >
         <Collapsible open={isOpen}>
           {/*
-            A real <button>, not a Radix trigger, so the card owns its `aria-controls`. The
-            badges sit outside it because `Badge` renders a <div>, and a <div> inside a <button>
-            is invalid HTML.
+            The summary is a row of three, not one button: the projection block beside the
+            toggle now holds the `partial` badge, which owns a tooltip and so has to be a
+            control of its own — and a control inside a <button> is invalid HTML. The toggle
+            still covers the owner, the team and the numbers line, which is the whole left of
+            the row; the chevron keeps its own 44px target so tapping it still expands.
           */}
-          <button
-            type="button"
-            aria-expanded={isOpen}
-            aria-controls={panelId}
-            onClick={() => onToggle(team.teamId)}
-            className={cn(
-              "flex min-h-[44px] w-full items-start gap-3 p-4 text-left",
-              FOCUS_RING_CLASS,
-            )}
-          >
-            <span className="w-5 shrink-0 pt-1 text-sm tabular-nums text-muted-foreground">
-              {rank}
-            </span>
-            <span className="min-w-0 flex-1">
-              {/* Full-strength foreground even when eliminated; only the chrome dims. */}
-              <span className="block truncate font-medium text-foreground">
-                {team.ownerName}
+          <div data-card-summary className="flex items-start gap-2 p-4">
+            {/* A real <button>, not a Radix trigger, so the card owns its `aria-controls`. */}
+            <button
+              type="button"
+              aria-expanded={isOpen}
+              aria-controls={panelId}
+              onClick={() => onToggle(team.teamId)}
+              className={cn(
+                "flex min-h-[44px] min-w-0 flex-1 items-start gap-3 text-left",
+                FOCUS_RING_CLASS,
+              )}
+            >
+              <span className="w-5 shrink-0 pt-1 text-sm tabular-nums text-muted-foreground">
+                {rank}
               </span>
-              <span className="block truncate text-sm text-muted-foreground">
-                {team.teamName}
+              <span className="min-w-0 flex-1">
+                {/* Full-strength foreground even when eliminated; only the chrome dims. */}
+                <span className="block truncate font-medium text-foreground">
+                  {team.ownerName}
+                </span>
+                <span className="block truncate text-sm text-muted-foreground">
+                  {team.teamName}
+                </span>
+                <span className="mt-1 block text-xs text-muted-foreground">
+                  {/*
+                    Ben's card change 1: the season total, not a record and not "points for".
+                    The visible word is `Total`; the sr-only copy names the figure in full, so
+                    the line is not read out as a total of something unstated.
+                  */}
+                  <span aria-hidden="true">{`${TOTAL_POINTS_TEXT} ${totalPoints}`}</span>
+                  <span className="sr-only">{`${TOTAL_POINTS_LABEL} ${totalPoints}`}</span>
+                  {` · ${faab}`}
+                </span>
               </span>
-              <span className="mt-1 block text-xs text-muted-foreground">
-                {/*
-                  Ben's card change 1: the season total, not a record and not "points for".
-                  The visible word is `Total`; the sr-only copy names the figure in full, so
-                  the line is not read out as a total of something unstated.
-                */}
-                <span aria-hidden="true">{`${TOTAL_POINTS_TEXT} ${totalPoints}`}</span>
-                <span className="sr-only">{`${TOTAL_POINTS_LABEL} ${totalPoints}`}</span>
-                {` · ${faab}`}
-              </span>
-            </span>
-            <span className="shrink-0 text-right">
+            </button>
+
+            {/*
+              The projection and everything that qualifies it: the number, its caption, the
+              `partial` badge when the coverage is below the gate, and the empty-slot count. A
+              lineup with a hole in it, or a projection built on half a lineup, has to be
+              visible without expanding the card.
+            */}
+            <div data-projection className="shrink-0 text-right">
               <span className="block text-2xl font-semibold tabular-nums text-foreground">
                 {projection.text}
               </span>
               <span className="block text-xs text-muted-foreground">proj</span>
-              {/*
-                Inside the summary button, not in the badge row below it: a lineup with a hole
-                in it has to be visible without expanding the card. A plain span rather than a
-                `Badge`, which renders a <div> and would be invalid HTML inside a <button>.
-              */}
+              {isPartial && projection.caveatLabel !== null ? (
+                <PartialCoverageBadge
+                  description={coverageExplanation ?? projection.caveatLabel}
+                  label={projection.caveatLabel}
+                  computedText={computedText}
+                />
+              ) : null}
               {emptySlots > 0 ? (
                 <span className="mt-1 block text-xs font-medium text-destructive">
                   {`${emptySlots} empty`}
                   <span className="sr-only">{` ${EMPTY_SLOTS_DESCRIPTION}`}</span>
                 </span>
               ) : null}
-            </span>
-            <ChevronDown
+            </div>
+
+            {/*
+              A redundant mouse and touch target for the same toggle, hidden from assistive
+              technology and out of the tab order: the button above is the one control, and a
+              second `aria-expanded` on the same panel would only be read twice.
+            */}
+            <button
+              type="button"
+              tabIndex={-1}
               aria-hidden="true"
-              className={cn(
-                "mt-1 h-4 w-4 shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none",
-                isOpen && "rotate-180",
-              )}
-            />
-          </button>
+              onClick={() => onToggle(team.teamId)}
+              className="flex min-h-[44px] min-w-[44px] shrink-0 items-start justify-center pt-1"
+            >
+              <ChevronDown
+                aria-hidden="true"
+                className={cn(
+                  "h-4 w-4 text-muted-foreground transition-transform motion-reduce:transition-none",
+                  isOpen && "rotate-180",
+                )}
+              />
+            </button>
+          </div>
 
           {hasBadges ? (
             <div className="flex flex-wrap gap-2 px-4 pb-3">
-              {projection.caveatLabel === null ? null : (
-                <Badge variant="outline" title={computedTitle}>
-                  {projection.caveat === "partial" ? (
-                    <>
-                      {/* Below the gate the number still shows; the badge is only a footnote. */}
-                      <span aria-hidden="true">{PARTIAL_BADGE_TEXT}</span>
-                      <span className="sr-only">{projection.caveatLabel}</span>
-                    </>
-                  ) : (
-                    projection.caveatLabel
-                  )}
-                </Badge>
+              {/* Only the em dash state lands here now; `partial` sits under the number. */}
+              {projection.caveatLabel === null || isPartial ? null : (
+                <Badge variant="outline">{projection.caveatLabel}</Badge>
               )}
               {team.isEliminated ? (
                 <Badge

@@ -98,6 +98,24 @@ const renderCard = (
 
 const toggleButton = () => screen.getByRole("button", { name: /benray/i });
 
+/** The `partial` badge under the projection; also the tooltip's trigger. */
+const partialBadge = () =>
+  screen.getByRole("button", { name: "Partial projection coverage" });
+
+/** A team whose projection covers six of nine starters — the below-gate state. */
+const partialTeam = (): Partial<BoardTeam> => ({
+  projectedPoints: 80,
+  coveragePct: 66.67,
+  isProvisional: true,
+  startersProjected: 6,
+  starterSlots: 9,
+});
+
+/** The sentence Ben asked the badge to carry, spelled out once. */
+const COVERAGE_SENTENCE =
+  "Only 6 of 9 starters have a projection (66.7%). " +
+  "The number counts the players Sleeper has projected.";
+
 interface StateCase {
   name: string;
   team: Partial<BoardTeam>;
@@ -126,8 +144,14 @@ const STATE_CASES: StateCase[] = [
     absent: ["0.0", "112.4"],
   },
   {
-    name: "below the gate: the number stays, with a partial caveat beside it",
-    team: { projectedPoints: 80, coveragePct: 66.7, isProvisional: true },
+    name: "below the gate: the number stays, with a partial caveat under it",
+    team: {
+      projectedPoints: 80,
+      coveragePct: 66.67,
+      isProvisional: true,
+      startersProjected: 6,
+      starterSlots: 9,
+    },
     present: ["80.0", "Partial projection coverage"],
     absent: ["Projection unavailable"],
   },
@@ -364,14 +388,11 @@ describe("TeamCard", () => {
   });
 
   it("dates the partial caveat in words, never as an ISO string", () => {
-    renderCard({ projectedPoints: 80, coveragePct: 66.7, isProvisional: true });
-    const badge = screen
-      .getByText("Partial projection coverage")
-      .closest("[title]");
-    expect(badge).not.toBeNull();
-    const title = badge?.getAttribute("title") ?? "";
-    expect(title).toMatch(/^Computed /);
-    expect(title).not.toMatch(/\d{4}-\d{2}-\d{2}T/);
+    renderCard(partialTeam());
+    fireEvent.click(partialBadge());
+    const tooltip = screen.getByRole("tooltip");
+    expect(tooltip).toHaveTextContent(/Computed /);
+    expect(tooltip.textContent ?? "").not.toMatch(/\d{4}-\d{2}-\d{2}T/);
   });
 
   it("does not date a projection that was never computed", () => {
@@ -420,8 +441,10 @@ describe("TeamCard empty starter slots", () => {
   it("badges the empty count on the collapsed card, beside the projection", () => {
     renderCard(oneStarter(), { rosterPositions: LEAGUE_SLOTS });
     expect(screen.getByText("8 empty")).toBeInTheDocument();
-    // Visible without expanding: the badge is inside the summary button.
-    expect(screen.getByText("8 empty").closest("button")).not.toBeNull();
+    // Visible without expanding: the count sits in the projection block, in the summary row.
+    expect(
+      screen.getByText("8 empty").closest("[data-projection]"),
+    ).not.toBeNull();
   });
 
   it("prefers the data layer's own empty_slots count when the week has a projection", () => {
@@ -452,5 +475,74 @@ describe("TeamCard empty starter slots", () => {
     ).toHaveLength(9);
     expect(screen.queryByText(/ — Empty$/)).toBeNull();
     expect(screen.queryByText(/ empty$/)).toBeNull();
+  });
+});
+
+/**
+ * Ben's card change 3: "the partial badge should sit under the number it is about, and say why
+ * it is there." So it moved into the projection block and grew a tooltip that names the two
+ * figures behind the caveat.
+ */
+describe("TeamCard partial coverage badge", () => {
+  it("renders the badge inside the projection block, not the badge row", () => {
+    const { container } = renderCard(partialTeam());
+    const badge = partialBadge();
+    expect(badge.closest("[data-projection]")).not.toBeNull();
+    // The block it sits in is the one holding the number and its caption.
+    const projection = container.querySelector("[data-projection]");
+    expect(projection?.textContent).toContain("80.0");
+    expect(projection?.textContent).toContain("proj");
+    expect(projection?.textContent).toContain("partial");
+  });
+
+  it("explains the caveat on tap, naming the starters and the coverage", () => {
+    renderCard(partialTeam());
+    expect(screen.queryByRole("tooltip")).toBeNull();
+    fireEvent.click(partialBadge());
+    expect(screen.getByRole("tooltip")).toHaveTextContent(COVERAGE_SENTENCE);
+  });
+
+  it("opens on keyboard focus as well as on tap", () => {
+    renderCard(partialTeam());
+    const badge = partialBadge();
+    badge.focus();
+    expect(badge).toHaveFocus();
+    fireEvent.focus(badge);
+    expect(screen.getByRole("tooltip")).toHaveTextContent(COVERAGE_SENTENCE);
+  });
+
+  it("gives the sentence to a screen reader whether or not the tooltip is open", () => {
+    renderCard(partialTeam());
+    const describedBy = partialBadge().getAttribute("aria-describedby");
+    expect(describedBy).toBeTruthy();
+    const description = document.getElementById(describedBy as string);
+    expect(description?.textContent).toBe(COVERAGE_SENTENCE);
+  });
+
+  it("keeps a 44px target and the shared focus ring on the badge", () => {
+    renderCard(partialTeam());
+    const className = partialBadge().className;
+    expect(className).toContain("min-h-[44px]");
+    expect(className).toContain("focus-visible:ring-2");
+  });
+
+  it("falls back to the plain label when the week has no starter counts", () => {
+    renderCard({
+      ...partialTeam(),
+      startersProjected: null,
+      starterSlots: null,
+    });
+    fireEvent.click(partialBadge());
+    expect(screen.getByRole("tooltip")).toHaveTextContent(
+      "Partial projection coverage",
+    );
+    expect(screen.queryByText(/starters have a projection/)).toBeNull();
+  });
+
+  it("puts no badge under a projection that clears the gate", () => {
+    renderCard();
+    expect(
+      screen.queryByRole("button", { name: "Partial projection coverage" }),
+    ).toBeNull();
   });
 });

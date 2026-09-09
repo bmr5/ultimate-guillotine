@@ -8,11 +8,14 @@ import { describe, expect, it } from "vitest";
 
 import {
   COVERAGE_GATE_PCT,
+  PARTIAL_COVERAGE_EXPLANATION_SUFFIX,
   PARTIAL_COVERAGE_LABEL,
+  partialCoverageExplanation,
   PROJECTION_UNAVAILABLE_LABEL,
   PROJECTION_UNAVAILABLE_TEXT,
   resolveProjectionDisplay,
   STRICT_COVERAGE_GATE,
+  type CoverageExplanationInput,
   type ProjectionDisplay,
   type ProjectionInput,
 } from "./projection";
@@ -202,5 +205,77 @@ describe("projection constants", () => {
 
   it("defaults the strict caveat wording to off", () => {
     expect(STRICT_COVERAGE_GATE).toBe(false);
+  });
+});
+
+/**
+ * Ben's card change 3: the `partial` badge has to say why it is there. These are the sentences
+ * it says, and the one state in which it has nothing to say.
+ */
+describe("partialCoverageExplanation", () => {
+  const cases: {
+    name: string;
+    input: CoverageExplanationInput;
+    expected: string | null;
+  }[] = [
+    {
+      name: "six of nine starters, a fractional percentage trimmed to one decimal",
+      input: { startersProjected: 6, starterSlots: 9, coveragePct: 66.67 },
+      expected:
+        "Only 6 of 9 starters have a projection (66.7%). " +
+        "The number counts the players Sleeper has projected.",
+    },
+    {
+      name: "a whole percentage carries no decimal point at all",
+      input: { startersProjected: 8, starterSlots: 9, coveragePct: 88 },
+      expected:
+        "Only 8 of 9 starters have a projection (88%). " +
+        "The number counts the players Sleeper has projected.",
+    },
+    {
+      name: "a numeric(5, 2) that is really an integer reads as one",
+      input: { startersProjected: 9, starterSlots: 9, coveragePct: 100.0 },
+      expected:
+        "Only 9 of 9 starters have a projection (100%). " +
+        "The number counts the players Sleeper has projected.",
+    },
+    {
+      name: "nobody projected: still a sentence, and still never a zero elsewhere",
+      input: { startersProjected: 0, starterSlots: 9, coveragePct: 0.5 },
+      expected:
+        "Only 0 of 9 starters have a projection (0.5%). " +
+        "The number counts the players Sleeper has projected.",
+    },
+    {
+      name: "no projection row: no counts, so no sentence",
+      input: { startersProjected: null, starterSlots: null, coveragePct: null },
+      expected: null,
+    },
+    {
+      name: "half a row is not a sentence either",
+      input: { startersProjected: 6, starterSlots: null, coveragePct: 66.67 },
+      expected: null,
+    },
+  ];
+
+  it.each(cases)("$name", ({ input, expected }) => {
+    expect(partialCoverageExplanation(input)).toBe(expected);
+  });
+
+  it("keeps the closing sentence named rather than inline", () => {
+    expect(PARTIAL_COVERAGE_EXPLANATION_SUFFIX).toBe(
+      "The number counts the players Sleeper has projected.",
+    );
+  });
+
+  it("does not mutate its input", () => {
+    const input: CoverageExplanationInput = {
+      startersProjected: 6,
+      starterSlots: 9,
+      coveragePct: 66.67,
+    };
+    const snapshot = { ...input };
+    partialCoverageExplanation(input);
+    expect(input).toEqual(snapshot);
   });
 });

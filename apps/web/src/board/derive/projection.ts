@@ -18,6 +18,51 @@ export const PARTIAL_COVERAGE_LABEL = "Partial projection coverage";
 /** Wording for the em dash state, and for the strict rendering of a below-gate projection. */
 export const PROJECTION_UNAVAILABLE_LABEL = "Projection unavailable";
 
+/** The second sentence of the badge's tooltip; constant, so it is stated once. */
+export const PARTIAL_COVERAGE_EXPLANATION_SUFFIX =
+  "The number counts the players Sleeper has projected.";
+
+export type CoverageExplanationInput = Pick<
+  BoardTeam,
+  "startersProjected" | "starterSlots" | "coveragePct"
+>;
+
+/**
+ * A percentage a reader would write: `100`, not `100.00`; `66.7`, not `66.70`. `coverage_pct` is
+ * a `numeric(5, 2)`, so the raw figure carries two decimals that say nothing.
+ */
+function formatCoveragePct(coveragePct: number): string {
+  return String(Number(coveragePct.toFixed(1)));
+}
+
+/**
+ * Why the `partial` badge is on this card, in one sentence.
+ *
+ * Ben's card change 3: the badge said *that* the projection was partial and nothing about why,
+ * so the tooltip names the two figures behind it — how many starters Sleeper has a projection
+ * for, out of how many slots — and says what the big number therefore counts.
+ *
+ * null when the projection row is missing either count, which is also the only state in which
+ * there is no sentence to write: without a row there is no partial projection to explain.
+ */
+export function partialCoverageExplanation(
+  input: CoverageExplanationInput,
+): string | null {
+  const { startersProjected, starterSlots, coveragePct } = input;
+  if (
+    startersProjected === null ||
+    starterSlots === null ||
+    coveragePct === null
+  ) {
+    return null;
+  }
+  const coverage = formatCoveragePct(coveragePct);
+  return (
+    `Only ${startersProjected} of ${starterSlots} starters have a projection ` +
+    `(${coverage}%). ${PARTIAL_COVERAGE_EXPLANATION_SUFFIX}`
+  );
+}
+
 /**
  * The single switch between the two below-gate treatments Ben weighed. Off (the shipped
  * behaviour) shows the projected number with a small `partial` badge, because the board does
