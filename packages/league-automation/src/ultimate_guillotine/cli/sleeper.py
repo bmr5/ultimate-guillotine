@@ -8,7 +8,7 @@ import httpx
 from ultimate_guillotine.cli.deps import build_deps, run_scheduled
 from ultimate_guillotine.sleeper.client import SleeperClient
 from ultimate_guillotine.sleeper.players import sync_players
-from ultimate_guillotine.sleeper.state import sync_nfl_state
+from ultimate_guillotine.sleeper.state import current_week, sync_nfl_state
 from ultimate_guillotine.sleeper.sync import sync_season
 
 SYNC_YEAR = 2026
@@ -49,11 +49,16 @@ def cmd_sync(args: argparse.Namespace) -> int:
     now = datetime.now(UTC)
 
     def action(run_id: int) -> int:
+        client = SleeperClient(httpx.Client())
+        state = current_week(client, conn, now)
         report = sync_season(
-            SleeperClient(httpx.Client()), conn, SYNC_YEAR, deps.settings.sleeper_league_id
+            client, conn, SYNC_YEAR, deps.settings.sleeper_league_id, week=state.week
         )
         if not args.quiet:
-            print(f"sleeper sync: {report.members} members, {report.teams} teams")
+            print(
+                f"sleeper sync: {report.members} members, {report.teams} teams, "
+                f"{report.holdings} holdings, {report.states} team states"
+            )
         return 0
 
     return run_scheduled(conn, "sleeper-sync", now, action)

@@ -37,10 +37,11 @@ def test_sync_season_is_idempotent(conn) -> None:
     client = FakeSleeperClient()
 
     first = sync_season(client, conn, year=2026, league_id=LEAGUE_ID)
-    assert first == SyncReport(members=18, teams=18)
+    assert first == SyncReport(members=18, teams=18, holdings=first.holdings, states=18)
+    assert first.holdings > 0
 
     second = sync_season(client, conn, year=2026, league_id=LEAGUE_ID)
-    assert second == SyncReport(members=18, teams=18)
+    assert second == first
 
     with conn.cursor() as cur:
         cur.execute("select count(*) from public.members")

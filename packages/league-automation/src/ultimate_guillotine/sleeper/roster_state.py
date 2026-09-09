@@ -1,14 +1,21 @@
-"""Pure derivations from one Sleeper roster payload.
+"""Derivations from one Sleeper roster payload, and the tables they land in.
 
 Slot classification, FAAB and record recombination, and the elimination
 precedence rule all live here as functions over plain values, so every rule the
-spec states has a test that needs no database and no network.
+spec states has a test that needs no database and no network. The three
+repositories underneath them are the only writers of ``public.roster_holdings``
+and ``public.team_season_state``, and of the cached league settings on
+``public.seasons``; each runs in the caller's transaction and decides nothing.
 """
 
 from dataclasses import dataclass
+from datetime import datetime
 from decimal import Decimal
 
-from ultimate_guillotine.sleeper.models import SleeperRoster
+import psycopg
+from psycopg.types.json import Jsonb
+
+from ultimate_guillotine.sleeper.models import SleeperLeague, SleeperRoster
 
 #: Sleeper writes the string "0" into a starter slot the manager left blank.
 EMPTY_SLOT = "0"
@@ -173,3 +180,156 @@ def bumps_state_version(stored: Elimination | None, merged: Elimination) -> bool
         merged.is_eliminated,
         merged.eliminated_week,
     )
+
+
+class SeasonSettingsRepository:
+    """The league's own settings, cached on the season row."""
+
+    def __init__(self, conn: psycopg.Connection) -> None:
+        self._conn = conn
+
+    def cache(self, season_id: int, league: SleeperLeague, now: datetime) -> None:
+        """Cache the league's scoring rules on the season row, refreshed every sync."""
+        with self._conn.cursor() as cur:
+            cur.execute(
+                """
+                update public.seasons
+                set scoring_settings = %s, roster_positions = %s, waiver_budget = %s,
+                    league_synced_at = %s
+                where id = %s
+                """,
+                (
+                    Jsonb(league.scoring_settings),
+                    Jsonb(league.roster_positions),
+                    league.waiver_budget,
+                    now,
+                    season_id,
+                ),
+            )
+
+
+class RosterHoldingRepository:
+    """Who a team holds right now. A cache of Sleeper, so it deletes."""
+
+    def __init__(self, conn: psycopg.Connection) -> None:
+        self._conn = conn
+
+    def replace_for_team(
+        self, season_id: int, team_id: int, holdings: tuple[Holding, ...], now: datetime
+    ) -> int:
+        """Upsert every holding, then delete the ones this team no longer has.
+
+        The delete is what makes a dropped player vanish. It runs in the caller's
+        transaction, alongside the upserts, so the board never sees a roster with
+        both the old and the new player on it.
+
+        ``holdings`` -- not the roster's ``players`` list -- is what the delete
+        keeps: ``classify_holdings`` treats ``starters`` as authoritative, so a
+        started player Sleeper left out of ``players`` still has a row here, and
+        deleting by ``players`` would evict him a moment after writing him.
+        """
+        with self._conn.cursor() as cur:
+            if holdings:
+                cur.executemany(
+                    """
+                    insert into public.roster_holdings
+                      (season_id, team_id, sleeper_player_id, slot, slot_index,
+                       lineup_position, synced_at)
+                    values (%s, %s, %s, %s, %s, %s, %s)
+                    on conflict (season_id, team_id, sleeper_player_id) do update set
+                      slot = excluded.slot, slot_index = excluded.slot_index,
+                      lineup_position = excluded.lineup_position,
+                      synced_at = excluded.synced_at
+                    """,
+                    [
+                        (
+                            season_id,
+                            team_id,
+                            holding.sleeper_player_id,
+                            holding.slot,
+                            holding.slot_index,
+                            holding.lineup_position,
+                            now,
+                        )
+                        for holding in holdings
+                    ],
+                )
+            cur.execute(
+                """
+                delete from public.roster_holdings
+                where season_id = %s and team_id = %s
+                  and not (sleeper_player_id = any(%s))
+                """,
+                (season_id, team_id, [holding.sleeper_player_id for holding in holdings]),
+            )
+        return len(holdings)
+
+
+class TeamStateRepository:
+    """FAAB, record, points, and the elimination fact for one team-season."""
+
+    def __init__(self, conn: psycopg.Connection) -> None:
+        self._conn = conn
+
+    def get_elimination(self, season_id: int, team_id: int) -> Elimination | None:
+        """The stored elimination, or None when this team has no state row yet."""
+        with self._conn.cursor() as cur:
+            cur.execute(
+                "select is_eliminated, eliminated_week, elimination_source "
+                "from public.team_season_state where season_id = %s and team_id = %s",
+                (season_id, team_id),
+            )
+            row = cur.fetchone()
+        return Elimination(*row) if row else None
+
+    def upsert(
+        self,
+        season_id: int,
+        team_id: int,
+        state: TeamState,
+        elimination: Elimination,
+        now: datetime,
+        bump_version: bool,
+    ) -> None:
+        """Write the team's state, bumping ``state_version`` only when told to.
+
+        ``bump_version`` comes from ``bumps_state_version``: FAAB and points move
+        every sync and are not a version-worthy change, so only a changed
+        elimination fact advances the counter a consumer watches.
+        """
+        with self._conn.cursor() as cur:
+            cur.execute(
+                """
+                insert into public.team_season_state
+                  (season_id, team_id, faab_budget, faab_used, wins, losses, ties,
+                   points_for, points_against, is_eliminated, eliminated_week,
+                   elimination_source, synced_at)
+                values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                on conflict (season_id, team_id) do update set
+                  faab_budget = excluded.faab_budget, faab_used = excluded.faab_used,
+                  wins = excluded.wins, losses = excluded.losses, ties = excluded.ties,
+                  points_for = excluded.points_for,
+                  points_against = excluded.points_against,
+                  is_eliminated = excluded.is_eliminated,
+                  eliminated_week = excluded.eliminated_week,
+                  elimination_source = excluded.elimination_source,
+                  state_version = public.team_season_state.state_version + %s,
+                  synced_at = excluded.synced_at
+                """,
+                (
+                    season_id,
+                    team_id,
+                    state.faab_budget,
+                    state.faab_used,
+                    state.wins,
+                    state.losses,
+                    state.ties,
+                    state.points_for,
+                    state.points_against,
+                    elimination.is_eliminated,
+                    elimination.eliminated_week,
+                    elimination.source,
+                    now,
+                    1 if bump_version else 0,
+                ),
+            )
