@@ -508,12 +508,15 @@ class MemberAliasRepository:
                 """
                 select m.id, m.display_name,
                     coalesce(array_agg(a.alias) filter (where a.alias is not null), '{}'),
-                    m.nickname
+                    m.nickname, m.sleeper_display_name
                 from public.members m left join private.member_aliases a on a.member_id = m.id
-                group by m.id, m.display_name, m.nickname order by m.id
+                group by m.id, m.display_name, m.nickname, m.sleeper_display_name order by m.id
                 """
             )
-            return [MemberRef(row[0], row[1], tuple(row[2]), row[3]) for row in cur.fetchall()]
+            return [
+                MemberRef(row[0], row[1], tuple(row[2]), row[3], row[4])
+                for row in cur.fetchall()
+            ]
 
     def replace_aliases(self, member_display_name: str, aliases: list[str]) -> int:
         """Replace a member's aliases wholesale, returning how many rows were written.

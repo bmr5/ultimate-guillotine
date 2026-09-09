@@ -52,12 +52,18 @@ class MemberRef:
     other alias stays in ``private.member_aliases``. It defaults to ``None`` for
     a member with no aliases, and trade resolution matches on ``aliases``, never
     on this.
+
+    ``sleeper_display_name`` is the name Sleeper shows for the owner, refreshed
+    on every sync. Trade resolution does not match on it either -- an alert is
+    written in nicknames -- but the history catalog does: the analyst read five
+    seasons of chat and wrote down whichever name was in front of him.
     """
 
     member_id: int
     display_name: str
     aliases: tuple[str, ...]
     nickname: str | None = None
+    sleeper_display_name: str | None = None
 
 
 @dataclass(frozen=True)

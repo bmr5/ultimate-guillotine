@@ -1,0 +1,173 @@
+"""Command wiring and the counts-only contract."""
+
+import argparse
+import contextlib
+import json
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+from types import SimpleNamespace
+
+import psycopg
+import pytest
+
+from ultimate_guillotine.cli import history as history_cli
+from ultimate_guillotine.history.repository import HistoryRowRejected
+
+#: Every word the loader is allowed to print. A member name, a player name or a line of
+#: chat would all fail this, which is the point.
+ALLOWED_WORDS = {"catalog", "rows", "unresolved", "parties", "unmapped", "conditions"}
+
+
+def _assert_counts_only(text: str) -> None:
+    for word in re.findall(r"[A-Za-z][A-Za-z'-]*", text):
+        assert word in ALLOWED_WORDS, f"unexpected word in loader output: {word}"
+
+
+def _record(**overrides) -> dict:
+    base = {
+        "id": "2025-001",
+        "season": 2025,
+        "week_or_date": {"week": 3, "date": "2025-09-23"},
+        "type": "rental_flat",
+        "structure": "flat_fee_rental",
+        "parties": ["Nobody"],
+        "assets": {
+            "players": [], "positions": [], "faab": [],
+            "return_conditions": ["SENTINEL owes a week"],
+        },
+        "faab_total": 0,
+        "confidence": "high",
+        "notes": "SENTINEL",
+        "source_texts": ["SENTINEL"],
+    }
+    base.update(overrides)
+    return base
+
+
+class FakeRepo:
+    """Records what the loader wrote, and can refuse a row the way Postgres would."""
+
+    refuse: tuple[str, ...] = ()
+
+    def __init__(self, conn) -> None:
+        self.rows: list = []
+
+    def season_id_for(self, year: int) -> int | None:
+        return None
+
+    def upsert_catalog(self, row) -> str:
+        if row.catalog_id in self.refuse:
+            raise HistoryRowRejected(f"trade_catalog row {row.catalog_id} was refused")
+        self.rows.append(row)
+        return "inserted"
+
+
+@pytest.fixture
+def stack(monkeypatch: pytest.MonkeyPatch):
+    """The loader's whole world, minus a database."""
+    conn = SimpleNamespace(transaction=contextlib.nullcontext)
+    monkeypatch.setattr(history_cli, "build_deps", lambda: SimpleNamespace(conn=conn))
+    monkeypatch.setattr(history_cli, "HistoryRepository", FakeRepo)
+    monkeypatch.setattr(
+        history_cli, "MemberAliasRepository", lambda conn: SimpleNamespace(all_members=list)
+    )
+    monkeypatch.setattr(
+        history_cli, "PlayerRepository", lambda conn: SimpleNamespace(all_active=list)
+    )
+    return conn
+
+
+def _write(tmp_path: Path, *records: dict) -> str:
+    path = tmp_path / "classification.json"
+    path.write_text(json.dumps({"generated": "2026-09-09", "trades": list(records)}))
+    return str(path)
+
+
+def test_history_help_lists_load_catalog() -> None:
+    result = subprocess.run(
+        [sys.executable, "-m", "ultimate_guillotine.cli.main", "history", "--help"],
+        capture_output=True, text=True, check=False,
+    )
+    assert result.returncode == 0
+    assert "load-catalog" in result.stdout
+
+
+def test_load_catalog_prints_counts_only(
+    tmp_path: Path, stack, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = _write(tmp_path, _record())
+
+    exit_code = history_cli.cmd_load_catalog(argparse.Namespace(path=path))
+
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert out.strip() == "catalog: 1 rows, 1 unresolved parties, 1 unmapped conditions"
+    assert "SENTINEL" not in out
+    _assert_counts_only(out)
+
+
+def test_load_catalog_exits_1_when_nothing_loaded(
+    tmp_path: Path, stack, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert history_cli.cmd_load_catalog(argparse.Namespace(path=_write(tmp_path))) == 1
+    _assert_counts_only(capsys.readouterr().out)
+
+
+def test_a_refused_row_does_not_stop_the_rest(
+    tmp_path: Path, stack, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One row the validators refuse is one row missing, not a failed run."""
+    monkeypatch.setattr(FakeRepo, "refuse", ("2025-001",))
+    path = _write(tmp_path, _record(), _record(id="2025-002", parties=[]))
+
+    exit_code = history_cli.cmd_load_catalog(argparse.Namespace(path=path))
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert captured.out.strip() == "catalog: 1 rows, 1 unresolved parties, 2 unmapped conditions"
+    # The refusal names the row's own id and never the payload that tripped it.
+    assert "2025-001" in captured.err
+    assert "SENTINEL" not in captured.err
+
+
+def test_every_row_refused_exits_1(tmp_path: Path, stack, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(FakeRepo, "refuse", ("2025-001",))
+    assert history_cli.cmd_load_catalog(argparse.Namespace(path=_write(tmp_path, _record()))) == 1
+
+
+@pytest.fixture
+def database_url() -> str:
+    url = os.environ.get("TEST_DATABASE_URL")
+    if not url:
+        pytest.skip("TEST_DATABASE_URL not set")
+    return url
+
+
+def test_the_load_is_committed_and_not_left_open(
+    tmp_path: Path, database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The real path, against the real database, because the failure mode is silent.
+
+    `conn.transaction()` opens a transaction only when the connection has none; a read
+    taken first opens one implicitly and turns the load into a savepoint inside it,
+    which rolls back when the process ends -- after printing that every row loaded.
+    """
+    probe = "test-load-catalog-probe"
+    with psycopg.connect(database_url) as loader_conn:
+        monkeypatch.setattr(history_cli, "build_deps", lambda: SimpleNamespace(conn=loader_conn))
+        path = _write(tmp_path, _record(id=probe))
+        try:
+            assert history_cli.cmd_load_catalog(argparse.Namespace(path=path)) == 0
+            assert loader_conn.info.transaction_status == psycopg.pq.TransactionStatus.IDLE
+            with psycopg.connect(database_url) as other, other.cursor() as cur:
+                cur.execute(
+                    "select count(*) from public.trade_catalog where catalog_id = %s", (probe,)
+                )
+                assert cur.fetchone()[0] == 1
+        finally:
+            with loader_conn.cursor() as cur:
+                cur.execute("delete from public.trade_catalog where catalog_id = %s", (probe,))
+            loader_conn.commit()
