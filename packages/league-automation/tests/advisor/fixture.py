@@ -23,11 +23,14 @@ column, and each holding's ``projected_points`` is a mapping keyed by week over
 ``horizon_weeks``: a week further out is worth half a point less, which is
 enough for a horizon to change an answer without inventing a projection model.
 
-Below the coverage gate the league goes dark, not fuzzy: every team's total
-*and* every holding's points come back empty, because the data layer withholds
-a projection it cannot stand behind rather than showing a partial one. That is
-what makes the counting fallback -- rank a roster by bodies when it has no
-numbers -- an exercised path in the tests rather than dead code.
+Below the coverage gate a team's own total is withheld -- the data layer will
+not stand behind a projection it could not compute -- and by default this
+fixture withholds each holding's points with it, which is the extreme case the
+counting fallback has to survive. ``keep_player_points=True`` builds the case
+the *real* snapshot produces: ``team_week_projections`` goes provisional while
+the ``player_projections`` rows behind it sit there as numeric as ever. A
+consumer that decides what to show by looking for holdings without numbers
+passes the first case and leaks the second, so both are fixtures here.
 """
 
 from datetime import UTC, datetime
@@ -121,8 +124,16 @@ def _by_week(points: Decimal, weeks: tuple[int, ...]) -> MappingProxyType[int, D
     )
 
 
-def _team(team: int, coverage_pct: Decimal, weeks: tuple[int, ...]) -> AdvisorTeamState:
+def _team(
+    team: int,
+    coverage_pct: Decimal,
+    weeks: tuple[int, ...],
+    keep_player_points: bool,
+) -> AdvisorTeamState:
     provisional = coverage_pct < COVERAGE_GATE
+    #: A withheld team total does not withhold the players under it unless this
+    #: fixture is asked to -- see the module docstring.
+    dark = provisional and not keep_player_points
     holdings: list[AdvisorHolding] = []
     total = Decimal(0)
     for slot_index, lineup_position in enumerate(LINEUP):
@@ -137,7 +148,7 @@ def _team(team: int, coverage_pct: Decimal, weeks: tuple[int, ...]) -> AdvisorTe
                 lineup_position=lineup_position,
                 slot_index=slot_index,
                 week=weeks[0],
-                projected_points={} if provisional else _by_week(points, weeks),
+                projected_points={} if dark else _by_week(points, weeks),
             )
         )
     for bench_index in range(len(BENCH)):
@@ -151,7 +162,7 @@ def _team(team: int, coverage_pct: Decimal, weeks: tuple[int, ...]) -> AdvisorTe
                 slot_index=None,
                 week=weeks[0],
                 projected_points=(
-                    {} if provisional else _by_week(_bench_points(team, bench_index), weeks)
+                    {} if dark else _by_week(_bench_points(team, bench_index), weeks)
                 ),
             )
         )
@@ -181,12 +192,17 @@ def fixture_snapshot(
     synced_at: datetime = FIXTURE_SYNCED_AT,
     oldest_synced_at: datetime | None = None,
     horizon_weeks: int = 1,
+    keep_player_points: bool = False,
 ) -> LeagueSnapshot:
     """The league as one snapshot.
 
     ``synced_at`` is the newest component stamp and ``oldest_synced_at`` the one
     staleness is judged on; passing only ``synced_at`` makes every component the
     same age, which is the ordinary case.
+
+    ``keep_player_points`` only means anything below the gate, where it leaves
+    every holding's projection in place while the team totals stay withheld --
+    the shape the real snapshot has, and the one a consumer can be fooled by.
     """
     weeks = _horizon(week, horizon_weeks)
     return LeagueSnapshot(
@@ -196,5 +212,5 @@ def fixture_snapshot(
         weeks=weeks,
         synced_at=synced_at,
         oldest_synced_at=synced_at if oldest_synced_at is None else oldest_synced_at,
-        teams=tuple(_team(team, coverage_pct, weeks) for team in range(1, 19)),
+        teams=tuple(_team(team, coverage_pct, weeks, keep_player_points) for team in range(1, 19)),
     )
