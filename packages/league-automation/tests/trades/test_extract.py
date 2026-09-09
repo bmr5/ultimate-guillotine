@@ -1,10 +1,11 @@
 import os
 
-import httpx
 import pytest
 
-from ultimate_guillotine.ai.openrouter import AIUsage, StructuredOutputClient
+from ultimate_guillotine.ai.hermes import HermesStructuredClient
+from ultimate_guillotine.ai.structured import AIUsage
 from ultimate_guillotine.config import Settings
+from ultimate_guillotine.core.hermes_cli import find_hermes_binary
 from ultimate_guillotine.trades.extract import PROMPT_VERSION, extract_trade, load_prompt
 from ultimate_guillotine.trades.models import ExtractedAsset, ExtractedParty, ExtractedTrade
 
@@ -92,24 +93,29 @@ def test_extract_writes_the_exact_context_lines() -> None:
     os.environ.get("UG_LIVE_AI_TESTS") != "1",
     reason="live model calls cost credits; set UG_LIVE_AI_TESTS=1 to run them",
 )
-def test_live_extraction_reads_a_simple_trade() -> None:
-    """The one test that spends money. A key being present in the environment is
-    not consent to spend it, so this asks for the flag as well."""
-    if not os.environ.get("OPENROUTER_API_KEY"):
-        pytest.skip("OPENROUTER_API_KEY not set")
-    with httpx.Client() as http:
-        client = StructuredOutputClient(
-            api_key=os.environ["OPENROUTER_API_KEY"],
-            model=Settings.model_fields["trade_extraction_model"].default,
-            http=http,
-        )
-        result, _usage = extract_trade(
-            client,
-            "🚨 Trade Alert 🚨\nMember01 sends Player Alpha to Member02 for 100 FAAB",
-            2026,
-            None,
-            ["Member01: Ben, Benny", "Member02: no known nicknames"],
-        )
+def test_live_extraction_reads_a_simple_trade(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The one test that spends the subscription. A configured Hermes profile is
+    not consent to call it, so this asks for the flag as well.
+
+    `PYTEST_CURRENT_TEST` is dropped from this process's environment, and so from
+    the CLI's: Hermes reads it as "I am running inside my own test suite" and then
+    refuses to open the real user's auth store, which leaves the call with no
+    credentials. Nothing in the package sets that variable, so only a test run is
+    ever affected; it is dropped here rather than in the client so that the client
+    keeps handing the CLI the environment it was actually given. Hermes still
+    declines to write a session row, which is exactly right for a test.
+    """
+    if find_hermes_binary() is None:
+        pytest.skip("hermes CLI not found")
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    client = HermesStructuredClient(Settings.model_fields["hermes_profile_home"].default)
+    result, _usage = extract_trade(
+        client,
+        "🚨 Trade Alert 🚨\nMember01 sends Player Alpha to Member02 for 100 FAAB",
+        2026,
+        None,
+        ["Member01: Ben, Benny", "Member02: no known nicknames"],
+    )
     assert result.kind == "permanent"
     assert len(result.parties) == 2
     faab = [asset for asset in result.assets if asset.unit == "faab"]

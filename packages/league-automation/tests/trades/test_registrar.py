@@ -8,7 +8,7 @@ delivers, and how it finishes the run -- rather than any storage detail.
 import hashlib
 from datetime import UTC, datetime
 
-from ultimate_guillotine.ai.openrouter import AIUnavailable, AIUsage
+from ultimate_guillotine.ai.structured import AIUnavailable, AIUsage
 from ultimate_guillotine.config import Settings
 from ultimate_guillotine.messages.bluebubbles import InboundMessage
 from ultimate_guillotine.sleeper.players import Player

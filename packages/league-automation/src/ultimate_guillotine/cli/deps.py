@@ -7,8 +7,10 @@ from datetime import datetime
 import httpx
 import psycopg
 
-from ultimate_guillotine.ai.openrouter import StructuredOutputClient
+from ultimate_guillotine.ai.hermes import HermesStructuredClient
+from ultimate_guillotine.ai.structured import StructuredOutputClient
 from ultimate_guillotine.config import Settings, load_settings
+from ultimate_guillotine.core.hermes_cli import find_hermes_binary
 from ultimate_guillotine.data.database import connect
 from ultimate_guillotine.data.repositories import (
     OutboundRepository,
@@ -45,15 +47,16 @@ def build_deps() -> Deps:
 def build_ai(deps: Deps) -> StructuredOutputClient:
     """Build the structured-output client the extraction commands call.
 
-    A missing key is a configuration problem, not a runtime failure: exiting
-    with a plain message beats a traceback from inside the HTTP client, and the
-    key itself is never echoed. A blank key counts as missing -- otherwise the
-    command sends one unauthenticated request before finding that out.
+    The credentials live in the Hermes profile, so the only thing that can be
+    missing here is the CLI itself. That is a setup problem, not a runtime
+    failure: exiting with a plain message beats a traceback out of `subprocess`
+    on the first extraction.
     """
-    key = deps.settings.openrouter_key()
-    if key is None:
-        raise SystemExit("OPENROUTER_API_KEY is not set")
-    return StructuredOutputClient(key, deps.settings.trade_extraction_model, httpx.Client())
+    if find_hermes_binary() is None:
+        raise SystemExit("hermes CLI not found")
+    return HermesStructuredClient(
+        deps.settings.hermes_profile_home, model=deps.settings.hermes_model
+    )
 
 
 def build_delivery(deps: Deps, crash_after_send: bool = False) -> DeliveryService:

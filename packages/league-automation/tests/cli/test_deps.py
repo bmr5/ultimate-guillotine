@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 
 import pytest
 
+from ultimate_guillotine.ai.hermes import HermesStructuredClient
 from ultimate_guillotine.cli import deps as deps_module
 from ultimate_guillotine.cli.deps import Deps, build_ai, build_deps, run_scheduled
 from ultimate_guillotine.config import Settings
@@ -142,10 +143,22 @@ def _deps(**overrides) -> Deps:
     return Deps(settings=settings, conn=None, client=None, notifier=None)
 
 
-def test_build_ai_exits_on_a_blank_or_missing_key() -> None:
-    """A blank key is a missing key. Letting `SecretStr("")` through sent one
-    unauthenticated request to OpenRouter instead of failing here."""
-    for settings_kwargs in ({}, {"openrouter_api_key": ""}, {"openrouter_api_key": "   "}):
-        with pytest.raises(SystemExit) as exc_info:
-            build_ai(_deps(**settings_kwargs))
-        assert "OPENROUTER_API_KEY is not set" in str(exc_info.value)
+def test_build_ai_exits_when_the_hermes_cli_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The credentials live in the Hermes profile, so the CLI is the only thing
+    that can be missing -- and a plain message beats a subprocess traceback."""
+    monkeypatch.setattr(deps_module, "find_hermes_binary", lambda: None)
+    with pytest.raises(SystemExit) as exc_info:
+        build_ai(_deps())
+    assert "hermes CLI not found" in str(exc_info.value)
+
+
+def test_build_ai_points_the_client_at_the_profile_and_the_model_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(deps_module, "find_hermes_binary", lambda: "/bin/hermes")
+    client = build_ai(_deps(hermes_profile_home="/tmp/profile", hermes_model="gpt-5.6-sol"))
+    assert isinstance(client, HermesStructuredClient)
+    assert client._home == "/tmp/profile"
+    assert client._model == "gpt-5.6-sol"

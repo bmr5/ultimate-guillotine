@@ -96,7 +96,7 @@ class NoSeasonConn:
 def _settings() -> Settings:
     return Settings(
         database_url="postgresql://x:y@example.invalid/db", delivery_mode="disabled",
-        openrouter_api_key="sk-test", _env_file=None,
+        _env_file=None,
     )
 
 

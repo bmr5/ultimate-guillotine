@@ -285,18 +285,31 @@ def _registry_names(processor) -> list[str]:
     return [t.name for t in processor._registry._triggers]
 
 
-def test_build_processor_registers_the_trade_registrar_when_the_key_is_set() -> None:
+@pytest.fixture
+def hermes_installed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The registrar shells out to the hermes CLI, which a test machine may lack."""
+    monkeypatch.setattr(run_module, "find_hermes_binary", lambda: "/bin/hermes")
+
+
+def test_build_processor_registers_the_trade_registrar_with_a_chat_and_the_cli(
+    hermes_installed: None,
+) -> None:
     notifier = RecordingNotifier()
 
     processor, _allowed = run_module.build_processor(
-        _settings(openrouter_api_key="sk-test"), EmptyConnection(), None, None, notifier
+        _settings(), EmptyConnection(), None, None, notifier
     )
 
     assert "trade-registrar" in _registry_names(processor)
     assert notifier.ops_sent == []
 
 
-def test_build_processor_announces_the_registrar_is_disabled_exactly_once() -> None:
+def test_build_processor_announces_the_registrar_is_disabled_exactly_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No hermes CLI means no model call at all, so the listener starts without
+    the registrar and says so once rather than failing every alert."""
+    monkeypatch.setattr(run_module, "find_hermes_binary", lambda: None)
     notifier = RecordingNotifier()
 
     processor, _allowed = run_module.build_processor(
@@ -304,20 +317,7 @@ def test_build_processor_announces_the_registrar_is_disabled_exactly_once() -> N
     )
 
     assert "trade-registrar" not in _registry_names(processor)
-    assert notifier.ops_sent == ["Trade Registrar disabled: OPENROUTER_API_KEY not set"]
-
-
-def test_build_processor_treats_a_blank_key_as_no_key() -> None:
-    """`OPENROUTER_API_KEY=` in a `.env` is not a configured key: it must disable
-    the registrar rather than reach OpenRouter unauthenticated."""
-    notifier = RecordingNotifier()
-
-    processor, _allowed = run_module.build_processor(
-        _settings(openrouter_api_key=""), EmptyConnection(), None, None, notifier
-    )
-
-    assert "trade-registrar" not in _registry_names(processor)
-    assert notifier.ops_sent == ["Trade Registrar disabled: OPENROUTER_API_KEY not set"]
+    assert notifier.ops_sent == ["Trade Registrar disabled: hermes CLI not found"]
 
 
 def _alert(chat_guid: str) -> InboundMessage:
@@ -332,11 +332,10 @@ def _trade_trigger(processor):
     return next(t for t in processor._registry._triggers if t.name == "trade-registrar")
 
 
-def test_the_registrar_trigger_is_gated_on_the_delivery_chat() -> None:
+def test_the_registrar_trigger_is_gated_on_the_delivery_chat(hermes_installed: None) -> None:
     """A listener that can see more than one chat must answer trades in one."""
     processor, _allowed = run_module.build_processor(
-        _settings(openrouter_api_key="sk-test"), EmptyConnection(), None, None,
-        RecordingNotifier(),
+        _settings(), EmptyConnection(), None, None, RecordingNotifier(),
     )
 
     trigger = _trade_trigger(processor)
@@ -345,11 +344,13 @@ def test_the_registrar_trigger_is_gated_on_the_delivery_chat() -> None:
     assert not trigger.matches(_alert("iMessage;+;chat-elsewhere"))
 
 
-def test_build_processor_skips_the_registrar_when_no_chat_is_configured() -> None:
+def test_build_processor_skips_the_registrar_when_no_chat_is_configured(
+    hermes_installed: None,
+) -> None:
     notifier = RecordingNotifier()
 
     processor, _allowed = run_module.build_processor(
-        _settings(delivery_mode="disabled", test_chat_guid=None, openrouter_api_key="sk-test"),
+        _settings(delivery_mode="disabled", test_chat_guid=None),
         EmptyConnection(), None, None, notifier,
     )
 

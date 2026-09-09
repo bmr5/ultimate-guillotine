@@ -1,9 +1,11 @@
 import argparse
 import subprocess
 import sys
+from types import SimpleNamespace
 
 import pytest
 
+from ultimate_guillotine.ai.structured import AIInvalidOutput
 from ultimate_guillotine.cli import trades as trades_cli
 
 
@@ -48,3 +50,39 @@ def test_the_list_parser_rejects_a_zero_limit() -> None:
     trades_cli.register(parser.add_subparsers())
     with pytest.raises(SystemExit):
         parser.parse_args(["trades", "list", "--limit", "0"])
+
+
+class _ExplodingConn:
+    """cmd_extract's repositories are all stubbed, so the connection is only a token."""
+
+
+def test_extract_reports_a_rejected_model_answer_by_class_name(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A model that will not produce the schema is an operator problem, not a
+    traceback -- and the pydantic error it chains quotes the announcement back, so
+    only the class name is printed."""
+    deps = SimpleNamespace(settings=SimpleNamespace(sleeper_league_id="1"), conn=_ExplodingConn())
+    monkeypatch.setattr(trades_cli, "build_deps", lambda: deps)
+    monkeypatch.setattr(trades_cli, "build_ai", lambda _deps: None)
+    monkeypatch.setattr(
+        trades_cli, "SeasonRepository", lambda _conn: SimpleNamespace(current=lambda: 2026)
+    )
+    monkeypatch.setattr(
+        trades_cli, "MemberAliasRepository", lambda _conn: SimpleNamespace(all_members=list)
+    )
+    monkeypatch.setattr(
+        trades_cli, "PlayerRepository", lambda _conn: SimpleNamespace(all_active=list)
+    )
+
+    def explode(*args, **kwargs):
+        raise AIInvalidOutput("ValidationError")
+
+    monkeypatch.setattr(trades_cli, "dry_run_pipeline", explode)
+
+    exit_code = trades_cli.cmd_extract(
+        argparse.Namespace(text="🚨 Member01 sends Player Alpha to Member02", rosters=False)
+    )
+
+    assert exit_code == 1
+    assert capsys.readouterr().out == "AIInvalidOutput\n"

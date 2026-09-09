@@ -8,6 +8,8 @@
 
 **Tech Stack:** Python 3.12, Pydantic 2.13.5, httpx 0.28.1 with respx 0.23.1 for tests, psycopg 3.3.5, OpenRouter chat completions with `response_format: json_schema` (verified 2026-09-08), Sleeper `GET /v1/players/nfl`, Supabase migrations with pgTAP, Hermes cron on the `guillotine` profile.
 
+**Superseded on 2026-09-09:** the model backend is no longer OpenRouter. Every structured-output call now goes through the Hermes CLI on the `guillotine` profile (`ai/structured.py` + `ai/hermes.py`), which already holds Ben's Codex subscription; `OPENROUTER_API_KEY` and `TRADE_EXTRACTION_MODEL` are gone. The task bodies below are left as written, as history.
+
 **Spec:** `docs/superpowers/specs/2026-08-27-trade-registrar-agent-design.md`, which inherits `docs/superpowers/specs/2026-08-27-automation-foundation-design.md` (revision 2026-09-08).
 
 ## Global Constraints

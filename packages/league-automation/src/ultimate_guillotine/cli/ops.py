@@ -14,6 +14,7 @@ import yaml
 
 from ultimate_guillotine.cli.deps import build_delivery, build_deps, run_scheduled
 from ultimate_guillotine.config import DeliveryMode, load_settings
+from ultimate_guillotine.core.hermes_cli import find_hermes_binary, hermes_binary
 from ultimate_guillotine.data.database import connect
 from ultimate_guillotine.data.repositories import (
     ExpectedRun,
@@ -32,6 +33,19 @@ from ultimate_guillotine.ops.notify import HermesNotifier
 log = logging.getLogger(__name__)
 
 PYTHON_VERSION = (3, 12)
+
+
+def check_hermes_cli() -> None:
+    """The `hermes` binary must be locatable from this process's PATH.
+
+    Everything that leaves the package goes through it: the Discord mirror, the
+    alerts channel, and every model call the Trade Registrar makes. Under launchd
+    the PATH lacks `~/.local/bin`, so this is a real failure mode rather than a
+    theoretical one -- and its only other symptom is one line in the ops channel
+    at listener startup, which nobody is watching at 3am.
+    """
+    if find_hermes_binary() is None:
+        raise RuntimeError("hermes CLI not found")
 
 
 def register(subparsers) -> None:
@@ -287,7 +301,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         settings = need("settings")
         home = str(Path(settings.hermes_profile_home).expanduser())
         result = subprocess.run(
-            ["hermes", "send", "--list"],
+            [hermes_binary(), "send", "--list"],
             env={**os.environ, "HERMES_HOME": home},
             capture_output=True,
             text=True,
@@ -307,6 +321,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         ("delivery_target", check_delivery_target),
         ("listener_healthz", check_listener_healthz),
         ("listener_heartbeat", check_listener_heartbeat),
+        ("hermes_cli", check_hermes_cli),
         ("hermes_send", check_hermes_send),
     ):
         check(name, fn)

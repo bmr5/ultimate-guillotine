@@ -1,5 +1,7 @@
+import asyncio
 import json
 import os
+import threading
 from pathlib import Path
 
 import psycopg
@@ -74,6 +76,44 @@ def test_processes_new_message_and_beats() -> None:
     assert beats.beats == 1
 
 
+class ThreadRecordingProcessor:
+    """Records where it was called from: the event loop, or a worker thread."""
+
+    def __init__(self):
+        self.in_event_loop = None
+        self.thread = None
+
+    def process(self, msg, event_id):
+        self.thread = threading.current_thread()
+        try:
+            asyncio.get_running_loop()
+            self.in_event_loop = True
+        except RuntimeError:
+            self.in_event_loop = False
+        return "no_trigger"
+
+
+def test_processing_runs_off_the_event_loop() -> None:
+    """`process` blocks for a database round trip and, on a trade, a Hermes
+    subprocess of up to a minute. On the event loop that would freeze the whole
+    worker -- /healthz included, which is what launchd and `ug ops doctor` read.
+
+    Asserting there is no running loop in that thread is the property itself: a
+    thread name would only be a proxy for it.
+    """
+    processor = ThreadRecordingProcessor()
+    client = TestClient(create_app(processor, FakeHeartbeats(), "secret"))
+
+    response = client.post(
+        "/bluebubbles-webhook?password=secret", json=json.loads(FIXTURE.read_text())
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"outcome": "no_trigger"}
+    assert processor.in_event_loop is False
+    assert processor.thread is not threading.main_thread()
+
+
 def test_healthz_is_ok_without_a_database_check() -> None:
     client = TestClient(create_app(FakeProcessor(), FakeHeartbeats(), "secret"))
     response = client.get("/healthz")
@@ -135,3 +175,41 @@ def test_non_message_events_are_acknowledged() -> None:
     )
     assert response.json() == {"outcome": "ignored_event"}
     assert processor.calls == []
+
+
+class OverlapDetectingProcessor:
+    """Records whether two `process` calls ever run at the same time."""
+
+    def __init__(self):
+        self.active = 0
+        self.max_active = 0
+        self.lock = threading.Lock()
+
+    def process(self, msg, event_id):
+        with self.lock:
+            self.active += 1
+            self.max_active = max(self.max_active, self.active)
+        threading.Event().wait(0.05)
+        with self.lock:
+            self.active -= 1
+        return "no_trigger"
+
+
+def test_overlapping_webhooks_never_process_concurrently() -> None:
+    """Every repository shares one psycopg connection and `CommittingRepo` commits
+    the whole connection per call, so work may leave the event loop but must stay
+    single-flight: overlapping deliveries are serialized, never interleaved."""
+    processor = OverlapDetectingProcessor()
+    client = TestClient(create_app(processor, FakeHeartbeats(), "secret"))
+    payload = json.loads(FIXTURE.read_text())
+
+    def post() -> None:
+        client.post("/bluebubbles-webhook?password=secret", json=payload)
+
+    threads = [threading.Thread(target=post) for _ in range(6)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert processor.max_active == 1
