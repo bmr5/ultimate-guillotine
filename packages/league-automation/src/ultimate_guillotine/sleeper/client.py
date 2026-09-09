@@ -93,9 +93,20 @@ class SleeperClient:
             timeout=60.0,
         )
         response.raise_for_status()
-        payload = response.json()
+        payload: list[dict[str, Any]] = response.json()
+        # The ``noqa: TRY004`` markers below waive ruff's preference for ``TypeError``:
+        # a malformed remote body is a data error, not an argument error.
         if not isinstance(payload, list):
-            # TRY004 asks for TypeError; a malformed payload is bad data, not a
-            # bad argument, and every caller in the data layer catches ValueError.
             raise ValueError("sleeper projections payload is not a list")  # noqa: TRY004
+        if not payload:
+            raise ValueError("sleeper projections payload is empty")
+        for row in payload:
+            if not isinstance(row, dict):
+                raise ValueError("sleeper projections row is not an object")  # noqa: TRY004
+            if not row.get("player_id"):
+                raise ValueError("sleeper projections row has no player_id")
+            if row.get("category") != "proj":
+                raise ValueError("sleeper projections row is not category proj")
+            if not isinstance(row.get("stats"), dict):
+                raise ValueError("sleeper projections row has no stats object")  # noqa: TRY004
         return payload
