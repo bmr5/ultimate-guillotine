@@ -55,12 +55,20 @@ DEADLINE_PASSED = "The trade deadline has passed, so I can't suggest trades."
 #: :attr:`~ultimate_guillotine.advisor.verify.Rejected.reason`.
 FALLBACK = "I can't put advice together yet — try again in a few minutes."
 
+#: What the league sees when there is simply no trade to make: the candidate
+#: generator found nothing honest, or the model was handed a set and had nothing
+#: to say about it. Named here because two callers must say it identically --
+#: :func:`format_advice` for an empty answer, and the handler for an empty
+#: candidate set, which never reaches a model at all.
+STAND_PAT = "Nothing on the board beats standing pat right now."
+
 __all__ = [
     "DEADLINE_PASSED",
     "FALLBACK",
     "NOT_COMPUTED",
     "NO_PROJECTIONS",
     "SOURCE_PREFIX",
+    "STAND_PAT",
     "format_advice",
     "format_deadline_passed",
     "format_refusal",
@@ -148,7 +156,7 @@ def format_advice(
     rather than by omitting the argument and getting silence.
     """
     if response.status != "ok" or not response.proposals:
-        note = response.note or "Nothing on the board beats standing pat right now."
+        note = response.note or STAND_PAT
         return "\n".join([note, _source(snapshot, projections_known)])
     count = len(response.proposals)
     lines = [f"{response.headline} — {count} idea{'s' if count != 1 else ''}"]

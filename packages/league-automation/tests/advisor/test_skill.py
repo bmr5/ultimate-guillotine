@@ -16,7 +16,7 @@ from datetime import timedelta
 import pytest
 
 from tests.advisor.fixture import FIXTURE_SYNCED_AT, advised_response, fixture_snapshot
-from ultimate_guillotine.advisor.format import DEADLINE_PASSED, FALLBACK
+from ultimate_guillotine.advisor.format import DEADLINE_PASSED, FALLBACK, STAND_PAT
 from ultimate_guillotine.advisor.skill import AGENT, TradeAdvisor, advisor_trigger
 from ultimate_guillotine.advisor.state import SnapshotUnavailable
 from ultimate_guillotine.ai.structured import AIInvalidOutput, AIUnavailable, AIUsage
@@ -139,7 +139,30 @@ class FakePrices:
         return []
 
 
-def build(ai, *, contacts=None, snapshots=None, delivery=None, runs=None):
+class FailingConn:
+    """A connection whose ``commit`` starts raising at the ``fail_on``-th call.
+
+    The advisor commits three times on a good answer -- the reservation, the
+    delivery, and the finished run -- so ``fail_on=3`` is the commit that lands
+    *after* the run was already recorded as succeeded, which is the case the
+    ``_finished_run_id`` guard exists for.
+    """
+
+    def __init__(self, fail_on: int):
+        self.commits = 0
+        self.rollbacks = 0
+        self._fail_on = fail_on
+
+    def commit(self) -> None:
+        self.commits += 1
+        if self.commits >= self._fail_on:
+            raise RuntimeError("connection to server was lost")
+
+    def rollback(self) -> None:
+        self.rollbacks += 1
+
+
+def build(ai, *, contacts=None, snapshots=None, delivery=None, runs=None, conn=None):
     """A wired advisor plus the doubles a test asserts against."""
     settings = Settings(
         database_url="postgresql://x:y@example.invalid/db",
@@ -150,7 +173,7 @@ def build(ai, *, contacts=None, snapshots=None, delivery=None, runs=None):
     delivery = delivery or FakeDelivery()
     snapshots = snapshots or FakeSnapshots()
     advisor = TradeAdvisor(
-        settings, None, ai, delivery, notifier, contacts or FakeContacts(),
+        settings, conn, ai, delivery, notifier, contacts or FakeContacts(),
         FakeMembers(), snapshots, FakePrices(), runs, clock=lambda: NOW,
     )
     return advisor, runs, notifier, delivery, snapshots
@@ -342,11 +365,68 @@ def test_answer_runs_the_whole_pipeline_without_delivering_or_reserving_a_run() 
     snapshot = fixture_snapshot()
     advisor._ai = FakeAI([_advice(advisor, snapshot=snapshot)])
 
-    outcome, content = advisor.answer(snapshot, ASKER, QUESTION)
+    answer = advisor.answer(snapshot, ASKER, QUESTION)
 
-    assert outcome == "ok"
-    assert content.splitlines()[-1].startswith("Source: ")
+    assert answer.outcome == "ok"
+    # The model that answered comes back with the answer rather than being left
+    # on the advisor for the next caller to read.
+    assert answer.model == MODEL
+    assert answer.text.splitlines()[-1].startswith("Source: ")
     assert delivery.sent == [] and runs.reserved == [] and runs.finished == []
+
+
+def test_an_empty_board_stands_pat_without_ever_calling_the_model() -> None:
+    """Member17 is eliminated, so an ask naming him has nothing on it.
+
+    A model handed an empty candidate set can only invent a trade, so it is
+    never asked: the league gets the one true sentence and the run costs
+    nothing.
+    """
+    text = "@bot should I trade with Member17 for a RB"
+    advisor, runs, notifier, delivery, _ = build(_never_called())
+    assert advisor.candidates_for(fixture_snapshot(), ASKER, text) == []
+
+    assert advisor.handle(msg(text)) == "no_good_trades"
+
+    assert delivery.text.splitlines()[0] == STAND_PAT
+    assert delivery.text.splitlines()[-1].startswith("Source: ")
+    assert runs.finished[0]["status"] == "succeeded"
+    # No model answered, so there is no model to record against the run.
+    assert runs.finished[0]["input_version"] is None
+    assert notifier.ops_sent == [] and notifier.alerts_sent == []
+
+
+def test_a_message_with_no_sender_is_an_unknown_asker_and_no_hash_is_looked_up() -> None:
+    """Hashing the empty string would look up a digest no handle can produce."""
+    contacts = FakeContacts()
+    advisor, runs, _, delivery, _ = build(_never_called(), contacts=contacts)
+
+    assert advisor.handle(msg(QUESTION, sender="")) == "unknown_asker"
+
+    assert contacts.digests == []
+    assert "which team are you" in delivery.text
+    assert runs.finished[0]["status"] == "succeeded"
+
+
+def test_a_commit_that_dies_after_the_run_was_recorded_keeps_the_status_it_earned() -> None:
+    """The chat already has the answer, so ``succeeded`` is the truth about it.
+
+    A connection that dies on the commit *after* ``finish`` must not let the
+    blanket failure path come back and overwrite a settled run -- but it must
+    still raise one alert, because a listener with a dead connection is an
+    on-call problem.
+    """
+    conn = FailingConn(fail_on=3)
+    advisor, runs, notifier, delivery, _ = build(_never_called(), conn=conn)
+    advisor._ai = FakeAI([_advice(advisor)])
+
+    assert advisor.handle(msg(QUESTION)) == "failed"
+
+    assert [record["status"] for record in runs.finished] == ["succeeded"]
+    assert len(notifier.alerts_sent) == 1
+    assert "RuntimeError" in notifier.alerts_sent[0]
+    assert "connection to server was lost" not in notifier.alerts_sent[0]
+    assert delivery.sent  # the answer had already gone out
 
 
 def test_the_trigger_gates_on_the_chat_the_tag_the_intent_and_the_signature() -> None:

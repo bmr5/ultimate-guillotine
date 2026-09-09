@@ -13,7 +13,10 @@ stale, and a question asked after the trade deadline are each answered from one
 fixed line without paying for a model call at all. Only a question that clears
 all four is priced.
 
-**One model call per question.** The single retry inside
+**One model call per question, and none at all where there is nothing to ask
+about.** A question the candidate generator answers with an empty board is
+answered from one fixed line: a model handed no candidates can only invent one.
+The single retry inside
 :class:`~ultimate_guillotine.ai.hermes.HermesStructuredClient` is the only retry
 there is: a second :func:`~ultimate_guillotine.advisor.prompt.advise` would be a
 second, possibly different answer to one question, charged twice, with a group
@@ -36,10 +39,12 @@ import contextlib
 import hashlib
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
+from typing import NamedTuple
 
 from ultimate_guillotine.advisor.candidates import Candidate, generate_candidates
 from ultimate_guillotine.advisor.detect import is_advice_request, is_injection_attempt, parse_ask
 from ultimate_guillotine.advisor.format import (
+    STAND_PAT,
     format_advice,
     format_deadline_passed,
     format_refusal,
@@ -72,8 +77,33 @@ AGENT = "trade-advisor"
 HISTORY_SEASONS = 2
 
 
+class Answer(NamedTuple):
+    """One finished answer: what became of the question, what the chat sees, and
+    which model said it.
+
+    ``model`` is ``None`` on every path that never called one -- an empty
+    candidate set, a withheld projection -- and it is returned rather than left
+    on the advisor, so two questions answered by one advisor cannot read each
+    other's model and ``ug advisor ask`` can print the model that answered it
+    without reaching into a private attribute.
+    """
+
+    outcome: str
+    text: str
+    model: str | None
+
+
 def _output_hash(content: str) -> str:
     return hashlib.sha256(content.encode()).hexdigest()
+
+
+def _input_version(model: str | None) -> str | None:
+    """What produced this run's output, or ``None`` when no model did.
+
+    The prompt version and the model that answered, together, so a later
+    regression is traceable to whichever of the two changed.
+    """
+    return None if model is None else f"{PROMPT_VERSION}:{model}"
 
 
 class TradeAdvisor:
@@ -113,9 +143,6 @@ class TradeAdvisor:
         self._prices = prices
         self._runs = runs_repo
         self._clock = clock
-        #: The model that answered the last :meth:`answer`, for ``input_version``.
-        #: ``None`` on every path that never called one.
-        self._last_model: str | None = None
         #: The last run this advisor finished. A failure *after* that finish --
         #: a commit on a connection that has since died -- must not overwrite a
         #: recorded outcome with ``failed``.
@@ -165,10 +192,8 @@ class TradeAdvisor:
             self._price_points(snapshot),
         )
 
-    def answer(
-        self, snapshot: LeagueSnapshot, asker_member_id: int, text: str
-    ) -> tuple[str, str]:
-        """The whole pipeline minus the side effects: ``(outcome, chat text)``.
+    def answer(self, snapshot: LeagueSnapshot, asker_member_id: int, text: str) -> Answer:
+        """The whole pipeline minus the side effects: one :class:`Answer`.
 
         No run, no delivery, no commit -- which is exactly what ``ug advisor
         ask`` needs, since a dry run must be able to print the proposals with no
@@ -178,7 +203,6 @@ class TradeAdvisor:
         :class:`~ultimate_guillotine.ai.structured.AIInvalidOutput` are left to
         the caller, because a model outage is not an answer.
         """
-        self._last_model = None
         ask = parse_ask(text, self._ask_names(snapshot))
         scores = score_league(snapshot)
         points = self._price_points(snapshot)
@@ -191,20 +215,33 @@ class TradeAdvisor:
             response = _insufficient(
                 "This week's projections haven't synced, so I can't compare the numbers."
             )
-            return ("insufficient_data", self._render(response, snapshot, candidates, known))
+            return Answer(
+                "insufficient_data", self._render(response, snapshot, candidates, known), None
+            )
+
+        if not candidates:
+            # Nothing honest to choose between, so there is nothing to ask about:
+            # a model handed an empty set can only invent one. The league gets
+            # the one true sentence instead, and the run costs nothing.
+            return Answer(
+                "no_good_trades",
+                self._render(_stand_pat(), snapshot, candidates, known),
+                None,
+            )
 
         response, usage = advise(
             self._ai, snapshot, scores, asker_member_id, ask, candidates, points
         )
-        self._last_model = usage.model
         try:
             checked = verify(response, candidates, snapshot, asker_member_id)
         except Rejected as exc:
             # One `except`, and the sentence it earns is chosen by the exception
             # rather than by the order of two clauses -- see `format_rejection`.
             self._notifier.ops(f"Trade Advisor declined an answer: {exc.reason}")
-            return ("rejected", format_rejection(exc))
-        return (checked.status, self._render(checked, snapshot, candidates, known))
+            return Answer("rejected", format_rejection(exc), usage.model)
+        return Answer(
+            checked.status, self._render(checked, snapshot, candidates, known), usage.model
+        )
 
     # -- internals ------------------------------------------------------
 
@@ -215,7 +252,12 @@ class TradeAdvisor:
             # reaches the league data either.
             return self._respond(run_id, "refused", format_refusal())
 
-        member = self._contacts.member_for_handle_hash(handle_hash(msg.sender_address or ""))
+        if not msg.sender_address:
+            # A webhook with no sender is nobody: hashing the empty string would
+            # look up a digest no handle can ever have produced.
+            return self._respond(run_id, "unknown_asker", format_unknown_asker())
+
+        member = self._contacts.member_for_handle_hash(handle_hash(msg.sender_address))
         if member is None:
             return self._respond(run_id, "unknown_asker", format_unknown_asker())
 
@@ -238,8 +280,10 @@ class TradeAdvisor:
             # after the deadline costs nothing.
             return self._respond(run_id, "rejected", format_deadline_passed())
 
-        outcome, content = self.answer(snapshot, member.member_id, msg.text)
-        return self._respond(run_id, outcome, content, self._input_version())
+        answer = self.answer(snapshot, member.member_id, msg.text)
+        return self._respond(
+            run_id, answer.outcome, answer.text, _input_version(answer.model)
+        )
 
     def _render(
         self,
@@ -276,14 +320,6 @@ class TradeAdvisor:
             for holding in team.holdings
         }
         return price_points(self._prices.accepted_terms(seasons), positions)
-
-    def _input_version(self) -> str | None:
-        """What produced this run's output, or ``None`` when no model did.
-
-        The prompt version and the model that answered, together, so a later
-        regression is traceable to whichever of the two changed.
-        """
-        return None if self._last_model is None else f"{PROMPT_VERSION}:{self._last_model}"
 
     def _respond(
         self, run_id: int, outcome: str, content: str, input_version: str | None = None
@@ -337,6 +373,14 @@ def _insufficient(note: str) -> TradeAdviceResponse:
     )
 
 
+def _stand_pat() -> TradeAdviceResponse:
+    """The answer to a board with no trade on it, built here for the same reason."""
+    return TradeAdviceResponse(
+        status="no_good_trades", headline="No trade worth making",
+        proposals=[], note=STAND_PAT,
+    )
+
+
 def _horizon_weeks(text: str) -> int:
     """How many weeks of projections this question needs read.
 
@@ -351,6 +395,7 @@ def _horizon_weeks(text: str) -> int:
     term and the rental language are read off the words alone, and the ask that
     the answer is actually built from is parsed again against the snapshot.
     """
+    # Deliberately name-free, per the paragraph above.
     ask = parse_ask(text, ())
     if not ask.rental:
         return 1
