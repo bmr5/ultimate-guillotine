@@ -202,6 +202,22 @@ def test_stale_running_reports_runs_that_never_finished(conn) -> None:
     assert fresh is not None
 
 
+def test_last_finished_status_ignores_this_run_and_other_agents(conn) -> None:
+    """The transition notes ask "did the answer change?", so the run in flight --
+    still `running` -- must not be the answer, and neither must another agent's."""
+    runs = RunRepository(conn)
+    assert runs.last_finished_status("projections-sync") is None
+
+    runs.finish(runs.reserve("projections-sync", "cron", "proj:1"), "succeeded")
+    assert runs.last_finished_status("projections-sync") == "succeeded"
+
+    runs.finish(runs.reserve("projections-sync", "cron", "proj:2"), "failed")
+    runs.finish(runs.reserve("sleeper-sync", "cron", "sleeper:1"), "succeeded")
+    runs.reserve("projections-sync", "cron", "proj:3")  # the run asking the question
+    assert runs.last_finished_status("projections-sync") == "failed"
+    assert runs.last_finished_status("sleeper-sync") == "succeeded"
+
+
 def test_season_repository_reads_the_newest_season(conn) -> None:
     repo = SeasonRepository(conn)
     # Years past anything the local database is seeded with, so "newest" is ours.

@@ -291,6 +291,26 @@ class ProjectionRepository:
             )
 
 
+def fetch_projection_rows(
+    client: SleeperClient, season: int, week: int, now: datetime
+) -> list[ProjectionRow]:
+    """Fetch and parse one week of projections, refusing a payload too thin to be real.
+
+    Touches no database. It is split out from ``sync_projections`` so a caller that
+    owns a transaction can do the fetch *before* opening one: a 200 with no body is
+    the likeliest failure of the whole command, and it should abort the run rather
+    than roll back a transaction that had already begun writing.
+    """
+    rows = load_projections(client.get_projections(season, week), week, now)
+    if len(rows) < MIN_PROJECTION_ROWS:
+        # A 200 with no body must never zero out a week that already has good
+        # projections, so this refuses before anything is written at all.
+        raise RuntimeError(
+            f"sleeper returned too few projections for {season} week {week}: {len(rows)}"
+        )
+    return rows
+
+
 def sync_projections(
     client: SleeperClient,
     conn: psycopg.Connection,
@@ -318,14 +338,7 @@ def sync_projections(
     repo = ProjectionRepository(conn)
     if rescore:
         return repo.rescore(season, week, scoring_settings, version, now)
-    rows = load_projections(client.get_projections(season, week), week, now)
-    if len(rows) < MIN_PROJECTION_ROWS:
-        # Refuse before touching the table: a 200 with no body must never zero out a
-        # week that already has good projections, and the caller's transaction may be
-        # carrying other work that should not be rolled back over this.
-        raise RuntimeError(
-            f"sleeper returned too few projections for {season} week {week}: {len(rows)}"
-        )
+    rows = fetch_projection_rows(client, season, week, now)
     return repo.upsert_many(season, week, rows, scoring_settings, version, now)
 
 

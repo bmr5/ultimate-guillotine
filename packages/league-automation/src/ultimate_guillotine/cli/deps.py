@@ -20,6 +20,7 @@ from ultimate_guillotine.data.repositories import (
 from ultimate_guillotine.messages.bluebubbles import BlueBubblesClient
 from ultimate_guillotine.messages.delivery import DeliveryService
 from ultimate_guillotine.ops.notify import HermesNotifier
+from ultimate_guillotine.ops.transitions import transition_note
 
 
 @dataclass
@@ -112,4 +113,43 @@ def run_scheduled(
         raise
     runs.finish(run_id, "succeeded" if exit_code == 0 else "failed")
     conn.commit()
+    return exit_code
+
+
+def run_scheduled_with_notes(
+    deps: Deps,
+    agent: str,
+    now: datetime,
+    action: Callable[[int], int],
+) -> int:
+    """`run_scheduled`, plus one Discord ops note when this agent's verdict changes.
+
+    Every scheduled Sleeper job wants the same thing: run, record, and say
+    something in `#guillotine-ops` only on the edges -- the first failure after a
+    success, and the recovery. Three copies of that wrapper would be three places
+    to get the edge cases wrong, so it lives here once.
+
+    The previous verdict is read *before* the run, from the newest finished run of
+    the same agent; `RunRepository.last_finished_status` ignores `running` rows, so
+    the reservation this call is about to make cannot be mistaken for it.
+
+    A `None` from `run_scheduled` is a deduplicated fire -- a second cron tick
+    inside the same minute. Nothing ran, so nothing changed: no note, and a zero
+    exit, because a duplicate is not a failure.
+    """
+    previous = RunRepository(deps.conn).last_finished_status(agent)
+
+    def note(status: str) -> None:
+        text = transition_note(agent, previous, status, now)
+        if text:
+            deps.notifier.ops(text)
+
+    try:
+        exit_code = run_scheduled(deps.conn, agent, now, action)
+    except Exception:
+        note("failed")
+        raise
+    if exit_code is None:
+        return 0
+    note("succeeded" if exit_code == 0 else "failed")
     return exit_code

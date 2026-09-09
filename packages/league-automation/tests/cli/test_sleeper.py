@@ -26,7 +26,9 @@ def _week_passed_to_sync(monkeypatch: pytest.MonkeyPatch, season_type: str, week
         sleeper_cli,
         "build_deps",
         lambda: SimpleNamespace(
-            conn=object(), settings=SimpleNamespace(sleeper_league_id="league-id")
+            conn=object(),
+            notifier=SimpleNamespace(ops=lambda text: True),
+            settings=SimpleNamespace(sleeper_league_id="league-id"),
         ),
     )
     monkeypatch.setattr(sleeper_cli.httpx, "Client", lambda: object())
@@ -37,7 +39,9 @@ def _week_passed_to_sync(monkeypatch: pytest.MonkeyPatch, season_type: str, week
         lambda client, conn, now: SimpleNamespace(season_type=season_type, week=week),
     )
     monkeypatch.setattr(sleeper_cli, "sync_season", fake_sync)
-    monkeypatch.setattr(sleeper_cli, "run_scheduled", lambda conn, agent, now, action: action(1))
+    monkeypatch.setattr(
+        sleeper_cli, "run_scheduled_with_notes", lambda deps, agent, now, action: action(1)
+    )
 
     assert sleeper_cli.cmd_sync(argparse.Namespace(quiet=True)) == 0
     return seen["week"]

@@ -133,6 +133,26 @@ class RunRepository:
             )
             return [(row[0], row[1]) for row in cur.fetchall()]
 
+    def last_finished_status(self, agent: str) -> str | None:
+        """The newest terminal status for ``agent``, ignoring runs still running.
+
+        This is the "before" the ops transition notes compare against, which is
+        why a ``running`` row is not an answer: the run asking the question is
+        itself still running, and it must not read its own reservation as the
+        previous verdict.
+        """
+        with self._conn.cursor() as cur:
+            cur.execute(
+                """
+                select status from private.agent_runs
+                where agent = %s and status in ('succeeded', 'failed')
+                order by id desc limit 1
+                """,
+                (agent,),
+            )
+            row = cur.fetchone()
+            return row[0] if row else None
+
     def last_started(self, agent: str) -> datetime | None:
         """Return the most recent ``started_at`` for the given agent, if any."""
         with self._conn.cursor() as cur:

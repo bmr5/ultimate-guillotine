@@ -46,6 +46,35 @@ cd <repo> && uv run --project packages/league-automation ug ops doctor
 cd <repo> && uv run --project packages/league-automation ug sleeper sync
 ```
 
+## Refresh the NFL week
+
+```
+cd <repo> && uv run --project packages/league-automation ug sleeper state
+```
+
+Prints the season, the season type, and the week — `2026 regular week 3`. The
+week is scoped by season type: `pre 2` is preseason week 2, not week 2 of the
+season.
+
+## Sync this week's projections
+
+```
+cd <repo> && uv run --project packages/league-automation ug sleeper projections
+```
+
+Fetches the week `nfl_state` reports, scores it with the league's settings, and
+recomputes every team's projected points. Prints the player count, how many went
+unscored, and the run's coverage percentage. It refuses outside the regular
+season, and refuses a payload too thin to be a real week rather than blanking a
+week that already has good numbers.
+
+`--week N` syncs a specific week. `--rescore` recomputes points from the stat
+lines already stored, with no call to Sleeper — that is the command to run after
+the league's scoring settings change, never a re-sync.
+
+Coverage below 95% and a scoring-drift warning both post their own note to
+`#guillotine-ops`; the numbers are still written, flagged, never withheld.
+
 ## List recently logged trades
 
 ```
