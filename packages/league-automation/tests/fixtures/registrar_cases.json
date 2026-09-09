@@ -203,9 +203,9 @@
       "category": "sloppy",
       "text": "🚨 Trade Alert 🚨 RylandRad sends Marvin Harrison Jr. to SuperKing3 for 310 FAAB",
       "expected_kind": "permanent",
-      "expected_status": "clarification",
+      "expected_status": "created",
       "prereq": null,
-      "notes": "Known gap: the directory row is Marvin Harrison, and a two-token name plus a suffix never reaches the surname fallback, so the suffix spelling fails to resolve."
+      "notes": "The directory row is Marvin Harrison and the chat types Marvin Harrison Jr. Resolution compares the two with their generational suffixes stripped, so either spelling finds the one row."
     },
     {
       "id": 24,
