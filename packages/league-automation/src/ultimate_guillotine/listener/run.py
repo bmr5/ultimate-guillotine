@@ -13,8 +13,9 @@ import httpx
 import psycopg
 import uvicorn
 
-from ultimate_guillotine.ai.openrouter import StructuredOutputClient
+from ultimate_guillotine.ai.hermes import HermesStructuredClient
 from ultimate_guillotine.config import DeliveryMode, Settings, load_settings
+from ultimate_guillotine.core.hermes_cli import find_hermes_binary
 from ultimate_guillotine.data.database import connect
 from ultimate_guillotine.data.repositories import (
     HeartbeatRepository,
@@ -130,11 +131,11 @@ def _register_trade_registrar(
 ) -> None:
     """Register the Trade Registrar, or say once why it is not running.
 
-    Without a chat to answer in, or without an OpenRouter key -- unset or blank,
-    which `openrouter_key` treats alike -- the registrar cannot do its job, so
-    the listener starts without it rather than failing every alert one at a
-    time. That is a configuration problem someone has to fix, so it is announced
-    in ops at startup -- once, here, and never again per message.
+    Without a chat to answer in, or without the Hermes CLI that carries every
+    model call, the registrar cannot do its job, so the listener starts without
+    it rather than failing every alert one at a time. That is a configuration
+    problem someone has to fix, so it is announced in ops at startup -- once,
+    here, and never again per message.
 
     The repositories are handed the listener's own connection: the registrar
     commits after each step itself, so the trade, its revision, and the run all
@@ -149,12 +150,11 @@ def _register_trade_registrar(
         log.warning("trade registrar disabled: no target chat for %s", settings.delivery_mode)
         notifier.ops(f"Trade Registrar disabled: no target chat for {settings.delivery_mode}")
         return
-    key = settings.openrouter_key()
-    if key is None:
-        log.warning("trade registrar disabled: no OpenRouter key configured")
-        notifier.ops("Trade Registrar disabled: OPENROUTER_API_KEY not set")
+    if find_hermes_binary() is None:
+        log.warning("trade registrar disabled: hermes CLI not found")
+        notifier.ops("Trade Registrar disabled: hermes CLI not found")
         return
-    ai = StructuredOutputClient(key, settings.trade_extraction_model, httpx.Client())
+    ai = HermesStructuredClient(settings.hermes_profile_home, model=settings.hermes_model)
     registrar = TradeRegistrar(
         settings,
         conn,

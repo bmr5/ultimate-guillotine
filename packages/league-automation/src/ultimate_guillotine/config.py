@@ -29,20 +29,12 @@ class Settings(BaseSettings):
     discord_feed_channel: str = "#guillotine-feed"
     discord_drafts_channel: str = "#guillotine-drafts"
     discord_alerts_channel: str = "#guillotine-alerts"
-    openrouter_api_key: SecretStr | None = None
-    trade_extraction_model: str = "openai/gpt-5-mini"
+    hermes_model: str | None = None
+    """Per-call model override for the structured-output client.
 
-    def openrouter_key(self) -> str | None:
-        """The OpenRouter key, or `None` when it is unset, blank, or whitespace.
-
-        `OPENROUTER_API_KEY=` in a `.env` is not a configured key, but pydantic
-        turns it into `SecretStr("")`, which an `is None` check waves through --
-        and the first request then leaves the machine unauthenticated. Blank
-        means absent, and every caller asks this one question instead.
-        """
-        if self.openrouter_api_key is None:
-            return None
-        return self.openrouter_api_key.get_secret_value().strip() or None
+    Normally unset: the `guillotine` Hermes profile's `config.yaml` already names
+    the model, and one place to change it beats two that can disagree.
+    """
 
     @model_validator(mode="after")
     def validate_delivery_target(self) -> "Settings":

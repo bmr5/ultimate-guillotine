@@ -42,14 +42,14 @@ def test_secrets_do_not_repr() -> None:
     assert "hunter2" not in repr(settings)
 
 
-def test_trade_settings_defaults() -> None:
+def test_model_settings_default_to_the_hermes_profile() -> None:
+    """No model key and no model id of its own: the `guillotine` Hermes profile
+    holds both, and `hermes_model` only overrides the model when it is set."""
     settings = Settings(**BASE)
-    assert settings.trade_extraction_model == "openai/gpt-5-mini"
-    assert settings.openrouter_api_key is None
+    assert settings.hermes_profile_home == "~/.hermes/profiles/guillotine"
+    assert settings.hermes_model is None
+    assert not hasattr(settings, "openrouter_api_key")
 
 
-def test_openrouter_key_treats_blank_as_unset() -> None:
-    assert Settings(**BASE).openrouter_key() is None
-    assert Settings(**BASE, openrouter_api_key="").openrouter_key() is None
-    assert Settings(**BASE, openrouter_api_key="  ").openrouter_key() is None
-    assert Settings(**BASE, openrouter_api_key=" sk-test ").openrouter_key() == "sk-test"
+def test_a_model_override_is_read_when_it_is_set() -> None:
+    assert Settings(**BASE, hermes_model="gpt-5.6-sol").hermes_model == "gpt-5.6-sol"

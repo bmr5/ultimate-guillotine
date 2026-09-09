@@ -2,7 +2,7 @@
 from functools import lru_cache
 from pathlib import Path
 
-from ultimate_guillotine.ai.openrouter import AIUsage, StructuredOutputClient
+from ultimate_guillotine.ai.structured import AIUsage, StructuredOutputClient
 from ultimate_guillotine.trades.models import ExtractedTrade
 
 PROMPT_VERSION = "2026.1"
