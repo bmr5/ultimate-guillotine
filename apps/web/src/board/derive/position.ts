@@ -57,6 +57,18 @@ export interface PositionPlayer {
  */
 export type LikelyBidderReason = "starter out" | "empty slot" | "below median";
 
+/**
+ * Each reason in words, for the `title` the `likely bidder` badge carries.
+ *
+ * The reason is the half of the answer a reader acts on: a team whose starter is out will bid
+ * this week whatever his season looks like, and a team that is merely thin might not.
+ */
+export const LIKELY_BIDDER_REASONS: Record<LikelyBidderReason, string> = {
+  "starter out": "Their starter at this position is out",
+  "empty slot": "They have an empty slot this position could fill",
+  "below median": "Their best starter here projects below the visible median",
+};
+
 export interface PositionRow {
   /** The whole team, so a row can expand into the board's usual roster panel. */
   team: BoardTeam;

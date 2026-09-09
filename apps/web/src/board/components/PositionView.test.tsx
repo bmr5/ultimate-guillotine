@@ -1,13 +1,9 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { positionView } from "../derive/position";
+import { LIKELY_BIDDER_REASONS, positionView } from "../derive/position";
 import type { BoardTeam, RosterPlayer } from "../types";
-import {
-  LIKELY_BIDDER_LABEL,
-  LIKELY_BIDDER_REASONS,
-  PositionView,
-} from "./PositionView";
+import { LIKELY_BIDDER_LABEL, PositionView } from "./PositionView";
 
 /** The league's own lineup, as `seasons.roster_positions` spells it. */
 const LEAGUE_SLOTS = ["QB", "RB", "RB", "WR", "WR", "TE", "FLEX", "K", "DEF"];

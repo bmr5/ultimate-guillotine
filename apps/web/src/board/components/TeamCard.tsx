@@ -1,17 +1,12 @@
-import { memo, useId, useMemo, useRef, useState } from "react";
+import { memo, useId, useMemo } from "react";
 import { ChevronDown } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
+import { resolveStarterAvailability } from "../derive/availability";
 import {
   partialCoverageExplanation,
   resolveProjectionDisplay,
@@ -54,6 +49,18 @@ const FOCUS_RING_CLASS =
 /** The short, visible form of the below-gate caveat; the full label rides along for readers. */
 const PARTIAL_BADGE_TEXT = "partial";
 
+/**
+ * The collapsed summary's height, so every card in the grid is the same one.
+ *
+ * Ben's addendum: "make every card the same height — the badge currently changes card height."
+ * A `min-h` alone would not do it; it works because everything inside the summary is bounded.
+ * The owner line, the team name and the total line each truncate to one line, the chip row
+ * never wraps, and the projection block is at most three lines (number, `proj`, empty count).
+ * 6.5rem clears that tallest case with the card's `p-4` around it, so a card with chips, a card
+ * with an empty-slot count and a plain card all measure the same.
+ */
+const SUMMARY_MIN_HEIGHT_CLASS = "min-h-[6.5rem]";
+
 /** Label for a team eliminated in a week the data layer does not know yet. */
 const ELIMINATED_LABEL = "Eliminated";
 
@@ -67,92 +74,54 @@ export const FROZEN_ROSTER_LABEL = "Final roster, frozen at elimination";
 /** What the empty-slot count is called for a reader who cannot see it sitting under `proj`. */
 const EMPTY_SLOTS_DESCRIPTION = "empty starter slots";
 
-interface PartialCoverageBadgeProps {
-  /** The sentence that says why the badge is there; the tooltip's whole point. */
-  description: string;
-  /** What the badge is called; the same wording the screen reader hears. */
+interface SummaryChipProps {
+  /** The `data-chip` handle, so a test names the state rather than the styling. */
+  kind: "out" | "partial";
+  /** The short, visible wording. */
+  text: string;
+  /** The sentence behind it, as the native tooltip a reader hovers. */
+  title: string;
+  /** The same thing spelled out for a screen reader, whether or not the tooltip is open. */
   label: string;
-  /** When the projection was computed, already in words. Omitted when it is not known. */
-  computedText: string | undefined;
+  /** `destructive` for something costing points now; `muted` for a footnote on the number. */
+  tone: "destructive" | "muted";
 }
 
 /**
- * The `partial` badge, under the projection it is about.
+ * One chip on the owner's line.
  *
- * Ben's card change 3: the badge used to sit in the row of badges below the summary, far enough
- * from the number that it read as a property of the card rather than of the projection, and it
- * never said why it was there. So it moved under the big number, and it explains itself.
+ * Ben asked for the badge "by the owner's name", which puts it inside the summary toggle — and a
+ * control nested in a `<button>` is invalid HTML and a dead tooltip besides. So the chips are
+ * plain spans and the explanation is a native `title` rather than the Radix tooltip the badge
+ * carried under the projection. The trade is deliberate: a `title` does not open on tap, so the
+ * sentence is also mounted as visually hidden text, which is what a screen reader and a phone
+ * reader actually get. The elimination badge below the summary has always worked this way.
  *
- * The tooltip is controlled rather than left to Radix's hover-and-focus default: Radix suppresses
- * tooltips opened by touch, and this badge is read on a phone as often as anywhere. Hover and
- * keyboard focus still open it through `onOpenChange`; the click handler adds tap. The sentence
- * is also mounted as visually hidden text and named by `aria-describedby`, so a screen reader
- * gets it whether or not the tooltip is open.
- *
- * The tap toggle reads a latched copy of `open` rather than the current state, because by the
- * time `onClick` runs the state is no longer the one the reader tapped: the open tooltip's
- * dismissable layer closes on the `pointerdown` that starts the second tap, and Radix's own
- * trigger closes again on the click. A plain `!open` therefore resolves against a just-set
- * `false` and re-opens the tooltip the tap was meant to dismiss. `onPointerDownCapture` runs
- * before either close — capture, at the trigger, beats a document-level listener — so it records
- * what the reader actually saw, and the click toggles against that.
+ * `shrink-0` and `whitespace-nowrap` keep a chip on one line; the row around it clips.
  */
-function PartialCoverageBadge({
-  description,
+const SummaryChip = memo(function SummaryChip({
+  kind,
+  text,
+  title,
   label,
-  computedText,
-}: PartialCoverageBadgeProps) {
-  const [open, setOpen] = useState(false);
-  // What the tooltip was doing when the tap began. False is the right resting value: a click with
-  // no pointerdown before it is a keyboard activation, and focus has already opened the tooltip.
-  const openAtPointerDown = useRef(false);
-  const descriptionId = useId();
-
+  tone,
+}: SummaryChipProps) {
   return (
-    <TooltipProvider>
-      <Tooltip open={open} onOpenChange={setOpen}>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            aria-describedby={descriptionId}
-            onPointerDownCapture={() => {
-              openAtPointerDown.current = open;
-            }}
-            onClick={() => {
-              const wasOpen = openAtPointerDown.current;
-              openAtPointerDown.current = false;
-              setOpen(!wasOpen);
-            }}
-            className={cn(
-              "inline-flex min-h-[44px] items-center justify-end rounded-md",
-              FOCUS_RING_CLASS,
-            )}
-          >
-            {/* Below the gate the number still shows; the badge is only a footnote. */}
-            <span
-              aria-hidden="true"
-              className="rounded-md border px-2 py-0.5 text-xs font-medium text-muted-foreground"
-            >
-              {PARTIAL_BADGE_TEXT}
-            </span>
-            <span className="sr-only">{label}</span>
-          </button>
-        </TooltipTrigger>
-        <TooltipContent className="max-w-[16rem] text-left">
-          <span className="block">{description}</span>
-          {computedText === undefined ? null : (
-            <span className="mt-1 block text-xs text-muted-foreground">
-              {computedText}
-            </span>
-          )}
-        </TooltipContent>
-      </Tooltip>
-      <span id={descriptionId} className="sr-only">
-        {description}
-      </span>
-    </TooltipProvider>
+    <span
+      data-chip={kind}
+      title={title}
+      className={cn(
+        "shrink-0 whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[0.6875rem] font-medium leading-4",
+        tone === "destructive"
+          ? "border-destructive/40 text-destructive"
+          : "border-border text-muted-foreground",
+      )}
+    >
+      <span aria-hidden="true">{text}</span>
+      <span className="sr-only">{label}</span>
+    </span>
   );
-}
+});
 
 interface TeamCardProps {
   team: BoardTeam;
@@ -165,9 +134,9 @@ interface TeamCardProps {
 }
 
 /**
- * One team's row on the board: the summary line, its caveat badges, and the roster panel the
- * summary expands into. Open state is owned by the caller so only one card need be open at a
- * time and so the board can restore it from the URL.
+ * One team's row on the board: the summary line, its chips, and the roster panel the summary
+ * expands into. Open state is owned by the caller so only one card need be open at a time and
+ * so the board can restore it from the URL.
  *
  * Ben's decision 3: an eliminated team is dimmed and sorted last but stays expandable, because
  * the frozen roster is the interesting part of an elimination.
@@ -181,36 +150,56 @@ export const TeamCard = memo(function TeamCard({
   rosterPositions,
 }: TeamCardProps) {
   const panelId = useId();
-  // Laid out once per card rather than once per open card: the count below the projection is
-  // on the collapsed card too, which is the point — Ben should not have to expand nine cards to
-  // find the one missing a flex.
-  const starterSlots = useMemo(
+  // Laid out once per card rather than once per open card: the count below the projection and
+  // the out-starter chip are both on the collapsed card, which is the point — Ben should not
+  // have to expand nine cards to find the one missing a flex or starting an injured tight end.
+  const starterRows = useMemo(
     () => layoutStarters(rosterPositions, team.roster),
     [rosterPositions, team.roster],
   );
-  const emptySlots = resolveEmptySlotCount(team.emptySlots, starterSlots);
+  const emptySlots = resolveEmptySlotCount(team.emptySlots, starterRows);
   const projection = resolveProjectionDisplay(team);
   const totalPoints = team.pointsFor.toFixed(TOTAL_POINTS_DECIMALS);
   const faab =
     team.faabRemaining === null
       ? FAAB_UNKNOWN_TEXT
       : `${team.faabRemaining} FAAB`;
-  // Only the partial badge carries a computed-at line: it is the one caveat where the age of
+
+  // Ben's addendum: an out starter is reported as out, not counted as missing data. This is
+  // what decides both chips — the out one from the roster, the partial one from what coverage
+  // is left once the out starters and the empty slots leave the denominator.
+  const availability = resolveStarterAvailability({
+    starterRows,
+    startersProjected: team.startersProjected,
+    starterSlots: team.starterSlots,
+    emptySlots,
+  });
+  // Both have to agree: the data layer says the week is short, and the shortfall is not
+  // explained by who is injured. Either alone would put the chip on the wrong cards.
+  const isPartial = projection.caveat === "partial" && availability.isPartial;
+
+  // Only the partial chip carries a computed-at line: it is the one caveat where the age of
   // the number is the follow-up question. `Projection unavailable` means there is no number to
   // have been computed, so a "computed at" time on it would be a lie about a row that is absent.
   // A raw ISO timestamp is never surfaced (see `derive/time`), so it is formatted in the
   // viewer's own locale and timezone like every other time on the board.
   const computedText =
-    projection.caveat === "partial" && team.projectionComputedAt !== null
+    isPartial && team.projectionComputedAt !== null
       ? formatComputedTitle(Date.parse(team.projectionComputedAt))
       : undefined;
-  // The partial caveat left this row when it moved under the projection, so the row below the
-  // summary is now the unavailable caveat and the elimination badge — and nothing at all for a
-  // live team with a good projection, which is most of the board.
-  const isPartial = projection.caveat === "partial";
   const coverageExplanation = partialCoverageExplanation(team);
+  const partialTitle = [
+    coverageExplanation ?? projection.caveatLabel ?? "",
+    computedText ?? "",
+  ]
+    .filter((line) => line !== "")
+    .join("\n");
+  // The chips left this row when they moved onto the owner's line, so what is left below the
+  // summary is the unavailable caveat and the elimination badge — and nothing at all for a live
+  // team with a good projection, which is most of the board.
   const hasBadges =
-    (projection.caveatLabel !== null && !isPartial) || team.isEliminated;
+    (projection.caveatLabel !== null && projection.caveat === "unavailable") ||
+    team.isEliminated;
 
   return (
     <li>
@@ -230,18 +219,17 @@ export const TeamCard = memo(function TeamCard({
       >
         <Collapsible open={isOpen}>
           {/*
-            The whole summary is one button again. Splitting it so the `partial` badge could own
-            a tooltip cost the card its biggest tap target — the projection number, the part of
-            a card a thumb actually lands on — for a caveat that shows on a minority of teams.
-            So the summary is a two-column grid: the button fills the first column and holds the
-            rank, the names and the projection block, and the badge is a *sibling* on the second
-            row of that same column, right-aligned, which puts it under the number it is about
-            without nesting a control inside a <button> (invalid HTML, and a dead tooltip). The
-            chevron keeps its own 44px target in the second column.
+            The whole summary is one button: the projection number is the part of a card a thumb
+            actually lands on, and splitting it to give a badge its own control cost the card
+            that target once already. The chips are spans, not controls, so they can sit inside
+            it. The chevron keeps its own 44px target in the second column.
           */}
           <div
             data-card-summary
-            className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-2 p-4"
+            className={cn(
+              "grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-2 p-4",
+              SUMMARY_MIN_HEIGHT_CLASS,
+            )}
           >
             {/* A real <button>, not a Radix trigger, so the card owns its `aria-controls`. */}
             <button
@@ -258,14 +246,51 @@ export const TeamCard = memo(function TeamCard({
                 {rank}
               </span>
               <span className="min-w-0 flex-1">
-                {/* Full-strength foreground even when eliminated; only the chrome dims. */}
-                <span className="block truncate font-medium text-foreground">
-                  {team.ownerName}
+                {/*
+                  The owner's line, and the chips that qualify this card, on it. Ben: "I'd
+                  prefer the badge by the owner's name." One line, always: the name truncates
+                  and the chip row clips rather than wrapping, so no combination of chips can
+                  make this card taller than its neighbours.
+                */}
+                <span className="flex min-w-0 items-center gap-1.5">
+                  {/* Full-strength foreground even when eliminated; only the chrome dims. */}
+                  <span className="min-w-0 truncate font-medium text-foreground">
+                    {team.ownerName}
+                  </span>
+                  {/*
+                    Always mounted, chips or not, so the summary has one structure rather than
+                    two: an element that appears and disappears is exactly what was changing the
+                    card's height. Empty it collapses to nothing and costs no space.
+                  */}
+                  <span
+                    data-chip-row
+                    className="flex min-w-0 shrink flex-nowrap items-center gap-1 overflow-hidden"
+                  >
+                    {availability.outChipText === null ||
+                    availability.outChipTitle === null ? null : (
+                      <SummaryChip
+                        kind="out"
+                        tone="destructive"
+                        text={availability.outChipText}
+                        title={availability.outChipTitle}
+                        label={`${availability.outChipText}. ${availability.outChipTitle}`}
+                      />
+                    )}
+                    {isPartial && projection.caveatLabel !== null ? (
+                      <SummaryChip
+                        kind="partial"
+                        tone="muted"
+                        text={PARTIAL_BADGE_TEXT}
+                        title={partialTitle}
+                        label={`${projection.caveatLabel}. ${partialTitle}`}
+                      />
+                    ) : null}
+                  </span>
                 </span>
                 <span className="block truncate text-sm text-muted-foreground">
                   {team.teamName}
                 </span>
-                <span className="mt-1 block text-xs text-muted-foreground">
+                <span className="mt-1 block truncate text-xs text-muted-foreground">
                   {/*
                     Ben's card change 1: the season total, not a record and not "points for".
                     The visible word is `Total`; the sr-only copy names the figure in full, so
@@ -280,7 +305,7 @@ export const TeamCard = memo(function TeamCard({
               {/*
                 The projection and what qualifies it: the number, its caption and the empty-slot
                 count. A lineup with a hole in it has to be visible without expanding the card.
-                Spans, not a <div>, because this block lives inside the toggle button now.
+                Spans, not a <div>, because this block lives inside the toggle button.
               */}
               <span data-projection className="shrink-0 text-right">
                 <span className="block text-2xl font-semibold tabular-nums text-foreground">
@@ -297,24 +322,6 @@ export const TeamCard = memo(function TeamCard({
                 ) : null}
               </span>
             </button>
-
-            {/*
-              The badge sits in the button's own column, one row down, pushed to the same right
-              edge the projection is aligned to — so it reads as a footnote on the number while
-              staying outside the button that number is inside.
-            */}
-            {isPartial && projection.caveatLabel !== null ? (
-              <div
-                data-projection-badge
-                className="col-start-1 row-start-2 flex justify-end"
-              >
-                <PartialCoverageBadge
-                  description={coverageExplanation ?? projection.caveatLabel}
-                  label={projection.caveatLabel}
-                  computedText={computedText}
-                />
-              </div>
-            ) : null}
 
             {/*
               A redundant mouse and touch target for the same toggle, hidden from assistive
@@ -340,10 +347,11 @@ export const TeamCard = memo(function TeamCard({
 
           {hasBadges ? (
             <div className="flex flex-wrap gap-2 px-4 pb-3">
-              {/* Only the em dash state lands here now; `partial` sits under the number. */}
-              {projection.caveatLabel === null || isPartial ? null : (
+              {/* Only the em dash state lands here now; the chips sit on the owner's line. */}
+              {projection.caveat === "unavailable" &&
+              projection.caveatLabel !== null ? (
                 <Badge variant="outline">{projection.caveatLabel}</Badge>
-              )}
+              ) : null}
               {team.isEliminated ? (
                 <Badge
                   variant="secondary"
@@ -379,7 +387,7 @@ export const TeamCard = memo(function TeamCard({
                 ) : null}
                 <RosterPanel
                   players={team.roster}
-                  starterSlots={starterSlots}
+                  starterSlots={starterRows}
                   highlightedPlayerIds={highlightedPlayerIds}
                 />
               </CardContent>

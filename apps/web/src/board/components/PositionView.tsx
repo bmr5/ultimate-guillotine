@@ -7,25 +7,13 @@ import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 
 import { injuryTag } from "../derive/availability";
-import type { LikelyBidderReason, PositionRow } from "../derive/position";
+import { LIKELY_BIDDER_REASONS, type PositionRow } from "../derive/position";
 import { layoutStarters } from "../derive/roster";
 import type { PositionFilter } from "../types";
 import { RosterPanel } from "./RosterPanel";
 
 /** The badge a team likely to bid on this position carries; also what the tests assert on. */
 export const LIKELY_BIDDER_LABEL = "likely bidder";
-
-/**
- * Why the badge is there, in words, as the badge's `title`.
- *
- * The reason is the half of the answer a reader acts on: a team whose starter is out will bid
- * this week whatever his season looks like, and a team that is merely thin might not.
- */
-export const LIKELY_BIDDER_REASONS: Record<LikelyBidderReason, string> = {
-  "starter out": "Their starter at this position is out",
-  "empty slot": "They have an empty slot this position could fill",
-  "below median": "Their best starter here projects below the visible median",
-};
 
 /** Decimals a player projection is shown with, matching every other number on the board. */
 const PLAYER_PROJECTION_DECIMALS = 1;
