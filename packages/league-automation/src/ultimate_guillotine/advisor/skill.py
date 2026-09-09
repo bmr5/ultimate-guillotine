@@ -202,6 +202,45 @@ class TradeAdvisor:
             self._price_points(snapshot),
         )
 
+    def gate(
+        self, text: str, member: MemberRef | None, now: datetime | None = None
+    ) -> tuple[Answer | None, LeagueSnapshot | None]:
+        """Every check that runs before a question is priced, and nothing else.
+
+        Returns the refusal and no snapshot, or no refusal and the snapshot the
+        question is to be answered against. Split out of
+        :meth:`answer_message` so that ``ug advisor ask --json``, which never
+        reaches a model and so never reaches ``answer_message``, still runs the
+        identical guards in the identical order rather than a second copy of
+        them that could drift.
+
+        The gates run cheapest first -- a hostile message is answered from its
+        own text, before a sender is placed, before the league is read and long
+        before a model is asked anything.
+        """
+        if is_injection_attempt(text):
+            # Answered from the text alone: an attempt to overrule the Advisor
+            # or to have it commit a trade never reaches the model, and never
+            # reaches the league data either.
+            return Answer("refused", format_refusal(), None), None
+        if member is None:
+            return Answer("unknown_asker", format_unknown_asker(), None), None
+
+        snapshot = self._snapshots.load(horizon_weeks=horizon_weeks(text))
+        moment = self._clock() if now is None else now
+        if snapshot.is_stale(moment):
+            minutes = int(snapshot.age(moment).total_seconds() // 60)
+            return Answer("stale", format_stale(minutes), None), None
+        if snapshot.team_for_member(member.member_id) is None:
+            # The member is known but has no team this season, so there is no
+            # roster to plan for and nothing to guess from.
+            return Answer("unknown_asker", format_unknown_asker(), None), None
+        if deadline_passed(snapshot):
+            # Checked here rather than left to `verify`, so a question asked
+            # after the deadline costs nothing.
+            return Answer("rejected", format_deadline_passed(), None), None
+        return None, snapshot
+
     def answer_message(
         self, text: str, member: MemberRef | None, now: datetime | None = None
     ) -> Answer:
@@ -210,38 +249,21 @@ class TradeAdvisor:
         The listener calls this with the member a hashed handle resolved to and
         ``ug advisor ask`` calls it with the member named on the command line;
         neither adds a check of its own, so the dry run refuses exactly what the
-        chat refuses. The gates run cheapest first -- a hostile message is
-        answered from its own text, before a sender is placed, before the league
-        is read and long before a model is asked anything.
+        chat refuses.
 
-        The snapshot is loaded here rather than passed in, so a refused or
-        unplaceable question never touches the league data at all;
+        The snapshot is loaded in :meth:`gate` rather than passed in, so a
+        refused or unplaceable question never touches the league data at all;
         :class:`~ultimate_guillotine.advisor.state.SnapshotUnavailable` is left
         to the caller, because "the data layer is down" is an operational answer
         and the two callers give it differently. ``now`` defaults to this
         advisor's clock.
         """
-        if is_injection_attempt(text):
-            # Answered from the text alone: an attempt to overrule the Advisor
-            # or to have it commit a trade never reaches the model, and never
-            # reaches the league data either.
-            return Answer("refused", format_refusal(), None)
-        if member is None:
-            return Answer("unknown_asker", format_unknown_asker(), None)
-
-        snapshot = self._snapshots.load(horizon_weeks=horizon_weeks(text))
-        moment = self._clock() if now is None else now
-        if snapshot.is_stale(moment):
-            minutes = int(snapshot.age(moment).total_seconds() // 60)
-            return Answer("stale", format_stale(minutes), None)
-        if snapshot.team_for_member(member.member_id) is None:
-            # The member is known but has no team this season, so there is no
-            # roster to plan for and nothing to guess from.
-            return Answer("unknown_asker", format_unknown_asker(), None)
-        if deadline_passed(snapshot):
-            # Checked here rather than left to `verify`, so a question asked
-            # after the deadline costs nothing.
-            return Answer("rejected", format_deadline_passed(), None)
+        refusal, snapshot = self.gate(text, member, now)
+        if refusal is not None or snapshot is None or member is None:
+            # `gate` returns a snapshot only when it has placed the member and
+            # found nothing to refuse, so the second two are unreachable and
+            # spelled out rather than asserted.
+            return refusal or Answer("unknown_asker", format_unknown_asker(), None)
         return self.answer(snapshot, member.member_id, text)
 
     def answer(self, snapshot: LeagueSnapshot, asker_member_id: int, text: str) -> Answer:

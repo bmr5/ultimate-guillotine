@@ -476,6 +476,12 @@ team does not hold, no FAAB above the sender's balance, and no name or
 number you do not recognize from Sleeper. `--fixture --json` is free and
 offline. Do not paste real-league output into this repository.
 
+Both outputs run the chat's own guards first, so a hostile question, a
+stale snapshot, a member with no team this season and a question asked
+after the trade deadline print that refusal -- `outcome:` and the words
+the chat would have sent -- instead of an answer or a candidate set. A
+`--json` run that prints a refusal built no candidates at all.
+
 ### Gate pending
 
 With `DELIVERY_MODE=test`, the handles file loaded, and the listener

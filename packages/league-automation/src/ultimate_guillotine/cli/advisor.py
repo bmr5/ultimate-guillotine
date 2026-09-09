@@ -13,9 +13,13 @@ no check of its own and skips none: a hostile question, a stale snapshot, a
 member with no team this season and a question asked after the deadline are
 refused here exactly as they are refused in the chat, in the same words. A dry
 run that answered something the chat would have refused would be a dry run of a
-different skill.
+different skill. That holds on both paths: ``--json`` never reaches
+``answer_message``, so it calls
+:meth:`~ultimate_guillotine.advisor.skill.TradeAdvisor.gate` -- the guards
+``answer_message`` itself runs -- and prints the refusal in place of a board. A
+question the chat would refuse never gets a candidate set built for it here.
 
-Three flags shape what it costs. ``--json`` prints the candidate set instead of
+Two flags shape what it costs. ``--json`` prints the candidate set instead of
 the advice, which is the whole of what the model would have been handed and
 makes **no model call at all**. ``--fixture`` answers out of
 :mod:`ultimate_guillotine.advisor.fixture` -- the closed-form 18-team league the
@@ -44,7 +48,7 @@ from ultimate_guillotine.advisor.candidates import Candidate
 from ultimate_guillotine.advisor.fixture import fixture_snapshot
 from ultimate_guillotine.advisor.pricing import PriceRepository
 from ultimate_guillotine.advisor.prompt import advisor_client
-from ultimate_guillotine.advisor.skill import TradeAdvisor, horizon_weeks
+from ultimate_guillotine.advisor.skill import TradeAdvisor
 from ultimate_guillotine.advisor.state import SnapshotRepository, SnapshotUnavailable
 from ultimate_guillotine.ai.structured import AIInvalidOutput, AIUnavailable
 from ultimate_guillotine.cli.deps import build_deps
@@ -73,7 +77,10 @@ def register(subparsers) -> None:
         "--json",
         dest="as_json",
         action="store_true",
-        help="print the candidate set the model would be handed; makes no model call",
+        help=(
+            "print the candidate set the model would be handed, or the refusal "
+            "the gates gave; makes no model call"
+        ),
     )
     ask.add_argument(
         "--fixture",
@@ -217,6 +224,19 @@ class LazyClient:
         return self._client.parse(system, user, schema, schema_name)
 
 
+def _print_answer(outcome: str, model: str | None, text: str) -> None:
+    """One answer, printed the one way, whichever flag asked for it.
+
+    A refusal reads the same under ``--json`` as it does without it, because it
+    is the same refusal: the outcome, the model that was never called, and the
+    words the chat would have sent.
+    """
+    print(f"outcome: {outcome}")
+    print(f"model: {model or NO_MODEL}")
+    print()
+    print(text)
+
+
 def cmd_ask(args: argparse.Namespace) -> int:
     """Answer one question out loud, into the terminal and nowhere else."""
     settings: Settings | None = None
@@ -258,7 +278,14 @@ def cmd_ask(args: argparse.Namespace) -> int:
 
     try:
         if args.as_json:
-            snapshot = snapshots.load(horizon_weeks=horizon_weeks(args.text))
+            # The same guards `answer_message` runs, in the same order, on the
+            # path that never calls it: a hostile question, a stale snapshot or
+            # a passed deadline is printed as the refusal it is, and no board is
+            # built for a question the chat would not have answered.
+            refusal, snapshot = advisor.gate(args.text, member)
+            if refusal is not None:
+                _print_answer(refusal.outcome, None, refusal.text)
+                return 0
             candidates = advisor.candidates_for(snapshot, member.member_id, args.text)
             print(json.dumps([candidate_json(c) for c in candidates], indent=2))
             return 0
@@ -271,8 +298,5 @@ def cmd_ask(args: argparse.Namespace) -> int:
         # whose body quotes the model's answer back.
         print(exc.__class__.__name__, file=sys.stderr)
         return 1
-    print(f"outcome: {answer.outcome}")
-    print(f"model: {answer.model or NO_MODEL}")
-    print()
-    print(answer.text)
+    _print_answer(answer.outcome, answer.model, answer.text)
     return 0

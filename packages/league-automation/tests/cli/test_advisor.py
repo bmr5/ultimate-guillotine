@@ -147,6 +147,28 @@ def test_a_hostile_text_is_refused_in_the_chat_s_own_words_and_reaches_no_model(
     assert "can't change my rules" in result.stdout
 
 
+def test_a_hostile_json_run_is_refused_before_any_candidate_is_built(tmp_path) -> None:
+    """`--json` runs the gates too, and prints the refusal in place of a board.
+
+    A `--json` run that skipped them would build the whole candidate set for a
+    question the chat refuses -- naming counterparties, players and FAAB in
+    answer to an instruction to ignore the rules -- which is exactly the output
+    the injection gate exists to withhold.
+    """
+    result = ask(
+        "--fixture", "--json", "--text", HOSTILE, "--as", MEMBER, env=no_hermes(tmp_path)
+    )
+
+    assert result.returncode == 0, result.stderr
+    lines = result.stdout.splitlines()
+    assert lines[0] == "outcome: refused"
+    assert lines[1] == f"model: {advisor_cli.NO_MODEL}"
+    assert "can't change my rules" in result.stdout
+    # Not a candidate set, not even an empty one: nothing was generated at all.
+    for field in ("counterparty", "asker_receives", "asker_sends", "fit_score", "[]"):
+        assert field not in result.stdout
+
+
 def test_an_ordinary_question_on_the_same_machine_needs_the_model_it_cannot_find(
     tmp_path,
 ) -> None:
