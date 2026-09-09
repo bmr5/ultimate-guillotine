@@ -24,6 +24,15 @@ const POINTS_FOR_DECIMALS = 1;
 /** Shown in place of the FAAB figure when the team has no `team_season_state` row. */
 const FAAB_UNKNOWN_TEXT = "FAAB —";
 
+/**
+ * The focus ring the header's toggles, buttons and search box all carry (see
+ * `toggle-variants` / `button-variants`). This card's summary is a bare `<button>` rather than a
+ * `Button`, so it has to name the ring itself or it is the one keyboard stop on the page with
+ * no visible focus at all.
+ */
+const FOCUS_RING_CLASS =
+  "ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
+
 /** The short, visible form of the below-gate caveat; the full label rides along for readers. */
 const PARTIAL_BADGE_TEXT = "partial";
 
@@ -68,7 +77,7 @@ export const TeamCard = memo(function TeamCard({
   const faab =
     team.faabRemaining === null
       ? FAAB_UNKNOWN_TEXT
-      : `$${team.faabRemaining} FAAB`;
+      : `${team.faabRemaining} FAAB`;
   // Only the partial badge carries a computed-at tooltip: it is the one caveat where the age of
   // the number is the follow-up question. `Projection unavailable` means there is no number to
   // have been computed, so a "computed at" time on it would be a lie about a row that is absent.
@@ -107,7 +116,10 @@ export const TeamCard = memo(function TeamCard({
             aria-expanded={isOpen}
             aria-controls={panelId}
             onClick={() => onToggle(team.teamId)}
-            className="flex min-h-[44px] w-full items-start gap-3 p-4 text-left"
+            className={cn(
+              "flex min-h-[44px] w-full items-start gap-3 p-4 text-left",
+              FOCUS_RING_CLASS,
+            )}
           >
             <span className="w-5 shrink-0 pt-1 text-sm tabular-nums text-muted-foreground">
               {rank}

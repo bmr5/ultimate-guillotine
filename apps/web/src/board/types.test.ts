@@ -65,13 +65,13 @@ describe("Database row types", () => {
   it("carries both public label columns on members", () => {
     const row: TableRow<"members"> = {
       id: 3,
-      display_name: "benray887",
-      sleeper_display_name: "benray",
+      display_name: "legacy_username",
+      sleeper_display_name: "Legacy Owner",
       nickname: "Ben",
     };
     // display_name is typed because the column exists, but no fetcher ever selects it.
     expect(row.nickname).toBe("Ben");
-    expect(row.sleeper_display_name).toBe("benray");
+    expect(row.sleeper_display_name).toBe("Legacy Owner");
   });
 
   it("names every column the board reads on final_rosters", () => {

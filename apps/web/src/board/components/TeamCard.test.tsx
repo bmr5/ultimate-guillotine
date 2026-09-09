@@ -177,9 +177,21 @@ describe("TeamCard", () => {
     expect(screen.getByText("benray")).toBeInTheDocument();
     expect(screen.getByText("The Choppers")).toBeInTheDocument();
     expect(screen.getByText("112.4")).toBeInTheDocument();
-    expect(screen.getByText(/\$75 FAAB/)).toBeInTheDocument();
+    // FAAB is a Sleeper waiver budget, not money: no dollar sign anywhere on the card.
+    expect(screen.getByText(/\b75 FAAB\b/)).toBeInTheDocument();
+    expect(screen.queryByText(/\$/)).toBeNull();
     expect(screen.getByText(/2-1/)).toBeInTheDocument();
     expect(screen.getByText(/301\.5 PF/)).toBeInTheDocument();
+  });
+
+  it("gives the summary toggle the same focus ring as the header controls", () => {
+    // The one keyboard stop on a card. It is a bare <button>, not a `Button`, so it does not
+    // inherit the shared ring and had none at all.
+    renderCard();
+    const className = toggleButton().className;
+    expect(className).toContain("focus-visible:ring-2");
+    expect(className).toContain("focus-visible:ring-ring");
+    expect(className).toContain("focus-visible:ring-offset-2");
   });
 
   it("carries the class the scoped reduced-motion rule hangs off", () => {
