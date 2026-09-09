@@ -59,3 +59,16 @@ def test_trade_fingerprint_is_none_safe() -> None:
     fp2 = trade_fingerprint(prop2)
     assert len(fp1) == 64
     assert fp1 == fp2
+
+
+def test_context_key_of_a_payment_carries_its_fingerprint() -> None:
+    """A deal with no player asset has nothing to key a context on, so the
+    semantic fingerprint goes into the key: two payments between the same pair
+    must never look like one trade revised."""
+    twenty = proposal(kind="payment", assets=[TradeAsset("faab", 1, 2, None, None, 20, "faab", None)])
+    thirty_five = proposal(kind="payment", assets=[TradeAsset("faab", 1, 2, None, None, 35, "faab", None)])
+    assert trade_context_key(twenty) != trade_context_key(thirty_five)
+    assert ":nfp:" in trade_context_key(twenty)
+    assert trade_context_key(twenty).endswith(trade_fingerprint(twenty))
+    # A proposal that does have a player asset keeps the stable player key.
+    assert ":nfp:" not in trade_context_key(proposal())

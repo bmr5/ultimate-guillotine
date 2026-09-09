@@ -162,3 +162,80 @@ def test_accept_recovers_from_concurrent_fingerprint_insert(conn, monkeypatch) -
     assert again.trade_code == first.trade_code
     # More than the one blinded lookup: the recovery branch re-read the row.
     assert calls["n"] > 1
+
+
+def payment(conn, amount: int, guid: str):
+    """A FAAB-only payment: no player asset, so nothing to key a context on."""
+    base = make(conn)
+    return make(
+        conn,
+        kind="payment",
+        source_message_guid=guid,
+        assets=[TradeAsset("faab", base.parties[0].member_id, base.parties[1].member_id,
+                           None, None, amount, "faab", None)],
+    )
+
+
+def test_a_second_payment_between_the_same_pair_is_a_new_trade(conn) -> None:
+    """Two payments between the same two people share season and parties and have
+    no player to tell them apart: keying only on those would file the second as a
+    revision of the first."""
+    repo = TradeRepository(conn)
+    first = repo.accept(payment(conn, 20, "g1"))
+    second = repo.accept(payment(conn, 35, "g2"))
+    assert first.status == "created" and first.trade_code == "T-2026-001"
+    assert second.status == "created" and second.trade_code == "T-2026-002"
+    assert second.trade_id != first.trade_id
+
+
+def test_a_correction_after_the_window_is_a_new_trade(conn) -> None:
+    """The same players days later is a new deal, not an amendment of the old one."""
+    repo = TradeRepository(conn)
+    first = repo.accept(make(conn))
+    amended = make(
+        conn,
+        source_message_guid="g3",
+        assets=[
+            make(conn).assets[0],
+            TradeAsset("faab", make(conn).parties[1].member_id, make(conn).parties[0].member_id,
+                       None, None, 500, "faab", None),
+        ],
+    )
+    inside = repo.accept(amended)
+    assert inside.status == "revised" and inside.trade_id == first.trade_id
+
+    with conn.cursor() as cur:
+        cur.execute(
+            "update public.trade_revisions set created_at = now() - interval '4 days' "
+            "where trade_id = %s",
+            (first.trade_id,),
+        )
+    later = repo.accept(
+        make(
+            conn,
+            source_message_guid="g4",
+            assets=[
+                make(conn).assets[0],
+                TradeAsset("faab", make(conn).parties[1].member_id,
+                           make(conn).parties[0].member_id, None, None, 600, "faab", None),
+            ],
+        )
+    )
+    assert later.status == "created" and later.trade_code == "T-2026-002"
+    assert later.trade_id != first.trade_id
+
+
+def test_find_by_context_ignores_trades_older_than_the_window(conn) -> None:
+    repo = TradeRepository(conn)
+    proposal = make(conn)
+    created = repo.accept(proposal)
+    context = trade_context_key(proposal)
+    assert repo.find_by_context(context) == created.trade_id
+    with conn.cursor() as cur:
+        cur.execute(
+            "update public.trade_revisions set created_at = now() - interval '4 days' "
+            "where trade_id = %s",
+            (created.trade_id,),
+        )
+    assert repo.find_by_context(context) is None
+    assert repo.find_by_context(context, within_hours=200) == created.trade_id

@@ -33,10 +33,24 @@ def trade_fingerprint(proposal: TradeProposal) -> str:
 
 
 def trade_context_key(proposal: TradeProposal) -> str:
+    """The key an amended announcement is matched against its original by.
+
+    Season, parties and players: an amount that changed between two postings of
+    the same deal must not change the key, or the correction would land as a
+    second trade rather than a revision.
+
+    A proposal with no player asset at all -- a payment, a FAAB-only deal -- has
+    nothing left to tell two deals apart, and season plus parties would make
+    every later payment between the same pair a revision of the first. Those
+    keys carry the semantic fingerprint instead, so they only ever match an
+    identical proposal (which the fingerprint already catches as a duplicate).
+    """
     players = sorted(
         a.player_id or (a.player_name or "").lower()
         for a in proposal.assets
         if a.kind == "player"
     )
-    parties = sorted(p.member_id for p in proposal.parties)
-    return f"{proposal.season}:{','.join(map(str, parties))}:{','.join(players)}"
+    parties = ",".join(str(p) for p in sorted(p.member_id for p in proposal.parties))
+    if not players:
+        return f"{proposal.season}:{parties}:nfp:{trade_fingerprint(proposal)}"
+    return f"{proposal.season}:{parties}:{','.join(players)}"

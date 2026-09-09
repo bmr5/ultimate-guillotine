@@ -10,7 +10,9 @@ Idempotency has two layers. The semantic fingerprint of a proposal is unique
 across ``trade_revisions``, so a reposted message resolves to the same terms and
 comes back as a ``duplicate``. The context key (season, parties, players) is
 carried on ``trades``, so an amended version of an already-accepted trade lands
-as a new revision of that trade rather than as a second trade.
+as a new revision of that trade rather than as a second trade -- but only while
+that trade is still recent (``REVISE_WINDOW_HOURS``); the same two people
+trading the same player again next week is a new deal.
 """
 
 from dataclasses import dataclass
@@ -24,6 +26,11 @@ from ultimate_guillotine.trades.fingerprint import trade_context_key, trade_fing
 from ultimate_guillotine.trades.models import TradeProposal
 
 AcceptStatus = Literal["created", "duplicate", "revised"]
+
+#: How long an accepted trade stays open to revision by context. A correction
+#: arrives within minutes or hours; the same two people trading the same player
+#: again days later is a new deal, not an amendment of the old one.
+REVISE_WINDOW_HOURS = 72
 
 _TRADE_SELECT = """
     select t.id, t.trade_code, t.status, r.revision, r.terms, r.effective_week
@@ -149,17 +156,26 @@ class TradeRepository:
             row = cur.fetchone()
             return _trade_row(row) if row else None
 
-    def find_by_context(self, context_key: str) -> int | None:
-        """Return the id of the accepted trade with this context key, if any."""
+    def find_by_context(
+        self, context_key: str, *, within_hours: int = REVISE_WINDOW_HOURS
+    ) -> int | None:
+        """Return the id of the recently accepted trade with this context key, if any.
+
+        Only a trade whose latest revision landed inside ``within_hours``
+        counts: an uncoded rescission means the deal people are still talking
+        about, not one from last month with the same players.
+        """
         with self._conn.cursor() as cur:
             cur.execute(
                 """
-                select id from public.trades
-                where context_key = %s and status = 'accepted'
-                order by id desc
+                select t.id from public.trades t
+                join public.trade_revisions r on r.id = t.current_revision_id
+                where t.context_key = %s and t.status = 'accepted'
+                  and r.created_at > now() - make_interval(hours => %s)
+                order by t.id desc
                 limit 1
                 """,
-                (context_key,),
+                (context_key, within_hours),
             )
             row = cur.fetchone()
             return row[0] if row else None
@@ -195,14 +211,18 @@ class TradeRepository:
             if duplicate is not None:
                 return duplicate
 
+            # Only a recently revised trade is still open to amendment; an older
+            # one with the same context falls through and gets a code of its own.
             cur.execute(
                 """
-                select id, trade_code, current_revision_id from public.trades
-                where context_key = %s and status = 'accepted' and season_id = %s
-                order by id desc
+                select t.id, t.trade_code, t.current_revision_id from public.trades t
+                join public.trade_revisions r on r.id = t.current_revision_id
+                where t.context_key = %s and t.status = 'accepted' and t.season_id = %s
+                  and r.created_at > now() - make_interval(hours => %s)
+                order by t.id desc
                 limit 1
                 """,
-                (context, season_id),
+                (context, season_id, REVISE_WINDOW_HOURS),
             )
             open_trade = cur.fetchone()
             if open_trade is not None:
