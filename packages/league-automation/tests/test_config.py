@@ -45,7 +45,6 @@ def test_secrets_do_not_repr() -> None:
 def test_trade_settings_defaults() -> None:
     settings = Settings(**BASE)
     assert settings.trade_extraction_model == "openai/gpt-5-mini"
-    assert settings.sleeper_players_ttl_hours == 24
     assert settings.openrouter_api_key is None
 
 

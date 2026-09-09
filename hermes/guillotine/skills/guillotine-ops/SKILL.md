@@ -67,6 +67,16 @@ the registrar would record and writes nothing, sends nothing.
 past announcements from a contracts spreadsheet; it writes nothing and sends
 nothing.
 
+## List league members and how many nicknames each has
+
+```
+cd <repo> && uv run --project packages/league-automation ug members list
+```
+
+Prints one line per member with a count only; it never prints a nickname.
+`ug members aliases load <file>` replaces every listed member's nicknames from
+a JSON file and reports counts only.
+
 ## Fill gaps in ingested data
 
 ```

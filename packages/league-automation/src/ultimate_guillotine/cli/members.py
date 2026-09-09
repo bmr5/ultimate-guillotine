@@ -43,6 +43,10 @@ def cmd_aliases_load(args: argparse.Namespace) -> int:
     what the file's ``sleeper_username`` matches. An entry naming somebody who
     is not in the league is reported on stderr and skipped rather than failing
     the load: a typo in one row should not block the other fifteen.
+
+    Every entry being skipped is a different thing -- the file is for another
+    league, or the members table has not been synced -- and nothing was loaded,
+    so that exits 1.
     """
     deps = build_deps()
     repo = MemberAliasRepository(deps.conn)
@@ -67,4 +71,4 @@ def cmd_aliases_load(args: argparse.Namespace) -> int:
     print(f"aliases: {members} members, {aliases} aliases")
     if skipped:
         print(f"skipped: {skipped}")
-    return 0
+    return 1 if skipped and members == 0 else 0

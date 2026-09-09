@@ -173,3 +173,18 @@ def test_player_without_a_name_or_id_still_appears() -> None:
         proposal(assets=[TradeAsset("player", 1, 2, None, None, None, None, None)]),
     )
     assert "Evan receives: a player" in text
+
+
+def test_the_was_line_ignores_assets_that_are_not_amounts() -> None:
+    """A `protection` asset carrying a stray number is a term, not an amount:
+    counting it would print a `Was:` line for a trade whose amounts never moved."""
+    previous = proposal(assets=[
+        proposal().assets[2],
+        TradeAsset("protection", 1, 2, None, None, 1, None, "gulag protection"),
+    ])
+    current = proposal(assets=[
+        proposal().assets[2],
+        TradeAsset("protection", 1, 2, None, None, 2, None, "gulag protection"),
+    ])
+    text = format_updated("T-2026-014", current, previous.model_dump(mode="json"))
+    assert "Was:" not in text

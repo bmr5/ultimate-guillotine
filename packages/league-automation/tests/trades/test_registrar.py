@@ -404,3 +404,28 @@ def test_a_repost_of_a_recent_alert_is_a_duplicate_without_calling_the_model() -
     # The message's own row is already recorded by the processor, so the lookup
     # has to exclude it or every alert would look like a repost of itself.
     assert sources.asked[0][2] == "g2"
+
+
+class FinishThenFailConn(FakeConn):
+    """A connection whose commit fails once the run has been finished.
+
+    Stands in for a link that drops between `finish` and its commit: the run is
+    already recorded `succeeded`, and marking it `failed` afterwards would be a
+    lie about what happened.
+    """
+
+    def commit(self):
+        super().commit()
+        if "finish" in self.journal:
+            raise RuntimeError("connection is dead")
+
+
+def test_a_commit_failure_after_finishing_leaves_the_run_succeeded() -> None:
+    journal = []
+    runs = JournalRuns(journal)
+    delivery = FakeDelivery()
+    reg, _, notifier = build(FakeAI(good_extraction()), delivery=delivery,
+                             conn=FinishThenFailConn(journal), runs=runs, season=2026)
+    assert reg.handle(msg(ALERT_TEXT)) == "failed"
+    assert [f[1] for f in runs.finished] == ["succeeded"]
+    assert notifier.alerts_sent == ["Trade Registrar failed on a candidate: RuntimeError"]

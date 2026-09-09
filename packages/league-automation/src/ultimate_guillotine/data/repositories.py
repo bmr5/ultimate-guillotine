@@ -501,13 +501,17 @@ class MemberAliasRepository:
         one row, so the count returned may be smaller than ``len(aliases)``.
         Raises ``ValueError`` when ``member_display_name`` isn't a known member,
         or when an alias is already held by a different member.
+
+        The delete and the inserts run in one savepoint: an alias claimed by
+        somebody else would otherwise leave the member with no aliases at all
+        and the caller's transaction unusable.
         """
         # First spelling wins for each normalized form; later duplicates drop.
         wanted: dict[str, str] = {}
         for alias in aliases:
             wanted.setdefault(normalize_name(alias), alias)
 
-        with self._conn.cursor() as cur:
+        with self._conn.transaction(), self._conn.cursor() as cur:
             cur.execute(
                 "select id from public.members where display_name = %s",
                 (member_display_name,),

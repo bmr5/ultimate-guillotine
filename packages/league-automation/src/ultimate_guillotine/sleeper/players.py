@@ -56,6 +56,25 @@ class PlayerRepository:
             )
         return len(players)
 
+    def deactivate_missing(self, keep_ids: list[str], now: datetime) -> int:
+        """Mark every active player outside ``keep_ids`` inactive, returning how
+        many were changed.
+
+        Sleeper drops retired and cut players from its dump. The rows are never
+        deleted -- a trade recorded last season names a player id, and deleting
+        it would orphan that record -- so they are flipped inactive instead and
+        stop being offered to name resolution.
+        """
+        with self._conn.cursor() as cur:
+            cur.execute(
+                """
+                update public.players set active = false, synced_at = %s
+                where active and not (sleeper_player_id = any(%s))
+                """,
+                (now, keep_ids),
+            )
+            return cur.rowcount
+
     def all_active(self) -> list[Player]:
         with self._conn.cursor() as cur:
             cur.execute(
@@ -72,6 +91,15 @@ class PlayerRepository:
 
 
 def sync_players(client, conn, now: datetime) -> int:
+    """Refresh ``public.players`` from Sleeper, returning how many were written.
+
+    Players the feed no longer carries are marked inactive rather than deleted,
+    in the same transaction: the directory has to shrink as people retire, and
+    the ids stay resolvable for the trades that already name them.
+    """
     players = load_players(client.get_players())
+    repo = PlayerRepository(conn)
     with conn.transaction():
-        return PlayerRepository(conn).upsert_many(players, now)
+        written = repo.upsert_many(players, now)
+        repo.deactivate_missing([p.sleeper_player_id for p in players], now)
+    return written

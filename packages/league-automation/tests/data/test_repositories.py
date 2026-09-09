@@ -252,3 +252,21 @@ def test_find_repost_matches_the_same_text_from_another_message(conn) -> None:
     assert repo.find_repost(chat, "fp-1", "g2", sent - timedelta(hours=1)) is False
     # The bot's own posts are outbound and never count as a repost.
     assert repo.find_repost(chat, "fp-bot", "g9", since) is False
+
+
+def test_replace_aliases_leaves_the_old_rows_when_one_alias_is_taken(conn) -> None:
+    """The delete and the inserts are one savepoint: a conflict must not strand
+    the member with no aliases, or leave the transaction unusable."""
+    repo = MemberAliasRepository(conn)
+    with conn.cursor() as cur:
+        cur.execute(
+            "insert into public.members (display_name) values ('Alias One'), ('Alias Two')"
+        )
+    repo.replace_aliases("Alias One", ["keeper"])
+    repo.replace_aliases("Alias Two", ["taken"])
+
+    with pytest.raises(ValueError, match="already belongs to another member"):
+        repo.replace_aliases("Alias One", ["fresh", "taken"])
+
+    aliases = {m.display_name: m.aliases for m in repo.all_members()}
+    assert aliases["Alias One"] == ("keeper",)

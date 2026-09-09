@@ -67,6 +67,16 @@ SUMMARY_FIXED = ("created", "duplicate", "clarification", "not-a-candidate")
 SUMMARY_EXTRA = ("revised", "rescinded", "not-a-trade", "failed", "skipped")
 
 
+def positive_int(value: str) -> int:
+    """An argparse type for counts: `--limit 0` asks for nothing and `--limit -1`
+    asks for nonsense, so both are refused at the parser rather than silently
+    returning an empty list."""
+    number = int(value)
+    if number < 1:
+        raise argparse.ArgumentTypeError(f"must be 1 or more, not {number}")
+    return number
+
+
 def register(subparsers) -> None:
     parser = subparsers.add_parser("trades", help="trade registrar commands")
     trades_sub = parser.add_subparsers(dest="command", required=True)
@@ -83,7 +93,7 @@ def register(subparsers) -> None:
     extract.set_defaults(handler=cmd_extract)
 
     listing = trades_sub.add_parser("list", help="show the most recently logged trades")
-    listing.add_argument("--limit", type=int, default=10)
+    listing.add_argument("--limit", type=positive_int, default=10)
     listing.set_defaults(handler=cmd_list)
 
     retry = trades_sub.add_parser("retry", help="re-run a recorded candidate through the registrar")
@@ -96,7 +106,7 @@ def register(subparsers) -> None:
     )
     replay.add_argument("xlsx", help="path to all-contracts.xlsx")
     replay.add_argument(
-        "--limit", type=int, default=None, help="stop after this many rows (default: all)"
+        "--limit", type=positive_int, default=None, help="stop after this many rows (default: all)"
     )
     replay.add_argument(
         "--dry-run", action="store_true", help="resolve only; write nothing and send nothing"
@@ -176,14 +186,32 @@ def cmd_extract(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_list(args: argparse.Namespace) -> int:
-    deps = build_deps()
-    for trade in TradeRepository(deps.conn).list_recent(args.limit):
+#: The columns `print_trades` writes, in order.
+LIST_HEADER = "code  status  rev  week  parties"
+
+
+def print_trades(trades: list[dict]) -> None:
+    """Print the trade rows under a header, or say plainly that there are none.
+
+    Empty output is ambiguous -- a command that printed nothing may have failed
+    -- and an unlabelled row of five fields is a puzzle. Both are read in
+    Discord through `guillotine-ops`, so both get words.
+    """
+    if not trades:
+        print("no trades recorded")
+        return
+    print(LIST_HEADER)
+    for trade in trades:
         parties = ", ".join(
             p.get("display_name", "?") for p in (trade["terms"] or {}).get("parties", [])
         )
         week = trade["effective_week"] if trade["effective_week"] is not None else "-"
         print(f"{trade['trade_code']}  {trade['status']}  {trade['revision']}  {week}  {parties}")
+
+
+def cmd_list(args: argparse.Namespace) -> int:
+    deps = build_deps()
+    print_trades(TradeRepository(deps.conn).list_recent(args.limit))
     return 0
 
 

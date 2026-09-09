@@ -31,7 +31,6 @@ class Settings(BaseSettings):
     discord_alerts_channel: str = "#guillotine-alerts"
     openrouter_api_key: SecretStr | None = None
     trade_extraction_model: str = "openai/gpt-5-mini"
-    sleeper_players_ttl_hours: int = 24
 
     def openrouter_key(self) -> str | None:
         """The OpenRouter key, or `None` when it is unset, blank, or whitespace.

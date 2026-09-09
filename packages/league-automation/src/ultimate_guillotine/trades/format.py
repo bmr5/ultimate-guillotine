@@ -107,10 +107,16 @@ def _body(proposal: TradeProposal) -> list[str]:
 
 
 def _current_amounts(proposal: TradeProposal) -> list[str]:
+    """Every amount the chat can see, in the same shape `Was:` prints them.
+
+    Only the numeric kinds count: `_asset_part` prints a `protection` or `other`
+    asset as its description, so a stray number on one of those never appears in
+    the message and must not make the two revisions look different.
+    """
     return [
         _format_amount(asset.kind, asset.amount, asset.unit)
         for asset in proposal.assets
-        if asset.amount is not None
+        if asset.amount is not None and asset.kind in _AMOUNT_KINDS
     ]
 
 
@@ -119,7 +125,7 @@ def _previous_amounts(previous_terms: dict[str, Any]) -> list[str]:
     return [
         _format_amount(asset.get("kind", ""), asset.get("amount"), asset.get("unit"))
         for asset in assets
-        if asset.get("amount") is not None
+        if asset.get("amount") is not None and asset.get("kind") in _AMOUNT_KINDS
     ]
 
 

@@ -89,10 +89,14 @@ def test_extract_writes_the_exact_context_lines() -> None:
 
 
 @pytest.mark.skipif(
-    not os.environ.get("OPENROUTER_API_KEY"),
-    reason="OPENROUTER_API_KEY not set",
+    os.environ.get("UG_LIVE_AI_TESTS") != "1",
+    reason="live model calls cost credits; set UG_LIVE_AI_TESTS=1 to run them",
 )
 def test_live_extraction_reads_a_simple_trade() -> None:
+    """The one test that spends money. A key being present in the environment is
+    not consent to spend it, so this asks for the flag as well."""
+    if not os.environ.get("OPENROUTER_API_KEY"):
+        pytest.skip("OPENROUTER_API_KEY not set")
     with httpx.Client() as http:
         client = StructuredOutputClient(
             api_key=os.environ["OPENROUTER_API_KEY"],

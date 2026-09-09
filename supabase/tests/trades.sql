@@ -1,5 +1,5 @@
 begin;
-select plan(7);
+select plan(9);
 
 -- (a) The players and member_aliases tables exist.
 select has_table('public', 'players', 'players table exists');
@@ -15,7 +15,20 @@ select policies_are(
   array['Public players are readable', 'Automation writes players']
 );
 
--- (d) automation_worker holds no DELETE grant on public.players.
+-- (d) public.players is protected by row-level security, and the private alias
+-- table is invisible to the anonymous API role.
+select is(
+  (select relrowsecurity from pg_class where oid = 'public.players'::regclass),
+  true,
+  'row-level security is enabled on public.players'
+);
+
+select table_privs_are(
+  'private', 'member_aliases', 'anon', array[]::text[],
+  'anon holds no privileges on private.member_aliases'
+);
+
+-- (e) automation_worker holds no DELETE grant on public.players.
 select is_empty(
   $$select 1 from information_schema.role_table_grants
      where grantee = 'automation_worker'
@@ -24,7 +37,7 @@ select is_empty(
   'automation_worker holds no DELETE grant on public.players'
 );
 
--- (e) Two trade_revisions rows sharing a non-null semantic_fingerprint violate the
+-- (f) Two trade_revisions rows sharing a non-null semantic_fingerprint violate the
 -- partial unique index.
 insert into public.trades (season_id, trade_code)
 values ((select id from public.seasons where year = 2026), 'TEST-TRADE-FINGERPRINT');

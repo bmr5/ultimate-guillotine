@@ -106,6 +106,10 @@ class TradeRegistrar:
         self._sleeper = sleeper_client
         self._season = season
         self._clock = clock
+        #: The last run this registrar finished. A failure after that finish --
+        #: a commit on a connection that died, say -- must not overwrite a
+        #: recorded outcome with `failed`.
+        self._finished_run_id: int | None = None
 
     # -- public ---------------------------------------------------------
 
@@ -151,12 +155,18 @@ class TradeRegistrar:
         back first, then finish and alert under their own suppressions -- a dead
         connection must still produce an alert, and a dead Hermes must still
         leave the run marked `failed`.
+
+        A run that was already finished is left alone: if the connection died on
+        the commit after `finish`, the run is recorded `succeeded` and calling it
+        `failed` now would be a lie about what the chat already saw. The alert
+        still goes out -- something did break.
         """
         if self._conn is not None:
             with contextlib.suppress(Exception):
                 self._conn.rollback()
-        with contextlib.suppress(Exception):
-            self._runs.finish(run_id, "failed", error=name)
+        if self._finished_run_id != run_id:
+            with contextlib.suppress(Exception):
+                self._runs.finish(run_id, "failed", error=name)
         with contextlib.suppress(Exception):
             self._notifier.alerts(f"Trade Registrar failed on a candidate: {name}")
         with contextlib.suppress(Exception):
@@ -332,6 +342,9 @@ class TradeRegistrar:
             output_hash=_output_hash(content) if content is not None else None,
             input_version=input_version,
         )
+        # Recorded before the commit: a commit that raises must not let `_fail`
+        # come back and overwrite the status this run just settled on.
+        self._finished_run_id = run_id
         self._commit()
 
     def _commit(self) -> None:

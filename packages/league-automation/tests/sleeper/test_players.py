@@ -40,3 +40,30 @@ def test_sync_players_upserts_and_records_time(conn) -> None:
     repo = PlayerRepository(conn)
     assert repo.last_synced_at() == now
     assert any(p.full_name == "Kansas City Chiefs" for p in repo.all_active())
+
+
+def test_sync_players_deactivates_players_the_feed_dropped(conn) -> None:
+    """A player who retires disappears from Sleeper's dump. Deleting the row
+    would orphan every trade that names it, so the row is marked inactive."""
+    class FakeClient:
+        def __init__(self, raw):
+            self._raw = raw
+
+        def get_players(self):
+            return self._raw
+
+    raw = json.loads(FIXTURE.read_text())
+    now = datetime(2026, 9, 8, 12, 0, tzinfo=UTC)
+    sync_players(FakeClient(raw), conn, now)
+    repo = PlayerRepository(conn)
+    dropped = repo.all_active()[0].sleeper_player_id
+
+    remaining = {pid: rec for pid, rec in raw.items() if str(pid) != dropped}
+    sync_players(FakeClient(remaining), conn, now)
+
+    assert dropped not in {p.sleeper_player_id for p in repo.all_active()}
+    with conn.cursor() as cur:
+        cur.execute(
+            "select active from public.players where sleeper_player_id = %s", (dropped,)
+        )
+        assert cur.fetchone() == (False,)
