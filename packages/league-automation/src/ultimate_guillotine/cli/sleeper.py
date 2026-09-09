@@ -51,9 +51,12 @@ def cmd_sync(args: argparse.Namespace) -> int:
     def action(run_id: int) -> int:
         client = SleeperClient(httpx.Client())
         state = current_week(client, conn, now)
-        report = sync_season(
-            client, conn, SYNC_YEAR, deps.settings.sleeper_league_id, week=state.week
-        )
+        # `week` is scoped by `season_type`: preseason week 2 is not regular-season
+        # week 2. Outside the regular season there is no week to stamp an inferred
+        # elimination with, and None leaves `eliminated_week` null rather than
+        # dating an elimination to a preseason or playoff week number.
+        week = state.week if state.season_type == "regular" else None
+        report = sync_season(client, conn, SYNC_YEAR, deps.settings.sleeper_league_id, week=week)
         if not args.quiet:
             print(
                 f"sleeper sync: {report.members} members, {report.teams} teams, "

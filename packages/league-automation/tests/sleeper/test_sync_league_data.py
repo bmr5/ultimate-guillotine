@@ -6,10 +6,28 @@ The fake client, the roster payload, and the season/team id lookups come from
 
 from decimal import Decimal
 
+import pytest
+
 from ultimate_guillotine.sleeper.models import SleeperUser
 from ultimate_guillotine.sleeper.sync import sync_season
 
 from .conftest import LEAGUE_ID, FakeClient
+
+
+def _holdings_and_state(conn) -> tuple[list, list]:
+    """Every roster-holding and team-state row, timestamps included."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "select season_id, team_id, sleeper_player_id, slot, slot_index, "
+            "lineup_position, synced_at from public.roster_holdings order by id"
+        )
+        holdings = cur.fetchall()
+        cur.execute(
+            "select team_id, faab_used, wins, is_eliminated, eliminated_week, "
+            "elimination_source, state_version, synced_at "
+            "from public.team_season_state order by team_id"
+        )
+        return holdings, cur.fetchall()
 
 
 def test_sync_caches_the_leagues_scoring_settings_on_the_season(conn, sleeper_client) -> None:
@@ -101,6 +119,60 @@ def test_a_tagged_roster_is_recorded_as_provisionally_eliminated(
             (team_id(2),),
         )
         assert cur.fetchone() == (True, 3, "sleeper_inferred", 1)
+
+
+def test_a_still_tagged_roster_keeps_the_week_it_was_eliminated_in(
+    conn, sleeper_client, team_id
+) -> None:
+    """The tag stays on the roster all season; the elimination happened once.
+
+    Week 5's sync re-infers the same `sleeper_inferred` elimination roster 2 was
+    recorded with in week 3. Re-stamping `eliminated_week = 5` would rewrite
+    league history, and bumping `state_version` for it would wake every consumer
+    watching that counter, ten minutes at a time.
+    """
+    sync_season(sleeper_client, conn, 2026, LEAGUE_ID, week=3)
+    sync_season(sleeper_client, conn, 2026, LEAGUE_ID, week=5)
+    with conn.cursor() as cur:
+        cur.execute(
+            "select is_eliminated, eliminated_week, elimination_source, state_version "
+            "from public.team_season_state where team_id = %s",
+            (team_id(2),),
+        )
+        assert cur.fetchone() == (True, 3, "sleeper_inferred", 1)
+
+
+def test_a_newly_tagged_roster_bumps_the_state_version(
+    conn, rosters, sleeper_client, team_id
+) -> None:
+    """Roster 1 syncs alive, then Ben tags it: that is the version-worthy change."""
+    sync_season(sleeper_client, conn, 2026, LEAGUE_ID, week=3)
+    rosters[0]["metadata"] = {"eliminated": "true"}
+    sync_season(sleeper_client, conn, 2026, LEAGUE_ID, week=4)
+    with conn.cursor() as cur:
+        cur.execute(
+            "select is_eliminated, eliminated_week, elimination_source, state_version "
+            "from public.team_season_state where team_id = %s",
+            (team_id(1),),
+        )
+        assert cur.fetchone() == (True, 4, "sleeper_inferred", 2)
+
+
+def test_a_short_roster_payload_rolls_the_whole_pass_back(conn, rosters, sleeper_client) -> None:
+    """The roster-count guard fires after everything is written, so it must undo it.
+
+    A 17-roster answer is Sleeper mid-edit or a wrong league id. The pass raises,
+    and holdings, team state and their `synced_at` stamps stay exactly as the last
+    good sync left them.
+    """
+    sync_season(sleeper_client, conn, 2026, LEAGUE_ID, week=3)
+    before = _holdings_and_state(conn)
+
+    rosters.pop()
+    with pytest.raises(ValueError, match="synced 17"):
+        sync_season(sleeper_client, conn, 2026, LEAGUE_ID, week=4)
+
+    assert _holdings_and_state(conn) == before
 
 
 def test_sleeper_display_name_falls_back_to_the_username() -> None:

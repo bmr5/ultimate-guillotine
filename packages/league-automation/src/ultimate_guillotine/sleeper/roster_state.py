@@ -164,10 +164,21 @@ def merge_elimination(stored: Elimination | None, incoming: Elimination) -> Elim
 
     An unrecognised stored source ranks 0, the lowest: an unknown provenance
     yields to a known one rather than raising mid-sync.
+
+    A same-ranked source never re-dates an elimination that already happened: a
+    roster still carrying Ben's tag in week 5 was eliminated in week 3, and
+    letting the equal-ranked incoming record win would re-stamp
+    ``eliminated_week`` (and churn ``state_version``) on every sync. The first
+    record of an elimination is the one that stands until a *higher* source
+    replaces it.
     """
     if stored is None:
         return incoming
-    if _SOURCE_RANK.get(incoming.source, 0) >= _SOURCE_RANK.get(stored.source, 0):
+    incoming_rank = _SOURCE_RANK.get(incoming.source, 0)
+    stored_rank = _SOURCE_RANK.get(stored.source, 0)
+    if incoming_rank == stored_rank and stored.is_eliminated:
+        return stored
+    if incoming_rank >= stored_rank:
         return incoming
     return stored
 

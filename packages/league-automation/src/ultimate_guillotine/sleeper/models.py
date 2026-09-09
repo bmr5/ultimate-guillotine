@@ -42,11 +42,16 @@ class SleeperUser(BaseModel, frozen=True):
 
     @property
     def sleeper_display_name(self) -> str:
-        """The label a consumer falls back to when a member has no nickname.
+        """The in-memory label for this account: display name, else username.
 
         Sleeper's ``display_name``, or the ``username`` on the rare account that
         has none. Consumers never render the bare username otherwise, and never
         render ``members.display_name``, which is a matching key.
+
+        This is *not* what the sync stores: ``public.members.sleeper_display_name``
+        holds Sleeper's ``display_name`` verbatim, and null when the account has
+        none, so a consumer falls back to ``teams.team_name`` rather than to a
+        username the league would not recognise.
         """
         return self.display_name or self.username
 

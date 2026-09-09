@@ -159,6 +159,20 @@ def test_inferred_never_overwrites_adjudicated() -> None:
     assert merge_elimination(None, Elimination(True, 3, "sleeper_inferred")).is_eliminated
 
 
+def test_a_same_ranked_source_never_re_dates_an_elimination() -> None:
+    """The week an elimination was first recorded at is the week that stands.
+
+    A roster keeps Ben's tag after it is eliminated, so every later sync infers
+    the same elimination at the current week. Letting the equal-ranked incoming
+    record win would walk `eliminated_week` forward all season.
+    """
+    stored = Elimination(True, 3, "sleeper_inferred")
+    assert merge_elimination(stored, Elimination(True, 5, "sleeper_inferred")) == stored
+    # A team that is not eliminated has no first week to protect.
+    alive = Elimination(False, None, "sleeper_inferred")
+    assert merge_elimination(alive, Elimination(True, 5, "sleeper_inferred")).eliminated_week == 5
+
+
 def test_an_unknown_stored_source_loses_precedence_instead_of_raising() -> None:
     stored = Elimination(True, 2, "imported_from_2025")
     incoming = Elimination(True, 5, "sleeper_inferred")
