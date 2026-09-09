@@ -5,7 +5,8 @@
     "last_name": "Williams",
     "position": "WR",
     "team": "LAC",
-    "active": true
+    "active": true,
+    "injury_status": "Questionable"
   },
   "7564": {
     "full_name": "Mike Williams",
@@ -21,7 +22,8 @@
     "last_name": "Jefferson",
     "position": "WR",
     "team": "MIN",
-    "active": true
+    "active": true,
+    "injury_status": ""
   },
   "KC": {
     "full_name": null,
@@ -62,5 +64,14 @@
     "position": "QB",
     "team": "KC",
     "active": true
+  },
+  "7777": {
+    "full_name": "Broken Tightend",
+    "first_name": "Broken",
+    "last_name": "Tightend",
+    "position": "TE",
+    "team": "ATL",
+    "active": true,
+    "injury_status": "Out"
   }
 }

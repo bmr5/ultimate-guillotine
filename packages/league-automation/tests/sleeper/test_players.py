@@ -85,3 +85,51 @@ def test_sync_players_refuses_an_empty_feed(conn) -> None:
     with pytest.raises(RuntimeError):
         sync_players(FakeClient({}), conn, now)
     assert {p.sleeper_player_id for p in PlayerRepository(conn).all_active()} == before
+
+
+def test_load_players_carries_sleeper_injury_status() -> None:
+    """Ben's addendum: a starter who is out and a starter Sleeper simply has no
+    number for look identical on the board unless the directory says which is
+    which. Sleeper's flag is carried verbatim; an absent or empty one is null,
+    never the empty string the feed occasionally emits."""
+    by_id = {p.sleeper_player_id: p for p in load_players(json.loads(FIXTURE.read_text()))}
+    assert by_id["7777"].injury_status == "Out"
+    assert by_id["4046"].injury_status == "Questionable"
+    assert by_id["1234"].injury_status is None
+    assert by_id["6666"].injury_status is None
+
+
+def test_sync_players_writes_and_clears_injury_status(conn) -> None:
+    """The flag is a current-state fact, so it has to come *off* a player who
+    recovers as readily as it goes on -- an upsert that only ever set it would
+    leave last month's `Out` on a healthy starter forever."""
+    class FakeClient:
+        def __init__(self, raw):
+            self._raw = raw
+
+        def get_players(self):
+            return self._raw
+
+    raw = json.loads(FIXTURE.read_text())
+    now = datetime(2026, 9, 8, 12, 0, tzinfo=UTC)
+    sync_players(FakeClient(raw), conn, now)
+
+    def status(pid: str) -> str | None:
+        with conn.cursor() as cur:
+            cur.execute(
+                "select injury_status from public.players where sleeper_player_id = %s", (pid,)
+            )
+            return cur.fetchone()[0]
+
+    assert status("7777") == "Out"
+    assert status("4046") == "Questionable"
+    assert status("1234") is None
+
+    recovered = json.loads(FIXTURE.read_text())
+    del recovered["7777"]["injury_status"]
+    sync_players(FakeClient(recovered), conn, now)
+    assert status("7777") is None
+
+    assert {p.sleeper_player_id: p.injury_status for p in PlayerRepository(conn).all_active()}[
+        "4046"
+    ] == "Questionable"

@@ -26,12 +26,18 @@ jobs:
     script: guillotine_run_audit.sh
     deliver: "discord:#guillotine-ops"
     max_gap_minutes: 1500
+  # Every four hours, not nightly: the directory now carries Sleeper's injury_status,
+  # which is the one column on public.players that changes during a week. A Friday
+  # afternoon `Out` that only landed at 05:30 the next morning would have the board
+  # calling an injured starter a coverage hole all Saturday. 300 = the four-hour
+  # cadence plus an hour of slack, so `ug ops audit-runs` does not false-alarm on a
+  # single skipped fire.
   - name: guillotine-players-sync
     agent: players-sync
-    schedule: "30 5 * * *"
+    schedule: "0 */4 * * *"
     script: guillotine_players_sync.sh
     deliver: "discord:#guillotine-ops"
-    max_gap_minutes: 1500
+    max_gap_minutes: 300
   - name: guillotine-nfl-state
     agent: nfl-state
     schedule: "every 10m"

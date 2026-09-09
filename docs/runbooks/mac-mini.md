@@ -437,11 +437,18 @@ waiver budget.
 | --- | --- | --- |
 | `guillotine-sleeper-sync` | every 10m | `#guillotine-ops` |
 | `guillotine-nfl-state` | every 10m | `#guillotine-ops` |
-| `guillotine-players-sync` | `30 5 * * *` | `#guillotine-ops` |
+| `guillotine-players-sync` | `0 */4 * * *` | `#guillotine-ops` |
 | `guillotine-sleeper-projections` | `*/30 * * * *` | `#guillotine-ops` |
 | `guillotine-sleeper-projections-thursday` | `*/5 20-23 * * 4` | local only |
 | `guillotine-sleeper-projections-sunday` | `*/5 13-23 * * 0` | local only |
 | `guillotine-sleeper-projections-monday` | `*/5 20-23 * * 1` | local only |
+
+`guillotine-players-sync` runs every four hours rather than nightly because
+`public.players.injury_status` is the one column on it that changes mid-week: an `Out`
+that landed on Friday afternoon would otherwise not reach the board until Saturday
+morning, and the board would call that starter a coverage hole in the meantime. Its
+`max_gap_minutes` is 300 — the cadence plus an hour — so one skipped fire does not
+trip the run audit.
 
 The three game-window rows share the agent name `projections-sync` with the baseline,
 so the per-agent, per-minute key absorbs an overlap. They stay local on purpose: a
