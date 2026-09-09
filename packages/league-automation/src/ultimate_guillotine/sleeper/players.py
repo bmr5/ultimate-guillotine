@@ -98,6 +98,10 @@ def sync_players(client, conn, now: datetime) -> int:
     the ids stay resolvable for the trades that already name them.
     """
     players = load_players(client.get_players())
+    if not players:
+        # A thin 200 (empty dump, or nothing passing the position filter) must not
+        # flip the whole directory inactive and turn every alert into a clarification.
+        raise RuntimeError("sleeper returned no active skill players")
     repo = PlayerRepository(conn)
     with conn.transaction():
         written = repo.upsert_many(players, now)

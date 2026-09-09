@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
+import pytest
 import respx
 
 from ultimate_guillotine.sleeper.client import SleeperClient
@@ -67,3 +68,20 @@ def test_sync_players_deactivates_players_the_feed_dropped(conn) -> None:
             "select active from public.players where sleeper_player_id = %s", (dropped,)
         )
         assert cur.fetchone() == (False,)
+
+
+def test_sync_players_refuses_an_empty_feed(conn) -> None:
+    """A thin 200 from Sleeper must not flip the whole directory inactive."""
+    class FakeClient:
+        def __init__(self, raw):
+            self._raw = raw
+
+        def get_players(self):
+            return self._raw
+
+    now = datetime(2026, 9, 8, 12, 0, tzinfo=UTC)
+    sync_players(FakeClient(json.loads(FIXTURE.read_text())), conn, now)
+    before = {p.sleeper_player_id for p in PlayerRepository(conn).all_active()}
+    with pytest.raises(RuntimeError):
+        sync_players(FakeClient({}), conn, now)
+    assert {p.sleeper_player_id for p in PlayerRepository(conn).all_active()} == before

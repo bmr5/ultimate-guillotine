@@ -7,6 +7,7 @@ from typing import Callable  # noqa: UP035
 from ultimate_guillotine.core.signature import is_signed
 from ultimate_guillotine.data.repositories import SourceMessage, chat_guid_hash
 from ultimate_guillotine.messages.bluebubbles import InboundMessage
+from ultimate_guillotine.trades.fingerprint import message_fingerprint
 
 log = logging.getLogger(__name__)
 
@@ -30,7 +31,9 @@ class TriggerRegistry:
 
 
 def _fingerprint(text: str) -> str:
-    return hashlib.sha256(" ".join(text.split()).lower().encode()).hexdigest()
+    # The registrar's repost check compares against this value, so both sides must
+    # share one implementation.
+    return message_fingerprint(text)
 
 
 def _sender_hash(address: str | None) -> str | None:
