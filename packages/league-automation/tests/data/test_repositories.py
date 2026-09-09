@@ -304,7 +304,7 @@ def test_replace_aliases_publishes_the_first_alias_as_the_nickname(conn) -> None
         cur.execute("select nickname from public.members where id = %s", (member_id,))
         assert cur.fetchone()[0] == "Benny"
     member = next(m for m in repo.all_members() if m.member_id == member_id)
-    assert member.has_nickname is True
+    assert member.nickname == "Benny"
 
 
 def test_a_member_with_no_aliases_has_a_null_nickname(conn) -> None:
@@ -322,7 +322,7 @@ def test_a_member_with_no_aliases_has_a_null_nickname(conn) -> None:
         cur.execute("select nickname from public.members where id = %s", (member_id,))
         assert cur.fetchone()[0] is None
     member = next(m for m in repo.all_members() if m.member_id == member_id)
-    assert member.has_nickname is False
+    assert member.nickname is None
 
 
 def test_a_rejected_alias_load_leaves_the_old_nickname_in_place(conn) -> None:
@@ -344,3 +344,23 @@ def test_a_rejected_alias_load_leaves_the_old_nickname_in_place(conn) -> None:
             "select nickname from public.members where display_name = 'Nick Three'"
         )
         assert cur.fetchone()[0] == "keeper"
+
+
+def test_a_padded_alias_is_stored_and_published_trimmed(conn) -> None:
+    """The alias row and the nickname come from the same trimmed spelling, so the
+    private list and the public label can never disagree by a stray space."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "insert into public.members (display_name) values ('Nick Five') returning id"
+        )
+        member_id = cur.fetchone()[0]
+    repo = MemberAliasRepository(conn)
+
+    assert repo.replace_aliases("Nick Five", ["  Padded  ", "Second"]) == 2
+
+    with conn.cursor() as cur:
+        cur.execute("select nickname from public.members where id = %s", (member_id,))
+        assert cur.fetchone()[0] == "Padded"
+    member = next(m for m in repo.all_members() if m.member_id == member_id)
+    assert member.nickname == "Padded"
+    assert set(member.aliases) == {"Padded", "Second"}

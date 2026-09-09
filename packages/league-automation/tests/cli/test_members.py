@@ -53,22 +53,23 @@ class FakeListRepo:
 
     def all_members(self):
         return [
-            MemberRef(1, "Member01", ("Benny", "The Hammer"), True),
-            MemberRef(2, "Member02", (), False),
+            MemberRef(1, "Member01", ("Benny", "The Hammer"), "Benny"),
+            MemberRef(2, "Member02", (), None),
         ]
 
 
-def test_members_list_flags_who_has_a_nickname_without_printing_it(
+def test_members_list_prints_the_nickname_and_no_other_alias(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Aliases are personal. The listing says whether a nickname exists and stops
-    there, so a run of it can still be pasted into ops."""
+    """The nickname is the label the board already shows, so printing it here is
+    fair game; every other alias stays private, and a member without one gets a
+    dash rather than a blank column."""
     monkeypatch.setattr(members_cli, "build_deps", lambda: SimpleNamespace(conn=None))
     monkeypatch.setattr(members_cli, "MemberAliasRepository", FakeListRepo)
 
     assert members_cli.cmd_list(argparse.Namespace()) == 0
 
     out = capsys.readouterr().out
-    assert "Member01  2  nickname" in out
+    assert "Member01  2  Benny" in out
     assert "Member02  0  -" in out
-    assert "Benny" not in out and "Hammer" not in out
+    assert "Hammer" not in out

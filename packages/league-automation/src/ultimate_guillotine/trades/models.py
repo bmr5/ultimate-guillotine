@@ -46,15 +46,18 @@ class MemberRef:
     Lives here rather than in ``trades.resolve`` so ``data.repositories`` can
     return one without importing the Sleeper HTTP client.
 
-    ``has_nickname`` says only whether ``public.members.nickname`` is set. The
-    value itself is deliberately absent: ``ug members list`` reports presence and
-    nothing else, and trade resolution matches on ``aliases``, never on this.
+    ``nickname`` carries the value of ``public.members.nickname``: the member's
+    first alias, and the one alias the league publishes. The board and the
+    Concierge render it as the owner's label, so it is public by design; every
+    other alias stays in ``private.member_aliases``. It defaults to ``None`` for
+    a member with no aliases, and trade resolution matches on ``aliases``, never
+    on this.
     """
 
     member_id: int
     display_name: str
     aliases: tuple[str, ...]
-    has_nickname: bool = False
+    nickname: str | None = None
 
 
 @dataclass(frozen=True)

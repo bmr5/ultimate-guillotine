@@ -506,13 +506,14 @@ class MemberAliasRepository:
         with self._conn.cursor() as cur:
             cur.execute(
                 """
-                select m.id, m.display_name, m.nickname is not null,
-                    coalesce(array_agg(a.alias) filter (where a.alias is not null), '{}')
+                select m.id, m.display_name,
+                    coalesce(array_agg(a.alias) filter (where a.alias is not null), '{}'),
+                    m.nickname
                 from public.members m left join private.member_aliases a on a.member_id = m.id
                 group by m.id, m.display_name, m.nickname order by m.id
                 """
             )
-            return [MemberRef(row[0], row[1], tuple(row[3]), row[2]) for row in cur.fetchall()]
+            return [MemberRef(row[0], row[1], tuple(row[2]), row[3]) for row in cur.fetchall()]
 
     def replace_aliases(self, member_display_name: str, aliases: list[str]) -> int:
         """Replace a member's aliases wholesale, returning how many rows were written.
@@ -531,9 +532,14 @@ class MemberAliasRepository:
         and the caller's transaction unusable.
         """
         # First spelling wins for each normalized form; later duplicates drop.
+        # Surrounding whitespace is stripped first so the stored alias row and
+        # the nickname published from it agree: ``normalize_name`` already
+        # strips, so a padded alias would otherwise store one spelling here and
+        # publish a differently padded one to ``public.members.nickname``.
         wanted: dict[str, str] = {}
         for alias in aliases:
-            wanted.setdefault(normalize_name(alias), alias)
+            trimmed = alias.strip()
+            wanted.setdefault(normalize_name(trimmed), trimmed)
 
         with self._conn.transaction(), self._conn.cursor() as cur:
             cur.execute(
