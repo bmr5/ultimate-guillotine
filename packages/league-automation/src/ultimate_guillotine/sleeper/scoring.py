@@ -4,6 +4,11 @@ Sleeper uses the same keys in a projection's ``stats`` map and in a league's
 ``scoring_settings``, so multiplying the two maps key-by-key and summing is
 exactly the league's scoring rule -- bonuses and negatives included -- with no
 per-format special cases. Nothing here touches the network or the database.
+
+Public interface: :data:`SCORING_DENYLIST`, :func:`score_stat_line`,
+:func:`scoring_version`, :func:`preset_drift`, :data:`DRIFT_POINTS`,
+:data:`DRIFT_SHARE`, and :data:`CENTS` -- the one quantization constant, exported
+so later tasks round money and points to the same place rather than redefining it.
 """
 
 import hashlib
@@ -25,7 +30,9 @@ SCORING_DENYLIST = frozenset({
 })
 
 _PRESET_KEYS = ("pts_ppr", "pts_half_ppr", "pts_std")
-_CENTS = Decimal("0.01")
+
+#: Two decimal places: the quantum every point and dollar total in this package rounds to.
+CENTS = Decimal("0.01")
 
 #: A run posts one drift note when more than DRIFT_SHARE of scored players sit further
 #: than DRIFT_POINTS from the nearest Sleeper preset.
@@ -65,7 +72,7 @@ def score_stat_line(
         scored += 1
     if scored == 0:
         return None
-    return total.quantize(_CENTS, rounding=ROUND_HALF_UP)
+    return total.quantize(CENTS, rounding=ROUND_HALF_UP)
 
 
 def scoring_version(scoring_settings: dict[str, object]) -> str:
