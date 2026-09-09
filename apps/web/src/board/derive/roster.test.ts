@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import type { RosterPlayer } from "../types";
+import type { RosterPlayer, RosterSlot } from "../types";
 import {
   groupRosterBySlot,
   orderRoster,
@@ -224,4 +224,49 @@ describe("groupRosterBySlot", () => {
   it("returns nothing for an empty roster", () => {
     expect(groupRosterBySlot([])).toEqual([]);
   });
+});
+
+describe("slots this build does not know", () => {
+  /**
+   * `slot` is `RosterSlot` by declaration only: a frozen roster is jsonb written by an earlier
+   * build, and Sleeper can add a slot at any time. The cast is the point of the test — it stands
+   * in for the value that actually arrives at runtime.
+   */
+  const unknownSlots: { label: string; slot: RosterSlot }[] = [
+    { label: "a slot Sleeper added later", slot: "ir_taxi" as RosterSlot },
+    { label: "an empty slot string", slot: "" as RosterSlot },
+    { label: "a slot spelled differently", slot: "BENCH" as RosterSlot },
+  ];
+
+  it.each(unknownSlots)(
+    "keeps a player carrying $label instead of dropping them",
+    ({ slot }) => {
+      const ordered = orderRoster([
+        player({ sleeperPlayerId: "unknown", slot, projectedPoints: 5 }),
+        player({ sleeperPlayerId: "start", slot: "starter", slotIndex: 0 }),
+        player({ sleeperPlayerId: "taxi", slot: "taxi" }),
+      ]);
+      expect(ordered.map((p) => p.sleeperPlayerId)).toEqual([
+        "start",
+        "unknown",
+        "taxi",
+      ]);
+    },
+  );
+
+  it.each(unknownSlots)(
+    "folds a player carrying $label into the bench group",
+    ({ slot }) => {
+      const groups = groupRosterBySlot([
+        player({ sleeperPlayerId: "unknown", slot, projectedPoints: 5 }),
+        player({ sleeperPlayerId: "bench", slot: "bench", projectedPoints: 9 }),
+      ]);
+      expect(groups.map((g) => g.slot)).toEqual(["bench"]);
+      expect(groups.map((g) => g.label)).toEqual(["Bench"]);
+      expect(groups[0].players.map((p) => p.sleeperPlayerId)).toEqual([
+        "bench",
+        "unknown",
+      ]);
+    },
+  );
 });

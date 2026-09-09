@@ -46,6 +46,22 @@ describe("normalizeSearchText", () => {
     expect(normalizeSearchText("Puka Nacuá")).toBe("puka nacua");
     expect(normalizeSearchText("JOSÉ")).toBe("jose");
   });
+
+  it("drops the periods and apostrophes nobody types into a search box", () => {
+    expect(normalizeSearchText("Ja'Marr Chase")).toBe("jamarr chase");
+    expect(normalizeSearchText("T.J. Hockenson")).toBe("tj hockenson");
+    expect(normalizeSearchText("Amon-Ra St. Brown")).toBe("amon-ra st brown");
+  });
+
+  it("folds a smart apostrophe to the straight one before dropping it", () => {
+    expect(normalizeSearchText("Ja\u2019Marr")).toBe(
+      normalizeSearchText("Ja'Marr"),
+    );
+  });
+
+  it("collapses whitespace runs and trims the edges", () => {
+    expect(normalizeSearchText("  puka   nacua ")).toBe("puka nacua");
+  });
 });
 
 describe("matchTeam", () => {
@@ -101,6 +117,47 @@ describe("matchTeam", () => {
     ).toEqual(["5"]);
   });
 
+  it("ignores the punctuation in a player's name", () => {
+    const chase = team({ teamId: 1, roster: [player("2", "Ja'Marr Chase")] });
+    expect(matchTeam(chase, "jamarr").matchedPlayerIds).toEqual(["2"]);
+
+    const hockenson = team({
+      teamId: 1,
+      roster: [player("3", "T.J. Hockenson")],
+    });
+    expect(matchTeam(hockenson, "tj").matchedPlayerIds).toEqual(["3"]);
+
+    const stBrown = team({
+      teamId: 1,
+      roster: [player("4", "Amon-Ra St. Brown")],
+    });
+    expect(matchTeam(stBrown, "st brown").matchedPlayerIds).toEqual(["4"]);
+  });
+
+  it("matches straight-quoted data from a term typed with a smart apostrophe", () => {
+    const chase = team({ teamId: 1, roster: [player("2", "Ja'Marr Chase")] });
+    expect(matchTeam(chase, "Ja\u2019Marr").matchedPlayerIds).toEqual(["2"]);
+  });
+
+  it("matches every word of the term in any order", () => {
+    const nacua = team({ teamId: 1, roster: [player("9", "Puka Nacua")] });
+    const result = matchTeam(nacua, "nacua puka");
+    expect(result).toEqual({ matches: true, matchedPlayerIds: ["9"] });
+  });
+
+  it("ignores a double space between the words of a term", () => {
+    const nacua = team({ teamId: 1, roster: [player("9", "Puka Nacua")] });
+    expect(matchTeam(nacua, "puka  nacua").matchedPlayerIds).toEqual(["9"]);
+  });
+
+  it("misses when only some of the words land", () => {
+    const nacua = team({ teamId: 1, roster: [player("9", "Puka Nacua")] });
+    expect(matchTeam(nacua, "puka zzzz")).toEqual({
+      matches: false,
+      matchedPlayerIds: [],
+    });
+  });
+
   it("does not match unrelated text", () => {
     expect(matchTeam(team({ teamId: 1 }), "zzzz")).toEqual({
       matches: false,
@@ -147,7 +204,7 @@ describe("filterTeams", () => {
     expect(filterTeams(teams, "").teams).toHaveLength(2);
   });
 
-  it("keeps the incoming team order and matches no one on a miss", () => {
+  it("matches no one on a total miss", () => {
     const result = filterTeams(
       [team({ teamId: 1 }), team({ teamId: 2 })],
       "zzzz",

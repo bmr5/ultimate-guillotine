@@ -1,12 +1,5 @@
 import type { RosterPlayer, RosterSlot } from "../types";
-
-/**
- * Comparator results, named so the null handling below reads as intent rather than as sign
- * arithmetic. `Array.prototype.sort` only looks at the sign, so the magnitude is irrelevant.
- */
-const A_BEFORE_B = -1;
-const B_BEFORE_A = 1;
-const TIED = 0;
+import { A_BEFORE_B, B_BEFORE_A, NAME_COLLATOR, TIED } from "./compare";
 
 /**
  * The rank each slot sorts at: the lineup first, then the bench, then the two parked slots.
@@ -42,11 +35,24 @@ const SLOTS_IN_RENDER_ORDER: RosterSlot[] = (
 const UNPLACED_STARTER_INDEX = Number.MAX_SAFE_INTEGER;
 
 /**
- * Fixed-locale collator so the name tie-break is the same on the Mac mini, in CI, and in a
- * browser. Bare `localeCompare` follows the host locale, which would make the order depend on
- * the environment for names that differ only by accent or case.
+ * Where a slot this build has never heard of lands. A frozen `final_rosters.holdings` row is
+ * jsonb written by an earlier build, and Sleeper can add a slot at any time, so `slot` is only
+ * `RosterSlot` by declaration. An unranked slot would make the comparator return `NaN` and drop
+ * the player out of every group, which loses a real player from the card — the bench is the
+ * honest home for "on the roster, not in the lineup".
  */
-const PLAYER_NAME_COLLATOR = new Intl.Collator("en");
+const FALLBACK_SLOT: RosterSlot = "bench";
+
+/** The slot's rank, or the bench's rank when the slot is not one this build knows. */
+function slotRank(slot: RosterSlot): number {
+  const rank: number | undefined = SLOT_ORDER[slot];
+  return rank ?? SLOT_ORDER[FALLBACK_SLOT];
+}
+
+/** The group an unknown slot renders in, so no roster row is silently dropped. */
+function groupSlotFor(slot: RosterSlot): RosterSlot {
+  return SLOT_ORDER[slot] === undefined ? FALLBACK_SLOT : slot;
+}
 
 /**
  * A total order over one team's roster: slot rank first, then lineup order inside the lineup and
@@ -54,7 +60,7 @@ const PLAYER_NAME_COLLATOR = new Intl.Collator("en");
  * does not depend on the order the rows arrived in.
  */
 export function compareRosterPlayers(a: RosterPlayer, b: RosterPlayer): number {
-  const slotDelta = SLOT_ORDER[a.slot] - SLOT_ORDER[b.slot];
+  const slotDelta = slotRank(a.slot) - slotRank(b.slot);
   if (slotDelta !== TIED) {
     return slotDelta;
   }
@@ -66,7 +72,7 @@ export function compareRosterPlayers(a: RosterPlayer, b: RosterPlayer): number {
     if (left !== right) {
       return left - right;
     }
-    return PLAYER_NAME_COLLATOR.compare(a.fullName, b.fullName);
+    return NAME_COLLATOR.compare(a.fullName, b.fullName);
   }
 
   // null means "no projection", never zero, so it sorts below every projected player.
@@ -81,7 +87,7 @@ export function compareRosterPlayers(a: RosterPlayer, b: RosterPlayer): number {
   if (left !== null && right !== null && left !== right) {
     return right - left;
   }
-  return PLAYER_NAME_COLLATOR.compare(a.fullName, b.fullName);
+  return NAME_COLLATOR.compare(a.fullName, b.fullName);
 }
 
 /**
@@ -101,14 +107,16 @@ export interface RosterGroup {
 /**
  * The roster cut into the sections the expanded card renders, empty sections omitted. This is the
  * single ordering entry point for a roster: it orders once and slices the groups out of that one
- * ordered array, so callers hand it the raw roster rather than pre-ordering it themselves.
+ * ordered array, so callers hand it the raw roster rather than pre-ordering it themselves. Rows
+ * carrying a slot this build does not rank land in the bench group rather than disappearing.
  */
 export function groupRosterBySlot(players: RosterPlayer[]): RosterGroup[] {
   const bySlot = new Map<RosterSlot, RosterPlayer[]>();
   for (const player of orderRoster(players)) {
-    const inSlot = bySlot.get(player.slot);
+    const slot = groupSlotFor(player.slot);
+    const inSlot = bySlot.get(slot);
     if (inSlot === undefined) {
-      bySlot.set(player.slot, [player]);
+      bySlot.set(slot, [player]);
     } else {
       inSlot.push(player);
     }

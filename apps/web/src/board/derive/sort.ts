@@ -1,13 +1,6 @@
 import type { BoardTeam, SortMode } from "../types";
+import { A_BEFORE_B, B_BEFORE_A, NAME_COLLATOR, TIED } from "./compare";
 import { resolveProjectionDisplay } from "./projection";
-
-/**
- * Comparator results, named so the null handling below reads as intent rather than as sign
- * arithmetic. `Array.prototype.sort` only looks at the sign, so the magnitude is irrelevant.
- */
-const A_BEFORE_B = -1;
-const B_BEFORE_A = 1;
-const TIED = 0;
 
 /**
  * A Sleeper-inferred elimination can land before the week is known (`eliminated_week` is
@@ -15,13 +8,6 @@ const TIED = 0;
  * of the eliminated group, below every team whose week we do know.
  */
 const UNKNOWN_ELIMINATION_WEEK = 0;
-
-/**
- * Fixed-locale collator so the name tie-break is the same on the Mac mini, in CI, and in a
- * browser. Bare `localeCompare` follows the host locale, which would make the order depend on
- * the environment for names that differ only by accent or case.
- */
-const TEAM_NAME_COLLATOR = new Intl.Collator("en");
 
 /** The sort mode used when a projection sort has nothing to sort by. */
 export const SORT_FALLBACK_MODE: SortMode = "points_for";
@@ -64,7 +50,7 @@ export function compareTeams(
   if (a.pointsFor !== b.pointsFor) {
     return b.pointsFor - a.pointsFor;
   }
-  const byName = TEAM_NAME_COLLATOR.compare(a.teamName, b.teamName);
+  const byName = NAME_COLLATOR.compare(a.teamName, b.teamName);
   if (byName !== TIED) {
     return byName;
   }
