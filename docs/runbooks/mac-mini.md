@@ -343,9 +343,36 @@ uv run --project packages/league-automation ug trades replay \
   history/contracts/2025-26/all-contracts.xlsx
 ```
 
-Each row prints `row N: created|duplicate|revised|clarification:
-<reason>|not-a-candidate`, followed by a summary line. Clarifications are
-expected wherever 2025 member or player names differ from the 2026
-`public.members` and `public.players` tables — the registrar is asking
-about a name that no longer exists, which is correct behaviour, not a
-bug to fix here.
+Each row prints `row N: <outcome>`, where the outcome is one of:
+
+| Outcome | Meaning |
+| --- | --- |
+| `created` | a new trade was logged |
+| `duplicate` | the same terms were already on file |
+| `revised` | an existing trade was updated with new terms |
+| `rescinded` | an existing trade was rescinded |
+| `clarification: <reason>` | the registrar would have asked the chat this |
+| `not-a-trade` | the model read the row as chatter |
+| `not-a-candidate` | the `🚨` trigger would never have looked at the row |
+| `failed` | the row raised; the run is recorded `failed` |
+| `skipped` | the run key was already reserved, so nothing ran |
+
+A summary line closes the run. It always names `created`, `duplicate`,
+`clarification`, and `not-a-candidate`, then appends any of the others
+that happened, so the counters always add up to the row count. The shape,
+with an illustrative set of numbers:
+
+```
+replay: 18 rows, created 11, duplicate 0, clarification 6, not-a-candidate 1
+```
+
+Clarifications are expected wherever 2025 member or player names differ
+from the 2026 `public.members` and `public.players` tables — the
+registrar is asking about a name that no longer exists, which is correct
+behaviour, not a bug to fix here.
+
+Running a write-mode replay a second time reports `skipped` for every
+row and changes nothing: the run key is `trade:replay:<hash of the row
+text>`, so the first replay already reserved it. That is the intended
+guard, not a failure — to replay the same workbook again for real, the
+earlier runs have to be cleared first.

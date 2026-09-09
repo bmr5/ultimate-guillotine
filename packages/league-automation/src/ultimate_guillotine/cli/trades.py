@@ -18,7 +18,7 @@ import httpx
 import openpyxl
 
 from ultimate_guillotine.cli.deps import build_ai, build_delivery, build_deps
-from ultimate_guillotine.config import DeliveryMode
+from ultimate_guillotine.config import DeliveryMode, load_settings
 from ultimate_guillotine.data.repositories import (
     MemberAliasRepository,
     RunRepository,
@@ -55,6 +55,15 @@ TERMS_COLUMN = 2
 REPLAY_SEASON = 2025
 REPLAY_CLOCK = datetime(REPLAY_SEASON, 12, 31, tzinfo=UTC)
 REPLAY_START = datetime(REPLAY_SEASON, 9, 1, tzinfo=UTC)
+
+#: Counters the replay summary always prints, even at zero, so the line has a
+#: stable shape to read or grep across runs.
+SUMMARY_FIXED = ("created", "duplicate", "clarification", "not-a-candidate")
+
+#: The rest of the outcome vocabulary. Printed only when it happened, so the
+#: usual summary stays short -- but every row is counted somewhere, so the
+#: counters always add up to the row count.
+SUMMARY_EXTRA = ("revised", "rescinded", "not-a-trade", "failed", "skipped")
 
 
 def register(subparsers) -> None:
@@ -221,6 +230,13 @@ def load_replay_rows(path: str | Path) -> list[tuple[str, str, list[str]]]:
     are spacers and are skipped. The `Terms` cell is the announcement without its
     siren, so the siren is put back: detection keys on it, and replaying text the
     trigger would never have seen would measure the wrong thing.
+
+    Two shapes read as empty and are therefore skipped: a `Terms` cell merged
+    across several rows (only the top-left cell of a merge carries the value, so
+    the rows under it come back `None`), and a formula cell with no cached value
+    (the workbook is opened `data_only=True`, which returns the last value Excel
+    saved and `None` when it never calculated one). Neither is worth guessing at
+    -- a replay that invented text would measure the wrong history.
     """
     workbook = openpyxl.load_workbook(path, read_only=True, data_only=True)
     try:
@@ -244,31 +260,40 @@ def _cell(row: tuple, index: int) -> str:
 
 
 def replay_rows(
-    rows: Iterable[tuple[str, str, list[str]]], run_row: Callable[[str], str]
+    rows: Iterable[tuple[str, str, list[str]]], run_row: Callable[[int, str], str]
 ) -> int:
     """Print one outcome line per row and a closing summary; return an exit code.
 
     Detection lives here rather than in `run_row` so both modes agree on what the
     listener would even have looked at: a row the trigger would have ignored costs
-    no model call and is reported as `not-a-candidate`.
+    no model call and is reported as `not-a-candidate`. `run_row` is given the
+    workbook row index as well as the text, so the two modes number rows the same
+    way and write mode can date each replayed message from its place in the sheet.
     """
-    counts = {"created": 0, "duplicate": 0, "clarification": 0, "not-a-candidate": 0}
+    counts = dict.fromkeys(SUMMARY_FIXED + SUMMARY_EXTRA, 0)
     total = 0
     for index, (_week, text, _parties) in enumerate(rows, start=1):
         total = index
-        outcome = run_row(text) if is_trade_candidate(text) else "not-a-candidate"
+        outcome = run_row(index, text) if is_trade_candidate(text) else "not-a-candidate"
         print(f"row {index}: {outcome}")
-        # `clarification: <reason>` counts as a clarification; statuses outside
-        # the four the summary names (revised, rescinded, failed) show per row only.
+        # `clarification: <reason>` counts as a clarification.
         head = outcome.split(":", 1)[0].strip()
         if head in counts:
             counts[head] += 1
-    print(
-        f"replay: {total} rows, created {counts['created']}, "
-        f"duplicate {counts['duplicate']}, clarification {counts['clarification']}, "
-        f"not-a-candidate {counts['not-a-candidate']}"
-    )
+    parts = [f"{name} {counts[name]}" for name in SUMMARY_FIXED]
+    parts += [f"{name} {counts[name]}" for name in SUMMARY_EXTRA if counts[name]]
+    print(f"replay: {total} rows, " + ", ".join(parts))
     return 0
+
+
+def _outcome(status: str) -> str:
+    """Spell a registrar status the way the replay output spells it.
+
+    `not_a_trade` is the one status written with underscores; every replay line
+    and every summary counter is hyphenated, so it is hyphenated here rather than
+    renamed at the source -- the registrar's return value is part of its contract.
+    """
+    return "not-a-trade" if status == "not_a_trade" else status
 
 
 class _SilentDelivery:
@@ -290,13 +315,16 @@ def cmd_replay(args: argparse.Namespace) -> int:
     included, sends never -- and only outside production: replaying history into
     the live league would be indistinguishable from a flood of new trades.
     """
+    # The refusal is read off the settings alone, before `build_deps` opens a
+    # database connection: a replay pointed at production must not so much as
+    # connect to it.
+    if not args.dry_run and load_settings().delivery_mode is DeliveryMode.PRODUCTION:
+        print("replay refuses to write in production; unset DELIVERY_MODE or use --dry-run")
+        return 2
     rows = load_replay_rows(args.xlsx)
     if args.limit is not None:
         rows = rows[: args.limit]
     deps = build_deps()
-    if not args.dry_run and deps.settings.delivery_mode is DeliveryMode.PRODUCTION:
-        print("replay refuses to write in production; unset DELIVERY_MODE or use --dry-run")
-        return 2
     # Before the workbook is walked, so a missing key costs no HTTP call at all.
     ai = build_ai(deps)
     conn = deps.conn
@@ -304,12 +332,12 @@ def cmd_replay(args: argparse.Namespace) -> int:
         members = MemberAliasRepository(conn).all_members()
         players = PlayerRepository(conn).all_active()
 
-        def run_row(text: str) -> str:
+        def run_row(_index: int, text: str) -> str:
             result = dry_run_pipeline(
                 ai, text, REPLAY_SEASON, members, players, RosterIndex.empty()
             )
             if result is NOT_A_TRADE:
-                return "not_a_trade"
+                return "not-a-trade"
             if isinstance(result, Unresolved):
                 return f"clarification: {result.reason}"
             return "created"
@@ -328,9 +356,12 @@ def cmd_replay(args: argparse.Namespace) -> int:
         RunRepository(conn),
         clock=lambda: REPLAY_CLOCK,
     )
-    counter = iter(range(len(rows)))
 
-    def run_row(text: str) -> str:
+    def run_row(index: int, text: str) -> str:
+        # One day per workbook row, so replayed messages carry the sheet's order.
+        # Dating from the row index rather than a counter of the rows that got
+        # this far keeps a row's date the same whether or not the rows above it
+        # were candidates.
         digest = hashlib.sha256(text.encode()).hexdigest()[:16]
         msg = InboundMessage(
             guid=f"replay:{digest}",
@@ -339,8 +370,8 @@ def cmd_replay(args: argparse.Namespace) -> int:
             text=text,
             is_from_me=False,
             is_group=True,
-            sent_at=REPLAY_START + timedelta(days=next(counter)),
+            sent_at=REPLAY_START + timedelta(days=index - 1),
         )
-        return registrar.handle(msg)
+        return _outcome(registrar.handle(msg))
 
     return replay_rows(rows, run_row)

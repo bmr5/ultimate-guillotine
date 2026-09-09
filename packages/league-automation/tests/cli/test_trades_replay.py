@@ -26,26 +26,38 @@ def test_load_replay_rows_reads_terms_and_parties(tmp_path: Path) -> None:
 def test_replay_rows_prints_one_line_per_row_and_a_summary(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """The loop decides `not-a-candidate` itself; the pipeline sees the rest."""
+    """The loop decides `not-a-candidate` itself; the pipeline sees the rest.
+
+    Outcomes outside the four fixed counters (`revised`, `failed` here) are
+    appended to the summary only when they happened, so the counters always add
+    up to the row count.
+    """
     rows = [
         ("Week 1", f"🚨 {TERMS}", ["Member01", "Member02"]),
         ("Week 2", "🚨 Member03 sends Player Gamma to Member04", ["Member03"]),
         ("Week 3", "Congrats on the win", []),
+        ("Week 4", "🚨 Member05 sends Player Delta to Member06", ["Member05"]),
+        ("Week 5", "🚨 Member07 sends Player Epsilon to Member08", ["Member07"]),
     ]
-    seen: list[str] = []
-    outcomes = iter(["created", "clarification: I don't know Player Gamma"])
+    seen: list[tuple[int, str]] = []
+    outcomes = iter(
+        ["created", "clarification: I don't know Player Gamma", "revised", "failed"]
+    )
 
-    def run_row(text: str) -> str:
-        seen.append(text)
+    def run_row(index: int, text: str) -> str:
+        seen.append((index, text))
         return next(outcomes)
 
     exit_code = replay_rows(rows, run_row)
 
     assert exit_code == 0
-    assert seen == [rows[0][1], rows[1][1]]
+    assert seen == [(1, rows[0][1]), (2, rows[1][1]), (4, rows[3][1]), (5, rows[4][1])]
     assert capsys.readouterr().out == (
         "row 1: created\n"
         "row 2: clarification: I don't know Player Gamma\n"
         "row 3: not-a-candidate\n"
-        "replay: 3 rows, created 1, duplicate 0, clarification 1, not-a-candidate 1\n"
+        "row 4: revised\n"
+        "row 5: failed\n"
+        "replay: 5 rows, created 1, duplicate 0, clarification 1, not-a-candidate 1, "
+        "revised 1, failed 1\n"
     )
