@@ -1,8 +1,9 @@
 """``build_roster_index`` resolves trades against the synced ``roster_holdings`` table.
 
 The ten-minute sync keeps the table current, so a 🚨 alert costs no Sleeper call
-and still resolves during a Sleeper outage. The live fetch survives only as the
-brand-new-season guard: a season with no holdings rows at all.
+and still resolves during a Sleeper outage. The live fetch survives as the
+freshness guard: a season with no holdings rows at all, or a newest ``synced_at``
+older than ``HOLDINGS_MAX_AGE``, falls back to one live fetch.
 """
 
 from datetime import UTC, datetime, timedelta
@@ -73,28 +74,28 @@ def test_index_reads_the_holdings_table_without_calling_sleeper(conn) -> None:
     """Every slot counts: a traded player is as likely to be on IR as starting."""
     member_id = _seed(conn, NOW - timedelta(minutes=5))
     client = FakeRosterClient()
-    index = build_roster_index(client, conn, "league", 2026)
+    index = build_roster_index(client, conn, "league", 2026, now=NOW)
     assert client.calls == 0
     assert index.holdings[member_id] == frozenset({"p1", "p2", "p3", "p4"})
     assert index.holds(member_id, "p2") and not index.holds(member_id, "p9")
 
 
-def test_old_holdings_are_still_used_rather_than_refetched(conn) -> None:
-    """A stalled sync is an ops problem, not a reason to resolve against nothing:
-    the last good rows beat a live call the registrar may not be able to make."""
+def test_stale_holdings_fall_back_to_one_sleeper_call(conn) -> None:
+    """Seven hours past a six-hour ceiling: the rows have moved on, so the
+    registrar pays for one live fetch rather than resolving against them."""
     member_id = _seed(conn, NOW - timedelta(hours=7))
     client = FakeRosterClient()
-    index = build_roster_index(client, conn, "league", 2026)
-    assert client.calls == 0
-    assert index.holdings[member_id] == frozenset({"p1", "p2", "p3", "p4"})
+    index = build_roster_index(client, conn, "league", 2026, now=NOW)
+    assert client.calls == 1
+    assert index.holdings[member_id] == frozenset({"from-sleeper"})
 
 
 def test_a_team_with_no_rows_does_not_drag_the_season_back_to_sleeper(conn) -> None:
-    """Partial coverage is not an empty season -- the teams that have rows keep them."""
+    """Partial coverage is not staleness -- a fresh table is used as it stands."""
     held_member = _seed(conn, NOW - timedelta(minutes=5))
     bare_member, _ = _team(conn, "Bare Member", 912)
     client = FakeRosterClient()
-    index = build_roster_index(client, conn, "league", 2026)
+    index = build_roster_index(client, conn, "league", 2026, now=NOW)
     assert client.calls == 0
     assert index.holdings[held_member] == frozenset({"p1", "p2", "p3", "p4"})
     assert bare_member not in index.holdings
@@ -103,10 +104,11 @@ def test_a_team_with_no_rows_does_not_drag_the_season_back_to_sleeper(conn) -> N
 def test_no_holdings_at_all_falls_back(conn) -> None:
     member_id, _ = _team(conn, "Empty Member", 911)
     client = FakeRosterClient()
-    index = build_roster_index(client, conn, "league", 2026)
+    index = build_roster_index(client, conn, "league", 2026, now=NOW)
     assert client.calls == 1 and index.holdings[member_id] == frozenset({"from-sleeper"})
 
 
 def test_an_unknown_season_gives_an_empty_index(conn) -> None:
     client = FakeRosterClient()
-    assert build_roster_index(client, conn, "league", 1999).holdings == {}
+    assert build_roster_index(client, conn, "league", 1999, now=NOW).holdings == {}
+    assert client.calls == 1

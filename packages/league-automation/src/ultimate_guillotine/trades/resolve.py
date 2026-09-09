@@ -9,6 +9,7 @@ here is deterministic.
 """
 
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 
 import psycopg
 
@@ -65,8 +66,17 @@ class RosterIndex:
         return player_id in self.holdings.get(member_id, frozenset())
 
 
+#: Past this, the holdings cache is not trusted for trade resolution and the registrar
+#: pays for one live Sleeper call rather than resolving against a stalled roster.
+HOLDINGS_MAX_AGE = timedelta(hours=6)
+
+
 def build_roster_index(
-    client: SleeperClient, conn: psycopg.Connection, league_id: str, season: int
+    client: SleeperClient,
+    conn: psycopg.Connection,
+    league_id: str,
+    season: int,
+    now: datetime | None = None,
 ) -> RosterIndex:
     """Map each member to the Sleeper player ids they currently hold.
 
@@ -76,29 +86,47 @@ def build_roster_index(
     bench, ir, taxi -- because a traded player is as likely to be on IR.
 
     The ``client`` remains for one guard: a season with no holdings rows at all
-    (a brand-new season the sync has not reached yet) falls back to one live
-    fetch. A season with *some* rows is trusted as it stands, however old the
-    last sync is; resolving a duplicate name against the last good rows beats
-    resolving it against nothing, and a stalled sync is an ops problem.
+    (a brand-new season the sync has not reached yet), or a newest ``synced_at``
+    older than ``HOLDINGS_MAX_AGE``, falls back to one live fetch, so a stalled
+    sync never resolves a trade against a roster that has moved on. Partial
+    coverage is not staleness: if the freshest row is recent the table is used as
+    it stands, and a team with no rows is simply absent from the index.
+
+    ``now`` is injectable for tests only; the registrar and CLI callers pass the
+    season and let it default to the wall clock.
 
     The season is passed in rather than read off the clock: the caller has
     already settled which season it is recording under, and a January trade
     belongs to the season that started the previous September.
     """
+    now = now or datetime.now(UTC)
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            select max(h.synced_at)
+            from public.roster_holdings h
+            join public.seasons s on s.id = h.season_id
+            where s.year = %s
+            """,
+            (season,),
+        )
+        row = cur.fetchone()
+    freshest = row[0] if row else None
+    if freshest is None or now - freshest > HOLDINGS_MAX_AGE:
+        return _index_from_sleeper(client, conn, league_id, season)
+
     with conn.cursor() as cur:
         cur.execute(
             """
             select t.member_id, h.sleeper_player_id
             from public.roster_holdings h
-            join public.teams t on t.id = h.team_id
+            join public.teams t on t.id = h.team_id and t.season_id = h.season_id
             join public.seasons s on s.id = h.season_id
             where s.year = %s
             """,
             (season,),
         )
         rows = cur.fetchall()
-    if not rows:
-        return _index_from_sleeper(client, conn, league_id, season)
     holdings: dict[int, set[str]] = {}
     for member_id, player_id in rows:
         holdings.setdefault(member_id, set()).add(player_id)
