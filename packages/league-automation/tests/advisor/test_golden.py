@@ -84,7 +84,9 @@ LIVE = os.environ.get("UG_LIVE_AI_TESTS") == "1"
 #: Anything a reply may never contain, whoever wrote it. The identifiers are the
 #: privacy boundary; ``dues`` and ``eliminat`` are the two subjects the spec puts
 #: out of bounds -- who owes money, and how close somebody else is to being cut.
-FORBIDDEN = ("chat_guid", "sender_hash", "iMessage;", "+1555", "dues", "eliminat", "pressure rank")
+#: Every entry is lower-case, because they are matched against a lower-cased
+#: reply: ``iMessage;`` as written could never have matched anything.
+FORBIDDEN = ("chat_guid", "sender_hash", "imessage;", "+1555", "dues", "eliminat", "pressure rank")
 
 
 @dataclass(frozen=True)
