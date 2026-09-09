@@ -491,9 +491,9 @@
       "category": "not_a_trade",
       "text": "🚨 Trade T-2026-001 logged\nblandon receives: Ja'Marr Chase\nWeek ? · Permanent\n— 🤖 Guillotine Bot",
       "expected_kind": "not_a_trade",
-      "expected_status": "not_a_trade",
+      "expected_status": "dropped_upstream",
       "prereq": null,
-      "notes": "The bot's own confirmation echoed back. The listener drops signed text before the trigger runs, so this must never reach extraction at all."
+      "notes": "The bot's own confirmation echoed back. The listener drops signed text before the trigger runs, so this must never reach extraction at all -- which is why the suite skips it by design instead of asking the model a question production never asks."
     },
     {
       "id": 56,

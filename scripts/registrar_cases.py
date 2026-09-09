@@ -9,7 +9,11 @@ suite is safe to leave running overnight against the league chat's real model.
 
 Cases that only mean something after another case is on file (a revision, a
 repost, a rescission) name that case in `prereq` and are skipped: a dry run has
-no database state to revise or rescind. Everything else runs.
+no database state to revise or rescind. A case whose `expected_status` is
+`dropped_upstream` is skipped for a different reason: the listener drops that
+message before the trigger ever runs, so putting it to the model would ask a
+question production never asks and score the answer as a failure. Everything
+else runs.
 
     uv run --project packages/league-automation python scripts/registrar_cases.py --dry-run-fakes
     uv run --project packages/league-automation python scripts/registrar_cases.py
@@ -64,6 +68,11 @@ EXPECTED_OUTCOME = {
 #: A message the detector rejects never reaches the model, which is the correct
 #: handling of a non-alert -- so it satisfies a `not_a_trade` expectation.
 NOT_A_CANDIDATE = "not-a-candidate"
+#: The status of a case the listener drops before the agent is reached at all --
+#: the bot's own signed confirmation echoed back into the chat. The suite skips
+#: these by design: they are a statement about the listener, and an extraction
+#: the listener never asks for is not a result worth scoring.
+DROPPED_UPSTREAM = "dropped_upstream"
 #: A name no row in `public.players` can match, used by the fake client to force
 #: the resolution failure a clarification case expects.
 UNRESOLVABLE = "Nonexistent Placeholder Player"
@@ -216,7 +225,11 @@ def _member_line(member) -> str:
 
 
 def write_results(
-    results: list[Result], skipped: list[dict], fakes: bool, started: datetime
+    results: list[Result],
+    skipped: list[dict],
+    dropped: list[dict],
+    fakes: bool,
+    started: datetime,
 ) -> str:
     passed = sum(1 for r in results if r.passed)
     failed = len(results) - passed
@@ -228,9 +241,16 @@ def write_results(
         "Cases come from `packages/league-automation/tests/fixtures/registrar_cases.json`;",
         "case text is deliberately not repeated here.",
         "",
+        "Two kinds of case are skipped rather than run, and neither counts as a failure:",
+        "one that needs a prior case already on file, which a dry run cannot produce, and",
+        "one marked `dropped_upstream`, which the listener discards before the agent is",
+        "reached at all. Asking the model about a message it never sees in production would",
+        "score an answer nothing depends on.",
+        "",
         (
             f"**{len(results)} run · {passed} passed · {failed} failed · "
-            f"{len(skipped)} skipped (prerequisite state).**"
+            f"{len(skipped)} skipped (prerequisite state) · "
+            f"{len(dropped)} dropped upstream.**"
         ),
         "",
         (
@@ -260,10 +280,22 @@ def write_results(
             "These cases need a prior case already on file, which a dry run has no way to",
             f"produce: {ids}.",
         ]
+    if dropped:
+        ids = ", ".join(str(c["id"]) for c in dropped)
+        lines += [
+            "",
+            "## Dropped upstream",
+            "",
+            "The listener drops these before the trigger runs -- the bot's own signed text --",
+            f"so they never reach extraction and are skipped by design: {ids}.",
+        ]
     lines.append("")
     RESULTS.parent.mkdir(parents=True, exist_ok=True)
     RESULTS.write_text("\n".join(lines), encoding="utf-8")
-    return f"{len(results)} run, {passed} passed, {failed} failed, {len(skipped)} skipped"
+    return (
+        f"{len(results)} run, {passed} passed, {failed} failed, "
+        f"{len(skipped)} skipped, {len(dropped)} dropped upstream"
+    )
 
 
 def main() -> int:
@@ -284,8 +316,10 @@ def main() -> int:
     args = parser.parse_args()
 
     cases = select(load_cases(), args.ids, args.category, args.limit)
-    runnable = [c for c in cases if not c["prereq"]]
-    skipped = [c for c in cases if c["prereq"]]
+    dropped = [c for c in cases if c["expected_status"] == DROPPED_UPSTREAM]
+    reachable = [c for c in cases if c["expected_status"] != DROPPED_UPSTREAM]
+    runnable = [c for c in reachable if not c["prereq"]]
+    skipped = [c for c in reachable if c["prereq"]]
 
     deps = build_deps()
     conn = deps.conn
@@ -316,7 +350,7 @@ def main() -> int:
         )
         for case in runnable
     ]
-    print(write_results(results, skipped, args.dry_run_fakes, started))
+    print(write_results(results, skipped, dropped, args.dry_run_fakes, started))
     return 1 if any(not r.passed for r in results) else 0
 
 
