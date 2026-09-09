@@ -102,6 +102,12 @@ RICHER_BUDGET = 600
 #: and 2 are 9.9 - 1 and 8.6 - 1. An incoming back is worth what it adds to that
 #: pair and nothing more -- the second one is the starter it displaces.
 ASKER_RB_STARTERS = (Decimal("8.90"), Decimal("7.60"))
+#: The asker's second starting running back, and the one an arriving back
+#: displaces. Blanking his projection is the incumbent case: he can no longer be
+#: ranked into the lineup, so a generator that only guards the *moving* players
+#: measures the newcomer against member 18's third-best back (3.80) and reports
+#: 8.40 gained instead of 4.60.
+ASKER_RB2_PLAYER_ID = "p18s2"
 #: The whole acquire-RB list on the bare fixture, in order:
 #: ``(counterparty, player, price)``. Member 18 is short a back and members 2, 1
 #: and 5 are the only teams carrying one above replacement (10.50).
@@ -193,6 +199,28 @@ def _generate(ask, member_id=ASKER_MEMBER_ID, points=(), snapshot=None, **kwargs
     return snapshot, generate_candidates(
         snapshot, score_league(snapshot), member_id, ask, list(points), **kwargs
     )
+
+
+def _blank(player_id, snapshot=None):
+    """The fixture with one player's projections removed and nothing else changed.
+
+    This is what a feed that has every other number but not this one looks
+    like: the holding is still on the roster, still at his position, and still
+    a man the manager would start -- there is simply no projection to rank him
+    by.
+    """
+    snapshot = fixture_snapshot() if snapshot is None else snapshot
+    teams = tuple(
+        replace(
+            team,
+            holdings=tuple(
+                replace(h, projected_points={}) if h.sleeper_player_id == player_id else h
+                for h in team.holdings
+            ),
+        )
+        for team in snapshot.teams
+    )
+    return replace(snapshot, teams=teams)
 
 
 def _priced_points(faab=COMPARABLE_FAAB):
@@ -624,6 +652,7 @@ def test_each_candidate_carries_the_reasons_the_model_must_not_invent() -> None:
         assert reasons.pressure_delta == asker.pressure_rank - other.pressure_rank
         assert reasons.price_faab == candidate.faab_total(ASKER)
         assert candidate.asker_delta is not None and candidate.asker_delta > Decimal(0)
+        assert reasons.delta_basis == "lineup"
 
 
 def test_a_move_reports_the_counterpartys_need_not_the_askers() -> None:
@@ -655,6 +684,58 @@ def test_a_delta_is_the_change_in_the_best_starting_lineup_not_the_gross_points(
         projection = ACQUIRE_RB_PROJECTIONS[player_id]
         assert candidate.asker_delta == projection - displaced
         assert candidate.asker_delta < projection
+
+
+def test_an_unprojected_incumbent_makes_the_delta_unknown_rather_than_bigger() -> None:
+    """A man with no number is not a man worth no points.
+
+    Member 18's second starting back projects 7.60 and is what every offered
+    back displaces. Blank him and he can no longer be ranked into a lineup, so
+    the slot he held looks empty: the newcomer is measured against member 18's
+    third back, 3.80, and the 4.60 upgrade is reported as 8.40 -- nearly double,
+    from a missing number rather than a better trade. The asker's side is
+    therefore unknown, and says so.
+
+    The counterparty's side is untouched, because it is computed against member
+    2's own fully projected roster -- one missing projection does not blank
+    everything the trade knows. Nor does it drop the candidate: ``fit_score``
+    never read the deltas, so the same four offers come back in the same order
+    at the same price.
+    """
+    snapshot = _blank(ASKER_RB2_PLAYER_ID)
+    _, candidates = _generate(ACQUIRE_RB, snapshot=snapshot)
+    assert candidates
+    for candidate in candidates:
+        assert candidate.asker_delta is None
+        assert candidate.reasons.delta_basis == "incomplete"
+        # The seller's own back-up is still fully projected, so its side stands.
+        assert candidate.counterparty_delta == Decimal(0)
+    listed = [
+        (c.counterparty_member_id, min(c.player_ids()), c.reasons.price_faab)
+        for c in candidates
+    ]
+    assert listed == list(GOLDEN_ACQUIRE_RB)
+
+
+def test_a_blanked_incumbent_only_darkens_the_position_the_trade_touches() -> None:
+    """Every other position cancels in the diff, so it cannot make a delta unknown.
+
+    Member 18's tight end has nothing to do with buying a running back: the same
+    tight end starts before and after, so both lineups count him identically and
+    a guard that blanked the whole roster would be refusing to answer a question
+    it can answer.
+    """
+    tight_end = next(
+        h.sleeper_player_id
+        for h in fixture_snapshot().team_for_member(ASKER_MEMBER_ID).holdings
+        if h.position == "TE"
+    )
+    _, candidates = _generate(ACQUIRE_RB, snapshot=_blank(tight_end))
+    assert candidates
+    for candidate in candidates:
+        projection = ACQUIRE_RB_PROJECTIONS[min(candidate.player_ids())]
+        assert candidate.asker_delta == projection - ASKER_RB_STARTERS[1]
+        assert candidate.reasons.delta_basis == "lineup"
 
 
 def test_a_bench_player_the_seller_never_started_costs_the_seller_nothing() -> None:
@@ -744,3 +825,4 @@ def test_below_the_coverage_gate_nothing_quotes_a_withheld_projection() -> None:
     assert all(c.reasons.need_points == Decimal(0) for c in candidates)
     assert all(c.counterparty_pressure_rank is None for c in candidates)
     assert all(c.reasons.pressure_delta is None for c in candidates)
+    assert all(c.reasons.delta_basis == "withheld" for c in candidates)

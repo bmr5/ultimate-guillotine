@@ -123,6 +123,14 @@ FIT_PRECISION = Decimal("0.001")
 #: budget clamped the number so it is no longer the price anybody paid.
 PriceBasis = Literal["comparable", "median", "default"]
 
+#: Why a candidate's lineup deltas are what they are. ``lineup`` means both
+#: sides were computed; ``withheld`` means the coverage gate refused to publish
+#: the projections behind them; ``incomplete`` means a player who would have
+#: competed for one of the affected starter slots -- one of the men moving, or
+#: an incumbent already on the roster -- has no projection for one of the
+#: covered weeks, so at least one side's delta is unknown rather than zero.
+DeltaBasis = Literal["lineup", "withheld", "incomplete"]
+
 __all__ = [
     "DEFAULT_PRICE_SHARE",
     "FAAB_FLOOR",
@@ -137,6 +145,7 @@ __all__ = [
     "Candidate",
     "CandidateLeg",
     "CandidateReasons",
+    "DeltaBasis",
     "PriceBasis",
     "generate_candidates",
 ]
@@ -191,6 +200,10 @@ class CandidateReasons:
     price_faab: int
     price_basis: PriceBasis
     comparable_trade_code: str | None
+    #: Whether the two lineup deltas could be computed, and if not, why. Anything
+    #: but ``lineup`` means at least one of them is ``None`` and the answer must
+    #: say the change could not be computed rather than treat it as zero.
+    delta_basis: DeltaBasis
 
 
 @dataclass(frozen=True)
@@ -218,8 +231,12 @@ class Candidate:
     return_condition: str | None
     fit_score: Decimal
     #: Change in the asker's best legal starting lineup, summed over the covered
-    #: weeks. ``None`` below the coverage gate, or when a moving player has no
-    #: projection for one of those weeks.
+    #: weeks. ``None`` below the coverage gate, and ``None`` when anybody who
+    #: could have contested the slots the trade touches -- a moving player or an
+    #: incumbent -- has no projection for one of those weeks;
+    #: ``reasons.delta_basis`` says which. ``fit_score`` does not read either
+    #: delta, so a candidate whose delta is unknown is still ranked, on the
+    #: need, the margin over replacement, the rank nudges and the price.
     asker_delta: Decimal | None
     #: The same figure for the counterparty, computed against its own roster.
     counterparty_delta: Decimal | None
@@ -344,10 +361,15 @@ def _lineup_points(holdings: Sequence[AdvisorHolding], week: int) -> Decimal:
     QB, two RBs, two WRs, one TE -- for exactly the reason
     :mod:`~ultimate_guillotine.advisor.scoring` gives: the FLEX is one slot that
     three positions may fill, so counting it at each of them would invent two
-    starters per team that the league never fields. A player nobody has
-    projected for the week cannot be ranked and so cannot claim a slot; that is
-    an unknown rather than a zero, and :func:`_lineup_delta` refuses to value a
-    trade whose own players are unknown in that way.
+    starters per team that the league never fields. Because no FLEX slot is
+    filled here, the only players who can compete for a slot are the ones at
+    that position, which is what :func:`_contenders` relies on.
+
+    A player nobody has projected for the week cannot be ranked and so cannot
+    claim a slot. That silently shortens the lineup, and a shortened lineup is
+    not a smaller one -- it is an unknown one -- so :func:`_lineup_delta`
+    refuses to value any trade that touches a position where somebody is
+    missing a number.
     """
     total = NO_POINTS
     for position in POSITIONS:
@@ -365,6 +387,31 @@ def _lineup_points(holdings: Sequence[AdvisorHolding], week: int) -> Decimal:
         )
         total += sum(projections[:slots], NO_POINTS)
     return total
+
+
+def _contenders(
+    roster: Sequence[AdvisorHolding], moving: Sequence[AdvisorHolding]
+) -> list[AdvisorHolding]:
+    """Everybody whose projection the diff depends on.
+
+    Only the positions the trade touches can change the total: at every other
+    position the before and after lineups are the same players, so the two
+    ``_lineup_points`` terms cancel exactly. At a touched position, though, the
+    diff depends on the *whole* depth chart -- the incoming man is worth the
+    margin over whoever he displaces, and who that is depends on every
+    incumbent's number. A position with no starter slot cannot be displaced
+    from and so is not touched at all.
+
+    Flex eligibility does not widen this set, because :func:`_lineup_points`
+    fills no FLEX slot; if it ever did, the flex-eligible incumbents at the
+    affected slots would have to be counted here too.
+    """
+    affected = {
+        holding.position
+        for holding in moving
+        if holding.position is not None and STARTER_SLOTS.get(holding.position, 0)
+    }
+    return list(moving) + [h for h in roster if h.position in affected]
 
 
 def _lineup_delta(
@@ -394,11 +441,21 @@ def _lineup_delta(
     a player who is actually moving makes the whole total unknown rather than
     smaller -- a trade valued over three weeks of which the feed has two is not
     a two-week trade.
+
+    The same is true of an *incumbent*. A roster player with no projection for a
+    covered week cannot claim a starter slot in :func:`_lineup_points`, so the
+    lineup he should have been in comes up a man short and the arriving player
+    is credited with filling an empty slot rather than with beating him: on the
+    test league, blanking the second running back turns a 4.60 upgrade into an
+    8.40 one. Whoever could have contested the slots this trade touches --
+    see :func:`_contenders` -- must therefore have a number for every covered
+    week, or the delta is unknown too.
     """
     if not known:
         return None
     moving = list(incoming) + list(outgoing)
-    if any(h.projected_for(week) is None for h in moving for week in weeks):
+    contenders = _contenders(roster, moving)
+    if any(h.projected_for(week) is None for h in contenders for week in weeks):
         return None
     leaving = {h.sleeper_player_id for h in outgoing}
     before = list(roster)
@@ -506,9 +563,9 @@ def _margin(
 ) -> Decimal | None:
     """How far the moved player projects above a free replacement, or ``None``.
 
-    ``None`` below the coverage gate for the same reason as :func:`_delta`, and
-    ``None`` when the league has no replacement level at the position -- an
-    unknown margin is not a zero one.
+    ``None`` below the coverage gate for the same reason as
+    :func:`_lineup_delta`, and ``None`` when the league has no replacement level
+    at the position -- an unknown margin is not a zero one.
     """
     if not known:
         return None
@@ -530,6 +587,17 @@ def _wants(score: TeamScore, position: str, *, known: bool) -> bool:
     exactly as :func:`~ultimate_guillotine.advisor.scoring.team_surplus` does.
     """
     return not known or score.needs.get(position, NO_POINTS) > NO_POINTS
+
+
+def _delta_basis(
+    asker_delta: Decimal | None, counterparty_delta: Decimal | None, *, known: bool
+) -> DeltaBasis:
+    """Say why a delta is missing, so the answer never has to guess it was zero."""
+    if not known:
+        return "withheld"
+    if asker_delta is None or counterparty_delta is None:
+        return "incomplete"
+    return "lineup"
 
 
 def _pressure_delta(asker: TeamScore, other: TeamScore) -> int | None:
@@ -699,6 +767,7 @@ def _build(
             price_faab=amount,
             price_basis=basis,
             comparable_trade_code=code,
+            delta_basis=_delta_basis(asker_delta, counterparty_delta, known=run.known),
         ),
     )
 
