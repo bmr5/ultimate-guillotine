@@ -163,6 +163,31 @@ def test_heartbeat_loop_exits_the_process_on_a_lost_connection(
     assert "connection to server was lost" not in caplog.text
 
 
+def test_heartbeat_loop_exits_when_the_connection_cannot_be_opened(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    class ExitCalled(Exception):
+        """Stands in for the process death `os._exit` would cause."""
+
+    def fake_exit(code: int) -> None:
+        raise ExitCalled(code)
+
+    def factory():
+        raise psycopg.OperationalError(
+            "connection to server was lost"
+        )
+
+    monkeypatch.setattr(os, "_exit", fake_exit)
+    _patched_sleep(monkeypatch, stop_after=5)  # must never reach sleep
+
+    with pytest.raises(ExitCalled) as exc_info:
+        run_module._heartbeat_loop(factory)
+
+    assert exc_info.value.args == (1,)
+    assert "OperationalError" in caplog.text
+    assert "connection to server was lost" not in caplog.text
+
+
 class FakeProbe:
     """Stands in for the context-managed connection `check_db` probes with."""
 

@@ -52,7 +52,14 @@ def _heartbeat_loop(connection_factory: Callable[[], psycopg.Connection]) -> Non
     that cannot be written for some other reason is exactly the condition the health
     job is meant to notice.
     """
-    conn = connection_factory()
+    try:
+        conn = connection_factory()
+    except psycopg.OperationalError as exc:
+        _die_on_lost_connection(exc)
+    except Exception as exc:  # noqa: BLE001 - only lost connection is fatal
+        log.warning("listener heartbeat failed: %s", exc.__class__.__name__)
+        return
+
     heartbeats = CommittingRepo(HeartbeatRepository(conn), conn)
     while True:
         try:
