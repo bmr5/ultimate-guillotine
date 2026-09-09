@@ -8,4 +8,6 @@ This directory is the local-only boundary for member names, contact details, pay
 
 `member-handles.json` maps each member's Sleeper username to their Apple handles, for `ug members handles load`. It is ignored by Git, and it is the only place the raw handles live: the loader hashes them on the way in, so `private.member_contacts` stores digests only and nothing ever prints a handle back out.
 
+Write phone handles in E.164 — `+15555550100`, country code and all. That is the form BlueBubbles reports a sender in, and the digest only matches if both sides agree. The loader strips spaces, dashes, parentheses, and dots before hashing, and lowercases anything containing `@`, so `+1 (555) 555-0100` still loads; a number with no `+1` does not, and it will simply never match a sender. Every entry needs at least one handle: an entry with an empty `handles` list is reported and skipped, not treated as a request to unmap that member.
+
 Use `league-members.example.json` when developing against the schema. It contains fake data only.

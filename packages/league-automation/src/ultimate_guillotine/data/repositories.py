@@ -21,14 +21,38 @@ def chat_guid_hash(chat_guid: str) -> str:
     return hashlib.sha256(chat_guid.encode()).hexdigest()
 
 
+# Formatting a human puts in a phone number and an Apple handle never carries:
+# spaces, dashes, parentheses, dots. ``+`` and the digits are the handle.
+_HANDLE_FORMATTING = " \t\r\n -()."
+
+
+def normalize_handle(address: str) -> str:
+    """Return the canonical form of an Apple handle, before hashing.
+
+    A digest is unforgiving: `" +1 (555) 555-0100 "` and `"+15555550100"` are
+    the same phone to a person and two different rows to SHA-256, so the
+    commissioner's file would silently fail to match half its senders. Phone
+    handles lose their formatting; email handles lose their case, which is the
+    only way the same address gets typed two ways.
+
+    This is a no-op for an already-canonical E.164 number, which is what
+    BlueBubbles delivers, so every ``private.source_messages.sender_hash``
+    already stored still matches what this produces.
+    """
+    cleaned = address.strip()
+    if "@" in cleaned:
+        return cleaned.lower()
+    return "".join(ch for ch in cleaned if ch not in _HANDLE_FORMATTING)
+
+
 def handle_hash(address: str) -> str:
-    """Return the SHA-256 hex digest of an Apple handle.
+    """Return the SHA-256 hex digest of a normalized Apple handle.
 
     The same digest ``private.source_messages.sender_hash`` holds, so a stored
     sender can be matched against a loaded contact without either side ever
     holding the handle itself.
     """
-    return hashlib.sha256(address.encode()).hexdigest()
+    return hashlib.sha256(normalize_handle(address).encode()).hexdigest()
 
 
 @dataclass(frozen=True)

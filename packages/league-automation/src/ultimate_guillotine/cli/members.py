@@ -108,6 +108,11 @@ def cmd_handles_load(args: argparse.Namespace) -> int:
     An entry naming somebody who is not in the league is reported on stderr and
     skipped, matching `aliases load`: a typo in one row should not block the
     rest. Every entry being skipped means nothing was loaded, so that exits 1.
+
+    The whole file lands in one transaction. A conflicting handle aborts the
+    load part-way through, and a database holding the first half of an edited
+    handle file is worse than one still holding yesterday's: the commissioner
+    fixes the file and runs it again, from a known state.
     """
     deps = build_deps()
     repo = MemberContactRepository(deps.conn)
@@ -115,20 +120,29 @@ def cmd_handles_load(args: argparse.Namespace) -> int:
     members = 0
     handles = 0
     skipped = 0
-    for entry in document.get("members", []):
-        username = entry.get("sleeper_username", "")
-        digests = [handle_hash(h) for h in entry.get("handles", []) if h]
-        try:
-            handles += repo.replace_handles(username, digests)
-        except ValueError as exc:
-            # A handle claimed by two members is a real conflict and must stop
-            # the load; a name that is not in the league is just a stale row.
-            if not str(exc).startswith("unknown member"):
-                raise
-            print(f"unknown member: {username}", file=sys.stderr)
-            skipped += 1
-            continue
-        members += 1
+    with deps.conn.transaction():
+        for entry in document.get("members", []):
+            username = entry.get("sleeper_username", "")
+            digests = [handle_hash(h) for h in entry.get("handles") or [] if h]
+            if not digests:
+                # `replace_handles` is wholesale, so an empty list would wipe
+                # this member's handles. A row with no handles is an unfinished
+                # file, not an instruction to unmap somebody.
+                print(f"no handles: {username}", file=sys.stderr)
+                skipped += 1
+                continue
+            try:
+                handles += repo.replace_handles(username, digests)
+            except ValueError as exc:
+                # A handle claimed by two members is a real conflict and must
+                # stop the load; a name that is not in the league is just a
+                # stale row.
+                if not str(exc).startswith("unknown member"):
+                    raise
+                print(f"unknown member: {username}", file=sys.stderr)
+                skipped += 1
+                continue
+            members += 1
     deps.conn.commit()
     print(f"handles: {members} members, {handles} handles")
     if skipped:
