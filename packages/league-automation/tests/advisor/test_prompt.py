@@ -1,6 +1,7 @@
 """The schema, the versioned prompt, and the one model call the Advisor makes."""
 
 import os
+import subprocess
 from dataclasses import replace
 from decimal import Decimal
 
@@ -27,7 +28,19 @@ from ultimate_guillotine.config import Settings
 from ultimate_guillotine.core.hermes_cli import find_hermes_binary
 
 ASK = Ask(("RB",), "acquire", None, False, (), False)
+RENTAL_ASK = Ask(("RB",), "acquire", 3, True, (), False)
 ASKER = 18
+
+
+class FakeRunner:
+    """Records the keyword arguments each `hermes chat` call is made with."""
+
+    def __init__(self, stdout: str) -> None:
+        self.stdout, self.calls = stdout, []
+
+    def __call__(self, args, **kwargs):
+        self.calls.append(kwargs)
+        return subprocess.CompletedProcess(args, 0, self.stdout, "session_id: s-1")
 
 
 class FakeAI:
@@ -39,10 +52,10 @@ class FakeAI:
         return self.result, AIUsage("gen-1", 10, 5, "gpt-5.6-sol")
 
 
-def _setup(**kwargs):
+def _setup(ask: Ask = ASK, **kwargs):
     snapshot = fixture_snapshot(**kwargs)
     scores = score_league(snapshot)
-    candidates = generate_candidates(snapshot, scores, ASKER, ASK, [])
+    candidates = generate_candidates(snapshot, scores, ASKER, ask, [])
     return snapshot, scores, candidates
 
 
@@ -101,6 +114,14 @@ def test_prompt_forbids_adding_players_counterparties_or_prices() -> None:
     assert NOT_COMPUTED in prompt
 
 
+def test_prompt_forbids_changing_the_structure_or_the_counterparty() -> None:
+    prompt = " ".join(load_prompt().split())
+    assert (
+        "Copy the candidate's structure and its one counterparty exactly; "
+        "never add a second counterparty or change the structure." in prompt
+    )
+
+
 def test_schema_matches_the_spec_and_bounds_the_prose() -> None:
     assert SCHEMA_NAME == "TradeAdviceResponse"
     good = _response().proposals[0].model_dump()
@@ -124,6 +145,56 @@ def test_schema_refers_to_a_candidate_by_its_opaque_index() -> None:
         AdvisedTrade.model_validate(good | {"candidate_index": 0})
     with pytest.raises(ValueError):
         AdvisedTrade.model_validate({k: v for k, v in good.items() if k != "candidate_index"})
+
+
+def test_schema_refuses_a_rank_past_the_last_place_there_is() -> None:
+    good = _response().proposals[0].model_dump()
+    assert AdvisedTrade.model_validate(good | {"rank": 3}).rank == 3
+    with pytest.raises(ValueError):
+        AdvisedTrade.model_validate(good | {"rank": 4})
+
+
+def test_schema_refuses_a_rental_that_never_comes_back() -> None:
+    good = _response().proposals[0].model_dump()
+    with pytest.raises(ValueError):
+        AdvisedTrade.model_validate(good | {"structure": "rental", "return_condition": None})
+    with pytest.raises(ValueError):
+        AdvisedTrade.model_validate(good | {"structure": "rental", "return_condition": ""})
+    returned = AdvisedTrade.model_validate(
+        good | {"structure": "rental", "return_condition": "returns before the Week 10 lock"}
+    )
+    assert returned.structure == "rental"
+
+
+def test_schema_refuses_a_leg_that_is_neither_a_player_nor_a_price() -> None:
+    proposal = _response().proposals[0]
+    player = proposal.asker_receives[0].model_dump()
+    faab = proposal.asker_sends[0].model_dump()
+    with pytest.raises(ValueError):
+        OfferLeg.model_validate(player | {"player_id": None})
+    with pytest.raises(ValueError):
+        OfferLeg.model_validate(player | {"player_name": None})
+    with pytest.raises(ValueError):
+        OfferLeg.model_validate(player | {"amount": 40})
+    with pytest.raises(ValueError):
+        OfferLeg.model_validate(faab | {"amount": None})
+    with pytest.raises(ValueError):
+        OfferLeg.model_validate(faab | {"amount": 0})
+    with pytest.raises(ValueError):
+        OfferLeg.model_validate(faab | {"player_name": "Bench 03-0"})
+
+
+def test_response_ranks_must_run_from_one_with_no_gaps_or_repeats() -> None:
+    body = _response().model_dump()
+    first = body["proposals"][0]
+    second = first | {"candidate_index": 2, "rank": 2}
+    assert len(TradeAdviceResponse.model_validate(body | {"proposals": [first, second]}).proposals)
+    with pytest.raises(ValueError):
+        TradeAdviceResponse.model_validate(body | {"proposals": [first, first]})
+    with pytest.raises(ValueError):
+        TradeAdviceResponse.model_validate(body | {"proposals": [first, second | {"rank": 3}]})
+    with pytest.raises(ValueError):
+        TradeAdviceResponse.model_validate(body | {"proposals": [first | {"rank": 2}]})
 
 
 def test_response_caps_the_proposals_and_the_prose() -> None:
@@ -180,9 +251,28 @@ def test_facts_say_a_missing_delta_could_not_be_computed_and_never_zero() -> Non
         for candidate in candidates
     ]
     facts = build_facts(snapshot, scores, ASKER, ASK, blind, [])
-    assert f"asker point change: {NOT_COMPUTED}" in facts
-    assert f"counterparty point change: {NOT_COMPUTED}" in facts
+    assert f"asker point change (Week {snapshot.week}): {NOT_COMPUTED}" in facts
+    assert f"counterparty point change (Week {snapshot.week}): {NOT_COMPUTED}" in facts
     assert "point change: +0.00" not in facts and "point change: 0" not in facts
+
+
+def test_facts_name_the_single_week_a_permanent_point_change_covers() -> None:
+    snapshot, scores, candidates = _setup()
+    assert candidates and candidates[0].structure == "permanent"
+    facts = build_facts(snapshot, scores, ASKER, ASK, candidates, [])
+    assert f"asker point change (Week {snapshot.week}): " in facts
+    assert f"counterparty point change (Week {snapshot.week}): " in facts
+    assert "Weeks " not in facts
+
+
+def test_facts_name_the_whole_term_a_rental_point_change_covers() -> None:
+    snapshot, scores, candidates = _setup(RENTAL_ASK, horizon_weeks=4)
+    assert candidates and candidates[0].structure == "rental"
+    assert snapshot.weeks == (6, 7, 8, 9)
+    facts = build_facts(snapshot, scores, ASKER, RENTAL_ASK, candidates, [])
+    assert "asker point change (Weeks 6–9): " in facts
+    assert "counterparty point change (Weeks 6–9): " in facts
+    assert "point change (Week 6):" not in facts
 
 
 def test_advise_makes_exactly_one_call_with_the_versioned_prompt() -> None:
@@ -196,10 +286,16 @@ def test_advise_makes_exactly_one_call_with_the_versioned_prompt() -> None:
     assert name == SCHEMA_NAME and "CANDIDATE 1" in user
 
 
-def test_advisor_client_is_built_with_an_explicit_timeout() -> None:
-    assert ADVICE_TIMEOUT_SECONDS > 0
-    client = advisor_client("~/.hermes/profiles/guillotine")
-    assert client._timeout == ADVICE_TIMEOUT_SECONDS
+def test_advisor_client_spends_its_timeout_on_the_call_it_makes() -> None:
+    """The budget is asserted where it lands -- on the subprocess -- not read back
+    off the client that was just handed it."""
+    assert ADVICE_TIMEOUT_SECONDS == 60.0
+    runner = FakeRunner(_response().model_dump_json())
+    client = advisor_client("~/.hermes/profiles/guillotine", runner=runner)
+    snapshot, scores, candidates = _setup()
+    result, _usage = advise(client, snapshot, scores, ASKER, ASK, candidates, [])
+    assert result.status == "ok"
+    assert [call["timeout"] for call in runner.calls] == [ADVICE_TIMEOUT_SECONDS]
 
 
 def test_facts_withhold_every_number_below_the_coverage_gate() -> None:

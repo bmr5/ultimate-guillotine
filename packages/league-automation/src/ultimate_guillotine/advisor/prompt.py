@@ -21,7 +21,8 @@ checked back against the candidate the index points at, which is why the number
 may be opaque: it means nothing but "this one".
 """
 
-from collections.abc import Sequence
+import subprocess
+from collections.abc import Callable, Sequence
 from decimal import Decimal
 from functools import lru_cache
 from pathlib import Path
@@ -51,11 +52,13 @@ NO_PROJECTIONS = "projections unavailable"
 #: rule the model is given and the token it will actually see are one thing.
 NOT_COMPUTED = "could not be computed"
 
-#: The budget for the whole call, retry included. Longer than the Registrar's
-#: sixty seconds because the facts block is a league's worth of rosters and the
-#: answer is three paragraphs of prose, and still short enough that a member who
-#: asked a question in the group chat gets an answer or an apology, not silence.
-ADVICE_TIMEOUT_SECONDS = 90.0
+#: The budget for the whole call, retry included -- the same minute the
+#: Registrar gets, and for the same reason. The listener holds its single-flight
+#: lock for the length of this call, so every other member's question is queued
+#: behind it; a longer budget does not buy a better answer, it buys a longer
+#: silence for everybody else. A question that has not been answered in a minute
+#: gets an apology instead, which is what a group chat can actually use.
+ADVICE_TIMEOUT_SECONDS = 60.0
 
 
 @lru_cache(maxsize=1)
@@ -63,9 +66,21 @@ def load_prompt() -> str:
     return _PROMPT_PATH.read_text(encoding="utf-8")
 
 
-def advisor_client(profile_home: str, model: str | None = None) -> HermesStructuredClient:
-    """The Advisor's client, with its timeout stated rather than inherited."""
-    return HermesStructuredClient(profile_home, model=model, timeout=ADVICE_TIMEOUT_SECONDS)
+def advisor_client(
+    profile_home: str,
+    model: str | None = None,
+    *,
+    runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
+) -> HermesStructuredClient:
+    """The Advisor's client, with its timeout stated rather than inherited.
+
+    ``runner`` is the subprocess call, injectable so a test can watch what
+    budget actually reaches it rather than read the attribute back off the
+    client it just built.
+    """
+    return HermesStructuredClient(
+        profile_home, model=model, runner=runner, timeout=ADVICE_TIMEOUT_SECONDS
+    )
 
 
 def _leg_text(leg: CandidateLeg) -> str:
@@ -93,6 +108,34 @@ def _delta_text(value: Decimal | None, basis: DeltaBasis) -> str:
     if value is None or basis != "lineup":
         return NOT_COMPUTED
     return f"{value:+.2f}"
+
+
+def _covered_weeks(snapshot: LeagueSnapshot, candidate: Candidate) -> tuple[int, ...]:
+    """The weeks this candidate's point changes were summed over.
+
+    The same arithmetic
+    :func:`~ultimate_guillotine.advisor.candidates._covered_weeks` used to
+    produce the figures, read back off the candidate rather than off the ask, so
+    the span in the sentence is the span of the number beside it: a permanent
+    trade is judged on the snapshot's own week, and a rental on every loaded
+    week before it returns.
+    """
+    if candidate.structure != "rental" or candidate.return_week is None:
+        return (snapshot.week,)
+    return tuple(w for w in snapshot.weeks if w < candidate.return_week) or (snapshot.week,)
+
+
+def _span_text(weeks: Sequence[int]) -> str:
+    """``Week 6`` or ``Weeks 6–9`` -- which weeks a summed figure covers.
+
+    A three-week rental's ``+12.00`` and a one-week trade's ``+12.00`` are not
+    the same offer, and without this the facts gave the model no way to tell
+    them apart. Every point change carries its own span, so the number and the
+    weeks behind it can never drift out of step.
+    """
+    if len(weeks) == 1:
+        return f"Week {weeks[0]}"
+    return f"Weeks {weeks[0]}–{weeks[-1]}"
 
 
 def _team_lines(snapshot: LeagueSnapshot, scores: dict[int, TeamScore], known: bool) -> list[str]:
@@ -123,7 +166,9 @@ def _team_lines(snapshot: LeagueSnapshot, scores: dict[int, TeamScore], known: b
     return lines
 
 
-def _candidate_lines(candidates: Sequence[Candidate], known: bool) -> list[str]:
+def _candidate_lines(
+    snapshot: LeagueSnapshot, candidates: Sequence[Candidate], known: bool
+) -> list[str]:
     """The numbered list the answer must point back into.
 
     The number is the whole contract: it is what ``candidate_index`` carries and
@@ -133,6 +178,7 @@ def _candidate_lines(candidates: Sequence[Candidate], known: bool) -> list[str]:
     lines: list[str] = []
     for index, candidate in enumerate(candidates, start=1):
         reasons = candidate.reasons
+        span = _span_text(_covered_weeks(snapshot, candidate))
         lines.append(f"CANDIDATE {index}: counterparty {candidate.counterparty}")
         for leg in candidate.asker_receives:
             lines.append(f"  asker receives: {_leg_text(leg)}")
@@ -151,10 +197,11 @@ def _candidate_lines(candidates: Sequence[Candidate], known: bool) -> list[str]:
             f"  counterparty pressure rank: {_rank_text(candidate.counterparty_pressure_rank)}"
         )
         lines.append(
-            f"  asker point change: {_delta_text(candidate.asker_delta, reasons.delta_basis)}"
+            f"  asker point change ({span}): "
+            f"{_delta_text(candidate.asker_delta, reasons.delta_basis)}"
         )
         lines.append(
-            "  counterparty point change: "
+            f"  counterparty point change ({span}): "
             f"{_delta_text(candidate.counterparty_delta, reasons.delta_basis)}"
         )
         if candidate.comparable_trade_code:
@@ -196,6 +243,7 @@ def build_facts(
             f"rental {'yes' if ask.rental else 'no'}."
         ),
         f"A point change of '{NOT_COMPUTED}' is unknown, not zero.",
+        "Each point change is a total over the weeks named beside it.",
     ]
     if not known:
         header.append(f"Projections: {NO_PROJECTIONS}; rank on roster shape alone.")
@@ -210,7 +258,7 @@ def build_facts(
             *_history_lines(points),
             "",
             "CANDIDATES",
-            *_candidate_lines(candidates, known),
+            *_candidate_lines(snapshot, candidates, known),
         ]
     )
 
