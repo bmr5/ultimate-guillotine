@@ -207,7 +207,7 @@ checked.
 - [x] Delivery: `ug ops self-test` prints `sent`; exactly one signed
   `Self-test ...` message appears in the self-test chat; `#guillotine-feed`
   shows the mirror.
-- [x] Inbound: send `bot: ping` in the self-test chat from the non-Ben
+- [x] Inbound: send `@bot ping` in the self-test chat from the non-Ben
   handle; a signed `pong ...` reply arrives within 10 seconds;
   `#guillotine-feed` shows it.
 - [x] Scheduler: `HERMES_HOME=~/.hermes/profiles/guillotine hermes cron run
@@ -222,7 +222,7 @@ checked.
   the listener log's recorded GUID; the response is
   `{"outcome":"duplicate"}`.
 - [x] Gap fill: stop the listener with `launchctl bootout
-  gui/$(id -u)/com.ultimateguillotine.listener`, send `bot: ping` in the
+  gui/$(id -u)/com.ultimateguillotine.listener`, send `@bot ping` in the
   self-test chat, restart with the installer, run `ug ingest gap-fill`;
   exactly one `pong` arrives and a second `ug ingest gap-fill` handles
   zero messages.

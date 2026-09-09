@@ -10,9 +10,8 @@ This agent uses the shared design in `docs/superpowers/specs/2026-08-27-automati
 
 The agent responds when an inbound league-chat message begins with or clearly invokes one of:
 
-- `@GuillotineBot`
-- `Guillotine Bot:`
-- `bot:`
+- `@bot` (case-insensitive; the primary form)
+- `@guillotinebot` or `@GuillotineBot`
 
 The BlueBubbles webhook listener matches these tags deterministically before any model runs; untagged league chatter never reaches the agent. Hermes's own iMessage adapter is disabled, so this listener is the only path from the league chat to the Concierge.
 

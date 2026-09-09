@@ -62,15 +62,15 @@ def test_signed_bot_message_is_ignored() -> None:
 
 def test_matching_trigger_runs_and_persists_source() -> None:
     calls = []
-    trigger = Trigger("ping", lambda m: m.text == "bot: ping", lambda m: calls.append(m.guid))
+    trigger = Trigger("ping", lambda m: m.text == "@bot ping", lambda m: calls.append(m.guid))
     registry = TriggerRegistry()
     registry.register(trigger)
     sources = FakeSources()
     processor = InboundProcessor({CHAT}, registry, FakeReceipts(), sources)
-    assert processor.process(msg("bot: ping"), "e") == "handled:ping"
+    assert processor.process(msg("@bot ping"), "e") == "handled:ping"
     assert calls == ["g1"]
     assert sources.rows[0].trigger_name == "ping"
-    assert sources.rows[0].excerpt == "bot: ping"
+    assert sources.rows[0].excerpt == "@bot ping"
 
 
 def test_handler_error_is_reported_not_raised() -> None:

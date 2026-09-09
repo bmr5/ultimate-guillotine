@@ -11,7 +11,9 @@ This agent uses the shared design in `docs/superpowers/specs/2026-08-27-automati
 A message becomes a trade candidate only when it contains:
 
 1. the red alert emoji `🚨`; and
-2. trade language or recognizable transaction terms such as sends, receives, trades, buys, sells, rents, swaps, FAAB, option, protection, or named player movement.
+2. either the phrase `Trade Alert` (the conventional header is `🚨 Trade Alert 🚨`) or trade language such as sends, receives, trades, buys, sells, rents, swaps, FAAB, option, protection, or named player movement.
+
+The detection rule is deterministic. The single extraction call that follows may additionally answer `not_a_trade` for a message that passed the rule but describes no transaction; the agent then records the run and stays silent.
 
 The BlueBubbles webhook listener on the Mac mini applies this rule deterministically and runs the agent inline, so candidates are normally processed within a few seconds. A gap-fill cron job on the `guillotine` Hermes profile re-reads allowlisted chats after any listener downtime and feeds missed messages through the same rule. Messages outside the production league chat cannot create production trades.
 

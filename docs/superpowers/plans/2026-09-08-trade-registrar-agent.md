@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- A message is a trade candidate only when it contains the red alert emoji `🚨` **and** trade language (`send`, `receive`, `trade`, `buy`, `sell`, `rent`, `swap`, `faab`, `option`, `protection`, `pays`, `insurance`, with common inflections). Detection is deterministic code in the listener, never a model.
+- A message is a trade candidate only when it contains the red alert emoji `🚨` **and** either the phrase `trade alert` (the league's header is `🚨 Trade Alert 🚨`) or trade language (`send`, `receive`, `trade`, `buy`, `sell`, `rent`, `swap`, `faab`, `option`, `protection`, `pays`, `insurance`, with common inflections). Detection is deterministic code in the listener. The extraction call may answer `kind: not_a_trade`, which ends the run silently.
 - The language model extracts terms only. It never resolves ambiguity, never picks between two matching names, never decides fairness. Deterministic code resolves names, validates, fingerprints, and persists.
 - Validation requires at least two recognized parties and one explicit asset or obligation; amounts keep their unit (`faab`, `draft_dollars`, `usd`); a rental keeps its return condition; unusual terms go verbatim into `special_terms`.
 - Ambiguity produces a clarification request, never a logged trade.
@@ -559,7 +559,7 @@ git commit -m "feat: add player directory and trade fingerprint columns"
   - Pydantic models (all `frozen=True`, `extra="forbid"`):
     - `ExtractedParty(name: str)`
     - `ExtractedAsset(kind: Literal["player","faab","draft_dollars","usd","protection","other"], from_party: str | None, to_party: str | None, player_name: str | None, amount: int | None, unit: Literal["faab","draft_dollars","usd"] | None, description: str | None)`
-    - `ExtractedTrade(kind: Literal["permanent","rental","payment","rescission","unclear"], parties: list[ExtractedParty], assets: list[ExtractedAsset], effective_week: int | None, rental_return_condition: str | None, special_terms: list[str], referenced_trade_code: str | None, unclear_reason: str | None)`
+    - `ExtractedTrade(kind: Literal["permanent","rental","payment","rescission","unclear","not_a_trade"], parties: list[ExtractedParty], assets: list[ExtractedAsset], effective_week: int | None, rental_return_condition: str | None, special_terms: list[str], referenced_trade_code: str | None, unclear_reason: str | None)`
     - `TradeParty(member_id: int, display_name: str)`
     - `TradeAsset(kind, from_member_id: int | None, to_member_id: int | None, player_id: str | None, player_name: str | None, amount: int | None, unit: str | None, description: str | None)`
     - `TradeProposal(season: int, effective_week: int | None, kind, parties: list[TradeParty], assets: list[TradeAsset], rental_return_condition: str | None, special_terms: list[str], referenced_trade_code: str | None, source_message_guid: str, evidence_excerpt: str, prompt_version: str, model: str)`
@@ -567,7 +567,7 @@ git commit -m "feat: add player directory and trade fingerprint columns"
 
 - [ ] **Step 1: Write the fixture and failing tests**
 
-`alerts.json` is a list of objects `{"id", "category", "text", "expect_candidate", "expect_rescission"}` covering: `permanent`, `faab_only`, `rental`, `multi_party`, `option`, `payment_no_trade`, `duplicate_repost` (same text as `permanent` with extra whitespace), `amended` (permanent with a different FAAB amount), `rescission`, `ambiguous` (`"🚨 Chase rented for 10"`), and two negatives (`"🚨 huge game tonight"`, `"Member01 sends Player A to Member02"`). Member names are `Member01`..`Member04`; player names are `Player Alpha`, `Player Beta`, `Player Gamma`, `Kansas City Chiefs`.
+`alerts.json` is a list of objects `{"id", "category", "text", "expect_candidate", "expect_rescission"}`. Every positive alert text starts with the league header `🚨 Trade Alert 🚨` followed by the terms on the next line; the fixture also includes one positive with only the siren and trade words (`🚨 Member01 sends Player Alpha to Member02 for 20 FAAB`) and one positive with the header but unusual wording (`🚨 Trade Alert 🚨\nMember01 gives Member02 Player Gamma, done deal`). It covers: `permanent`, `faab_only`, `rental`, `multi_party`, `option`, `payment_no_trade`, `duplicate_repost` (same text as `permanent` with extra whitespace), `amended` (permanent with a different FAAB amount), `rescission`, `ambiguous` (`"🚨 Chase rented for 10"`), and two negatives (`"🚨 huge game tonight"`, `"Member01 sends Player A to Member02"`). Member names are `Member01`..`Member04`; player names are `Player Alpha`, `Player Beta`, `Player Gamma`, `Kansas City Chiefs`.
 
 ```python
 # packages/league-automation/tests/trades/test_detect.py
@@ -662,8 +662,11 @@ TRADE_TERMS = re.compile(
 RESCIND_TERMS = re.compile(r"\b(rescind|rescinds|rescinded|cancel|cancels|cancelled|canceled|void|voided)\b", re.IGNORECASE)
 
 
+HEADER = re.compile(r"trade\s*alert", re.IGNORECASE)
+
+
 def is_trade_candidate(text: str) -> bool:
-    return ALERT in text and TRADE_TERMS.search(text) is not None
+    return ALERT in text and (HEADER.search(text) is not None or TRADE_TERMS.search(text) is not None)
 
 
 def is_rescission_candidate(text: str) -> bool:
@@ -893,7 +896,7 @@ Run: `uv run --project packages/league-automation pytest packages/league-automat
 
 - [ ] **Step 3: Write the prompt and the extractor**
 
-`agents/trade-registrar/prompt.md` (version header first line `<!-- prompt_version: 2026.1 -->`) says, in this order: you convert one fantasy football trade announcement into structured fields; extract only what the text states explicitly; use `null` for anything not stated; copy unusual conditions verbatim into `special_terms`; never judge fairness and never invent a counterparty, amount, or player; classify `kind` as `permanent`, `rental` (a player returns later), `payment` (money or FAAB with no player), `rescission` (the text cancels a prior trade), or `unclear`; set `unclear` with a one-sentence `unclear_reason` when fewer than two people or no asset is named; amounts are integers with units `faab`, `draft_dollars`, or `usd`; `effective_week` is a number only if stated; party names are copied as written.
+`agents/trade-registrar/prompt.md` (version header first line `<!-- prompt_version: 2026.1 -->`) says, in this order: you convert one fantasy football trade announcement into structured fields; extract only what the text states explicitly; use `null` for anything not stated; copy unusual conditions verbatim into `special_terms`; never judge fairness and never invent a counterparty, amount, or player; classify `kind` as `permanent`, `rental` (a player returns later), `payment` (money or FAAB with no player), `rescission` (the text cancels a prior trade), `not_a_trade` (the message is not announcing a transaction at all, for example a joke or a question), or `unclear`; set `unclear` with a one-sentence `unclear_reason` when fewer than two people or no asset is named; amounts are integers with units `faab`, `draft_dollars`, or `usd`; `effective_week` is a number only if stated; party names are copied as written.
 
 ```python
 # packages/league-automation/src/ultimate_guillotine/trades/extract.py
@@ -1114,7 +1117,7 @@ git commit -m "feat: format trade confirmations and clarifications"
 **Interfaces:**
 - Consumes: everything above plus `RunRepository`, `DeliveryService`, `HermesNotifier`, `InboundMessage`, `Trigger`.
 - Produces:
-  - `TradeRegistrar(settings, conn, ai, delivery, notifier, members_repo, players_repo, trades_repo, runs_repo, clock=...)` with `handle(msg: InboundMessage) -> str` returning one of `created`, `revised`, `duplicate`, `rescinded`, `clarification`, `failed`, `skipped`.
+  - `TradeRegistrar(settings, conn, ai, delivery, notifier, members_repo, players_repo, trades_repo, runs_repo, clock=...)` with `handle(msg: InboundMessage) -> str` returning one of `created`, `revised`, `duplicate`, `rescinded`, `clarification`, `not_a_trade`, `failed`, `skipped`.
   - `trade_trigger(registrar: TradeRegistrar) -> Trigger` named `trade-registrar`, matching `is_trade_candidate(msg.text) and not msg.is_from_me` (a 🚨 from Ben's own handle still counts when `msg.is_from_me` is true and the text is not signed; implement `matches` as `is_trade_candidate(text) and not is_signed(text)`).
   - `ug trades extract --text "<alert>"` (dry run: prints the resolved proposal as JSON or the clarification reason; no writes, no send), `ug trades list [--limit N]`, `ug trades retry <source_guid>` (re-runs a failed candidate from `private.source_messages.excerpt`), `ug trades replay <xlsx> [--limit N] [--dry-run]` (Task 9).
 
@@ -1259,6 +1262,14 @@ def test_unclear_sends_clarification_and_logs_no_trade() -> None:
     assert runs.finished[0][1] == "succeeded"
 
 
+def test_not_a_trade_stays_silent() -> None:
+    delivery, trades = FakeDelivery(), FakeTrades()
+    joke = good_extraction().model_copy(update={"kind": "not_a_trade", "parties": [], "assets": []})
+    reg, runs, _ = build(FakeAI(joke), trades=trades, delivery=delivery)
+    assert reg.handle(msg("🚨 Trade Alert 🚨 jk nobody is trading Member01 anything")) == "not_a_trade"
+    assert delivery.sent == [] and trades.accepted == [] and runs.finished[0][1] == "succeeded"
+
+
 def test_ai_unavailable_alerts_and_fails_run_without_sending() -> None:
     delivery = FakeDelivery()
     reg, runs, notifier = build(FakeAI(error=AIUnavailable("down")), delivery=delivery)
@@ -1309,7 +1320,7 @@ Run: `uv run --project packages/league-automation pytest packages/league-automat
 2. Wrap everything after this in `try/except`; on any unexpected exception `runs.finish(run_id, "failed", error=exc.__class__.__name__)`, `notifier.alerts(f"Trade Registrar failed on a candidate: {exc.__class__.__name__}")`, commit if `conn` is not `None`, and return `failed`.
 3. Rescission fast path: if `is_rescission_candidate(msg.text)` and a code matching `T-\d{4}-\d{3}` appears in the text: `trades.rescind(code, msg.guid, msg.sent_at)`; deliver `format_rescinded(code)`; finish `succeeded`; return `rescinded`. If it is a rescission with no code, fall through to extraction and, when `kind == "rescission"`, resolve the target by `trades.find_by_context(trade_context_key(proposal))`; if none, send `format_clarification("Which trade is rescinded? Include its T- code")` and return `clarification`.
 4. `extracted, usage = extract_trade(ai, msg.text, season, week_hint, [m.display_name for m in members])` where `season` is the year of `clock()` and `week_hint` is `None` in this plan (the Adjudicator plan adds the current-week lookup). On `AIUnavailable` or `AIInvalidOutput`: finish `failed`, alert, return `failed`.
-5. `resolve_extracted(...)` then `validate(...)`; on `Unresolved` deliver `format_clarification(reason)`, finish `succeeded` with `output_hash` of the clarification text, return `clarification`.
+5. If `extracted.kind == "not_a_trade"`: finish `succeeded` with `output_hash=None`, send nothing, return `not_a_trade`. Otherwise `resolve_extracted(...)` then `validate(...)`; on `Unresolved` deliver `format_clarification(reason)`, finish `succeeded` with `output_hash` of the clarification text, return `clarification`.
 6. `acceptance = trades.accept(proposal)`; `duplicate` finishes the run with status `duplicate` and returns without sending; `created` delivers `format_confirmation`; `revised` delivers `format_updated(code, proposal, acceptance.previous_terms)`.
 7. Finish `succeeded`, recording `input_version=f"{PROMPT_VERSION}:{usage.model}"` through `runs.finish` (extend `RunRepository.finish` with an optional `input_version` keyword if it lacks one) and `output_hash = sha256(content)`.
 8. Commit after each database step when `conn` is provided (`conn.commit()`); the fakes pass `None`.
@@ -1380,7 +1391,7 @@ This calls OpenRouter about 15 times (well under a cent). Record in the report h
 
 With `DELIVERY_MODE=test` and the listener restarted:
 
-1. Send `🚨 <Ben> sends Player Alpha to <second handle name>` from the second handle, using two real member display names from `public.members` and a real active player name. Expect a signed `🚨 Trade T-2026-001 logged` reply and a mirror in `#guillotine-feed`.
+1. Send `🚨 Trade Alert 🚨` on one line and `<Ben> sends Player Alpha to <second handle name> for 100 FAAB` on the next, from the second handle, using two real member display names from `public.members` and a real active player name. Expect a signed `🚨 Trade T-2026-001 logged` reply and a mirror in `#guillotine-feed`.
 2. Send the same text again. Expect no reply; `ug ops audit-runs` prints nothing; `select status from private.agent_runs where agent = 'trade-registrar' order by id desc limit 1` is `duplicate`.
 3. Send the same trade with a different FAAB amount. Expect `🚨 Trade T-2026-001 updated`.
 4. Send `🚨 Trade T-2026-001 is rescinded`. Expect `🚨 Trade T-2026-001 rescinded`.

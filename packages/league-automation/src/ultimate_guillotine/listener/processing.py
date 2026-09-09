@@ -87,7 +87,7 @@ def ping_trigger(delivery, test_chat_guid: str) -> Trigger:
     def matches(msg: InboundMessage) -> bool:
         return (
             msg.chat_guid == test_chat_guid
-            and msg.text.strip().lower() == "bot: ping"
+            and msg.text.strip().lower() == "@bot ping"
             and not msg.is_from_me
         )
 
