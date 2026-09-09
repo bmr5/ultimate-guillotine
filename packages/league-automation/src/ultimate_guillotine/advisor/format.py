@@ -17,7 +17,12 @@ Advisor thinks of another's season.
 **A figure that is unknown says so.** A lineup change is only a number when the
 whole comparison was made; a withheld projection or an unprojected incumbent
 renders as :data:`NOT_COMPUTED`, never as ``0.00`` and never as a missing line,
-because a manager reading a silence reads it as "no change".
+because a manager reading a silence reads it as "no change". That is why
+``candidates`` is a required argument to :func:`format_advice` rather than one
+that defaults to empty: a caller who forgot it would otherwise get a message
+that looks complete and quietly says nothing about what any trade does to the
+lineup. A proposal whose index resolves to no candidate keeps the line and
+fills it with :data:`NOT_COMPUTED` for the same reason.
 """
 
 from collections.abc import Sequence
@@ -37,6 +42,12 @@ SOURCE_PREFIX = "Source: "
 NO_PROJECTIONS = "projections unavailable"
 NOT_COMPUTED = "could not be computed"
 
+#: What the league sees when the request arrived after the trade deadline. Its
+#: own line, not the rejection fallback: there is no "few minutes" in which a
+#: passed deadline becomes a trade. See
+#: :data:`~ultimate_guillotine.advisor.verify.TRADE_DEADLINE_WEEK`.
+DEADLINE_PASSED = "The trade deadline has passed, so I can't suggest trades."
+
 #: What the league sees when validation rejected the answer. Fixed, because the
 #: real reason names ids and amounts from a response nobody should trust, and it
 #: goes to the ops log instead -- see
@@ -44,11 +55,13 @@ NOT_COMPUTED = "could not be computed"
 FALLBACK = "I can't put advice together yet — try again in a few minutes."
 
 __all__ = [
+    "DEADLINE_PASSED",
     "FALLBACK",
     "NOT_COMPUTED",
     "NO_PROJECTIONS",
     "SOURCE_PREFIX",
     "format_advice",
+    "format_deadline_passed",
     "format_refusal",
     "format_rejected",
     "format_stale",
@@ -63,8 +76,16 @@ def _side(legs: Sequence[OfferLeg]) -> str:
     return " + ".join(parts) if parts else "nothing"
 
 
-def _lineup_line(snapshot: LeagueSnapshot, candidate: Candidate) -> str:
-    """What the trade does to the asker's own best lineup, over stated weeks."""
+def _lineup_line(snapshot: LeagueSnapshot, candidate: Candidate | None) -> str:
+    """What the trade does to the asker's own best lineup, over stated weeks.
+
+    Always a line. Without the candidate there is no span to name either, so the
+    line names neither -- ``Your lineup: could not be computed`` says exactly as
+    much as is known, where a span beside a missing figure would dress up a
+    number nobody has.
+    """
+    if candidate is None:
+        return f"   Your lineup: {NOT_COMPUTED}"
     span = span_text(weeks_covered(snapshot, candidate))
     known = candidate.asker_delta is not None and candidate.reasons.delta_basis == "lineup"
     figure = f"{candidate.asker_delta:+.2f}" if known else NOT_COMPUTED
@@ -81,12 +102,12 @@ def _proposal_lines(
     )
     if proposal.structure == "rental" and proposal.return_condition:
         offer = f"{offer} ({proposal.return_condition})"
-    lines = [offer]
-    if candidate is not None:
-        lines.append(_lineup_line(snapshot, candidate))
-    lines.append(f"   Why: {proposal.reasoning}")
-    lines.append(f"   Risk: {proposal.risk}")
-    return lines
+    return [
+        offer,
+        _lineup_line(snapshot, candidate),
+        f"   Why: {proposal.reasoning}",
+        f"   Risk: {proposal.risk}",
+    ]
 
 
 def _source(snapshot: LeagueSnapshot, projections_known: bool) -> str:
@@ -97,11 +118,14 @@ def _source(snapshot: LeagueSnapshot, projections_known: bool) -> str:
 def _candidate_for(
     proposal: AdvisedTrade, candidates: Sequence[Candidate]
 ) -> Candidate | None:
-    """The candidate a verified proposal points at, when the caller passed them.
+    """The candidate a verified proposal points at, if the index resolves.
 
-    ``None`` is a real answer, not a failure: a caller that renders a response
-    without the candidate set gets the proposal without its point change rather
-    than a made-up one.
+    ``None`` only where the caller passed a candidate list this response was not
+    verified against -- :func:`~ultimate_guillotine.advisor.verify.verify`
+    rejects an index past the end, so it cannot happen on the path from a
+    verified response. It renders as :data:`NOT_COMPUTED` rather than as a
+    dropped line, so a mismatched pair shows up as an obviously missing figure
+    instead of a message that reads complete.
     """
     index = proposal.candidate_index
     return candidates[index - 1] if 1 <= index <= len(candidates) else None
@@ -112,13 +136,14 @@ def format_advice(
     snapshot: LeagueSnapshot,
     *,
     projections_known: bool,
-    candidates: Sequence[Candidate] = (),
+    candidates: Sequence[Candidate],
 ) -> str:
     """The full answer: lead, numbered proposals, source line.
 
-    ``candidates`` is the same list the response was verified against. Passing
-    it adds each proposal's lineup change; leaving it out renders the offer and
-    the prose alone, which is what a caller with only a stored response has.
+    ``candidates`` is the same list the response was verified against, and it is
+    required: every proposal renders what the trade does to the asker's lineup,
+    and a caller with no candidates in hand has to say so with an empty sequence
+    rather than by omitting the argument and getting silence.
     """
     if response.status != "ok" or not response.proposals:
         note = response.note or "Nothing on the board beats standing pat right now."
@@ -157,3 +182,14 @@ def format_refusal() -> str:
 def format_rejected() -> str:
     """The one answer when validation threw the model's whole response out."""
     return FALLBACK
+
+
+def format_deadline_passed() -> str:
+    """The one answer to a trade question asked after the deadline.
+
+    Sent from :func:`~ultimate_guillotine.advisor.verify.deadline_passed` before
+    any model call, and from
+    :class:`~ultimate_guillotine.advisor.verify.DeadlinePassed` if one happened
+    anyway.
+    """
+    return DEADLINE_PASSED
