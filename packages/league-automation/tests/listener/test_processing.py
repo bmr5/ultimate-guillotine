@@ -90,3 +90,22 @@ def test_handler_error_is_reported_not_raised() -> None:
     )
     assert processor.process(msg("hi"), "e") == "handled:boom"
     assert errors == ["boom"]
+
+
+def test_ping_trigger_accepts_unsigned_messages_from_ben_but_not_signed_ones() -> None:
+    from ultimate_guillotine.core.signature import sign
+    from ultimate_guillotine.listener.processing import ping_trigger
+
+    calls = []
+
+    class Delivery:
+        def deliver(self, run_id, agent, content):
+            calls.append(content)
+
+    trigger = ping_trigger(Delivery(), CHAT)
+    assert trigger.matches(msg("@bot ping", from_me=True))
+    assert trigger.matches(msg("@BOT PING"))
+    processor = build(trigger)
+    assert processor.process(msg(sign("pong 1"), from_me=True), "e1") == "ignored_bot"
+    assert processor.process(msg("@bot ping", from_me=True), "e2") == "handled:ping"
+    assert len(calls) == 1
