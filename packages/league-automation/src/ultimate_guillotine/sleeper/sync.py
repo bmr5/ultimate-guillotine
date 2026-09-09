@@ -3,8 +3,9 @@
 One pass writes, in order: the league's cached settings on ``public.seasons``,
 ``public.members`` (the matching key and the Sleeper label beside it),
 ``public.teams``, then per team its ``public.roster_holdings`` and its
-``public.team_season_state`` row. All of it in a single transaction, so the
-board never reads a half-synced league.
+``public.team_season_state`` row, and -- the first time a team is seen
+eliminated -- its frozen ``public.final_rosters`` snapshot. All of it in a single
+transaction, so the board never reads a half-synced league.
 
 The sync still decides nothing about elimination on its own: it merely carries a
 roster tag forward as a *provisional* ``sleeper_inferred`` record, which the
@@ -20,6 +21,7 @@ import psycopg
 from ultimate_guillotine.sleeper.client import SleeperClient
 from ultimate_guillotine.sleeper.models import SleeperLeague
 from ultimate_guillotine.sleeper.roster_state import (
+    FinalRosterRepository,
     RosterHoldingRepository,
     SeasonSettingsRepository,
     TeamStateRepository,
@@ -37,6 +39,7 @@ class SyncReport:
     teams: int
     holdings: int
     states: int
+    frozen: int
 
 
 def validate_league(league: SleeperLeague, expected_id: str, expected_rosters: int) -> None:
@@ -108,9 +111,11 @@ def sync_season(
 
         holdings_repo = RosterHoldingRepository(conn)
         state_repo = TeamStateRepository(conn)
+        final_repo = FinalRosterRepository(conn)
         teams_synced = 0
         holdings_written = 0
         states_written = 0
+        frozen_count = 0
         for roster in rosters:
             user = users_by_id.get(roster.owner_id)
             if user is None:
@@ -150,9 +155,20 @@ def sync_season(
                 bumps_state_version(stored, merged),
             )
             states_written += 1
+            # The Adjudicator writes its ruling straight into team_season_state, so the
+            # first sync that *observes* an elimination -- from either source -- is what
+            # takes the snapshot. A second observation is a no-op. It runs after this
+            # roster's holdings are written and its dropped players deleted, so the
+            # snapshot is the team's roster as of this transaction.
+            if merged.is_eliminated and final_repo.freeze(
+                season_id, team_id, merged.eliminated_week, classification.holdings, now
+            ):
+                frozen_count += 1
             teams_synced += 1
 
         if teams_synced != expected_rosters:
             raise ValueError(f"expected {expected_rosters} teams, synced {teams_synced}")
 
-    return SyncReport(len(member_ids), teams_synced, holdings_written, states_written)
+    return SyncReport(
+        len(member_ids), teams_synced, holdings_written, states_written, frozen_count
+    )

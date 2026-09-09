@@ -1,4 +1,5 @@
 import json
+from dataclasses import replace
 from pathlib import Path
 
 from ultimate_guillotine.sleeper.models import SleeperLeague, SleeperRoster, SleeperUser
@@ -59,10 +60,15 @@ def test_sync_season_is_idempotent(conn) -> None:
     assert expected_holdings > 0, "the roster fixtures name no players"
 
     first = sync_season(client, conn, year=2026, league_id=LEAGUE_ID)
-    assert first == SyncReport(members=18, teams=18, holdings=expected_holdings, states=18)
+    assert first == SyncReport(
+        members=18, teams=18, holdings=expected_holdings, states=18, frozen=1
+    )
 
+    # The rows are idempotent, and `frozen` is honest about that rather than in
+    # spite of it: it counts the final-roster snapshots *this* run wrote, and the
+    # one eliminated team in the fixture was already frozen by the first pass.
     second = sync_season(client, conn, year=2026, league_id=LEAGUE_ID)
-    assert second == first
+    assert second == replace(first, frozen=0)
 
     with conn.cursor() as cur:
         cur.execute("select count(*) from public.members")

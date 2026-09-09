@@ -60,7 +60,8 @@ def cmd_sync(args: argparse.Namespace) -> int:
         if not args.quiet:
             print(
                 f"sleeper sync: {report.members} members, {report.teams} teams, "
-                f"{report.holdings} holdings, {report.states} team states"
+                f"{report.holdings} holdings, {report.states} team states, "
+                f"{report.frozen} rosters frozen"
             )
         return 0
 

@@ -2,10 +2,11 @@
 
 Slot classification, FAAB and record recombination, and the elimination
 precedence rule all live here as functions over plain values, so every rule the
-spec states has a test that needs no database and no network. The three
-repositories underneath them are the only writers of ``public.roster_holdings``
-and ``public.team_season_state``, and of the cached league settings on
-``public.seasons``; each runs in the caller's transaction and decides nothing.
+spec states has a test that needs no database and no network. The four
+repositories underneath them are the only writers of ``public.roster_holdings``,
+``public.team_season_state`` and ``public.final_rosters``, and of the cached
+league settings on ``public.seasons``; each runs in the caller's transaction and
+decides nothing.
 """
 
 from dataclasses import dataclass
@@ -344,3 +345,64 @@ class TeamStateRepository:
                     1 if bump_version else 0,
                 ),
             )
+
+
+def holdings_payload(holdings: tuple[Holding, ...]) -> list[dict[str, object]]:
+    """The body of a final-roster snapshot, in classification order.
+
+    A plain list of plain dicts rather than the frozen dataclasses, because this
+    goes into a ``jsonb`` column and comes back out of it as exactly this shape
+    for the board to render. Order is the order ``classify_holdings`` produced:
+    starters by lineup index, then ir, taxi, bench.
+    """
+    return [
+        {
+            "sleeper_player_id": holding.sleeper_player_id,
+            "slot": holding.slot,
+            "slot_index": holding.slot_index,
+            "lineup_position": holding.lineup_position,
+        }
+        for holding in holdings
+    ]
+
+
+class FinalRosterRepository:
+    """The roster a team was eliminated with, written once and never rewritten."""
+
+    def __init__(self, conn: psycopg.Connection) -> None:
+        self._conn = conn
+
+    def freeze(
+        self,
+        season_id: int,
+        team_id: int,
+        eliminated_week: int | None,
+        holdings: tuple[Holding, ...],
+        now: datetime,
+    ) -> bool:
+        """Snapshot a team's holdings the first time it is seen eliminated.
+
+        ``do nothing`` is the whole rule: the first write wins forever. Later
+        syncs keep updating ``roster_holdings`` for the team -- managers go on
+        dropping and adding after they are out -- but the roster they were
+        eliminated with never moves, and no code path updates or deletes this
+        row. Returns True only when this call is the one that wrote it, so the
+        caller can report how many teams froze on this run.
+        """
+        with self._conn.cursor() as cur:
+            cur.execute(
+                """
+                insert into public.final_rosters
+                  (season_id, team_id, eliminated_week, holdings, frozen_at)
+                values (%s, %s, %s, %s, %s)
+                on conflict (season_id, team_id) do nothing
+                """,
+                (
+                    season_id,
+                    team_id,
+                    eliminated_week,
+                    Jsonb(holdings_payload(holdings)),
+                    now,
+                ),
+            )
+            return cur.rowcount == 1
