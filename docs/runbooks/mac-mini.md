@@ -202,31 +202,43 @@ is copied verbatim from the plan; check each box off as it is verified
 on the Mac mini, and update the status heading below once every box is
 checked.
 
-### Gate 0 status: not yet run
+### Gate 0 passed: 2026-09-08, delivery mode test
 
-- [ ] Delivery: `ug ops self-test` prints `sent`; exactly one signed
+- [x] Delivery: `ug ops self-test` prints `sent`; exactly one signed
   `Self-test ...` message appears in the self-test chat; `#guillotine-feed`
   shows the mirror.
-- [ ] Inbound: send `bot: ping` in the self-test chat from the non-Ben
+- [x] Inbound: send `bot: ping` in the self-test chat from the non-Ben
   handle; a signed `pong ...` reply arrives within 10 seconds;
   `#guillotine-feed` shows it.
-- [ ] Scheduler: `HERMES_HOME=~/.hermes/profiles/guillotine hermes cron run
+- [x] Scheduler: `HERMES_HOME=~/.hermes/profiles/guillotine hermes cron run
   <id of guillotine-health>` completes with status `ok` in `hermes cron
   list`, and `#guillotine-ops` receives either nothing or a problem list;
   `ug ops audit-runs` prints nothing for `guillotine-health`.
-- [ ] Crash replay: `ug ops self-test --crash-after-send` exits non-zero
+- [x] Crash replay: `ug ops self-test --crash-after-send` exits non-zero
   after one message is sent; run `ug ops self-test` again within the same
   minute; it prints `reconciled`; the chat shows exactly one new message
   for that minute.
-- [ ] Webhook replay: re-send the last webhook payload with `curl` from
+- [x] Webhook replay: re-send the last webhook payload with `curl` from
   the listener log's recorded GUID; the response is
   `{"outcome":"duplicate"}`.
-- [ ] Gap fill: stop the listener with `launchctl bootout
+- [x] Gap fill: stop the listener with `launchctl bootout
   gui/$(id -u)/com.ultimateguillotine.listener`, send `bot: ping` in the
   self-test chat, restart with the installer, run `ug ingest gap-fill`;
   exactly one `pong` arrives and a second `ug ingest gap-fill` handles
   zero messages.
-- [ ] Doctor: `ug ops doctor` exits 0.
+- [x] Doctor: `ug ops doctor` exits 0.
+
+Notes from the 2026-09-08 run:
+
+- The self-test chat is a two-person group; the second handle sent the
+  inbound pings. The second `ug ingest gap-fill` in the same minute is a
+  no-op by design (idempotency key), which also guarantees no second
+  reply.
+- Discord delivery for the scheduler check was verified after the
+  `guillotine` gateway was installed and connected; before that, cron
+  runs reported `delivery_failed` with "platform 'discord' not
+  configured/enabled", which is expected.
+- `ug ops doctor` reported 10 of 10 PASS.
 
 Once every check above passes, replace the status heading with
 `Gate 0 passed: <date>, delivery mode <test|production>` and leave the
