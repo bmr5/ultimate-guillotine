@@ -50,6 +50,7 @@ number of dollars and a fractional one is not a thing anybody could offer.
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
+from statistics import median
 from typing import Literal
 
 from ultimate_guillotine.advisor.detect import Ask
@@ -57,7 +58,9 @@ from ultimate_guillotine.advisor.pricing import PricePoint, comparables_for, med
 from ultimate_guillotine.advisor.scoring import (
     LEAGUE_TEAMS,
     NO_POINTS,
+    POINT_PRECISION,
     POSITIONS,
+    STARTER_SLOTS,
     TeamScore,
     need_ranks,
     replacement_levels,
@@ -65,6 +68,7 @@ from ultimate_guillotine.advisor.scoring import (
 from ultimate_guillotine.advisor.state import (
     LAST_REGULAR_WEEK,
     AdvisorHolding,
+    AdvisorTeamState,
     LeagueSnapshot,
 )
 
@@ -76,24 +80,35 @@ MAX_CANDIDATES = 12
 #: is enough to show the model that the team has depth without letting a single
 #: deep roster fill the whole list and crowd out the other sixteen teams.
 OFFERS_PER_COUNTERPARTY = 2
+#: How many candidates any one counterparty may contribute to the finished list,
+#: whatever mixture of positions and directions they came from. An open ask
+#: crosses four positions and both directions, so without this a single
+#: well-stocked roster could supply sixteen offers and take the whole prompt;
+#: a third of :data:`MAX_CANDIDATES` leaves room for at least three managers.
+MAX_PER_COUNTERPARTY = 4
 #: No proposal offers a token amount of FAAB; below this it is not a sweetener,
 #: and a sender who cannot clear it has no offer to make at all.
 FAAB_FLOOR = 5
-#: The share of the payer's budget a price defaults to when the league has never
-#: traded the position: a fifth is enough to be a real offer and small enough
-#: that a bad guess is not ruinous.
+#: The share of the *league's* median remaining budget a price defaults to when
+#: the league has never traded the position: a fifth is enough to be a real
+#: offer and small enough that a bad guess is not ruinous. The anchor is
+#: league-wide on purpose -- a price that scaled with the payer would make the
+#: same player cost 56 FAAB from a poor team and 112 from a rich one, and on a
+#: ``move`` it would rank the richest counterparty first for no reason but its
+#: bank balance. The payer's own budget is a clamp on the answer, never its base.
 DEFAULT_PRICE_SHARE = 5
 
 #: What a rental says out loud. Built from the horizon the ask parsed, so the
 #: week in the sentence is the week the arithmetic used.
 RETURN_TEMPLATE = "returns before the Week {week} lock"
 
-#: Fit is mostly measured in projected points, and these are the small nudges
-#: that order two otherwise identical offers. Each is deliberately an order of
-#: magnitude below a point, so a rank can break a tie but never overturn a real
-#: difference in what a roster gains.
-NEED_RANK_WEIGHT = Decimal("0.1")
-PRESSURE_WEIGHT = Decimal("0.1")
+#: Fit is measured in projected points, and these are the small nudges that
+#: order two otherwise identical offers. Each is normalised to at most its own
+#: weight -- see :func:`_rank_term` -- and the two together stay under a point,
+#: so a rank can break a tie but can never overturn a one-point difference in
+#: what a roster actually gains.
+NEED_RANK_WEIGHT = Decimal("0.4")
+PRESSURE_WEIGHT = Decimal("0.4")
 #: What a dollar of FAAB costs the fit. A hundred FAAB is worth half a point of
 #: ordering, which is enough to prefer the cheaper of two equal players and not
 #: enough to prefer a worse one.
@@ -113,6 +128,7 @@ __all__ = [
     "FAAB_FLOOR",
     "FIT_PRECISION",
     "MAX_CANDIDATES",
+    "MAX_PER_COUNTERPARTY",
     "NEED_RANK_WEIGHT",
     "OFFERS_PER_COUNTERPARTY",
     "PRESSURE_WEIGHT",
@@ -184,6 +200,12 @@ class Candidate:
     ``asker_receives`` and ``asker_sends`` are written from the asker's point of
     view because that is whose question is being answered; every leg still names
     both ends, so nothing downstream has to remember which list it is reading.
+
+    ``asker_delta`` and ``counterparty_delta`` are **not** negations of each
+    other. Each is what the trade does to that side's own best starting lineup
+    over the weeks it covers, and a trade both sides should make is one where
+    both numbers are positive -- which is exactly what a gross-projection delta
+    could never show, because it made every trade sum to zero.
     """
 
     counterparty: str
@@ -195,7 +217,11 @@ class Candidate:
     return_week: int | None
     return_condition: str | None
     fit_score: Decimal
+    #: Change in the asker's best legal starting lineup, summed over the covered
+    #: weeks. ``None`` below the coverage gate, or when a moving player has no
+    #: projection for one of those weeks.
     asker_delta: Decimal | None
+    #: The same figure for the counterparty, computed against its own roster.
     counterparty_delta: Decimal | None
     comparable_trade_code: str | None
     counterparty_pressure_rank: int | None
@@ -258,16 +284,36 @@ def _leg_faab(amount: int, sender: str, receiver: str) -> CandidateLeg:
     )
 
 
+def _median_budget(snapshot: LeagueSnapshot) -> int:
+    """The league's median remaining FAAB, which every default price anchors to.
+
+    Eliminated teams are left out for the same reason
+    :func:`~ultimate_guillotine.advisor.scoring.league_medians` leaves them out:
+    a manager who is no longer bidding is not part of the market that sets what
+    things cost.
+    """
+    budgets = [t.faab_remaining for t in snapshot.teams if not t.is_eliminated]
+    return int(median(budgets)) if budgets else 0
+
+
 def _price(
-    points: Sequence[PricePoint], position: str, budget: int
+    points: Sequence[PricePoint], position: str, budget: int, anchor: int
 ) -> tuple[int, PriceBasis, str | None] | None:
     """What this position has cost, clamped to what the buyer actually has.
 
-    The trade code comes back only when a real comparable set the number and the
-    buyer can pay it in full, so nothing ever quotes a precedent it then had to
-    round down: a clamped price is the Advisor's own guess and says so. A buyer
-    who cannot clear :data:`FAAB_FLOOR` has no offer to make, and ``None`` here
-    drops the candidate rather than proposing a token amount.
+    ``anchor`` is the league's median remaining budget, and it is the *only*
+    thing a price with no history is derived from. Deriving it from ``budget``
+    instead would make the identical player cost whatever the buyer could
+    afford, which is not a price at all: two managers asking the same question
+    would be quoted different numbers, and on a ``move`` the fit would rank the
+    richest counterparty first purely because the cheque it can write is bigger.
+
+    ``budget`` therefore only ever *reduces* the answer. The trade code comes
+    back only when a real comparable set the number and the buyer can pay it in
+    full, so nothing quotes a precedent it then had to round down: a clamped
+    price is the Advisor's own guess and says so. A buyer who cannot clear
+    :data:`FAAB_FLOOR` has no offer to make, and ``None`` here drops the
+    candidate rather than proposing a token amount.
     """
     if budget < FAAB_FLOOR:
         return None
@@ -279,55 +325,88 @@ def _price(
         if typical is not None:
             asked, basis, code = typical, "median", None
         else:
-            asked, basis, code = budget // DEFAULT_PRICE_SHARE, "default", None
+            asked, basis, code = anchor // DEFAULT_PRICE_SHARE, "default", None
     amount = max(FAAB_FLOOR, min(int(asked), budget))
     if amount != int(asked):
         return (amount, "default", None)
     return (amount, basis, code)
 
 
-def _points_over(holding: AdvisorHolding, weeks: Sequence[int]) -> Decimal | None:
-    """A holding's projection summed over the weeks a trade covers, or ``None``.
+def _startable(team: AdvisorTeamState) -> tuple[AdvisorHolding, ...]:
+    """The players a team may actually field. IR and taxi holdings are not among them."""
+    return team.starters() + team.bench()
 
-    One missing week makes the whole total unknown rather than smaller: a trade
-    valued over three weeks of which the feed has two is not a two-week trade.
+
+def _lineup_points(holdings: Sequence[AdvisorHolding], week: int) -> Decimal:
+    """The best legal starting lineup this set of players can field in one week.
+
+    Depth is :data:`~ultimate_guillotine.advisor.scoring.STARTER_SLOTS` -- one
+    QB, two RBs, two WRs, one TE -- for exactly the reason
+    :mod:`~ultimate_guillotine.advisor.scoring` gives: the FLEX is one slot that
+    three positions may fill, so counting it at each of them would invent two
+    starters per team that the league never fields. A player nobody has
+    projected for the week cannot be ranked and so cannot claim a slot; that is
+    an unknown rather than a zero, and :func:`_lineup_delta` refuses to value a
+    trade whose own players are unknown in that way.
     """
     total = NO_POINTS
-    for week in weeks:
-        points = holding.projected_for(week)
-        if points is None:
-            return None
-        total += points
+    for position in POSITIONS:
+        slots = STARTER_SLOTS.get(position, 0)
+        if not slots:
+            continue
+        projections = sorted(
+            (
+                projected
+                for holding in holdings
+                if holding.position == position
+                and (projected := holding.projected_for(week)) is not None
+            ),
+            reverse=True,
+        )
+        total += sum(projections[:slots], NO_POINTS)
     return total
 
 
-def _delta(
+def _lineup_delta(
+    roster: Sequence[AdvisorHolding],
     incoming: Sequence[AdvisorHolding],
     outgoing: Sequence[AdvisorHolding],
     weeks: Sequence[int],
     *,
     known: bool,
 ) -> Decimal | None:
-    """Projected points gained over ``weeks``, or ``None`` when it may not be said.
+    """What these legs do to one side's best starting lineup, summed over ``weeks``.
 
-    ``known`` is the coverage gate. Below it the per-player rows usually still
-    carry numbers, and adding them up anyway would publish exactly what the
-    team-level gate withheld.
+    A player's gross projection is not what acquiring him is worth. A team that
+    already starts two better running backs gains nothing by adding a third, and
+    a team that gives up a bench player it was never going to start loses
+    nothing by sending him -- so a bench-for-bench trade is worth roughly zero to
+    both sides, and an upgrade is worth the margin over the starter it displaces
+    and no more. Reading the gross projection instead made every trade
+    perfectly zero-sum, which is precisely the shape a trade nobody should make
+    has: both sides moved the same points, so neither side was ever shown a
+    reason to say yes.
+
+    The two sides are therefore computed independently, against their own
+    rosters, and do not sum to zero. ``known`` is the coverage gate: below it
+    the per-player rows usually still carry numbers, and adding them up anyway
+    would publish exactly what the team-level gate withheld. One missing week on
+    a player who is actually moving makes the whole total unknown rather than
+    smaller -- a trade valued over three weeks of which the feed has two is not
+    a two-week trade.
     """
     if not known:
         return None
-    gained = NO_POINTS
-    for holding in incoming:
-        points = _points_over(holding, weeks)
-        if points is None:
-            return None
-        gained += points
-    for holding in outgoing:
-        points = _points_over(holding, weeks)
-        if points is None:
-            return None
-        gained -= points
-    return gained
+    moving = list(incoming) + list(outgoing)
+    if any(h.projected_for(week) is None for h in moving for week in weeks):
+        return None
+    leaving = {h.sleeper_player_id for h in outgoing}
+    before = list(roster)
+    after = [h for h in before if h.sleeper_player_id not in leaving] + list(incoming)
+    total = NO_POINTS
+    for week in weeks:
+        total += _lineup_points(after, week) - _lineup_points(before, week)
+    return total.quantize(POINT_PRECISION)
 
 
 def _covered_weeks(snapshot: LeagueSnapshot, ask: Ask) -> tuple[int, ...]:
@@ -351,12 +430,17 @@ def _return_week(snapshot: LeagueSnapshot, ask: Ask) -> int:
     A rental covers the week it is agreed in plus ``horizon_weeks`` more, so a
     three-week rental struck in week 6 runs through week 9 and the player is
     home before week 10 locks. A rental with no bounded horizon -- "for the rest
-    of the season" -- runs to the end of the regular season, which is also the
-    cap every bounded one is clamped to.
+    of the season" -- covers the whole regular season, and a player who is back
+    before week 18 locks did *not* play the last regular week for the borrower.
+    So an open-ended rental returns at :data:`LAST_REGULAR_WEEK` **plus one**:
+    the week after the last one it covers, which is the same arithmetic every
+    bounded rental uses and the same value every bounded one is capped at.
+    Week 19 is not a week anybody plays; it is how "through the end of the
+    regular season" is written in the one unit this function returns.
     """
     if ask.horizon_weeks is None:
-        return LAST_REGULAR_WEEK
-    return min(snapshot.week + ask.horizon_weeks + 1, LAST_REGULAR_WEEK)
+        return LAST_REGULAR_WEEK + 1
+    return min(snapshot.week + ask.horizon_weeks + 1, LAST_REGULAR_WEEK + 1)
 
 
 def _named_member_ids(snapshot: LeagueSnapshot, ask: Ask) -> frozenset[int] | None:
@@ -377,19 +461,34 @@ def _named_member_ids(snapshot: LeagueSnapshot, ask: Ask) -> frozenset[int] | No
     return frozenset(resolved)
 
 
+def _nudge(rank: int | None, weight: Decimal, *, best_first: bool) -> Decimal:
+    """Turn a 1-based rank into a nudge of at most ``weight`` points.
+
+    The place is divided by :data:`~ultimate_guillotine.advisor.scoring.LEAGUE_TEAMS`
+    so the term runs from ``weight / LEAGUE_TEAMS`` at the wrong end of the
+    table to ``weight`` at the right one, whatever size the league is. An
+    un-normalised ``weight * place`` ran to eighteen times its own weight, and
+    two such terms together spanned 3.6 points -- more than the projected
+    difference between most players, so the ranking was decided by who was
+    easiest to ask rather than by what the roster gained. An unranked team --
+    eliminated, or below the coverage gate -- gets nothing either way rather
+    than being sorted to a made-up position.
+    """
+    if rank is None:
+        return NO_POINTS
+    place = LEAGUE_TEAMS + 1 - rank if best_first else rank
+    return weight * Decimal(place) / Decimal(LEAGUE_TEAMS)
+
+
 def _rank_term(rank: int | None, *, neediest_first: bool) -> Decimal:
-    """Turn a 1-based rank into a small, bounded nudge.
+    """The need-rank nudge, worth at most :data:`NEED_RANK_WEIGHT`.
 
     ``neediest_first`` is which end of the list the caller wants. Selling to the
     league's neediest team is the easy sale, so a move rewards rank 1; buying
     from the team that needs the position least is the easy buy, so an acquire
-    rewards the far end. An unranked team -- eliminated, or below the gate --
-    gets nothing either way rather than being sorted to a made-up position.
+    rewards the far end.
     """
-    if rank is None:
-        return NO_POINTS
-    place = LEAGUE_TEAMS + 1 - rank if neediest_first else rank
-    return NEED_RANK_WEIGHT * Decimal(place)
+    return _nudge(rank, NEED_RANK_WEIGHT, best_first=neediest_first)
 
 
 def _pressure_term(rank: int | None, *, desperate_first: bool) -> Decimal:
@@ -399,10 +498,7 @@ def _pressure_term(rank: int | None, *, desperate_first: bool) -> Decimal:
     is the willing *buyer* on a move. The same team is the last one that will
     sell you a starter, so an acquire looks for the calm end of the table.
     """
-    if rank is None:
-        return NO_POINTS
-    place = LEAGUE_TEAMS + 1 - rank if desperate_first else rank
-    return PRESSURE_WEIGHT * Decimal(place)
+    return _nudge(rank, PRESSURE_WEIGHT, best_first=desperate_first)
 
 
 def _margin(
@@ -455,6 +551,8 @@ class _Run:
     points: Sequence[PricePoint]
     ranks: Mapping[str, Mapping[int, int | None]]
     replacement: Mapping[str, Decimal]
+    #: The league's median remaining FAAB, which every default price anchors to.
+    anchor: int
     weeks: tuple[int, ...]
     known: bool
     structure: Literal["permanent", "rental"]
@@ -490,6 +588,7 @@ def generate_candidates(
         points=points,
         ranks={position: need_ranks(scores, position) for position in POSITIONS},
         replacement=replacement_levels(snapshot),
+        anchor=_median_budget(snapshot),
         weeks=_covered_weeks(snapshot, ask),
         known=asker.projections_known,
         structure="rental" if ask.rental else "permanent",
@@ -512,20 +611,41 @@ def generate_candidates(
             continue
         for position in wanted:
             if ask.direction != "move":
-                candidates.extend(
-                    _acquire(run, asker, other, position, asker_team.faab_remaining)
-                )
+                candidates.extend(_acquire(run, asker, asker_team, other, team, position))
             if ask.direction != "acquire":
-                candidates.extend(_move(run, asker, other, position, team.faab_remaining))
+                candidates.extend(_move(run, asker, asker_team, other, team, position))
 
     candidates.sort(key=lambda candidate: candidate.sort_key)
-    return candidates[:limit]
+    return _spread(candidates)[:limit]
+
+
+def _spread(candidates: Sequence[Candidate]) -> list[Candidate]:
+    """Keep the best :data:`MAX_PER_COUNTERPARTY` offers from any one counterparty.
+
+    Applied to the whole sorted list rather than per position and direction,
+    because that is the number a manager actually sees: an open ask crosses four
+    positions and both directions, and a roster that is long everywhere would
+    otherwise supply sixteen of the twelve. Taking them in sorted order means
+    the ones dropped are that counterparty's *worst*, and the order of what
+    survives is untouched.
+    """
+    kept: list[Candidate] = []
+    seen: dict[int, int] = {}
+    for candidate in candidates:
+        taken = seen.get(candidate.counterparty_member_id, 0)
+        if taken >= MAX_PER_COUNTERPARTY:
+            continue
+        seen[candidate.counterparty_member_id] = taken + 1
+        kept.append(candidate)
+    return kept
 
 
 def _build(
     run: _Run,
     asker: TeamScore,
+    asker_team: AdvisorTeamState,
     other: TeamScore,
+    other_team: AdvisorTeamState,
     position: str,
     holding: AdvisorHolding,
     *,
@@ -539,14 +659,20 @@ def _build(
     ``to_asker`` is which way the player moves; the FAAB always moves the other
     way, because a candidate is one player against one price and never a swap.
     Both directions land here so that a field can never be filled in on an
-    acquire and forgotten on a move.
+    acquire and forgotten on a move. Each side's delta is computed against that
+    side's own roster, so the two are independent numbers rather than one number
+    and its negation -- see :func:`_lineup_delta`.
     """
     amount, basis, code = price
     seller, buyer = (other, asker) if to_asker else (asker, other)
     player_leg = _leg_player(holding, seller.member_label, buyer.member_label)
     faab_leg = _leg_faab(amount, buyer.member_label, seller.member_label)
-    delta = _delta(
-        [holding] if to_asker else [], [] if to_asker else [holding], run.weeks, known=run.known
+    gained, given = ([holding], []) if to_asker else ([], [holding])
+    asker_delta = _lineup_delta(
+        _startable(asker_team), gained, given, run.weeks, known=run.known
+    )
+    counterparty_delta = _lineup_delta(
+        _startable(other_team), given, gained, run.weeks, known=run.known
     )
     margin = _margin(holding, position, run.replacement, known=run.known)
     return Candidate(
@@ -559,8 +685,8 @@ def _build(
         return_week=run.return_week,
         return_condition=run.return_condition,
         fit_score=(fit_base + (margin or NO_POINTS)).quantize(FIT_PRECISION),
-        asker_delta=delta,
-        counterparty_delta=None if delta is None else -delta,
+        asker_delta=asker_delta,
+        counterparty_delta=counterparty_delta,
         comparable_trade_code=code,
         counterparty_pressure_rank=other.pressure_rank,
         reasons=CandidateReasons(
@@ -578,18 +704,24 @@ def _build(
 
 
 def _acquire(
-    run: _Run, asker: TeamScore, other: TeamScore, position: str, budget: int
+    run: _Run,
+    asker: TeamScore,
+    asker_team: AdvisorTeamState,
+    other: TeamScore,
+    other_team: AdvisorTeamState,
+    position: str,
 ) -> list[Candidate]:
     """The asker buys one of the counterparty's spare players and pays in FAAB.
 
     The fit is the asker's own need, plus how far the player is above a free
     replacement, nudged toward the counterparty least likely to say no -- the
     team that needs the position least and sits furthest from the cut line --
-    and docked for what the player costs.
+    and docked for what the player costs. The asker is the payer, so it is the
+    asker's budget the price is clamped to.
     """
     if not _wants(asker, position, known=run.known):
         return []
-    price = _price(run.points, position, budget)
+    price = _price(run.points, position, asker_team.faab_remaining, run.anchor)
     if price is None:
         return []
     fit_base = (
@@ -600,7 +732,7 @@ def _acquire(
     )
     return [
         _build(
-            run, asker, other, position, holding,
+            run, asker, asker_team, other, other_team, position, holding,
             to_asker=True, receiver=asker, price=price, fit_base=fit_base,
         )
         for holding in other.surpluses.get(position, ())[:OFFERS_PER_COUNTERPARTY]
@@ -608,17 +740,25 @@ def _acquire(
 
 
 def _move(
-    run: _Run, asker: TeamScore, other: TeamScore, position: str, budget: int
+    run: _Run,
+    asker: TeamScore,
+    asker_team: AdvisorTeamState,
+    other: TeamScore,
+    other_team: AdvisorTeamState,
+    position: str,
 ) -> list[Candidate]:
     """The asker sells a spare player to a team that has a hole at that position.
 
     The mirror image, with both nudges reversed: the easiest sale is to the team
     with the biggest hole at the position and the least time left to fix it, and
-    a bigger cheque makes the deal better rather than worse.
+    a bigger cheque makes the deal better rather than worse. The counterparty is
+    the payer here, so the clamp is its budget -- but only the clamp: the price
+    itself is the league's, so a richer counterparty cannot buy its way up the
+    list with a cheque nobody asked it for.
     """
     if not _wants(other, position, known=run.known):
         return []
-    price = _price(run.points, position, budget)
+    price = _price(run.points, position, other_team.faab_remaining, run.anchor)
     if price is None:
         return []
     fit_base = (
@@ -629,7 +769,7 @@ def _move(
     )
     return [
         _build(
-            run, asker, other, position, holding,
+            run, asker, asker_team, other, other_team, position, holding,
             to_asker=False, receiver=other, price=price, fit_base=fit_base,
         )
         for holding in asker.surpluses.get(position, ())[:OFFERS_PER_COUNTERPARTY]

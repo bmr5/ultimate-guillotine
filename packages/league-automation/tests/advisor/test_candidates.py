@@ -27,14 +27,21 @@ from tests.advisor.fixture import (
     fixture_snapshot,
 )
 from ultimate_guillotine.advisor.candidates import (
+    DEFAULT_PRICE_SHARE,
     FAAB_FLOOR,
     MAX_CANDIDATES,
+    MAX_PER_COUNTERPARTY,
+    NEED_RANK_WEIGHT,
     OFFERS_PER_COUNTERPARTY,
+    PRESSURE_WEIGHT,
+    _pressure_term,
+    _rank_term,
     generate_candidates,
 )
 from ultimate_guillotine.advisor.detect import Ask
 from ultimate_guillotine.advisor.pricing import price_points
-from ultimate_guillotine.advisor.scoring import score_league
+from ultimate_guillotine.advisor.scoring import LEAGUE_TEAMS, score_league
+from ultimate_guillotine.advisor.state import LAST_REGULAR_WEEK
 
 #: The asker for every test but the move ask: on the cut line and short a back.
 ASKER_MEMBER_ID = NEAR_CUT_MEMBER_ID
@@ -67,10 +74,51 @@ RENT_RB = Ask(("RB",), "acquire", 3, True, (), False)
 MOVE_WR = Ask(("WR",), "move", None, False, (), False)
 EITHER_RB = Ask(("RB",), "either", None, False, (), False)
 NAMED_SELLER = Ask(("WR",), "acquire", None, False, (SELLER,), False)
+OPEN_EITHER = Ask((), "either", None, False, (), False)
+#: "Lend me a back for the rest of the season", and a horizon far past the end
+#: of it -- both must land on the same week.
+RENT_RB_OPEN = Ask(("RB",), "acquire", None, True, (), False)
+RENT_RB_OVERLONG = Ask(("RB",), "acquire", 20, True, (), False)
 
 #: The rental horizon the fixture's week 6 and a three-week ask produce.
 RENTAL_RETURN_WEEK = 10
 RENTAL_CONDITION = "returns before the Week 10 lock"
+#: A rental that runs to the end of the regular season is back the week *after*
+#: the last week it covers, so week 18 is one the borrower still gets to start.
+SEASON_END_RETURN_WEEK = LAST_REGULAR_WEEK + 1
+SEASON_END_CONDITION = f"returns before the Week {SEASON_END_RETURN_WEEK} lock"
+
+#: Remaining FAAB in the fixture is ``1000 - 40 * team`` and member 17 is out, so
+#: the seventeen live budgets run 960, 920, ... 360, 280 and their median is the
+#: ninth of them: 1000 - 40 * 9. A price with no history is a fifth of that.
+MEDIAN_FAAB = 640
+DEFAULT_PRICE = MEDIAN_FAAB // DEFAULT_PRICE_SHARE
+#: A raised budget for member 16 that is still under the league median, so the
+#: anchor itself does not move and only the *payer* got richer.
+RICHER_BUDGET = 600
+
+#: Member 18's best two running backs, from ``fixture._starter_points``:
+#: ``22 - 0.6*18 - 1.3*slot`` with the ``team % 3`` tilt of -1 at RB, so slots 1
+#: and 2 are 9.9 - 1 and 8.6 - 1. An incoming back is worth what it adds to that
+#: pair and nothing more -- the second one is the starter it displaces.
+ASKER_RB_STARTERS = (Decimal("8.90"), Decimal("7.60"))
+#: The whole acquire-RB list on the bare fixture, in order:
+#: ``(counterparty, player, price)``. Member 18 is short a back and members 2, 1
+#: and 5 are the only teams carrying one above replacement (10.50).
+GOLDEN_ACQUIRE_RB = (
+    (2, "p02b0", DEFAULT_PRICE),
+    (1, "p01b0", DEFAULT_PRICE),
+    (2, "p02b1", DEFAULT_PRICE),
+    (5, "p05b0", DEFAULT_PRICE),
+)
+#: Each of those backs' week-6 projection, from ``fixture._bench_points``:
+#: ``12 - 0.4*team - 0.9*index`` with the same tilt, at RB.
+ACQUIRE_RB_PROJECTIONS = {
+    "p02b0": Decimal("12.20"),
+    "p01b0": Decimal("11.60"),
+    "p02b1": Decimal("11.30"),
+    "p05b0": Decimal("11.00"),
+}
 
 #: A single accepted trade: member 2 bought member 1's spare running back --
 #: ``p01b0``, ``Bench 01-0`` -- for 80 FAAB. One player, one payment, so the
@@ -320,6 +368,48 @@ def test_a_rental_carries_an_explicit_return_condition() -> None:
     assert snapshot.week + RENT_RB.horizon_weeks + 1 == RENTAL_RETURN_WEEK
 
 
+@pytest.mark.parametrize(
+    "ask",
+    [
+        pytest.param(RENT_RB_OPEN, id="for-the-rest-of-the-season"),
+        pytest.param(RENT_RB_OVERLONG, id="a-horizon-past-the-end-of-it"),
+    ],
+)
+def test_a_season_long_rental_returns_after_the_last_regular_week(ask) -> None:
+    """Returning *at* week 18 would take the final regular week off the borrower.
+
+    A rental is over the weeks before the return, so a player home before the
+    week 18 lock never plays week 18 for the team that rented him -- which is
+    not what "for the rest of the season" buys. Both an open-ended horizon and
+    one that overshoots land on the week after the last one played.
+    """
+    _, candidates = _generate(ask)
+    assert candidates
+    for candidate in candidates:
+        assert candidate.return_week == SEASON_END_RETURN_WEEK
+        assert candidate.return_condition == SEASON_END_CONDITION
+
+
+def test_a_season_long_rental_is_paid_for_through_the_final_regular_week() -> None:
+    """Thirteen weeks of 4.60, not twelve.
+
+    On a snapshot that carries every week from 6 to 18, the best offered back
+    beats member 18's second starter by 4.60 in each of them and the fixture
+    decays both by the same half point a week, so an open-ended rental is worth
+    ``13 * 4.60``. A rental that returned at week 18 would be worth ``12 *
+    4.60`` and would have quietly dropped the last week of the regular season.
+    """
+    snapshot = fixture_snapshot(horizon_weeks=20)
+    weeks = LAST_REGULAR_WEEK - snapshot.week + 1
+    assert snapshot.weeks[-1] == LAST_REGULAR_WEEK
+    _, candidates = _generate(RENT_RB_OPEN, snapshot=snapshot)
+    best = candidates[0]
+    (player_id,) = best.player_ids()
+    per_week = ACQUIRE_RB_PROJECTIONS[player_id] - ASKER_RB_STARTERS[1]
+    assert best.asker_delta == per_week * weeks
+    assert best.asker_delta == Decimal("4.60") * 13
+
+
 def test_a_permanent_ask_carries_no_return_condition() -> None:
     _, candidates = _generate(ACQUIRE_RB)
     assert candidates and all(c.structure == "permanent" for c in candidates)
@@ -409,6 +499,98 @@ def test_without_history_the_price_quotes_nothing() -> None:
     assert candidates
     assert all(c.comparable_trade_code is None for c in candidates)
     assert all(c.reasons.price_basis == "default" for c in candidates)
+    assert all(c.reasons.price_faab == DEFAULT_PRICE for c in candidates)
+
+
+def test_the_default_price_is_the_leagues_median_budget_not_the_payers() -> None:
+    """The same player costs the same whoever is buying him.
+
+    A default that scaled with the payer quoted 56 FAAB to the poorest team and
+    112 to the richest for the identical back, and on a ``move`` it ranked the
+    richest counterparty first for no reason but its bank balance. So member 18
+    is made twice as rich and nothing about the answer moves: same price, same
+    fit, same order.
+    """
+    snapshot = fixture_snapshot()
+    asker = snapshot.team_for_member(ASKER_MEMBER_ID)
+    richer = replace(
+        snapshot,
+        teams=tuple(
+            replace(team, faab_remaining=asker.faab_remaining * 2)
+            if team.member_id == ASKER_MEMBER_ID
+            else team
+            for team in snapshot.teams
+        ),
+    )
+    _, poor = _generate(ACQUIRE_RB, snapshot=snapshot)
+    _, rich = _generate(ACQUIRE_RB, snapshot=richer)
+    assert poor and [c.sort_key for c in rich] == [c.sort_key for c in poor]
+    assert {c.reasons.price_faab for c in poor + rich} == {DEFAULT_PRICE}
+
+
+def test_a_richer_buyer_does_not_outrank_an_equal_offer_on_a_move() -> None:
+    """The counterparty pays on a ``move``, so this is where money could buy rank.
+
+    Member 16 goes from 360 FAAB to 600. Both are below the league's median of
+    640, so the anchor every price is struck from does not move, and both are
+    far above the 128 that price is -- so nothing is clamped either. The offers
+    that sell member 16 a receiver come back at the identical price and the
+    identical fit, in the identical place in the list.
+    """
+    snapshot = fixture_snapshot()
+    buyer_id = 16
+    buyer = snapshot.team_for_member(buyer_id)
+    richer = replace(
+        snapshot,
+        teams=tuple(
+            replace(team, faab_remaining=RICHER_BUDGET)
+            if team.member_id == buyer_id
+            else team
+            for team in snapshot.teams
+        ),
+    )
+    _, poor = _generate(MOVE_WR, SELLER_MEMBER_ID, snapshot=snapshot, limit=50)
+    _, rich = _generate(MOVE_WR, SELLER_MEMBER_ID, snapshot=richer, limit=50)
+    assert DEFAULT_PRICE < buyer.faab_remaining < RICHER_BUDGET < MEDIAN_FAAB
+    assert [c.sort_key for c in rich] == [c.sort_key for c in poor]
+    for before, after in zip(poor, rich, strict=True):
+        assert before.reasons.price_faab == after.reasons.price_faab == DEFAULT_PRICE
+        assert before.fit_score == after.fit_score
+
+
+def test_the_acquire_list_is_exactly_this_sequence() -> None:
+    """The golden list: who, which player, at what price, in what order.
+
+    Every other test here checks one property; this one pins the whole answer,
+    so a change in any of the arithmetic that feeds it has to be looked at
+    rather than absorbed.
+    """
+    _, candidates = _generate(ACQUIRE_RB, limit=50)
+    actual = tuple(
+        (c.counterparty_member_id, min(c.player_ids()), c.reasons.price_faab)
+        for c in candidates
+    )
+    assert actual == GOLDEN_ACQUIRE_RB
+
+
+def test_no_counterparty_takes_more_than_its_share_of_the_whole_list() -> None:
+    """The cap is on the finished list, not on one position and one direction.
+
+    An open ask below the coverage gate crosses four positions and both
+    directions, and member 1 alone can answer it eleven times -- more than a
+    whole prompt's worth from one manager. The cap keeps four of them.
+    """
+    _, candidates = _generate(OPEN_EITHER, snapshot=DARK, limit=200)
+    counts = Counter(c.counterparty_member_id for c in candidates)
+    crowded = counts.most_common(1)[0][0]
+    offered = 0
+    for position in ("QB", "RB", "WR", "TE"):
+        for direction in ("acquire", "move"):
+            one_ask = Ask((position,), direction, None, False, (), False)
+            _, narrow = _generate(one_ask, snapshot=DARK, limit=200)
+            offered += sum(1 for c in narrow if c.counterparty_member_id == crowded)
+    assert offered > MAX_PER_COUNTERPARTY
+    assert max(counts.values()) == MAX_PER_COUNTERPARTY
 
 
 @pytest.mark.parametrize(("ask", "member_id"), NO_TRADE)
@@ -442,7 +624,6 @@ def test_each_candidate_carries_the_reasons_the_model_must_not_invent() -> None:
         assert reasons.pressure_delta == asker.pressure_rank - other.pressure_rank
         assert reasons.price_faab == candidate.faab_total(ASKER)
         assert candidate.asker_delta is not None and candidate.asker_delta > Decimal(0)
-        assert candidate.counterparty_delta == -candidate.asker_delta
 
 
 def test_a_move_reports_the_counterpartys_need_not_the_askers() -> None:
@@ -452,7 +633,89 @@ def test_a_move_reports_the_counterpartys_need_not_the_askers() -> None:
     for candidate in candidates:
         other = scores[candidate.counterparty_member_id]
         assert candidate.reasons.need_points == other.needs["WR"] > Decimal(0)
-        assert candidate.asker_delta < Decimal(0) < candidate.counterparty_delta
+        # Member 3 sells a receiver it never started, so it loses nothing; the
+        # buyer gains whatever the man improves *its* lineup by, if anything.
+        assert candidate.asker_delta == Decimal(0) <= candidate.counterparty_delta
+
+
+def test_a_delta_is_the_change_in_the_best_starting_lineup_not_the_gross_points() -> None:
+    """What a back is worth is what he adds, which is his margin over the RB2.
+
+    Member 18 starts 8.90 and 7.60 at running back. Every offered back beats
+    7.60, so each one displaces it and is worth exactly ``projection - 7.60``:
+    12.20 in is 4.60 gained, 11.60 is 4.00, 11.30 is 3.70, 11.00 is 3.40. The
+    gross projection -- which is what a zero-sum delta reported -- is three
+    times those numbers and describes a trade nobody would make.
+    """
+    _, candidates = _generate(ACQUIRE_RB)
+    displaced = ASKER_RB_STARTERS[1]
+    assert candidates
+    for candidate in candidates:
+        (player_id,) = candidate.player_ids()
+        projection = ACQUIRE_RB_PROJECTIONS[player_id]
+        assert candidate.asker_delta == projection - displaced
+        assert candidate.asker_delta < projection
+
+
+def test_a_bench_player_the_seller_never_started_costs_the_seller_nothing() -> None:
+    """The two sides are independent numbers, and a trade is not zero-sum.
+
+    Member 2 starts 20.50 and 19.20 at running back and is offering a 12.20
+    bench back; taking him away leaves the same two starters, so the sale costs
+    member 2 nothing at all while it is worth 4.60 to member 18.
+    """
+    _, candidates = _generate(ACQUIRE_RB)
+    assert candidates
+    for candidate in candidates:
+        assert candidate.counterparty_delta == Decimal(0)
+        assert candidate.asker_delta > Decimal(0)
+        assert candidate.counterparty_delta != -candidate.asker_delta
+
+
+def test_a_sale_is_worth_what_it_does_to_the_buyers_lineup() -> None:
+    """Member 3's spare receiver, 10.90, against member 18's 8.30 and 7.00.
+
+    He displaces the 7.00, so the sale is worth 3.90 to member 18 -- and 0.00
+    to member 3, whose own receivers are 17.30 and 16.00 either way.
+    """
+    _, candidates = _generate(MOVE_WR, SELLER_MEMBER_ID, limit=50)
+    to_asker = [c for c in candidates if c.counterparty_member_id == ASKER_MEMBER_ID]
+    best = min(to_asker, key=lambda c: sorted(c.player_ids()))
+    assert sorted(best.player_ids()) == ["p03b1"]
+    assert best.counterparty_delta == Decimal("3.90")
+    assert best.asker_delta == Decimal(0)
+
+
+def test_a_rank_nudge_can_break_a_tie_but_never_beat_a_point() -> None:
+    """Every nudge is normalised to its own weight, and the two stay under a point.
+
+    An un-normalised ``weight * rank`` ran to eighteen times its weight and the
+    pair of them spanned 3.6 points, which is more than most players differ by:
+    the ranking was decided by who was easiest to ask rather than by what the
+    roster gained.
+    """
+    ranks = [*range(1, LEAGUE_TEAMS + 1), None]
+    biggest = max(
+        _rank_term(rank, neediest_first=first) for rank in ranks for first in (True, False)
+    )
+    calmest = max(
+        _pressure_term(rank, desperate_first=first)
+        for rank in ranks
+        for first in (True, False)
+    )
+    assert biggest == NEED_RANK_WEIGHT
+    assert calmest == PRESSURE_WEIGHT
+    assert biggest + calmest < Decimal(1)
+
+    # And end to end: one position, one price, so everything the fit knows
+    # besides the player's own margin is a nudge -- and the list is ordered by
+    # the margins, whose spread is wider than a point.
+    _, candidates = _generate(ACQUIRE_RB)
+    margins = [c.reasons.surplus_over_replacement for c in candidates]
+    nudges = [c.fit_score - c.reasons.surplus_over_replacement for c in candidates]
+    assert max(nudges) - min(nudges) <= biggest + calmest
+    assert max(margins) - min(margins) >= Decimal(1)
+    assert margins == sorted(margins, reverse=True)
 
 
 def test_a_rental_is_valued_over_the_weeks_it_covers() -> None:
