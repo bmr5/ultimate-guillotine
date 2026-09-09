@@ -111,3 +111,13 @@ def test_live_extraction_reads_a_simple_trade() -> None:
     faab = [asset for asset in result.assets if asset.unit == "faab"]
     assert len(faab) == 1
     assert faab[0].amount == 100
+
+
+def test_prompt_names_every_asset_kind_and_ties_units_to_money_kinds() -> None:
+    # The prompt wraps at 100 columns, so match against it as one flowing line.
+    prompt = " ".join(load_prompt().split())
+    assert (
+        "Asset `kind` is one of `player`, `faab` (waiver budget), `usd` (real money), "
+        "`draft_dollars` (auction budget), `protection`, or `other`." in prompt
+    )
+    assert "`unit` must match the kind" in prompt

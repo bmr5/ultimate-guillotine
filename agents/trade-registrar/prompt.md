@@ -39,6 +39,11 @@ copy that code into `referenced_trade_code`; otherwise `referenced_trade_code` i
 
 Amounts are integers, with `unit` one of `faab`, `draft_dollars`, or `usd`.
 
+Asset `kind` is one of `player`, `faab` (waiver budget), `usd` (real money),
+`draft_dollars` (auction budget), `protection`, or `other`. For the three money
+kinds, `unit` must match the kind: `faab` with `faab`, `usd` with `usd`,
+`draft_dollars` with `draft_dollars`.
+
 For each asset, `from_party` is the person who gives the asset;
 `to_party` is the person who receives it.
 Asset `kind` `protection` is for gulag protection or a similar guarantee.

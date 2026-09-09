@@ -180,8 +180,10 @@ def test_non_player_asset_keeps_an_incidental_player_name_unresolved() -> None:
 
 
 def test_validate_rejects_an_amount_without_a_unit() -> None:
+    # A money kind supplies its own unit; a player carrying a bare number does
+    # not, and there is nothing to guess from.
     e = extracted(assets=[ExtractedAsset(
-        kind="faab", from_party="member01", to_party="Member02", player_name=None,
+        kind="player", from_party="member01", to_party="Member02", player_name="player alpha",
         amount=10, unit=None, description=None,
     )])
     with pytest.raises(Unresolved) as info:
@@ -248,3 +250,60 @@ def test_build_roster_index_maps_members_to_their_holdings(conn) -> None:
     index = build_roster_index(client, conn, "league-1", year)
     assert index.holdings == {member_id: frozenset({"p1"})}
     assert index.holds(member_id, "p1") is True
+
+
+def test_a_unit_wins_over_a_mislabelled_money_kind() -> None:
+    """The model sometimes types the wrong money kind next to the right unit;
+    the unit is the specific field, so it decides."""
+    e = extracted(assets=[ExtractedAsset(
+        kind="usd", from_party="member01", to_party="Member02", player_name=None,
+        amount=25, unit="faab", description=None,
+    )])
+    asset = resolve(e).assets[0]
+    assert asset.kind == "faab" and asset.unit == "faab" and asset.amount == 25
+
+
+def test_a_money_kind_without_a_unit_becomes_its_own_unit() -> None:
+    e = extracted(assets=[ExtractedAsset(
+        kind="draft_dollars", from_party="member01", to_party="Member02", player_name=None,
+        amount=30, unit=None, description=None,
+    )])
+    asset = resolve(e).assets[0]
+    assert asset.kind == "draft_dollars" and asset.unit == "draft_dollars"
+
+
+def test_a_non_money_asset_keeps_its_description_and_drops_the_amount() -> None:
+    """`protection` and `other` are terms, not amounts: a bare `1` next to one
+    would print as nonsense in the chat."""
+    e = extracted(assets=[ExtractedAsset(
+        kind="other", from_party="member01", to_party="Member02", player_name=None,
+        amount=1, unit=None, description="one gulag pass",
+    )])
+    asset = resolve(e).assets[0]
+    assert asset.kind == "other" and asset.amount is None
+    assert asset.description == "one gulag pass"
+
+
+def test_a_two_token_name_never_falls_back_to_the_last_name() -> None:
+    """Someone typed a full name; matching it to a different player who happens
+    to share the surname would log the wrong trade."""
+    players = [Player("p9", "Van Jefferson", "WR", "PIT", True)]
+    e = extracted(assets=[ExtractedAsset(
+        kind="player", from_party="member01", to_party="Member02",
+        player_name="Justin Jefferson", amount=None, unit=None, description=None,
+    )])
+    with pytest.raises(Unresolved) as info:
+        resolve_extracted(e, MEMBERS, players, ROSTERS, 2026, "g1", "🚨 ...", "2026.1", "m")
+    assert info.value.reason == "I can't find a player named Justin Jefferson"
+
+
+def test_a_single_token_name_still_falls_back_to_the_last_name() -> None:
+    players = [Player("p9", "Van Jefferson", "WR", "PIT", True)]
+    e = extracted(assets=[ExtractedAsset(
+        kind="player", from_party="member01", to_party="Member02",
+        player_name="Jefferson", amount=None, unit=None, description=None,
+    )])
+    proposal = resolve_extracted(
+        e, MEMBERS, players, ROSTERS, 2026, "g1", "🚨 ...", "2026.1", "m"
+    )
+    assert proposal.assets[0].player_id == "p9"

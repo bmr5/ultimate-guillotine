@@ -34,6 +34,11 @@ __all__ = [
 ]
 
 _DEFENSE_WORDS = {"defense", "def", "dst"}
+#: Asset kinds that carry a number, and are their own unit when none is given.
+_MONEY_KINDS = {"faab", "usd", "draft_dollars"}
+#: Asset kinds that are a term rather than a quantity, whatever number the
+#: model attached to them.
+_TERM_KINDS = {"protection", "other"}
 # Generational suffixes, normalized: they are never the name anyone types.
 _NAME_SUFFIXES = {"jr", "sr", "ii", "iii", "iv", "v"}
 
@@ -122,6 +127,33 @@ def _last_name(norm: str) -> str | None:
     return tokens[-1] if tokens else None
 
 
+def _money(kind: str, amount: int | None, unit: str | None) -> tuple[str, int | None, str | None]:
+    """Settle an asset's ``(kind, amount, unit)`` before it is recorded.
+
+    The unit is the more specific field and wins: a ``usd`` asset measured in
+    ``faab`` is FAAB, whatever the kind said. A money kind with no unit is its
+    own unit. ``protection`` and ``other`` are terms rather than quantities, so
+    they keep their description and lose any number the model attached -- a bare
+    ``1`` next to "gulag protection" reads as nonsense in the chat.
+    """
+    if kind in _TERM_KINDS:
+        return kind, None, None
+    if kind in _MONEY_KINDS:
+        if unit is None:
+            return kind, amount, kind
+        if unit != kind:
+            return unit, amount, unit
+    return kind, amount, unit
+
+
+def _is_single_token(norm: str) -> bool:
+    """Is this normalized name one name, ignoring generational suffixes?
+
+    ``harrison`` and ``harrison jr`` are; ``justin jefferson`` is not.
+    """
+    return len([t for t in norm.split(" ") if t and t not in _NAME_SUFFIXES]) == 1
+
+
 def _resolve_player(name: str, players: list[Player]) -> str:
     norm = normalize_name(name)
     exact = [p for p in players if normalize_name(p.full_name) == norm]
@@ -134,7 +166,10 @@ def _resolve_player(name: str, players: list[Player]) -> str:
     if len(exact) >= 2:
         raise Unresolved(f"Two players named {name}; which team?")
 
-    typed_last = _last_name(norm)
+    # Only a bare surname falls back to matching on surnames. Somebody who typed
+    # a full name meant that player: "Justin Jefferson" must not quietly resolve
+    # to the only Jefferson on file.
+    typed_last = _last_name(norm) if _is_single_token(norm) else None
     if typed_last is not None:
         last_name_matches = [
             p for p in players if _last_name(normalize_name(p.full_name)) == typed_last
@@ -244,15 +279,16 @@ def resolve_extracted(
     for i, asset in enumerate(extracted.assets):
         from_id = resolve_member(asset.from_party).member_id if asset.from_party else None
         to_id = resolve_member(asset.to_party).member_id if asset.to_party else None
+        kind, amount, unit = _money(asset.kind, asset.amount, asset.unit)
         trade_assets.append(
             TradeAsset(
-                kind=asset.kind,
+                kind=kind,
                 from_member_id=from_id,
                 to_member_id=to_id,
                 player_id=resolved_players.get(i),
                 player_name=asset.player_name,
-                amount=asset.amount,
-                unit=asset.unit,
+                amount=amount,
+                unit=unit,
                 description=asset.description,
             )
         )

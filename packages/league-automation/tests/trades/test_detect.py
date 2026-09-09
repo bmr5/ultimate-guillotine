@@ -26,3 +26,11 @@ def test_detection_is_case_and_inflection_insensitive() -> None:
 def test_header_requires_whitespace() -> None:
     # "TradeAlert" as one word does not match; whitespace is required
     assert not is_trade_candidate("🚨 TradeAlert nothing else")
+
+
+def test_a_rescission_term_alone_makes_a_candidate() -> None:
+    """`🚨 Cancel T-2026-014 🚨` names no trade word at all, but it is exactly the
+    message the registrar has to act on."""
+    assert is_trade_candidate("🚨 Cancel T-2026-014 🚨") is True
+    assert is_rescission_candidate("🚨 Cancel T-2026-014 🚨") is True
+    assert is_trade_candidate("🚨 that deal is void 🚨") is True

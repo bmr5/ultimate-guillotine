@@ -16,9 +16,18 @@ HEADER = re.compile(r"trade\s+alert", re.IGNORECASE)
 
 
 def is_trade_candidate(text: str) -> bool:
+    """Is this 🚨 message worth looking at?
+
+    A rescission counts even when it names no trade word at all: `🚨 Cancel
+    T-2026-014 🚨` is exactly the message the registrar has to act on.
+    """
     if ALERT not in text:
         return False
-    return HEADER.search(text) is not None or TRADE_TERMS.search(text) is not None
+    return (
+        HEADER.search(text) is not None
+        or TRADE_TERMS.search(text) is not None
+        or RESCIND_TERMS.search(text) is not None
+    )
 
 
 def is_rescission_candidate(text: str) -> bool:
