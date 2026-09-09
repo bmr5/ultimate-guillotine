@@ -21,3 +21,8 @@ def test_detection_is_case_and_inflection_insensitive() -> None:
     # candidate; the model's own "not_a_trade" classification is the second gate
     # that filters out messages like this one downstream.
     assert is_trade_candidate("🚨 who is sending the trophy pics") is True
+
+
+def test_header_requires_whitespace() -> None:
+    # "TradeAlert" as one word does not match; whitespace is required
+    assert not is_trade_candidate("🚨 TradeAlert nothing else")

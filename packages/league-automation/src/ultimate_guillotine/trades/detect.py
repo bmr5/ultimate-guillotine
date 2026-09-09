@@ -12,7 +12,7 @@ RESCIND_TERMS = re.compile(
     r"\b(rescind|rescinds|rescinded|cancel|cancels|cancelled|canceled|void|voided)\b",
     re.IGNORECASE,
 )
-HEADER = re.compile(r"trade\s*alert", re.IGNORECASE)
+HEADER = re.compile(r"trade\s+alert", re.IGNORECASE)
 
 
 def is_trade_candidate(text: str) -> bool:

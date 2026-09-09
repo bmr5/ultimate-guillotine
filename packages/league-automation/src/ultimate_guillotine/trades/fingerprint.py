@@ -22,7 +22,10 @@ def trade_fingerprint(proposal: TradeProposal) -> str:
         "week": proposal.effective_week,
         "kind": proposal.kind,
         "parties": sorted(p.member_id for p in proposal.parties),
-        "assets": sorted(_canonical_asset(a) for a in proposal.assets),
+        "assets": sorted(
+            (_canonical_asset(a) for a in proposal.assets),
+            key=lambda c: json.dumps(c, default=str),
+        ),
         "return": " ".join((proposal.rental_return_condition or "").split()).lower(),
         "special": sorted(" ".join(t.split()).lower() for t in proposal.special_terms),
     }

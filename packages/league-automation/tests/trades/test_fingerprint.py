@@ -46,3 +46,16 @@ def test_context_key_is_stable_across_amounts() -> None:
     amended = proposal(assets=[proposal().assets[0], TradeAsset("faab", 2, 1, None, None, 500, "faab", None)])
     assert trade_context_key(amended) == trade_context_key(proposal())
     assert trade_context_key(proposal(parties=[TradeParty(1, "Member01"), TradeParty(3, "Member03")])) != trade_context_key(proposal())
+
+
+def test_trade_fingerprint_is_none_safe() -> None:
+    # Two player assets: one with from_member_id=None, one with from_member_id=1
+    asset1 = TradeAsset("player", None, 1, "p1", "Player A", None, None, None)
+    asset2 = TradeAsset("player", 1, None, "p2", "Player B", None, None, None)
+    prop1 = proposal(assets=[asset1, asset2])
+    prop2 = proposal(assets=[asset2, asset1])  # reversed order
+    # Should return 64-char string and be order-insensitive despite None values
+    fp1 = trade_fingerprint(prop1)
+    fp2 = trade_fingerprint(prop2)
+    assert len(fp1) == 64
+    assert fp1 == fp2
