@@ -1,3 +1,5 @@
+import subprocess
+import sys
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -13,6 +15,7 @@ from ultimate_guillotine.data.repositories import (
     SourceMessageRepository,
     TargetRepository,
 )
+from ultimate_guillotine.trades.names import normalize_name
 
 
 def test_reserve_run_is_idempotent(conn) -> None:
@@ -124,3 +127,53 @@ def test_member_alias_repository_replaces_and_lists_aliases(conn) -> None:
 
     with pytest.raises(ValueError):
         repo.replace_aliases("Nobody", ["x"])
+
+
+def test_member_alias_repository_stores_normalized_aliases_once(conn) -> None:
+    with conn.cursor() as cur:
+        cur.execute(
+            "insert into public.members (display_name) values (%s) returning id",
+            ("Member07",),
+        )
+        member_id = cur.fetchone()[0]
+
+    repo = MemberAliasRepository(conn)
+    # "Big Ben" and "big  ben!" normalize to the same alias and collapse to one row.
+    assert repo.replace_aliases("Member07", ["Big Ben", "big  ben!", "Benny"]) == 2
+
+    with conn.cursor() as cur:
+        cur.execute(
+            "select alias, alias_normalized from private.member_aliases where member_id = %s",
+            (member_id,),
+        )
+        rows = cur.fetchall()
+
+    assert {row[1] for row in rows} == {"big ben", "benny"}
+    for alias, alias_normalized in rows:
+        assert alias_normalized == normalize_name(alias)
+
+
+def test_member_alias_repository_rejects_an_alias_owned_by_another_member(conn) -> None:
+    with conn.cursor() as cur:
+        cur.execute("insert into public.members (display_name) values ('Member08')")
+        cur.execute("insert into public.members (display_name) values ('Member09')")
+
+    repo = MemberAliasRepository(conn)
+    assert repo.replace_aliases("Member08", ["Shared"]) == 1
+
+    # The savepoint keeps the failed insert from poisoning the test transaction.
+    with pytest.raises(ValueError, match="already belongs to another member"), conn.transaction():
+        repo.replace_aliases("Member09", ["shared"])
+
+
+def test_repositories_do_not_import_the_http_client() -> None:
+    """The persistence layer must not drag ``httpx`` (and the Sleeper client) in."""
+    code = (
+        "import sys\n"
+        "import ultimate_guillotine.data.repositories  # noqa: F401\n"
+        "assert 'httpx' not in sys.modules, sorted(sys.modules)\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, check=False
+    )
+    assert result.returncode == 0, result.stderr

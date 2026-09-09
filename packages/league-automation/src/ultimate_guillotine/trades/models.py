@@ -40,6 +40,19 @@ class ExtractedTrade(BaseModel):
 
 
 @dataclass(frozen=True)
+class MemberRef:
+    """A league member and the names resolution may match them by.
+
+    Lives here rather than in ``trades.resolve`` so ``data.repositories`` can
+    return one without importing the Sleeper HTTP client.
+    """
+
+    member_id: int
+    display_name: str
+    aliases: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class TradeParty:
     member_id: int
     display_name: str

@@ -8,7 +8,9 @@ the rest of the resolution module.
 import re
 import unicodedata
 
-_PUNCTUATION_RE = re.compile(r"[^\w\s]", re.UNICODE)
+# Everything that isn't a letter, a digit, or whitespace -- underscores included,
+# so ``member_01`` and ``Member 01`` normalize alike.
+_PUNCTUATION_RE = re.compile(r"[^\w\s]|_", re.UNICODE)
 _WHITESPACE_RE = re.compile(r"\s+")
 
 

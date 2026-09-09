@@ -15,7 +15,13 @@ import psycopg
 
 from ultimate_guillotine.sleeper.client import SleeperClient
 from ultimate_guillotine.sleeper.players import Player
-from ultimate_guillotine.trades.models import ExtractedTrade, TradeAsset, TradeParty, TradeProposal
+from ultimate_guillotine.trades.models import (
+    ExtractedTrade,
+    MemberRef,
+    TradeAsset,
+    TradeParty,
+    TradeProposal,
+)
 from ultimate_guillotine.trades.names import normalize_name
 
 __all__ = [
@@ -29,13 +35,8 @@ __all__ = [
 ]
 
 _DEFENSE_WORDS = {"defense", "def", "dst"}
-
-
-@dataclass(frozen=True)
-class MemberRef:
-    member_id: int
-    display_name: str
-    aliases: tuple[str, ...]
+# Generational suffixes, normalized: they are never the name anyone types.
+_NAME_SUFFIXES = {"jr", "sr", "ii", "iii", "iv", "v"}
 
 
 class Unresolved(Exception):
@@ -106,6 +107,18 @@ def _match_defense(norm: str, players: list[Player]) -> Player | None:
     return matches[0] if len(matches) == 1 else None
 
 
+def _last_name(norm: str) -> str | None:
+    """The last name in an already-normalized name, ignoring generational suffixes.
+
+    ``marvin harrison jr`` -> ``harrison``; a name that is nothing but suffixes
+    (someone typing ``III``) has no last name and must match nobody.
+    """
+    tokens = [t for t in norm.split(" ") if t]
+    while tokens and tokens[-1] in _NAME_SUFFIXES:
+        tokens.pop()
+    return tokens[-1] if tokens else None
+
+
 def _resolve_player(name: str, players: list[Player]) -> str:
     norm = normalize_name(name)
     exact = [p for p in players if normalize_name(p.full_name) == norm]
@@ -118,15 +131,15 @@ def _resolve_player(name: str, players: list[Player]) -> str:
     if len(exact) >= 2:
         raise Unresolved(f"Two players named {name}; which team?")
 
-    last_name_matches = [
-        p
-        for p in players
-        if p.full_name.split() and normalize_name(p.full_name.split()[-1]) == norm
-    ]
-    if len(last_name_matches) == 1:
-        return last_name_matches[0].sleeper_player_id
-    if len(last_name_matches) >= 2:
-        raise Unresolved(f"Two players named {name}; which team?")
+    typed_last = _last_name(norm)
+    if typed_last is not None:
+        last_name_matches = [
+            p for p in players if _last_name(normalize_name(p.full_name)) == typed_last
+        ]
+        if len(last_name_matches) == 1:
+            return last_name_matches[0].sleeper_player_id
+        if len(last_name_matches) >= 2:
+            raise Unresolved(f"Two players named {name}; which team?")
 
     raise Unresolved(f"I can't find a player named {name}")
 
@@ -150,7 +163,9 @@ def resolve_extracted(
     # Resolve every player asset first -- roster disambiguation below depends on it.
     resolved_players: dict[int, str] = {}
     for i, asset in enumerate(extracted.assets):
-        if asset.player_name:
+        # Only player assets carry a name we must resolve; a FAAB asset that
+        # mentions a player in passing keeps the free text and no player id.
+        if asset.kind == "player" and asset.player_name:
             resolved_players[i] = _resolve_player(asset.player_name, players)
 
     def sent_players(norm_name: str) -> set[str]:
@@ -198,14 +213,15 @@ def resolve_extracted(
                 if len(holds_all_sent) == 1:
                     winner = holds_all_sent[0]
             if winner is None and not sent and received:
+                # "Holds none of what it receives" is only evidence when every
+                # candidate's roster is known: a candidate missing from the index
+                # holds nothing as far as we can see, which proves nothing.
+                known = all(c.member_id in rosters.holdings for c in candidates)
                 holds_none = [
                     c for c in candidates
                     if not any(rosters.holds(c.member_id, p) for p in received)
                 ]
-                rest = [c for c in candidates if c not in holds_none]
-                if len(holds_none) == 1 and rest and all(
-                    any(rosters.holds(c.member_id, p) for p in received) for c in rest
-                ):
+                if known and len(holds_none) == 1:
                     winner = holds_none[0]
 
         if winner is None:

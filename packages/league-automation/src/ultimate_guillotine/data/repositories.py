@@ -12,8 +12,8 @@ from datetime import datetime, timedelta
 import psycopg
 
 from ultimate_guillotine.config import DeliveryMode
+from ultimate_guillotine.trades.models import MemberRef
 from ultimate_guillotine.trades.names import normalize_name
-from ultimate_guillotine.trades.resolve import MemberRef
 
 
 def chat_guid_hash(chat_guid: str) -> str:
@@ -397,10 +397,18 @@ class MemberAliasRepository:
             return [MemberRef(row[0], row[1], tuple(row[2])) for row in cur.fetchall()]
 
     def replace_aliases(self, member_display_name: str, aliases: list[str]) -> int:
-        """Replace a member's aliases wholesale, returning how many were inserted.
+        """Replace a member's aliases wholesale, returning how many rows were written.
 
-        Raises ``ValueError`` when ``member_display_name`` isn't a known member.
+        Aliases that normalize alike (``Big Ben`` and ``big  ben!``) collapse to
+        one row, so the count returned may be smaller than ``len(aliases)``.
+        Raises ``ValueError`` when ``member_display_name`` isn't a known member,
+        or when an alias is already held by a different member.
         """
+        # First spelling wins for each normalized form; later duplicates drop.
+        wanted: dict[str, str] = {}
+        for alias in aliases:
+            wanted.setdefault(normalize_name(alias), alias)
+
         with self._conn.cursor() as cur:
             cur.execute(
                 "select id from public.members where display_name = %s",
@@ -412,11 +420,17 @@ class MemberAliasRepository:
             member_id = row[0]
 
             cur.execute("delete from private.member_aliases where member_id = %s", (member_id,))
-            cur.executemany(
-                """
-                insert into private.member_aliases (member_id, alias, alias_normalized)
-                values (%s, %s, %s)
-                """,
-                [(member_id, alias, normalize_name(alias)) for alias in aliases],
-            )
-        return len(aliases)
+            for alias_normalized, alias in wanted.items():
+                try:
+                    cur.execute(
+                        """
+                        insert into private.member_aliases (member_id, alias, alias_normalized)
+                        values (%s, %s, %s)
+                        """,
+                        (member_id, alias, alias_normalized),
+                    )
+                except psycopg.errors.UniqueViolation as exc:
+                    raise ValueError(
+                        f"alias '{alias}' already belongs to another member"
+                    ) from exc
+        return len(wanted)
