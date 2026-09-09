@@ -5,18 +5,42 @@ the pressure order is known by construction: pressure rank N is member N
 counting up from the bottom. Team 17 is eliminated, which is what the
 "never propose a trade with an eliminated team" tests need. Projections and
 FAAB come from closed formulas rather than a data file: a reviewer can compute
-any expected number by hand from the two functions below.
+any expected number by hand from the functions below.
+
+**The rosters are not eighteen copies of one team.** A league where every roster
+runs the identical lineup has no trade in it -- nobody is long anything anybody
+else is short -- and a candidate generator tested against it would pass while
+being unable to find a fit. So two things vary, both closed-form. The FLEX slot
+and one bench spot rotate through :data:`ROTATION` by ``team % 4``, changing the
+positional *shape* of each roster; and :func:`_positional_bonus` tilts each
+team's points toward RB and away from WR (or the reverse) by ``team % 3``, so
+some rosters are RB-rich and WR-poor while others are the mirror image and the
+two have something to trade. The tilt is at most two points against a 7.2-point
+gap between adjacent teams, so the pressure order above survives it untouched.
+
+Points are ``Decimal``, matching what the data layer hands back for a ``numeric``
+column, and each holding's ``projected_points`` is a mapping keyed by week over
+``horizon_weeks``: a week further out is worth half a point less, which is
+enough for a horizon to change an answer without inventing a projection model.
 
 Below the coverage gate the league goes dark, not fuzzy: every team's total
-*and* every holding's points come back ``None``, because the data layer withholds
+*and* every holding's points come back empty, because the data layer withholds
 a projection it cannot stand behind rather than showing a partial one. That is
 what makes the counting fallback -- rank a roster by bodies when it has no
 numbers -- an exercised path in the tests rather than dead code.
 """
 
 from datetime import UTC, datetime
+from decimal import Decimal
+from types import MappingProxyType
 
-from ultimate_guillotine.advisor.state import AdvisorHolding, AdvisorTeamState, LeagueSnapshot
+from ultimate_guillotine.advisor.state import (
+    COVERAGE_GATE,
+    LAST_REGULAR_WEEK,
+    AdvisorHolding,
+    AdvisorTeamState,
+    LeagueSnapshot,
+)
 
 FIXTURE_SYNCED_AT = datetime(2026, 10, 8, 15, 0, tzinfo=UTC)
 FIXTURE_SEASON = 2026
@@ -29,23 +53,78 @@ ELIMINATED_MEMBER_ID = 17
 LINEUP = ("QB", "RB", "RB", "WR", "WR", "WR", "TE", "FLEX")
 FLEX_POSITIONS = ("RB", "WR", "TE")
 BENCH = ("RB", "WR", "WR", "TE", "QB", "RB")
-#: The position that actually fills each lineup slot; FLEX is filled by a WR.
+#: The position that fills each lineup slot before the FLEX rotation is applied.
 SLOT_POSITION = ("QB", "RB", "RB", "WR", "WR", "WR", "TE", "WR")
+#: The rotating positions, indexed by ``team % 4``: four teams in a row never run
+#: the same shape, and the cycle is long enough to cross the ``% 3`` tilt.
+ROTATION = ("RB", "WR", "TE", "WR")
+#: The one starter slot and the one bench spot that rotate.
+FLEX_SLOT_INDEX = 7
+ROTATING_BENCH_INDEX = 1
+
+_CENTS = Decimal("0.01")
+#: A projection one week further out is worth half a point less. Not a model --
+#: just enough slope that a two-week horizon and a one-week horizon differ.
+_WEEK_DECAY = Decimal("0.5")
 
 
-def _starter_points(team: int, slot_index: int) -> float:
-    """Strictly decreasing in team number and in slot index."""
-    return round(22.0 - 0.6 * team - 1.3 * slot_index, 2)
+def _slot_position(team: int, slot_index: int) -> str:
+    """The position filling a starter slot; the FLEX rotates by ``team % 4``."""
+    if slot_index == FLEX_SLOT_INDEX:
+        return ROTATION[team % 4]
+    return SLOT_POSITION[slot_index]
 
 
-def _bench_points(team: int, bench_index: int) -> float:
-    return round(12.0 - 0.4 * team - 0.9 * bench_index, 2)
+def _bench_position(team: int, bench_index: int) -> str:
+    """The position of a bench player; one spot rotates, offset from the FLEX."""
+    if bench_index == ROTATING_BENCH_INDEX:
+        return ROTATION[(team + 2) % 4]
+    return BENCH[bench_index]
 
 
-def _team(team: int, coverage_pct: float) -> AdvisorTeamState:
-    provisional = coverage_pct < 95.0
+def _positional_bonus(team: int, position: str) -> Decimal:
+    """Tilt a team toward RB and away from WR, or the reverse, by ``team % 3``.
+
+    Zero-sum in spirit and tiny in size: at most one point per player, and at
+    most two points on a team total, against the 7.2 points that separate
+    adjacent teams. RB-rich teams are WR-poor and vice versa, which is exactly
+    the asymmetry a trade has to be found in.
+    """
+    tilt = Decimal(team % 3 - 1)
+    if position == "RB":
+        return tilt
+    if position == "WR":
+        return -tilt
+    return Decimal(0)
+
+
+def _starter_points(team: int, slot_index: int) -> Decimal:
+    """Strictly decreasing in team number and in slot index, then tilted."""
+    base = Decimal(22) - Decimal("0.6") * team - Decimal("1.3") * slot_index
+    return (base + _positional_bonus(team, _slot_position(team, slot_index))).quantize(_CENTS)
+
+
+def _bench_points(team: int, bench_index: int) -> Decimal:
+    base = Decimal(12) - Decimal("0.4") * team - Decimal("0.9") * bench_index
+    return (base + _positional_bonus(team, _bench_position(team, bench_index))).quantize(_CENTS)
+
+
+def _horizon(week: int, horizon_weeks: int) -> tuple[int, ...]:
+    """The same cap ``SnapshotRepository.load`` applies, so the two agree."""
+    last = max(week, min(week + horizon_weeks - 1, LAST_REGULAR_WEEK))
+    return tuple(range(week, last + 1))
+
+
+def _by_week(points: Decimal, weeks: tuple[int, ...]) -> MappingProxyType[int, Decimal]:
+    return MappingProxyType(
+        {w: (points - _WEEK_DECAY * (w - weeks[0])).quantize(_CENTS) for w in weeks}
+    )
+
+
+def _team(team: int, coverage_pct: Decimal, weeks: tuple[int, ...]) -> AdvisorTeamState:
+    provisional = coverage_pct < COVERAGE_GATE
     holdings: list[AdvisorHolding] = []
-    total = 0.0
+    total = Decimal(0)
     for slot_index, lineup_position in enumerate(LINEUP):
         points = _starter_points(team, slot_index)
         total += points
@@ -53,23 +132,27 @@ def _team(team: int, coverage_pct: float) -> AdvisorTeamState:
             AdvisorHolding(
                 sleeper_player_id=f"p{team:02d}s{slot_index}",
                 player_name=f"Starter {team:02d}-{slot_index}",
-                position=SLOT_POSITION[slot_index],
+                position=_slot_position(team, slot_index),
                 slot="starter",
                 lineup_position=lineup_position,
                 slot_index=slot_index,
-                projected_points=None if provisional else points,
+                week=weeks[0],
+                projected_points={} if provisional else _by_week(points, weeks),
             )
         )
-    for bench_index, position in enumerate(BENCH):
+    for bench_index in range(len(BENCH)):
         holdings.append(
             AdvisorHolding(
                 sleeper_player_id=f"p{team:02d}b{bench_index}",
                 player_name=f"Bench {team:02d}-{bench_index}",
-                position=position,
+                position=_bench_position(team, bench_index),
                 slot="bench",
                 lineup_position=None,
                 slot_index=None,
-                projected_points=None if provisional else _bench_points(team, bench_index),
+                week=weeks[0],
+                projected_points=(
+                    {} if provisional else _by_week(_bench_points(team, bench_index), weeks)
+                ),
             )
         )
     label = f"Member{team:02d}"
@@ -83,7 +166,8 @@ def _team(team: int, coverage_pct: float) -> AdvisorTeamState:
         faab_remaining=1000 - 40 * team,
         is_eliminated=team == ELIMINATED_MEMBER_ID,
         elimination_source="adjudicator" if team == ELIMINATED_MEMBER_ID else None,
-        projected_points=None if provisional else round(total, 2),
+        week=weeks[0],
+        projected_points={} if provisional else _by_week(total, weeks),
         coverage_pct=coverage_pct,
         is_provisional=provisional,
         holdings=tuple(holdings),
@@ -93,13 +177,24 @@ def _team(team: int, coverage_pct: float) -> AdvisorTeamState:
 def fixture_snapshot(
     week: int = 6,
     *,
-    coverage_pct: float = 100.0,
+    coverage_pct: Decimal = Decimal("100.00"),
     synced_at: datetime = FIXTURE_SYNCED_AT,
+    oldest_synced_at: datetime | None = None,
+    horizon_weeks: int = 1,
 ) -> LeagueSnapshot:
+    """The league as one snapshot.
+
+    ``synced_at`` is the newest component stamp and ``oldest_synced_at`` the one
+    staleness is judged on; passing only ``synced_at`` makes every component the
+    same age, which is the ordinary case.
+    """
+    weeks = _horizon(week, horizon_weeks)
     return LeagueSnapshot(
         season=FIXTURE_SEASON,
         season_id=FIXTURE_SEASON_ID,
         week=week,
+        weeks=weeks,
         synced_at=synced_at,
-        teams=tuple(_team(team, coverage_pct) for team in range(1, 19)),
+        oldest_synced_at=synced_at if oldest_synced_at is None else oldest_synced_at,
+        teams=tuple(_team(team, coverage_pct, weeks) for team in range(1, 19)),
     )
