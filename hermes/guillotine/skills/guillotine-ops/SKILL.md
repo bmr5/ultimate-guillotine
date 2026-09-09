@@ -100,6 +100,25 @@ the registrar would record and writes nothing, sends nothing.
 past announcements from a contracts spreadsheet; it writes nothing and sends
 nothing.
 
+## Ask the Trade Advisor a question without sending anything
+
+```
+cd <repo> && uv run --project packages/league-automation ug advisor ask \
+  --text "<question>" --as <member>
+```
+
+A safe dry run: it prints the advice the league would have seen and writes
+nothing, sends nothing, and records no run.
+
+In the chat the Advisor answers **only in the self-test chat**, and only when a
+message tags `@bot` and asks for advice rather than a fact — a lookup question
+goes to the Concierge. Promoting it to the league chat is a code change to
+`advisor_chat_guid` in `listener/run.py`, reviewed like any other, not a row
+somebody adds to `private.delivery_targets`.
+
+It never registers a trade. Announce a trade with a 🚨 alert and the Trade
+Registrar logs it.
+
 ## List league members and how many nicknames each has
 
 ```
@@ -108,7 +127,9 @@ cd <repo> && uv run --project packages/league-automation ug members list
 
 Prints one line per member with a count only; it never prints a nickname.
 `ug members aliases load <file>` replaces every listed member's nicknames from
-a JSON file and reports counts only.
+a JSON file and reports counts only. `ug members handles load <file>` does the
+same for the Apple handles the Advisor matches a sender by: only the hash of
+each handle is stored, and the command prints counts only — never a handle.
 
 ## Fill gaps in ingested data
 

@@ -301,6 +301,7 @@ def test_build_processor_registers_the_trade_registrar_with_a_chat_and_the_cli(
     )
 
     assert "trade-registrar" in _registry_names(processor)
+    assert "trade-advisor" in _registry_names(processor)
     assert notifier.ops_sent == []
 
 
@@ -317,7 +318,11 @@ def test_build_processor_announces_the_registrar_is_disabled_exactly_once(
     )
 
     assert "trade-registrar" not in _registry_names(processor)
-    assert notifier.ops_sent == ["Trade Registrar disabled: hermes CLI not found"]
+    assert "trade-advisor" not in _registry_names(processor)
+    assert notifier.ops_sent == [
+        "Trade Registrar disabled: hermes CLI not found",
+        "Trade Advisor disabled: hermes CLI not found",
+    ]
 
 
 def _alert(chat_guid: str) -> InboundMessage:
@@ -356,3 +361,50 @@ def test_build_processor_skips_the_registrar_when_no_chat_is_configured(
 
     assert "trade-registrar" not in _registry_names(processor)
     assert notifier.ops_sent == ["Trade Registrar disabled: no target chat for disabled"]
+
+
+def test_the_advisor_answers_in_the_self_test_chat_and_only_there() -> None:
+    """The spec keeps the Advisor in the self-test chat until Ben promotes it."""
+    assert run_module.advisor_chat_guid(_settings()) == "iMessage;+;chat-test"
+
+
+def test_the_advisor_never_registers_in_production(
+    hermes_installed: None, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Production is a deliberate, reviewed change to `advisor_chat_guid`, not a
+    database row somebody adds -- and it is a log line, not an ops note, because
+    it is the expected state of every production start rather than a fault."""
+    caplog.set_level("INFO")
+    settings = _settings(
+        delivery_mode="production", production_chat_guid="prod",
+        production_participant_fingerprint="fp", test_chat_guid=None,
+    )
+    notifier = RecordingNotifier()
+
+    assert run_module.advisor_chat_guid(settings) is None
+    processor, _allowed = run_module.build_processor(
+        settings, EmptyConnection(), None, None, notifier
+    )
+
+    assert "trade-advisor" not in _registry_names(processor)
+    assert not [note for note in notifier.ops_sent if "Advisor" in note]
+    assert "trade advisor disabled" in caplog.text.lower()
+
+
+def _advice_request(chat_guid: str) -> InboundMessage:
+    return InboundMessage(
+        guid="g2", chat_guid=chat_guid, sender_address="+15555550100",
+        text="@bot who should I trade with for a RB", is_from_me=False, is_group=True,
+        sent_at=datetime.now(UTC),
+    )
+
+
+def test_the_advisor_trigger_is_gated_on_the_delivery_chat(hermes_installed: None) -> None:
+    processor, _allowed = run_module.build_processor(
+        _settings(), EmptyConnection(), None, None, RecordingNotifier(),
+    )
+
+    trigger = next(t for t in processor._registry._triggers if t.name == "trade-advisor")
+
+    assert trigger.matches(_advice_request("iMessage;+;chat-test"))
+    assert not trigger.matches(_advice_request("iMessage;+;chat-elsewhere"))

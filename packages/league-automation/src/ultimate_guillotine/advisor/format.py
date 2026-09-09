@@ -30,6 +30,7 @@ from collections.abc import Sequence
 from ultimate_guillotine.advisor.candidates import Candidate, span_text, weeks_covered
 from ultimate_guillotine.advisor.models import AdvisedTrade, OfferLeg, TradeAdviceResponse
 from ultimate_guillotine.advisor.state import LeagueSnapshot
+from ultimate_guillotine.advisor.verify import DeadlinePassed, Rejected
 
 #: What every answer's last line starts with, so the chat can always see what
 #: the advice was made of.
@@ -64,6 +65,7 @@ __all__ = [
     "format_deadline_passed",
     "format_refusal",
     "format_rejected",
+    "format_rejection",
     "format_stale",
     "format_unknown_asker",
 ]
@@ -182,6 +184,19 @@ def format_refusal() -> str:
 def format_rejected() -> str:
     """The one answer when validation threw the model's whole response out."""
     return FALLBACK
+
+
+def format_rejection(exc: Rejected) -> str:
+    """The one line the league sees for a rejected answer, whichever kind it was.
+
+    The handler catches :class:`~ultimate_guillotine.advisor.verify.Rejected`
+    once and asks this which sentence it earns, so the ordering that a pair of
+    ``except`` clauses would have to get right -- subclass before base -- cannot
+    be got wrong: a passed deadline is a fact about the calendar and says so,
+    and everything else is an answer that may well come back sound on the next
+    ask. Either way ``exc.reason`` stays in the ops log, never in the chat.
+    """
+    return DEADLINE_PASSED if isinstance(exc, DeadlinePassed) else FALLBACK
 
 
 def format_deadline_passed() -> str:
