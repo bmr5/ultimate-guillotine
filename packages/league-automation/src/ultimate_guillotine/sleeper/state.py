@@ -20,8 +20,24 @@ STATE_MAX_AGE = timedelta(minutes=60)
 
 @dataclass(frozen=True)
 class NflState:
+    """Sleeper's NFL state: the week, and the count that week belongs to.
+
+    ``week`` is scoped by ``season_type``. Preseason (``"pre"``) and postseason
+    (``"post"``) restart the count from 1, so a stored ``week == 1`` can mean
+    preseason week 1, regular-season week 1, or the first playoff round — three
+    different points in the calendar. Every consumer that means *the
+    regular-season week* (projections, weekly scoring, elimination) must gate on
+    ``season_type == "regular"`` before using ``week`` at all; outside the regular
+    season there is no regular-season week to work on, and treating the number as
+    one silently runs a week-scoped job against the wrong slate.
+    """
+
     season: int
     season_type: str
+    #: The week *within* ``season_type``, not a season-wide week number. Gate on
+    #: ``season_type == "regular"`` before using it for projections — see the class
+    #: docstring. ``display_week`` is Sleeper's UI number and can differ (in
+    #: preseason it points at the upcoming regular-season week).
     week: int
     display_week: int | None
     leg: int | None
@@ -50,8 +66,19 @@ def _date_or_none(value: object) -> date | None:
         return None
 
 
+def _require_aware(now: datetime) -> None:
+    """Every stored and compared timestamp here is UTC; a naive one is a bug, not a default."""
+    if now.tzinfo is None or now.utcoffset() is None:
+        raise ValueError("now must be timezone-aware")
+
+
 def parse_nfl_state(raw: dict[str, object], now: datetime) -> NflState:
-    """Turn Sleeper's state payload into typed values, or refuse it."""
+    """Turn Sleeper's state payload into typed values, or refuse it.
+
+    ``now`` must be timezone-aware; a naive datetime raises ``ValueError`` rather
+    than being written to a ``timestamptz`` under the server's guessed zone.
+    """
+    _require_aware(now)
     season = _int_or_none(raw.get("season"))
     week = _int_or_none(raw.get("week"))
     season_type = raw.get("season_type")
@@ -126,7 +153,12 @@ class NflStateRepository:
 
 
 def sync_nfl_state(client: SleeperClient, conn: psycopg.Connection, now: datetime) -> NflState:
-    """Refresh the single state row. Fetch first, then one short transaction."""
+    """Refresh the single state row. Fetch first, then one short transaction.
+
+    A failing fetch raises before the transaction opens, so the stored row is left
+    exactly as it was.
+    """
+    _require_aware(now)
     state = parse_nfl_state(client.get_nfl_state(), now)
     with conn.transaction():
         NflStateRepository(conn).upsert(state)
@@ -136,9 +168,23 @@ def sync_nfl_state(client: SleeperClient, conn: psycopg.Connection, now: datetim
 def current_week(client: SleeperClient, conn: psycopg.Connection, now: datetime) -> NflState:
     """The week to work on: the stored row when fresh, a fresh fetch otherwise.
 
-    A stalled state job must never silently pin the league to last week, so
-    staleness costs one extra Sleeper call rather than correctness.
+    Freshness is ``now - synced_at <= STATE_MAX_AGE``, inclusive: a row exactly 60
+    minutes old is still used, 61 minutes refreshes.
+
+    **An outage while the row is stale raises.** When the refresh fails — Sleeper
+    down, a timeout — the client's exception propagates and the stale row survives
+    untouched; this function never falls back to it. That is the contract, not an
+    oversight: a stalled state job must never silently pin the league to last week,
+    so a week-scoped job fails loudly rather than running against a week that may
+    already have turned over. A caller that genuinely can tolerate a stale week has
+    to read ``NflStateRepository(conn).get()`` and own that decision itself.
+
+    The returned ``week`` is scoped by ``season_type`` (see ``NflState``): gate on
+    ``season_type == "regular"`` before using it for projections or scoring.
+
+    ``now`` must be timezone-aware; a naive datetime raises ``ValueError``.
     """
+    _require_aware(now)
     stored = NflStateRepository(conn).get()
     if stored is not None and now - stored.synced_at <= STATE_MAX_AGE:
         return stored
