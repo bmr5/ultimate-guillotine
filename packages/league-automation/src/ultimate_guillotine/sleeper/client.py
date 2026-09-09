@@ -20,6 +20,27 @@ PROJECTIONS_URL = "https://api.sleeper.app/projections/nfl/{season}/{week}"
 
 TIMEOUT = 10.0
 
+#: How much of a projections payload may be malformed before the payload itself is
+#: the problem. A live week is roughly 9,400 rows and Sleeper does occasionally send
+#: a handful of odd ones; refusing the week over three bad rows would leave the board
+#: with no numbers at all, which is strictly worse than scoring the other 9,397.
+MAX_DROPPED_PCT = 1
+
+
+def _is_projection_row(row: Any) -> bool:
+    """Is this one usable projection row?
+
+    A row has to be an object, name a player, be a projection rather than a stat
+    line, and carry a stats object. Anything else is dropped by
+    :meth:`SleeperClient.get_projections` and counted there.
+    """
+    return (
+        isinstance(row, dict)
+        and bool(row.get("player_id"))
+        and row.get("category") == "proj"
+        and isinstance(row.get("stats"), dict)
+    )
+
 
 class SleeperClient:
     """Thin wrapper over an ``httpx.Client`` for the Sleeper API.
@@ -86,6 +107,18 @@ class SleeperClient:
         object per player (roughly 9,400 rows, 5.6 MB), so it gets an absolute
         URL and the same longer timeout the player dump uses. Redirects stay
         disabled by the client's constructor.
+
+        **A malformed row is dropped, not fatal.** One unusable object out of 9,400
+        used to refuse the whole week, which leaves the board with no projections at
+        all -- a worse answer than the 9,399 good rows. Bad rows are counted instead,
+        and only the shape of the *payload* refuses: an empty or non-array body, or
+        more than ``MAX_DROPPED_PCT`` percent of rows dropped, which is a feed that
+        has changed shape rather than a feed with a few odd players in it.
+
+        A single dropped row is tolerated at any size, because one percent of a
+        handful of rows is not a meaningful test. Nothing rests on that: a payload
+        small enough for it to matter is refused by the thin-payload guard in
+        ``fetch_projection_rows`` long before it can be written.
         """
         response = self._http.get(
             PROJECTIONS_URL.format(season=season, week=week),
@@ -93,20 +126,18 @@ class SleeperClient:
             timeout=60.0,
         )
         response.raise_for_status()
-        payload: list[dict[str, Any]] = response.json()
-        # The ``noqa: TRY004`` markers below waive ruff's preference for ``TypeError``:
+        payload: list[Any] = response.json()
+        # The ``noqa: TRY004`` marker below waives ruff's preference for ``TypeError``:
         # a malformed remote body is a data error, not an argument error.
         if not isinstance(payload, list):
             raise ValueError("sleeper projections payload is not a list")  # noqa: TRY004
         if not payload:
             raise ValueError("sleeper projections payload is empty")
-        for row in payload:
-            if not isinstance(row, dict):
-                raise ValueError("sleeper projections row is not an object")  # noqa: TRY004
-            if not row.get("player_id"):
-                raise ValueError("sleeper projections row has no player_id")
-            if row.get("category") != "proj":
-                raise ValueError("sleeper projections row is not category proj")
-            if not isinstance(row.get("stats"), dict):
-                raise ValueError("sleeper projections row has no stats object")  # noqa: TRY004
-        return payload
+        rows = [row for row in payload if _is_projection_row(row)]
+        dropped = len(payload) - len(rows)
+        if dropped > 1 and dropped * 100 > len(payload) * MAX_DROPPED_PCT:
+            raise ValueError(
+                f"sleeper projections payload dropped {dropped} malformed rows "
+                f"of {len(payload)}"
+            )
+        return rows

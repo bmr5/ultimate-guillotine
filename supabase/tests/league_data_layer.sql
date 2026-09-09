@@ -1,5 +1,5 @@
 begin;
-select plan(27);
+select plan(33);
 
 -- `supabase db reset` seeds only public.seasons, so the row-level assertions below need
 -- a member and a team of their own. These two statements assert nothing.
@@ -28,6 +28,34 @@ select has_column(
   'members carries the Sleeper display name consumers fall back to'
 );
 select has_column('public', 'members', 'nickname', 'members carries the public nickname');
+
+-- Every new public table is reachable by the anon key, so RLS being *on* is what
+-- stands between the policies below and the whole table. A policy on a table with
+-- RLS disabled reads as protection and is not.
+select is(
+  (select relrowsecurity from pg_class where oid = 'public.roster_holdings'::regclass),
+  true, 'roster_holdings has row level security enabled'
+);
+select is(
+  (select relrowsecurity from pg_class where oid = 'public.team_season_state'::regclass),
+  true, 'team_season_state has row level security enabled'
+);
+select is(
+  (select relrowsecurity from pg_class where oid = 'public.final_rosters'::regclass),
+  true, 'final_rosters has row level security enabled'
+);
+select is(
+  (select relrowsecurity from pg_class where oid = 'public.player_projections'::regclass),
+  true, 'player_projections has row level security enabled'
+);
+select is(
+  (select relrowsecurity from pg_class where oid = 'public.team_week_projections'::regclass),
+  true, 'team_week_projections has row level security enabled'
+);
+select is(
+  (select relrowsecurity from pg_class where oid = 'public.nfl_state'::regclass),
+  true, 'nfl_state has row level security enabled'
+);
 
 select policies_are(
   'public', 'team_week_projections',

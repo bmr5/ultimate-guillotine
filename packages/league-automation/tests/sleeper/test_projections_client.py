@@ -73,43 +73,53 @@ def test_get_projections_rejects_an_empty_payload() -> None:
         SleeperClient(httpx.Client()).get_projections(2026, 1)
 
 
+@pytest.mark.parametrize(
+    "malformed",
+    [
+        pytest.param("4943", id="not-an-object"),
+        pytest.param(_row(player_id=_MISSING), id="no-player-id"),
+        pytest.param(_row(player_id=""), id="blank-player-id"),
+        pytest.param(_row(category="stat"), id="not-a-projection"),
+        pytest.param(_row(stats=_MISSING), id="no-stats"),
+        pytest.param(_row(stats=[]), id="stats-not-an-object"),
+    ],
+)
 @respx.mock
-def test_get_projections_rejects_a_row_that_is_not_an_object() -> None:
-    respx.get(URL).mock(return_value=httpx.Response(200, json=[_row(), "4943"]))
-    with pytest.raises(ValueError, match="not an object"):
+def test_get_projections_drops_each_malformed_shape(malformed: object) -> None:
+    """Every shape that used to refuse the week is now dropped from it. Refusing
+    9,400 good rows over one bad one leaves the board with nothing at all."""
+    respx.get(URL).mock(return_value=httpx.Response(200, json=[_row(), malformed]))
+
+    assert SleeperClient(httpx.Client()).get_projections(2026, 1) == [_row()]
+
+
+@respx.mock
+def test_get_projections_keeps_the_good_rows_around_a_malformed_one() -> None:
+    """One bad row among the fixture's seven: the other six come back."""
+    payload = json.loads(FIXTURE.read_text())
+    payload[3] = "not a row"
+    respx.get(URL).mock(return_value=httpx.Response(200, json=payload))
+
+    rows = SleeperClient(httpx.Client()).get_projections(2026, 1)
+
+    assert len(rows) == 6
+    assert all(isinstance(row, dict) for row in rows)
+
+
+@respx.mock
+def test_get_projections_refuses_a_payload_that_is_mostly_malformed() -> None:
+    """Past one percent it is not a few odd players, it is a feed that has changed
+    shape, and scoring what is left would silently understate the whole week."""
+    payload = [_row(player_id=str(n)) for n in range(92)] + [_row(category="stat")] * 8
+    respx.get(URL).mock(return_value=httpx.Response(200, json=payload))
+
+    with pytest.raises(ValueError, match="dropped 8 malformed rows of 100"):
         SleeperClient(httpx.Client()).get_projections(2026, 1)
 
 
 @respx.mock
-def test_get_projections_rejects_a_row_missing_player_id() -> None:
-    respx.get(URL).mock(return_value=httpx.Response(200, json=[_row(player_id=_MISSING)]))
-    with pytest.raises(ValueError, match="player_id"):
-        SleeperClient(httpx.Client()).get_projections(2026, 1)
+def test_get_projections_allows_exactly_one_percent_dropped() -> None:
+    payload = [_row(player_id=str(n)) for n in range(198)] + [_row(category="stat")] * 2
+    respx.get(URL).mock(return_value=httpx.Response(200, json=payload))
 
-
-@respx.mock
-def test_get_projections_rejects_a_row_with_a_blank_player_id() -> None:
-    respx.get(URL).mock(return_value=httpx.Response(200, json=[_row(player_id="")]))
-    with pytest.raises(ValueError, match="player_id"):
-        SleeperClient(httpx.Client()).get_projections(2026, 1)
-
-
-@respx.mock
-def test_get_projections_rejects_a_row_whose_category_is_not_proj() -> None:
-    respx.get(URL).mock(return_value=httpx.Response(200, json=[_row(category="stat")]))
-    with pytest.raises(ValueError, match="category proj"):
-        SleeperClient(httpx.Client()).get_projections(2026, 1)
-
-
-@respx.mock
-def test_get_projections_rejects_a_row_missing_stats() -> None:
-    respx.get(URL).mock(return_value=httpx.Response(200, json=[_row(stats=_MISSING)]))
-    with pytest.raises(ValueError, match="stats"):
-        SleeperClient(httpx.Client()).get_projections(2026, 1)
-
-
-@respx.mock
-def test_get_projections_rejects_a_row_whose_stats_is_not_an_object() -> None:
-    respx.get(URL).mock(return_value=httpx.Response(200, json=[_row(stats=[])]))
-    with pytest.raises(ValueError, match="stats"):
-        SleeperClient(httpx.Client()).get_projections(2026, 1)
+    assert len(SleeperClient(httpx.Client()).get_projections(2026, 1)) == 198

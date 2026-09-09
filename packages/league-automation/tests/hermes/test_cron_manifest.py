@@ -39,6 +39,23 @@ def test_the_projections_jobs_all_record_the_same_agent() -> None:
     assert {j["agent"] for j in projections} == {"projections-sync"}
 
 
+def test_only_the_projections_baseline_delivers_to_the_ops_channel() -> None:
+    """The three game-window rows fire every five minutes, and an outage lasts as
+    long as it lasts: routing them to Discord posts the same failure twelve times
+    an hour. They stay local; the */30 baseline is what speaks in the channel."""
+    projections = {
+        job["name"]: job["deliver"]
+        for job in JOBS
+        if job["script"] == "guillotine_sleeper_projections.sh"
+    }
+    assert projections == {
+        "guillotine-sleeper-projections": "discord:#guillotine-ops",
+        "guillotine-sleeper-projections-thursday": "local",
+        "guillotine-sleeper-projections-sunday": "local",
+        "guillotine-sleeper-projections-monday": "local",
+    }
+
+
 def test_the_scheduled_agents_are_the_ones_the_cli_records() -> None:
     assert {job["agent"] for job in JOBS} == {
         "health", "gap-fill", "sleeper-sync", "run-audit", "players-sync",

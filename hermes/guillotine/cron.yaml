@@ -43,6 +43,12 @@ jobs:
   # baseline and a game-window fire, and health checks the agent, so the */30 baseline
   # keeps all four rows fresh. Cron fields below are the Mac mini's LOCAL time
   # (America/New_York), not UTC.
+  #
+  # Only the */30 baseline delivers to Discord. The three game-window rows fire every
+  # five minutes, and a Sleeper outage lasts as long as it lasts: routing them to the
+  # channel would post the same failure twelve times an hour for hours. `deliver: local`
+  # keeps their output on the mini, where the run history and `ug ops health` read it,
+  # and the baseline still says it in the channel every half hour.
   - name: guillotine-sleeper-projections
     agent: projections-sync
     schedule: "*/30 * * * *"
@@ -53,17 +59,17 @@ jobs:
     agent: projections-sync
     schedule: "*/5 20-23 * * 4"
     script: guillotine_sleeper_projections.sh
-    deliver: "discord:#guillotine-ops"
+    deliver: local
     max_gap_minutes: 90
   - name: guillotine-sleeper-projections-sunday
     agent: projections-sync
     schedule: "*/5 13-23 * * 0"
     script: guillotine_sleeper_projections.sh
-    deliver: "discord:#guillotine-ops"
+    deliver: local
     max_gap_minutes: 90
   - name: guillotine-sleeper-projections-monday
     agent: projections-sync
     schedule: "*/5 20-23 * * 1"
     script: guillotine_sleeper_projections.sh
-    deliver: "discord:#guillotine-ops"
+    deliver: local
     max_gap_minutes: 90

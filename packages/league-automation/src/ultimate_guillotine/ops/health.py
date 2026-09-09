@@ -45,12 +45,43 @@ def missed_runs(now: datetime, runs, expected) -> list[str]:
     return problems
 
 
+def failing_agents(runs, expected) -> list[str]:
+    """One line per scheduled agent whose most recent *finished* run failed.
+
+    ``missed_runs`` cannot see this. An agent that fires every five minutes and
+    fails every five minutes keeps ``last_started`` moving, so no gap budget is
+    ever broken and a sustained outage reads as perfectly healthy. The transition
+    note fired once, on the edge, possibly hours ago and possibly into a channel
+    nobody was reading. The status of the last run that actually finished is the
+    standing answer to "is it working?", so the 5-minute health check asks it.
+
+    A ``running`` row is not an answer -- ``last_finished_status`` ignores those --
+    and the time quoted is ``last_started``, the newest run of that agent, which
+    during an outage is the failed run itself.
+
+    Agents come from ``expected_runs`` rather than from the run history: this is
+    about the scheduled jobs Ben is relying on, not about a one-off replay that
+    failed last March.
+    """
+    problems: list[str] = []
+    for agent in sorted({job.agent for job in expected.all()}):
+        if runs.last_finished_status(agent) != "failed":
+            continue
+        last = runs.last_started(agent)
+        stamp = f"{last:%Y-%m-%d %H:%M} UTC" if last is not None else "an unknown time"
+        problems.append(f"{agent}: last run failed at {stamp}")
+    return problems
+
+
 def check_health(now: datetime, heartbeats, runs, expected, client, outbound) -> list[str]:
     """Return one human-readable problem line per issue found; empty when healthy."""
     problems: list[str] = []
     for component in heartbeats.stale(LISTENER_STALE_AFTER, now):
         problems.append(f"Heartbeat for {component} is stale")
     problems.extend(missed_runs(now, runs, expected))
+    # A job that keeps firing and keeps failing is silent to `missed_runs`: its
+    # `last_started` never goes stale. This is the line that says so.
+    problems.extend(failing_agents(runs, expected))
     # A row still in `sending` long after its reservation means a send reached the
     # Messages boundary without a recorded outcome: it needs a human to look.
     for outbound_id in outbound.stuck_sending(STUCK_SENDING_AFTER, now):
