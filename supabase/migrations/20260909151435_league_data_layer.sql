@@ -80,8 +80,6 @@ create table public.final_rosters (
   frozen_at timestamptz not null,
   unique (season_id, team_id)
 );
-create index final_rosters_season_idx on public.final_rosters (season_id);
-
 -- Keyed by the plain season year, not season_id: a projection is a property of the NFL
 -- week, not of this league. stat_line keeps Sleeper's raw map so a scoring change can be
 -- replayed without refetching.
@@ -99,12 +97,13 @@ create table public.player_projections (
   scoring_version text not null,
   source text not null default 'sleeper',
   coverage_flagged boolean not null default false,
-  run_coverage_pct numeric(5, 2),
+  -- The run's overall starter coverage, carried on every row it wrote. A percentage,
+  -- so it is bounded here rather than trusted from the caller.
+  run_coverage_pct numeric(5, 2) check (run_coverage_pct between 0 and 100),
   projected_at timestamptz not null,
   synced_at timestamptz not null,
   unique (season, week, sleeper_player_id)
 );
-create index player_projections_season_week_idx on public.player_projections (season, week);
 create index player_projections_player_idx on public.player_projections (sleeper_player_id);
 
 -- A written table, not a view: Realtime publishes tables only, and the board's sort key
@@ -121,7 +120,7 @@ create table public.team_week_projections (
   empty_slots int not null,
   starters_projected int not null,
   missing_projections int not null,
-  coverage_pct numeric(5, 2) not null,
+  coverage_pct numeric(5, 2) not null check (coverage_pct between 0 and 100),
   is_provisional boolean not null default false,
   computed_at timestamptz not null,
   unique (season_id, team_id, week)

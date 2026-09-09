@@ -1,5 +1,5 @@
 begin;
-select plan(22);
+select plan(27);
 
 -- `supabase db reset` seeds only public.seasons, so the row-level assertions below need
 -- a member and a team of their own. These two statements assert nothing.
@@ -107,6 +107,41 @@ select throws_ok(
   '23514'::char(5),
   null,
   'nfl_state rejects any id but 1'
+);
+
+-- coverage_pct is a percentage, and the board sorts on the row it lives in, so the
+-- bound is enforced by the column rather than by whoever computed it.
+select throws_ok(
+  $$insert into public.team_week_projections
+      (season_id, team_id, week, projected_points, starter_slots, filled_slots,
+       empty_slots, starters_projected, missing_projections, coverage_pct, computed_at)
+    values (
+      (select id from public.seasons where year = 2026),
+      (select id from public.teams where sleeper_roster_id = 999),
+      1, 100.5, 9, 9, 0, 9, 0, 150.0, now()
+    )$$,
+  '23514'::char(5),
+  null,
+  'team_week_projections rejects a coverage_pct outside 0-100'
+);
+
+-- The four natural keys every upsert in this data layer conflicts on. Each one is what
+-- makes a sync idempotent, so each is asserted rather than assumed.
+select col_is_unique(
+  'public', 'roster_holdings', array['season_id', 'team_id', 'sleeper_player_id'],
+  'one roster holding per team per player per season'
+);
+select col_is_unique(
+  'public', 'team_season_state', array['season_id', 'team_id'],
+  'one season state row per team per season'
+);
+select col_is_unique(
+  'public', 'player_projections', array['season', 'week', 'sleeper_player_id'],
+  'one projection per player per NFL week'
+);
+select col_is_unique(
+  'public', 'team_week_projections', array['season_id', 'team_id', 'week'],
+  'one team-week projection per team per week'
 );
 
 -- A team gets exactly one final roster, forever. The unique constraint is what makes
