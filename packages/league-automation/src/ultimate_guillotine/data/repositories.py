@@ -536,9 +536,14 @@ class MemberAliasRepository:
         # the nickname published from it agree: ``normalize_name`` already
         # strips, so a padded alias would otherwise store one spelling here and
         # publish a differently padded one to ``public.members.nickname``.
+        # An entry that is nothing but whitespace is not an alias at all: it would
+        # store a blank row nobody can match on and, if it came first, publish an
+        # empty string as the member's public label.
         wanted: dict[str, str] = {}
         for alias in aliases:
             trimmed = alias.strip()
+            if not trimmed:
+                continue
             wanted.setdefault(normalize_name(trimmed), trimmed)
 
         with self._conn.transaction(), self._conn.cursor() as cur:

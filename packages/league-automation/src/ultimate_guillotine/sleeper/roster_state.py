@@ -102,8 +102,15 @@ def _recombine(settings: dict[str, object], whole_key: str, decimal_key: str) ->
     The hundredths are a magnitude, not a signed addend: they carry the sign of
     the whole part, so ``fpts_against = -12`` with ``fpts_against_decimal = 5``
     is ``-12.05``, not ``-11.95``.
+
+    A whole part that already carries a fraction is the whole number: that payload
+    shape sends the points complete (``"fpts": 312.45``) and repeats the hundredths
+    in the decimal key, so adding them again would bill the fraction twice and turn
+    312.45 into 312.90.
     """
     whole = _whole(settings, whole_key)
+    if whole != whole.to_integral_value():
+        return whole
     hundredths = Decimal(abs(_int(settings, decimal_key))) / Decimal(100)
     return whole - hundredths if whole < 0 else whole + hundredths
 

@@ -314,17 +314,28 @@ class ProjectionRepository:
 
     def flag_coverage(
         self, season: int, week: int, run_coverage_pct: Decimal, flagged: bool
-    ) -> None:
-        """Stamp the run's coverage on every row it wrote. Flagged, never withheld."""
+    ) -> int:
+        """Stamp the run's coverage on every row it wrote. Flagged, never withheld.
+
+        Bounded by what would actually change: this job fires every five minutes
+        through a game window and the stamp is usually the same one it wrote last
+        time, so an unbounded update would rewrite ~9,400 unchanged rows a run --
+        dead tuples for the vacuum, and a write-heavy replication stream saying
+        nothing. ``is distinct from`` rather than ``<>`` because ``run_coverage_pct``
+        is null on every row an upsert just wrote. Returns how many rows moved.
+        """
         with self._conn.cursor() as cur:
             cur.execute(
                 """
                 update public.player_projections
                 set coverage_flagged = %s, run_coverage_pct = %s
                 where season = %s and week = %s
+                  and (coverage_flagged is distinct from %s
+                       or run_coverage_pct is distinct from %s)
                 """,
-                (flagged, run_coverage_pct, season, week),
+                (flagged, run_coverage_pct, season, week, flagged, run_coverage_pct),
             )
+            return cur.rowcount
 
 
 def fetch_projection_rows(

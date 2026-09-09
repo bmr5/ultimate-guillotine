@@ -8,7 +8,6 @@ from decimal import Decimal
 
 import pytest
 
-from ultimate_guillotine.sleeper.models import SleeperUser
 from ultimate_guillotine.sleeper.sync import sync_season
 
 from .conftest import LEAGUE_ID, FakeClient
@@ -173,16 +172,6 @@ def test_a_short_roster_payload_rolls_the_whole_pass_back(conn, rosters, sleeper
         sync_season(sleeper_client, conn, 2026, LEAGUE_ID, week=4)
 
     assert _holdings_and_state(conn) == before
-
-
-def test_sleeper_display_name_falls_back_to_the_username() -> None:
-    """Sleeper occasionally returns an empty display_name, and then the username is
-    the only label left. Whenever a display name exists it wins: the bare username is
-    never what a consumer shows."""
-    blank = SleeperUser(user_id="u", display_name="", username="ghostrider")
-    assert blank.sleeper_display_name == "ghostrider"
-    named = SleeperUser(user_id="u", display_name="Member01", username="member01_2019")
-    assert named.sleeper_display_name == "Member01"
 
 
 def test_sync_records_each_owners_sleeper_display_name(conn, sleeper_client) -> None:

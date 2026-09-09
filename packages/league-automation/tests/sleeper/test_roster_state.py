@@ -114,6 +114,19 @@ def test_points_keep_every_hundredth_a_float_payload_carries() -> None:
     assert team_state_from_roster(roster, waiver_budget=0).points_for == Decimal("312.45")
 
 
+def test_a_whole_part_that_already_has_a_fraction_ignores_the_decimal_key() -> None:
+    """That payload shape sends the points complete and repeats the hundredths in
+    the decimal key; adding them again would turn 312.45 into 312.90."""
+    roster = SleeperRoster.model_validate(
+        {
+            "roster_id": 7,
+            "owner_id": "u7",
+            "settings": {"fpts": 312.45, "fpts_decimal": 45},
+        }
+    )
+    assert team_state_from_roster(roster, waiver_budget=0).points_for == Decimal("312.45")
+
+
 def test_hundredths_take_the_sign_of_a_negative_whole_part() -> None:
     roster = SleeperRoster.model_validate(
         {

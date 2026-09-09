@@ -40,21 +40,6 @@ class SleeperUser(BaseModel, frozen=True):
         value = self.metadata.get("team_name")
         return value if isinstance(value, str) and value else self.display_name
 
-    @property
-    def sleeper_display_name(self) -> str:
-        """The in-memory label for this account: display name, else username.
-
-        Sleeper's ``display_name``, or the ``username`` on the rare account that
-        has none. Consumers never render the bare username otherwise, and never
-        render ``members.display_name``, which is a matching key.
-
-        This is *not* what the sync stores: ``public.members.sleeper_display_name``
-        holds Sleeper's ``display_name`` verbatim, and null when the account has
-        none, so a consumer falls back to ``teams.team_name`` rather than to a
-        username the league would not recognise.
-        """
-        return self.display_name or self.username
-
 
 class SleeperRoster(BaseModel, frozen=True):
     model_config = ConfigDict(extra="ignore")

@@ -272,6 +272,28 @@ def test_flag_coverage_marks_the_runs_rows(conn) -> None:
         assert cur.fetchall() == [(True, Decimal("81.25"))]
 
 
+def test_flag_coverage_rewrites_nothing_when_the_stamp_has_not_moved(conn) -> None:
+    """The job fires every five minutes through a game window and the stamp is
+    usually the one it wrote last time. Rewriting ~9,400 unchanged rows a run is
+    dead tuples for the vacuum and a replication stream saying nothing."""
+    repo = ProjectionRepository(conn)
+    sync(conn, FakeProjClient(bulk(payload(), 250)))
+
+    first = repo.flag_coverage(2026, 1, Decimal("81.25"), flagged=True)
+    assert first > 0
+
+    assert repo.flag_coverage(2026, 1, Decimal("81.25"), flagged=True) == 0
+
+    # A stamp that actually moves still lands on every row.
+    assert repo.flag_coverage(2026, 1, Decimal("99.00"), flagged=False) == first
+    with conn.cursor() as cur:
+        cur.execute(
+            "select distinct coverage_flagged, run_coverage_pct "
+            "from public.player_projections where week = 1"
+        )
+        assert cur.fetchall() == [(False, Decimal("99.00"))]
+
+
 def test_week_flags_reads_a_week_with_nothing_stored_as_clear(conn) -> None:
     """The first run of a week has nothing to compare against, so it starts clear
     and a flagged first run reads as a transition worth one note."""

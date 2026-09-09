@@ -288,6 +288,39 @@ def test_replace_aliases_leaves_the_old_rows_when_one_alias_is_taken(conn) -> No
     assert aliases["Alias One"] == ("keeper",)
 
 
+def test_replace_aliases_skips_aliases_that_are_only_whitespace(conn) -> None:
+    """A blank line in the aliases file is not an alias. It would store a row
+    nothing can match on, and first in the list it would publish an empty string
+    as the member's public label."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "insert into public.members (display_name) values ('Blank One') returning id"
+        )
+        member_id = cur.fetchone()[0]
+    repo = MemberAliasRepository(conn)
+
+    assert repo.replace_aliases("Blank One", ["   ", "Real"]) == 1
+
+    member = next(m for m in repo.all_members() if m.member_id == member_id)
+    assert member.aliases == ("Real",)
+    assert member.nickname == "Real"
+
+
+def test_replace_aliases_of_nothing_but_whitespace_clears_the_nickname(conn) -> None:
+    with conn.cursor() as cur:
+        cur.execute(
+            "insert into public.members (display_name) values ('Blank Two') returning id"
+        )
+        member_id = cur.fetchone()[0]
+    repo = MemberAliasRepository(conn)
+
+    assert repo.replace_aliases("Blank Two", ["  "]) == 0
+
+    member = next(m for m in repo.all_members() if m.member_id == member_id)
+    assert member.aliases == ()
+    assert member.nickname is None
+
+
 def test_replace_aliases_publishes_the_first_alias_as_the_nickname(conn) -> None:
     """The board and the Concierge label owners by nickname, so exactly one alias
     becomes public. The rest stay in private.member_aliases, which anon cannot read."""
