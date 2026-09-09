@@ -8,13 +8,22 @@ ingestion catch-up, and the webhook listener itself.
 import argparse
 import sys
 
-from ultimate_guillotine.cli import ingest, listener, members, ops, sleeper, targets, trades
+from ultimate_guillotine.cli import (
+    advisor,
+    ingest,
+    listener,
+    members,
+    ops,
+    sleeper,
+    targets,
+    trades,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="ug", description="Ultimate Guillotine automation CLI")
     subparsers = parser.add_subparsers(dest="group", required=True)
-    for module in (ops, targets, sleeper, ingest, listener, trades, members):
+    for module in (ops, targets, sleeper, ingest, listener, trades, members, advisor):
         module.register(subparsers)
     return parser
 

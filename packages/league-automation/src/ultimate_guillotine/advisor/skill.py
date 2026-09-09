@@ -110,7 +110,9 @@ class TradeAdvisor:
     """Answer one advice question, or say plainly why it cannot.
 
     ``conn`` may be ``None`` -- the tests and ``ug advisor ask`` pass none -- in
-    which case nothing is committed, which is exactly what a dry run wants.
+    which case nothing is committed, which is exactly what a dry run wants. So
+    may ``settings``: nothing on the answering path reads them, and the dry run
+    against the fixture league has no configured league to read them from.
 
     The repositories are the listener's own: ``contacts_repo`` maps a hashed
     sender to a member, ``members_repo`` names them, ``snapshots`` reads the
@@ -120,7 +122,7 @@ class TradeAdvisor:
 
     def __init__(
         self,
-        settings: Settings,
+        settings: Settings | None,
         conn,
         ai,
         delivery,
@@ -262,7 +264,7 @@ class TradeAdvisor:
             return self._respond(run_id, "unknown_asker", format_unknown_asker())
 
         try:
-            snapshot = self._snapshots.load(horizon_weeks=_horizon_weeks(msg.text))
+            snapshot = self._snapshots.load(horizon_weeks=horizon_weeks(msg.text))
         except SnapshotUnavailable as exc:
             self._notifier.ops(f"Trade Advisor has no snapshot: {exc.reason}")
             return self._respond(run_id, "insufficient_data", format_rejected())
@@ -381,7 +383,7 @@ def _stand_pat() -> TradeAdviceResponse:
     )
 
 
-def _horizon_weeks(text: str) -> int:
+def horizon_weeks(text: str) -> int:
     """How many weeks of projections this question needs read.
 
     A permanent trade is judged on the snapshot's own week, so one week is the

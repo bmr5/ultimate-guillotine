@@ -107,8 +107,18 @@ cd <repo> && uv run --project packages/league-automation ug advisor ask \
   --text "<question>" --as <member>
 ```
 
-A safe dry run: it prints the advice the league would have seen and writes
-nothing, sends nothing, and records no run.
+A safe dry run: it prints the outcome, the model that answered, and the advice
+the league would have seen. It writes nothing, sends nothing, and records no
+run — it holds no delivery service and no run repository to do any of it with.
+
+`--as` takes a member's display name or any of their nicknames. Two flags make
+it cheaper: `--json` prints the candidate set the model would be handed and
+makes no model call at all, and `--fixture` answers out of the built-in fixture
+league, so it needs no database and no Sleeper sync. Together they are free and
+offline, which is how a prompt or scoring change gets checked first.
+
+Never paste real-league advisor output into Discord: it names rosters and FAAB
+balances. Summarize it.
 
 In the chat the Advisor answers **only in the self-test chat**, and only when a
 message tags `@bot` and asks for advice rather than a fact — a lookup question
