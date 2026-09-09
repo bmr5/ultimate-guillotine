@@ -29,3 +29,4 @@ class SleeperRoster(BaseModel, frozen=True):
 
     roster_id: int
     owner_id: str
+    players: list[str] = []

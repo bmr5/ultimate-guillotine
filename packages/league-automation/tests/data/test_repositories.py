@@ -1,8 +1,11 @@
 from datetime import UTC, datetime, timedelta
 
+import pytest
+
 from ultimate_guillotine.config import DeliveryMode
 from ultimate_guillotine.data.repositories import (
     HeartbeatRepository,
+    MemberAliasRepository,
     OutboundRepository,
     ReceiptRepository,
     RunRepository,
@@ -96,3 +99,28 @@ def test_source_message_composite_key_collision(conn) -> None:
     # This should return False without raising UniqueViolation
     result2 = sources.upsert(msg2)
     assert result2 is False
+
+
+def test_member_alias_repository_replaces_and_lists_aliases(conn) -> None:
+    with conn.cursor() as cur:
+        cur.execute(
+            "insert into public.members (display_name) values (%s) returning id",
+            ("Member01",),
+        )
+        member_id = cur.fetchone()[0]
+
+    repo = MemberAliasRepository(conn)
+    assert repo.replace_aliases("Member01", ["Ben", "benny"]) == 2
+
+    members = repo.all_members()
+    member = next(m for m in members if m.member_id == member_id)
+    assert member.display_name == "Member01"
+    assert set(member.aliases) == {"Ben", "benny"}
+
+    assert repo.replace_aliases("Member01", ["B"]) == 1
+    members = repo.all_members()
+    member = next(m for m in members if m.member_id == member_id)
+    assert member.aliases == ("B",)
+
+    with pytest.raises(ValueError):
+        repo.replace_aliases("Nobody", ["x"])
