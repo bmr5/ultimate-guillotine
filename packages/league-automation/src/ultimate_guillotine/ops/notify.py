@@ -1,11 +1,29 @@
 import logging
 import os
+import shutil
 import subprocess
 from pathlib import Path
 
 from ultimate_guillotine.config import Settings
 
 log = logging.getLogger(__name__)
+
+_HERMES_FALLBACK = Path.home() / ".local" / "bin" / "hermes"
+
+
+def hermes_binary() -> str:
+    """Locate the hermes CLI.
+
+    The listener runs under launchd, whose PATH does not include ``~/.local/bin``
+    where the Hermes installer puts the binary; a bare ``hermes`` there raises
+    FileNotFoundError and every Discord mirror is silently dropped.
+    """
+    found = shutil.which("hermes")
+    if found:
+        return found
+    if _HERMES_FALLBACK.exists():
+        return str(_HERMES_FALLBACK)
+    return "hermes"
 
 
 class HermesNotifier:
@@ -32,7 +50,7 @@ class HermesNotifier:
         env = {**os.environ, "HERMES_HOME": self._home}
         try:
             result = self._runner(
-                ["hermes", "send", "--to", f"discord:{channel}", "--quiet", text],
+                [hermes_binary(), "send", "--to", f"discord:{channel}", "--quiet", text],
                 env=env,
                 capture_output=True,
                 text=True,
