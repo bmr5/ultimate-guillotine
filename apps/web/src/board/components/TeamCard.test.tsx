@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { BoardTeam, RosterPlayer } from "../types";
@@ -53,6 +53,14 @@ const fullLineup = (): RosterPlayer[] =>
       position,
     }),
   );
+
+/**
+ * One turn of the macrotask queue. Radix registers the open tooltip's outside-pointerdown
+ * listener from a `setTimeout(0)`, so a tap fired in the same tick as the open is not the tap a
+ * reader makes — the layer that closes on pointerdown is not listening yet.
+ */
+const settle = () =>
+  act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
 
 const noop = () => undefined;
 const noHighlights = new Set<string>();
@@ -270,6 +278,46 @@ describe("TeamCard", () => {
     expect(container.querySelector(`.${TEAM_CARD_CLASS}`)).not.toBeNull();
   });
 
+  /**
+   * The card lost whole-card tapping when the `partial` badge was given its own control inside
+   * the summary row: the projection block stopped being part of the toggle, and the number is
+   * the part of a card a thumb lands on. The summary is one button again, and the badge is a
+   * sibling of it.
+   */
+  it("toggles the card from the projection number, not just the name", () => {
+    const onToggle = vi.fn();
+    // A partial team, so the badge is on the card while the number is tapped.
+    renderCard(partialTeam(), { onToggle });
+    fireEvent.click(screen.getByText("80.0"));
+    expect(onToggle).toHaveBeenCalledWith(7);
+  });
+
+  it("keeps the projection block and the empty count inside the toggle", () => {
+    const { container } = renderCard(
+      {
+        roster: [
+          player({
+            sleeperPlayerId: "4046",
+            slotIndex: 0,
+            lineupPosition: "QB",
+          }),
+        ],
+      },
+      { rosterPositions: LEAGUE_SLOTS },
+    );
+    const projection = container.querySelector("[data-projection]");
+    expect(projection).not.toBeNull();
+    expect(toggleButton().contains(projection)).toBe(true);
+    expect(toggleButton()).toHaveTextContent("8 empty");
+  });
+
+  // A control inside a <button> is invalid HTML: the reason the summary was split in the first
+  // place, and the thing that would break again if the badge were moved back inside it.
+  it("nests no control inside the summary button", () => {
+    renderCard(partialTeam());
+    expect(toggleButton().querySelector("button, a, input, select")).toBeNull();
+  });
+
   it("wires the toggle button to the roster panel", () => {
     const onToggle = vi.fn();
     renderCard({}, { onToggle });
@@ -484,21 +532,50 @@ describe("TeamCard empty starter slots", () => {
  * figures behind the caveat.
  */
 describe("TeamCard partial coverage badge", () => {
-  it("renders the badge inside the projection block, not the badge row", () => {
+  it("renders the badge under the projection, outside the toggle button", () => {
     const { container } = renderCard(partialTeam());
     const badge = partialBadge();
-    expect(badge.closest("[data-projection]")).not.toBeNull();
-    // The block it sits in is the one holding the number and its caption.
+    // Its own slot in the summary grid, one row under the number — and not in the badge row
+    // below the summary, where it read as a property of the card rather than of the number.
+    expect(badge.closest("[data-projection-badge]")).not.toBeNull();
+    expect(toggleButton().contains(badge)).toBe(false);
+    expect(badge.closest("[data-card-summary]")).not.toBeNull();
+    // The number and its caption are still right there, in the column the badge is aligned to.
     const projection = container.querySelector("[data-projection]");
     expect(projection?.textContent).toContain("80.0");
     expect(projection?.textContent).toContain("proj");
-    expect(projection?.textContent).toContain("partial");
   });
 
   it("explains the caveat on tap, naming the starters and the coverage", () => {
     renderCard(partialTeam());
     expect(screen.queryByRole("tooltip")).toBeNull();
     fireEvent.click(partialBadge());
+    expect(screen.getByRole("tooltip")).toHaveTextContent(COVERAGE_SENTENCE);
+  });
+
+  /**
+   * A tap is a `pointerdown` and then a `click`. The open tooltip's dismissable layer closes on
+   * the pointerdown, so a toggle written as `!open` reads a state that is already `false` by the
+   * time the click lands and re-opens what the tap meant to dismiss. The badge latches what the
+   * reader saw before the tap instead.
+   */
+  it("closes the tooltip on a second tap", async () => {
+    renderCard(partialTeam());
+    const badge = partialBadge();
+    const tap = async () => {
+      fireEvent.pointerDown(badge);
+      fireEvent.click(badge);
+      await settle();
+    };
+
+    await tap();
+    expect(screen.getByRole("tooltip")).toHaveTextContent(COVERAGE_SENTENCE);
+
+    await tap();
+    expect(screen.queryByRole("tooltip")).toBeNull();
+
+    // And a third tap opens it again: the latch is a toggle, not a one-way close.
+    await tap();
     expect(screen.getByRole("tooltip")).toHaveTextContent(COVERAGE_SENTENCE);
   });
 

@@ -1,4 +1,4 @@
-import { memo, useId, useMemo, useState } from "react";
+import { memo, useId, useMemo, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -88,6 +88,14 @@ interface PartialCoverageBadgeProps {
  * keyboard focus still open it through `onOpenChange`; the click handler adds tap. The sentence
  * is also mounted as visually hidden text and named by `aria-describedby`, so a screen reader
  * gets it whether or not the tooltip is open.
+ *
+ * The tap toggle reads a latched copy of `open` rather than the current state, because by the
+ * time `onClick` runs the state is no longer the one the reader tapped: the open tooltip's
+ * dismissable layer closes on the `pointerdown` that starts the second tap, and Radix's own
+ * trigger closes again on the click. A plain `!open` therefore resolves against a just-set
+ * `false` and re-opens the tooltip the tap was meant to dismiss. `onPointerDownCapture` runs
+ * before either close — capture, at the trigger, beats a document-level listener — so it records
+ * what the reader actually saw, and the click toggles against that.
  */
 function PartialCoverageBadge({
   description,
@@ -95,6 +103,9 @@ function PartialCoverageBadge({
   computedText,
 }: PartialCoverageBadgeProps) {
   const [open, setOpen] = useState(false);
+  // What the tooltip was doing when the tap began. False is the right resting value: a click with
+  // no pointerdown before it is a keyboard activation, and focus has already opened the tooltip.
+  const openAtPointerDown = useRef(false);
   const descriptionId = useId();
 
   return (
@@ -104,7 +115,14 @@ function PartialCoverageBadge({
           <button
             type="button"
             aria-describedby={descriptionId}
-            onClick={() => setOpen((wasOpen) => !wasOpen)}
+            onPointerDownCapture={() => {
+              openAtPointerDown.current = open;
+            }}
+            onClick={() => {
+              const wasOpen = openAtPointerDown.current;
+              openAtPointerDown.current = false;
+              setOpen(!wasOpen);
+            }}
             className={cn(
               "inline-flex min-h-[44px] items-center justify-end rounded-md",
               FOCUS_RING_CLASS,
@@ -212,13 +230,19 @@ export const TeamCard = memo(function TeamCard({
       >
         <Collapsible open={isOpen}>
           {/*
-            The summary is a row of three, not one button: the projection block beside the
-            toggle now holds the `partial` badge, which owns a tooltip and so has to be a
-            control of its own — and a control inside a <button> is invalid HTML. The toggle
-            still covers the owner, the team and the numbers line, which is the whole left of
-            the row; the chevron keeps its own 44px target so tapping it still expands.
+            The whole summary is one button again. Splitting it so the `partial` badge could own
+            a tooltip cost the card its biggest tap target — the projection number, the part of
+            a card a thumb actually lands on — for a caveat that shows on a minority of teams.
+            So the summary is a two-column grid: the button fills the first column and holds the
+            rank, the names and the projection block, and the badge is a *sibling* on the second
+            row of that same column, right-aligned, which puts it under the number it is about
+            without nesting a control inside a <button> (invalid HTML, and a dead tooltip). The
+            chevron keeps its own 44px target in the second column.
           */}
-          <div data-card-summary className="flex items-start gap-2 p-4">
+          <div
+            data-card-summary
+            className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-2 p-4"
+          >
             {/* A real <button>, not a Radix trigger, so the card owns its `aria-controls`. */}
             <button
               type="button"
@@ -226,7 +250,7 @@ export const TeamCard = memo(function TeamCard({
               aria-controls={panelId}
               onClick={() => onToggle(team.teamId)}
               className={cn(
-                "flex min-h-[44px] min-w-0 flex-1 items-start gap-3 text-left",
+                "col-start-1 row-start-1 flex min-h-[44px] min-w-0 items-start gap-3 text-left",
                 FOCUS_RING_CLASS,
               )}
             >
@@ -252,33 +276,45 @@ export const TeamCard = memo(function TeamCard({
                   {` · ${faab}`}
                 </span>
               </span>
+
+              {/*
+                The projection and what qualifies it: the number, its caption and the empty-slot
+                count. A lineup with a hole in it has to be visible without expanding the card.
+                Spans, not a <div>, because this block lives inside the toggle button now.
+              */}
+              <span data-projection className="shrink-0 text-right">
+                <span className="block text-2xl font-semibold tabular-nums text-foreground">
+                  {projection.text}
+                </span>
+                <span className="block text-xs text-muted-foreground">
+                  proj
+                </span>
+                {emptySlots > 0 ? (
+                  <span className="mt-1 block text-xs font-medium text-destructive">
+                    {`${emptySlots} empty`}
+                    <span className="sr-only">{` ${EMPTY_SLOTS_DESCRIPTION}`}</span>
+                  </span>
+                ) : null}
+              </span>
             </button>
 
             {/*
-              The projection and everything that qualifies it: the number, its caption, the
-              `partial` badge when the coverage is below the gate, and the empty-slot count. A
-              lineup with a hole in it, or a projection built on half a lineup, has to be
-              visible without expanding the card.
+              The badge sits in the button's own column, one row down, pushed to the same right
+              edge the projection is aligned to — so it reads as a footnote on the number while
+              staying outside the button that number is inside.
             */}
-            <div data-projection className="shrink-0 text-right">
-              <span className="block text-2xl font-semibold tabular-nums text-foreground">
-                {projection.text}
-              </span>
-              <span className="block text-xs text-muted-foreground">proj</span>
-              {isPartial && projection.caveatLabel !== null ? (
+            {isPartial && projection.caveatLabel !== null ? (
+              <div
+                data-projection-badge
+                className="col-start-1 row-start-2 flex justify-end"
+              >
                 <PartialCoverageBadge
                   description={coverageExplanation ?? projection.caveatLabel}
                   label={projection.caveatLabel}
                   computedText={computedText}
                 />
-              ) : null}
-              {emptySlots > 0 ? (
-                <span className="mt-1 block text-xs font-medium text-destructive">
-                  {`${emptySlots} empty`}
-                  <span className="sr-only">{` ${EMPTY_SLOTS_DESCRIPTION}`}</span>
-                </span>
-              ) : null}
-            </div>
+              </div>
+            ) : null}
 
             {/*
               A redundant mouse and touch target for the same toggle, hidden from assistive
@@ -290,7 +326,7 @@ export const TeamCard = memo(function TeamCard({
               tabIndex={-1}
               aria-hidden="true"
               onClick={() => onToggle(team.teamId)}
-              className="flex min-h-[44px] min-w-[44px] shrink-0 items-start justify-center pt-1"
+              className="col-start-2 row-start-1 flex min-h-[44px] min-w-[44px] shrink-0 items-start justify-center pt-1"
             >
               <ChevronDown
                 aria-hidden="true"

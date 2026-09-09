@@ -148,6 +148,15 @@ describe("PositionView", () => {
     expect(screen.getByText("2 empty")).toBeInTheDocument();
   });
 
+  it("names the position in the empty-slot count a reader hears", () => {
+    renderView();
+    const count = screen.getByText("2 empty");
+    const spoken = count.querySelector(".sr-only");
+    // Not the card's `empty starter slots`: a row counts only the slots a tight end could fill.
+    expect(spoken?.textContent).toBe(" empty TE slots");
+    expect(count.textContent).not.toContain("starter slots");
+  });
+
   it("badges the teams likely to bid", () => {
     renderView();
     const badges = screen.getAllByText(LIKELY_BIDDER_LABEL);

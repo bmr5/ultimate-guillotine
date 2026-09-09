@@ -30,8 +30,15 @@ const STARTER_LABEL = "starter";
 /** Said once per team that holds nobody at the position: `no TE`. */
 const NO_PLAYER_PREFIX = "no";
 
-/** How the empty-slot count reads for a reader who cannot see it beside the FAAB figure. */
-const EMPTY_SLOTS_DESCRIPTION = "empty starter slots";
+/**
+ * How the empty-slot count reads for a reader who cannot see it beside the FAAB figure.
+ *
+ * The position is named: this count is not the card's, which is every unfilled slot in the
+ * lineup. Here it is only the slots *this* position could fill — a FLEX counts for a tight end
+ * but a K slot does not — so `empty TE slots` is the honest reading of the same "2 empty".
+ */
+const emptySlotsDescription = (position: PositionFilter) =>
+  `empty ${position} slots`;
 
 /**
  * The same focus ring the header's controls and the team card's summary carry. These rows are
@@ -155,7 +162,9 @@ const PositionTeamRow = memo(function PositionTeamRow({
               {row.emptySlots > 0 ? (
                 <span className="mt-1 block text-xs font-medium text-destructive">
                   {`${row.emptySlots} empty`}
-                  <span className="sr-only">{` ${EMPTY_SLOTS_DESCRIPTION}`}</span>
+                  <span className="sr-only">{` ${emptySlotsDescription(
+                    position,
+                  )}`}</span>
                 </span>
               ) : null}
             </span>
