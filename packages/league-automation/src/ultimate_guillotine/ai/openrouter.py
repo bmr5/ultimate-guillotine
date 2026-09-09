@@ -81,7 +81,11 @@ class StructuredOutputClient:
                 raise AIUnavailable(
                     f"openrouter returned status {response.status_code}"
                 )
-            return _parse_response(response.json(), schema)
+            try:
+                payload = response.json()
+            except ValueError:
+                raise AIInvalidOutput("response body was not JSON")
+            return _parse_response(payload, schema)
         raise AIUnavailable(f"openrouter unavailable after retry: {last_error}")
 
 
@@ -119,6 +123,8 @@ def _parse_response(payload: dict, schema: type[T]) -> tuple[T, AIUsage]:  # noq
         raise AIInvalidOutput(
             f"unexpected response shape: {exc.__class__.__name__}"
         ) from exc
+    if not isinstance(content, str):
+        raise AIInvalidOutput("model returned no content")
     try:
         return schema.model_validate(json.loads(content)), meta
     except (json.JSONDecodeError, ValidationError) as exc:

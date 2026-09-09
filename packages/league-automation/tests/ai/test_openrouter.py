@@ -66,3 +66,23 @@ def test_error_messages_never_include_the_key() -> None:
     with pytest.raises(AIUnavailable) as info:
         client.parse("s", "u", Shape, "shape")
     assert "sk-secret-value" not in str(info.value)
+
+
+@respx.mock
+def test_parse_raises_invalid_output_on_non_json_response() -> None:
+    respx.post(URL).mock(return_value=httpx.Response(200, text="not json"))
+    client = StructuredOutputClient("key", "m", httpx.Client())
+    with pytest.raises(AIInvalidOutput):
+        client.parse("s", "u", Shape, "shape")
+
+
+@respx.mock
+def test_parse_raises_invalid_output_on_null_content() -> None:
+    respx.post(URL).mock(return_value=httpx.Response(200, json={
+        "id": "gen-1", "model": "openai/gpt-5-mini",
+        "choices": [{"message": {"role": "assistant", "content": None}}],
+        "usage": {"prompt_tokens": 12, "completion_tokens": 7},
+    }))
+    client = StructuredOutputClient("key", "m", httpx.Client())
+    with pytest.raises(AIInvalidOutput):
+        client.parse("s", "u", Shape, "shape")
