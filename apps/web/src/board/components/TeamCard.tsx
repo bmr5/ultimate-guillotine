@@ -7,7 +7,7 @@ import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 
 import { resolveProjectionDisplay } from "../derive/projection";
-import { formatUpdatedTitle } from "../derive/time";
+import { formatComputedTitle } from "../derive/time";
 import type { BoardTeam } from "../types";
 import { RosterPanel } from "./RosterPanel";
 
@@ -69,21 +69,31 @@ export const TeamCard = memo(function TeamCard({
     team.faabRemaining === null
       ? FAAB_UNKNOWN_TEXT
       : `$${team.faabRemaining} FAAB`;
-  // A raw ISO timestamp is never surfaced (see `derive/time`), so the computed-at tooltip is
-  // formatted in the viewer's own locale and timezone like every other time on the board.
+  // Only the partial badge carries a computed-at tooltip: it is the one caveat where the age of
+  // the number is the follow-up question. `Projection unavailable` means there is no number to
+  // have been computed, so a "computed at" time on it would be a lie about a row that is absent.
+  // A raw ISO timestamp is never surfaced (see `derive/time`), so it is formatted in the
+  // viewer's own locale and timezone like every other time on the board.
   const computedTitle =
-    team.projectionComputedAt === null
-      ? undefined
-      : formatUpdatedTitle(Date.parse(team.projectionComputedAt));
+    projection.caveat === "partial" && team.projectionComputedAt !== null
+      ? formatComputedTitle(Date.parse(team.projectionComputedAt))
+      : undefined;
   const hasBadges = projection.caveatLabel !== null || team.isEliminated;
 
   return (
     <li>
+      {/*
+        An eliminated card is dimmed in its chrome only — a muted fill and a dashed border. The
+        card carried `opacity-60` before, which faded the text along with everything else and
+        dropped the owner name and projection below the contrast floor for the very readers who
+        most need them. `data-eliminated` is the state's stable, styling-independent handle.
+      */}
       <Card
+        data-eliminated={team.isEliminated || undefined}
         className={cn(
           TEAM_CARD_CLASS,
           "overflow-hidden",
-          team.isEliminated && "opacity-60",
+          team.isEliminated && "border-dashed bg-muted/60",
         )}
       >
         <Collapsible open={isOpen}>
@@ -103,7 +113,8 @@ export const TeamCard = memo(function TeamCard({
               {rank}
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block truncate font-medium">
+              {/* Full-strength foreground even when eliminated; only the chrome dims. */}
+              <span className="block truncate font-medium text-foreground">
                 {team.ownerName}
               </span>
               <span className="block truncate text-sm text-muted-foreground">
@@ -115,7 +126,7 @@ export const TeamCard = memo(function TeamCard({
               </span>
             </span>
             <span className="shrink-0 text-right">
-              <span className="block text-2xl font-semibold tabular-nums">
+              <span className="block text-2xl font-semibold tabular-nums text-foreground">
                 {projection.text}
               </span>
               <span className="block text-xs text-muted-foreground">proj</span>
@@ -162,21 +173,27 @@ export const TeamCard = memo(function TeamCard({
           ) : null}
 
           {/*
-            Force-mounted and hidden with the `hidden` attribute rather than unmounted, so the
-            `aria-controls` above always resolves to a real element.
+            The panel element is force-mounted and hidden with the `hidden` attribute rather than
+            unmounted, so the `aria-controls` above always resolves to a real element. Its
+            *contents* are still mounted lazily: `forceMount` alone would render every collapsed
+            team's full roster into the DOM, so a twelve-team board would carry a couple of
+            hundred hidden rows that re-render on every realtime invalidation for nobody's
+            benefit. An empty box is all `aria-controls` needs.
           */}
           <CollapsibleContent id={panelId} forceMount hidden={!isOpen}>
-            <CardContent className="border-t pt-4">
-              {team.isRosterFrozen ? (
-                <p className="mb-2 text-xs text-muted-foreground">
-                  {FROZEN_ROSTER_LABEL}
-                </p>
-              ) : null}
-              <RosterPanel
-                players={team.roster}
-                highlightedPlayerIds={highlightedPlayerIds}
-              />
-            </CardContent>
+            {isOpen ? (
+              <CardContent className="border-t pt-4">
+                {team.isRosterFrozen ? (
+                  <p className="mb-2 text-xs text-muted-foreground">
+                    {FROZEN_ROSTER_LABEL}
+                  </p>
+                ) : null}
+                <RosterPanel
+                  players={team.roster}
+                  highlightedPlayerIds={highlightedPlayerIds}
+                />
+              </CardContent>
+            ) : null}
           </CollapsibleContent>
         </Collapsible>
       </Card>

@@ -81,6 +81,11 @@
  * Reduced motion, scoped to the board's team cards. A global `[data-state]` rule would reach
  * every Radix component on the page — dialogs, toasts, tooltips — so the collapse animation is
  * stilled only where this task introduced it.
+ *
+ * The `.board-team-card` selector below is the value of `TEAM_CARD_CLASS`, exported from
+ * `src/board/components/TeamCard.tsx` and applied to the card there. A test asserts the card
+ * renders that class, so renaming it in one place without the other fails the suite rather than
+ * silently un-scoping this rule.
  */
 @media (prefers-reduced-motion: reduce) {
   .board-team-card,

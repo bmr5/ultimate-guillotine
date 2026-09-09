@@ -8,11 +8,13 @@ import { describe, expect, it } from "vitest";
 
 import {
   crossesMinuteBoundary,
+  formatComputedTitle,
   formatUpdatedAgo,
   formatUpdatedAt,
   formatUpdatedTitle,
   isStale,
   MS_PER_MINUTE,
+  NEVER_COMPUTED_LABEL,
   NEVER_UPDATED_AGO_LABEL,
   NEVER_UPDATED_LABEL,
   STALE_AFTER_MS,
@@ -86,6 +88,29 @@ describe("formatUpdatedTitle", () => {
     expect(formatUpdatedTitle(null, NY)).toBe(NEVER_UPDATED_LABEL);
     expect(formatUpdatedTitle(0, NY)).toBe(NEVER_UPDATED_LABEL);
     expect(formatUpdatedTitle(undefined, NY)).toBe(NEVER_UPDATED_LABEL);
+  });
+});
+
+describe("formatComputedTitle", () => {
+  it("says when the projection was computed, in the viewer's own zone", () => {
+    const title = plain(formatComputedTitle(NOW, NY));
+    expect(title).toBe("Computed Wednesday, September 9, 2026 at 12:41 PM");
+    expect(title).not.toMatch(/\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it("says Computed, not Updated — the board's pull is a different event", () => {
+    expect(formatComputedTitle(NOW, NY)).not.toMatch(/Updated/);
+    expect(plain(formatComputedTitle(NOW, NY)).replace("Computed", "Updated")).toBe(
+      plain(formatUpdatedTitle(NOW, NY)),
+    );
+  });
+
+  it("degrades to a plain label rather than Invalid Date", () => {
+    // What `Date.parse` hands back for a malformed `computed_at`.
+    expect(formatComputedTitle(Number.NaN, NY)).toBe(NEVER_COMPUTED_LABEL);
+    expect(formatComputedTitle(null, NY)).toBe(NEVER_COMPUTED_LABEL);
+    expect(formatComputedTitle(0, NY)).toBe(NEVER_COMPUTED_LABEL);
+    expect(formatComputedTitle(undefined, NY)).toBe(NEVER_COMPUTED_LABEL);
   });
 });
 

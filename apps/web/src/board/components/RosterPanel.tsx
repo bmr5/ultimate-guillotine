@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, useId } from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -38,6 +38,9 @@ const PlayerRow = memo(function PlayerRow({
     .join(META_SEPARATOR);
   return (
     <li
+      // The marker a search match leaves on the row, asserted on instead of the utility classes
+      // so restyling the highlight does not have to mean rewriting the test.
+      data-highlighted={isHighlighted || undefined}
       className={cn(
         "flex items-baseline justify-between gap-2 py-0.5 text-sm",
         isHighlighted && "rounded bg-accent px-1 text-accent-foreground",
@@ -71,6 +74,11 @@ export function RosterPanel({
   players,
   highlightedPlayerIds,
 }: RosterPanelProps) {
+  // The slot labels are section names inside a card, not document structure, so they are plain
+  // label elements wired to their list with `aria-labelledby` rather than headings — a dozen
+  // cards' worth of <h4>s would otherwise flood the page's heading outline with `Bench`.
+  const labelId = useId();
+
   if (players.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">{EMPTY_ROSTER_LABEL}</p>
@@ -81,10 +89,13 @@ export function RosterPanel({
     <div className="space-y-3">
       {groupRosterBySlot(players).map((group) => (
         <div key={group.slot}>
-          <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <p
+            id={`${labelId}${group.slot}`}
+            className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+          >
             {group.label}
-          </h4>
-          <ul>
+          </p>
+          <ul aria-labelledby={`${labelId}${group.slot}`}>
             {group.players.map((player) => (
               <PlayerRow
                 key={player.sleeperPlayerId}

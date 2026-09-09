@@ -25,6 +25,12 @@ export const MINUTES_BEFORE_HOURS = 90;
 /** Shown by the absolute formatters when the board has never completed a pull. */
 export const NEVER_UPDATED_LABEL = "Not updated yet";
 
+/**
+ * The projection counterpart to `NEVER_UPDATED_LABEL`: a projection row whose `computed_at` is
+ * missing or unparseable still needs a tooltip that reads like English, not `Invalid Date`.
+ */
+export const NEVER_COMPUTED_LABEL = "Not computed yet";
+
 /** The relative formatter's counterpart to `NEVER_UPDATED_LABEL`. */
 export const NEVER_UPDATED_AGO_LABEL = "never";
 
@@ -38,16 +44,17 @@ export interface TimeFormatOptions {
 }
 
 /**
- * Whether the board has ever completed a pull.
+ * Whether an epoch is a real instant the board is willing to render.
  *
- * The header reads this off TanStack Query's `dataUpdatedAt`, which is `0` — not `null` — until
- * the first fetch resolves, and a query that has not been mounted yet can hand back `undefined`.
- * Both mean "never updated", so every formatter routes through here rather than checking `null`
- * alone; an unguarded `0` would otherwise render as `Updated Jan 1, 12:00 AM`. Any non-positive
- * or non-finite epoch is treated the same way: 1970 is never a real pull time.
+ * The header reads its value off TanStack Query's `dataUpdatedAt`, which is `0` — not `null` —
+ * until the first fetch resolves, and a query that has not been mounted yet can hand back
+ * `undefined`. Both mean "never", so every formatter routes through here rather than checking
+ * `null` alone; an unguarded `0` would otherwise render as `Updated Jan 1, 12:00 AM`. Any
+ * non-positive or non-finite epoch is treated the same way: 1970 is never a real timestamp, and
+ * `NaN` — what `Date.parse` hands back for a malformed `computed_at` — is never one either.
  */
-function hasEverUpdated(updatedAt: number | null | undefined): updatedAt is number {
-  return typeof updatedAt === "number" && Number.isFinite(updatedAt) && updatedAt > 0;
+function isRealInstant(at: number | null | undefined): at is number {
+  return typeof at === "number" && Number.isFinite(at) && at > 0;
 }
 
 /** Calendar day in the formatting timezone, as a sortable key. */
@@ -73,7 +80,7 @@ export function formatUpdatedAt(
   now: number,
   options: TimeFormatOptions = {},
 ): string {
-  if (!hasEverUpdated(updatedAt)) {
+  if (!isRealInstant(updatedAt)) {
     return NEVER_UPDATED_LABEL;
   }
   const then = new Date(updatedAt);
@@ -94,6 +101,18 @@ export function formatUpdatedAt(
 }
 
 /**
+ * One instant spelled out in full and localized — the shape every `title` tooltip on the board
+ * uses, so the two formatters below cannot drift into two different spellings of the same time.
+ */
+function formatFullInstant(at: number, options: TimeFormatOptions): string {
+  return new Intl.DateTimeFormat(options.locales, {
+    dateStyle: "full",
+    timeStyle: "short",
+    timeZone: options.timeZone,
+  }).format(new Date(at));
+}
+
+/**
  * The hover/`title` form: the same instant spelled out in full, still localized. The raw ISO
  * timestamp is never surfaced — it reads as machine output and is in the wrong timezone.
  */
@@ -101,20 +120,31 @@ export function formatUpdatedTitle(
   updatedAt: number | null | undefined,
   options: TimeFormatOptions = {},
 ): string {
-  if (!hasEverUpdated(updatedAt)) {
+  if (!isRealInstant(updatedAt)) {
     return NEVER_UPDATED_LABEL;
   }
-  const full = new Intl.DateTimeFormat(options.locales, {
-    dateStyle: "full",
-    timeStyle: "short",
-    timeZone: options.timeZone,
-  }).format(new Date(updatedAt));
-  return `Updated ${full}`;
+  return `Updated ${formatFullInstant(updatedAt, options)}`;
+}
+
+/**
+ * When a projection was computed, for the tooltip on a below-gate caveat badge. Distinct from
+ * `formatUpdatedTitle` because the two answer different questions — the header's is "when did
+ * the board last pull", this one is "when was this number worked out" — and reading `Updated`
+ * on a projection badge would conflate them. Same ISO invariant, same graceful empty state.
+ */
+export function formatComputedTitle(
+  computedAt: number | null | undefined,
+  options: TimeFormatOptions = {},
+): string {
+  if (!isRealInstant(computedAt)) {
+    return NEVER_COMPUTED_LABEL;
+  }
+  return `Computed ${formatFullInstant(computedAt, options)}`;
 }
 
 /** The secondary form, shown smaller beside the absolute time. */
 export function formatUpdatedAgo(updatedAt: number | null | undefined, now: number): string {
-  if (!hasEverUpdated(updatedAt)) {
+  if (!isRealInstant(updatedAt)) {
     return NEVER_UPDATED_AGO_LABEL;
   }
   const seconds = Math.floor(Math.max(0, now - updatedAt) / MS_PER_SECOND);
@@ -136,7 +166,7 @@ export function isStale(
   now: number,
   thresholdMs: number = STALE_AFTER_MS,
 ): boolean {
-  if (!hasEverUpdated(updatedAt)) {
+  if (!isRealInstant(updatedAt)) {
     return true;
   }
   return now - updatedAt > thresholdMs;
