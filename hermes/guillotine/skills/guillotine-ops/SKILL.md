@@ -100,6 +100,37 @@ the registrar would record and writes nothing, sends nothing.
 past announcements from a contracts spreadsheet; it writes nothing and sends
 nothing.
 
+## Ask the Trade Advisor a question without sending anything
+
+```
+cd <repo> && uv run --project packages/league-automation ug advisor ask \
+  --text "<question>" --as <member>
+```
+
+A safe dry run: it prints the outcome, the model that answered, and the advice
+the league would have seen. It writes nothing, sends nothing, and records no
+run — it holds no delivery service and no run repository to do any of it with.
+
+`--as` takes a member's display name or any of their nicknames. A name that
+matches nobody exits 2 with `unknown member: <what you typed>`, and a nickname
+two members both answer to exits 2 with `ambiguous member: <what you typed>` —
+say which one you meant by their display name. Two flags make it cheaper: `--json` prints the candidate set the model would be handed and
+makes no model call at all, and `--fixture` answers out of the built-in fixture
+league, so it needs no database and no Sleeper sync. Together they are free and
+offline, which is how a prompt or scoring change gets checked first.
+
+Never paste real-league advisor output into Discord: it names rosters and FAAB
+balances. Summarize it.
+
+In the chat the Advisor answers **only in the self-test chat**, and only when a
+message tags `@bot` and asks for advice rather than a fact — a lookup question
+goes to the Concierge. Promoting it to the league chat is a code change to
+`advisor_chat_guid` in `listener/run.py`, reviewed like any other, not a row
+somebody adds to `private.delivery_targets`.
+
+It never registers a trade. Announce a trade with a 🚨 alert and the Trade
+Registrar logs it.
+
 ## List league members and how many nicknames each has
 
 ```
@@ -108,7 +139,9 @@ cd <repo> && uv run --project packages/league-automation ug members list
 
 Prints one line per member with a count only; it never prints a nickname.
 `ug members aliases load <file>` replaces every listed member's nicknames from
-a JSON file and reports counts only.
+a JSON file and reports counts only. `ug members handles load <file>` does the
+same for the Apple handles the Advisor matches a sender by: only the hash of
+each handle is stored, and the command prints counts only — never a handle.
 
 ## Fill gaps in ingested data
 

@@ -18,8 +18,12 @@ import psycopg
 import pytest
 
 from ultimate_guillotine.config import Settings
+from ultimate_guillotine.data.repositories import DeliveryTarget
 from ultimate_guillotine.listener import run as run_module
 from ultimate_guillotine.messages.bluebubbles import InboundMessage
+
+#: The self-test chat every test in this module configures.
+TEST_CHAT = "iMessage;+;chat-test"
 
 
 class StopLoop(Exception):
@@ -260,6 +264,43 @@ class EmptyConnection:
         pass
 
 
+class TargetCursor(EmptyCursor):
+    """A cursor that answers the delivery-target lookup for one mode.
+
+    `private.delivery_targets` is what the listener's trusted-chat allowlist is
+    built from, and now what the Advisor's chat comes from, so a test that wants
+    the Advisor registered has to have the row rather than only the environment
+    variable.
+    """
+
+    def __init__(self, mode: str, chat_guid: str) -> None:
+        self._mode = mode
+        self._chat_guid = chat_guid
+        self._row: tuple | None = None
+
+    def execute(self, sql, params=None) -> None:
+        wanted = params[0] if params else None
+        self._row = (
+            (1, self._mode, self._chat_guid, "fingerprint", "label")
+            if "delivery_targets" in sql and wanted == self._mode
+            else None
+        )
+
+    def fetchone(self):
+        return self._row
+
+
+class ConfiguredConnection(EmptyConnection):
+    """A connection with exactly one registered delivery target."""
+
+    def __init__(self, mode: str = "test", chat_guid: str = TEST_CHAT) -> None:
+        self._mode = mode
+        self._chat_guid = chat_guid
+
+    def cursor(self) -> TargetCursor:
+        return TargetCursor(self._mode, self._chat_guid)
+
+
 class RecordingNotifier:
     """Records the ops notes `build_processor` posts at startup."""
 
@@ -275,14 +316,23 @@ def _settings(**overrides) -> Settings:
     base = {
         "database_url": "postgresql://x:y@example.invalid/db",
         "delivery_mode": "test",
-        "test_chat_guid": "iMessage;+;chat-test",
+        "test_chat_guid": TEST_CHAT,
         "_env_file": None,
     }
     return Settings(**{**base, **overrides})
 
 
-def _registry_names(processor) -> list[str]:
-    return [t.name for t in processor._registry._triggers]
+def _trigger_named(processor, name: str):
+    """The registered trigger by that name, or `None`.
+
+    The one place in this module that reaches into the registry, so a test says
+    which trigger it means rather than repeating the walk over a private list.
+    """
+    return next((t for t in processor._registry._triggers if t.name == name), None)
+
+
+def _target(mode: str = "test", chat_guid: str = TEST_CHAT) -> DeliveryTarget:
+    return DeliveryTarget(1, mode, chat_guid, "fingerprint", "label")
 
 
 @pytest.fixture
@@ -291,16 +341,17 @@ def hermes_installed(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(run_module, "find_hermes_binary", lambda: "/bin/hermes")
 
 
-def test_build_processor_registers_the_trade_registrar_with_a_chat_and_the_cli(
+def test_build_processor_registers_the_registrar_and_the_advisor_with_a_chat_and_the_cli(
     hermes_installed: None,
 ) -> None:
     notifier = RecordingNotifier()
 
     processor, _allowed = run_module.build_processor(
-        _settings(), EmptyConnection(), None, None, notifier
+        _settings(), ConfiguredConnection(), None, None, notifier
     )
 
-    assert "trade-registrar" in _registry_names(processor)
+    assert _trigger_named(processor, "trade-registrar") is not None
+    assert _trigger_named(processor, "trade-advisor") is not None
     assert notifier.ops_sent == []
 
 
@@ -313,11 +364,15 @@ def test_build_processor_announces_the_registrar_is_disabled_exactly_once(
     notifier = RecordingNotifier()
 
     processor, _allowed = run_module.build_processor(
-        _settings(), EmptyConnection(), None, None, notifier
+        _settings(), ConfiguredConnection(), None, None, notifier
     )
 
-    assert "trade-registrar" not in _registry_names(processor)
-    assert notifier.ops_sent == ["Trade Registrar disabled: hermes CLI not found"]
+    assert _trigger_named(processor, "trade-registrar") is None
+    assert _trigger_named(processor, "trade-advisor") is None
+    assert notifier.ops_sent == [
+        "Trade Registrar disabled: hermes CLI not found",
+        "Trade Advisor disabled: hermes CLI not found",
+    ]
 
 
 def _alert(chat_guid: str) -> InboundMessage:
@@ -328,19 +383,15 @@ def _alert(chat_guid: str) -> InboundMessage:
     )
 
 
-def _trade_trigger(processor):
-    return next(t for t in processor._registry._triggers if t.name == "trade-registrar")
-
-
 def test_the_registrar_trigger_is_gated_on_the_delivery_chat(hermes_installed: None) -> None:
     """A listener that can see more than one chat must answer trades in one."""
     processor, _allowed = run_module.build_processor(
-        _settings(), EmptyConnection(), None, None, RecordingNotifier(),
+        _settings(), ConfiguredConnection(), None, None, RecordingNotifier(),
     )
 
-    trigger = _trade_trigger(processor)
+    trigger = _trigger_named(processor, "trade-registrar")
 
-    assert trigger.matches(_alert("iMessage;+;chat-test"))
+    assert trigger.matches(_alert(TEST_CHAT))
     assert not trigger.matches(_alert("iMessage;+;chat-elsewhere"))
 
 
@@ -354,5 +405,77 @@ def test_build_processor_skips_the_registrar_when_no_chat_is_configured(
         EmptyConnection(), None, None, notifier,
     )
 
-    assert "trade-registrar" not in _registry_names(processor)
+    assert _trigger_named(processor, "trade-registrar") is None
     assert notifier.ops_sent == ["Trade Registrar disabled: no target chat for disabled"]
+
+
+def test_the_advisor_answers_in_the_registered_self_test_chat_and_only_there() -> None:
+    """The spec keeps the Advisor in the self-test chat until Ben promotes it."""
+    assert run_module.advisor_chat_guid(_settings(), _target()) == TEST_CHAT
+
+
+def test_the_advisor_answers_in_the_registered_target_not_the_environment() -> None:
+    """The listener refuses every webhook from a chat with no delivery-target row,
+    so a `TEST_CHAT_GUID` that no row backs would register the Advisor against a
+    chat it can never be reached in."""
+    settings = _settings(test_chat_guid="iMessage;+;chat-from-the-env")
+
+    assert run_module.advisor_chat_guid(settings, _target()) == TEST_CHAT
+    assert run_module.advisor_chat_guid(settings, None) is None
+
+
+def test_the_advisor_does_not_register_without_a_registered_test_target(
+    hermes_installed: None, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level("INFO")
+    notifier = RecordingNotifier()
+
+    processor, _allowed = run_module.build_processor(
+        _settings(), EmptyConnection(), None, None, notifier
+    )
+
+    assert _trigger_named(processor, "trade-advisor") is None
+    assert not [note for note in notifier.ops_sent if "Advisor" in note]
+    assert "trade advisor disabled" in caplog.text.lower()
+
+
+def test_the_advisor_never_registers_in_production(
+    hermes_installed: None, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Production is a deliberate, reviewed change to `advisor_chat_guid`, not a
+    database row somebody adds -- and it is a log line, not an ops note, because
+    it is the expected state of every production start rather than a fault."""
+    caplog.set_level("INFO")
+    settings = _settings(
+        delivery_mode="production", production_chat_guid="prod",
+        production_participant_fingerprint="fp", test_chat_guid=None,
+    )
+    notifier = RecordingNotifier()
+
+    assert run_module.advisor_chat_guid(settings, _target()) is None
+    processor, _allowed = run_module.build_processor(
+        settings, ConfiguredConnection(), None, None, notifier
+    )
+
+    assert _trigger_named(processor, "trade-advisor") is None
+    assert not [note for note in notifier.ops_sent if "Advisor" in note]
+    assert "trade advisor disabled" in caplog.text.lower()
+
+
+def _advice_request(chat_guid: str) -> InboundMessage:
+    return InboundMessage(
+        guid="g2", chat_guid=chat_guid, sender_address="+15555550100",
+        text="@bot who should I trade with for a RB", is_from_me=False, is_group=True,
+        sent_at=datetime.now(UTC),
+    )
+
+
+def test_the_advisor_trigger_is_gated_on_the_delivery_chat(hermes_installed: None) -> None:
+    processor, _allowed = run_module.build_processor(
+        _settings(), ConfiguredConnection(), None, None, RecordingNotifier(),
+    )
+
+    trigger = _trigger_named(processor, "trade-advisor")
+
+    assert trigger.matches(_advice_request(TEST_CHAT))
+    assert not trigger.matches(_advice_request("iMessage;+;chat-elsewhere"))

@@ -1,11 +1,10 @@
-import hashlib
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Callable  # noqa: UP035
 
 from ultimate_guillotine.core.signature import is_signed
-from ultimate_guillotine.data.repositories import SourceMessage, chat_guid_hash
+from ultimate_guillotine.data.repositories import SourceMessage, chat_guid_hash, handle_hash
 from ultimate_guillotine.messages.bluebubbles import InboundMessage
 from ultimate_guillotine.trades.fingerprint import message_fingerprint
 
@@ -37,7 +36,9 @@ def _fingerprint(text: str) -> str:
 
 
 def _sender_hash(address: str | None) -> str | None:
-    return hashlib.sha256(address.encode()).hexdigest() if address else None
+    # One implementation, shared with MemberContactRepository: a sender the
+    # Advisor cannot match is a sender it must not guess at.
+    return handle_hash(address) if address else None
 
 
 class InboundProcessor:

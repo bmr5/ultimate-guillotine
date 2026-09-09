@@ -21,6 +21,40 @@ def chat_guid_hash(chat_guid: str) -> str:
     return hashlib.sha256(chat_guid.encode()).hexdigest()
 
 
+# Formatting a human puts in a phone number and an Apple handle never carries:
+# spaces, dashes, parentheses, dots. ``+`` and the digits are the handle.
+_HANDLE_FORMATTING = " \t\r\n -()."
+
+
+def normalize_handle(address: str) -> str:
+    """Return the canonical form of an Apple handle, before hashing.
+
+    A digest is unforgiving: `" +1 (555) 555-0100 "` and `"+15555550100"` are
+    the same phone to a person and two different rows to SHA-256, so the
+    commissioner's file would silently fail to match half its senders. Phone
+    handles lose their formatting; email handles lose their case, which is the
+    only way the same address gets typed two ways.
+
+    This is a no-op for an already-canonical E.164 number, which is what
+    BlueBubbles delivers, so every ``private.source_messages.sender_hash``
+    already stored still matches what this produces.
+    """
+    cleaned = address.strip()
+    if "@" in cleaned:
+        return cleaned.lower()
+    return "".join(ch for ch in cleaned if ch not in _HANDLE_FORMATTING)
+
+
+def handle_hash(address: str) -> str:
+    """Return the SHA-256 hex digest of a normalized Apple handle.
+
+    The same digest ``private.source_messages.sender_hash`` holds, so a stored
+    sender can be matched against a loaded contact without either side ever
+    holding the handle itself.
+    """
+    return hashlib.sha256(normalize_handle(address).encode()).hexdigest()
+
+
 @dataclass(frozen=True)
 class DeliveryTarget:
     id: int
@@ -581,3 +615,86 @@ class MemberAliasRepository:
                 (next(iter(wanted.values()), None), member_id),
             )
         return len(wanted)
+
+
+class MemberContactRepository:
+    """Maps hashed Apple handles to league members.
+
+    ``private.member_contacts.alias`` is deliberately left null: it would hold a
+    raw handle, and the whole point of this table is that no raw handle is ever
+    written down. Do not start filling it in.
+    """
+
+    def __init__(self, conn: psycopg.Connection) -> None:
+        self._conn = conn
+
+    def member_for_handle_hash(self, digest: str) -> MemberRef | None:
+        """Return the member this hashed handle belongs to, or ``None``.
+
+        ``None`` is the answer for anybody the loader has not been told about,
+        and the caller has to treat it as such: a sender the Advisor cannot
+        match is a sender whose "my roster" it must not guess at.
+        """
+        with self._conn.cursor() as cur:
+            cur.execute(
+                """
+                select m.id, m.display_name,
+                    coalesce(array_agg(a.alias) filter (where a.alias is not null), '{}'),
+                    m.nickname
+                from private.member_contacts c
+                join public.members m on m.id = c.member_id
+                left join private.member_aliases a on a.member_id = m.id
+                where c.handle_hash = %s
+                group by m.id, m.display_name, m.nickname
+                """,
+                (digest,),
+            )
+            row = cur.fetchone()
+            return MemberRef(row[0], row[1], tuple(row[2]), row[3]) if row else None
+
+    def replace_handles(self, member_display_name: str, handle_hashes: list[str]) -> int:
+        """Replace a member's hashed handles wholesale, returning how many landed.
+
+        Delete and insert share one savepoint, matching ``replace_aliases``: a
+        handle already claimed by somebody else must not leave this member with
+        no handles at all and the caller's transaction unusable.
+        """
+        wanted = list(dict.fromkeys(handle_hashes))
+        with self._conn.transaction(), self._conn.cursor() as cur:
+            cur.execute(
+                "select id from public.members where display_name = %s",
+                (member_display_name,),
+            )
+            row = cur.fetchone()
+            if row is None:
+                raise ValueError(f"unknown member: {member_display_name}")
+            member_id = row[0]
+            cur.execute(
+                "select handle_hash from private.member_contacts"
+                " where handle_hash = any(%s) and member_id <> %s",
+                (wanted, member_id),
+            )
+            if cur.fetchone() is not None:
+                raise ValueError("handle already belongs to another member")
+            cur.execute(
+                "delete from private.member_contacts where member_id = %s", (member_id,)
+            )
+            cur.executemany(
+                "insert into private.member_contacts (member_id, handle_hash, alias)"
+                " values (%s, %s, null)",
+                [(member_id, digest) for digest in wanted],
+            )
+        return len(wanted)
+
+    def counts(self) -> list[tuple[str, int]]:
+        """``(display_name, handle count)`` for every member with a contact row."""
+        with self._conn.cursor() as cur:
+            cur.execute(
+                """
+                select m.display_name, count(*)
+                from private.member_contacts c
+                join public.members m on m.id = c.member_id
+                group by m.display_name order by m.display_name
+                """
+            )
+            return [(row[0], row[1]) for row in cur.fetchall()]

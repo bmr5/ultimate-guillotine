@@ -13,6 +13,10 @@ import httpx
 import psycopg
 import uvicorn
 
+from ultimate_guillotine.advisor.pricing import PriceRepository
+from ultimate_guillotine.advisor.prompt import advisor_client
+from ultimate_guillotine.advisor.skill import TradeAdvisor, advisor_trigger
+from ultimate_guillotine.advisor.state import SnapshotRepository
 from ultimate_guillotine.ai.hermes import HermesStructuredClient
 from ultimate_guillotine.config import DeliveryMode, Settings, load_settings
 from ultimate_guillotine.core.hermes_cli import find_hermes_binary
@@ -20,6 +24,7 @@ from ultimate_guillotine.data.database import connect
 from ultimate_guillotine.data.repositories import (
     HeartbeatRepository,
     MemberAliasRepository,
+    MemberContactRepository,
     OutboundRepository,
     ReceiptRepository,
     RunRepository,
@@ -126,6 +131,68 @@ def trade_chat_guid(settings: Settings, production_target) -> str | None:
     return None
 
 
+def advisor_chat_guid(settings: Settings, test_target) -> str | None:
+    """The one chat the Advisor answers in: the self-test chat, and only that.
+
+    The chat comes from the **registered** test delivery target rather than from
+    `settings.test_chat_guid`, so the Advisor answers in exactly the chat the
+    listener already trusts: `build_processor` builds its allowlist from the same
+    rows, and a `TEST_CHAT_GUID` in the environment that no `private
+    .delivery_targets` row backs would otherwise name a chat every webhook from
+    it is refused in — a skill registered against a chat it can never hear from.
+    No registered target means no chat, and the Advisor does not run.
+
+    The spec keeps the Advisor in the self-test chat until Ben promotes it, and
+    `private.delivery_targets` has one row per mode with no per-skill column --
+    so promotion is this function returning the production target's chat, a
+    deliberate reviewed change, and never a database row somebody adds by
+    accident.
+    """
+    if settings.delivery_mode is DeliveryMode.TEST and test_target is not None:
+        return test_target.chat_guid
+    return None
+
+
+def _register_trade_advisor(
+    settings: Settings, conn, delivery, notifier, registry, chat_guid: str | None
+) -> None:
+    """Register the Trade Advisor, or say once why it is not running.
+
+    Not being cleared for this delivery mode -- or having no registered
+    self-test target to answer in -- is the expected state of every production
+    start rather than a fault, so it is one log line and not an ops note: an ops
+    note posted on every restart is one nobody reads. A missing Hermes CLI *is*
+    a fault: it is a machine somebody has to fix, so it is announced once here
+    rather than by failing each question in turn.
+
+    The repositories share the listener's connection, and only the run
+    repository is wrapped: the Advisor commits after each step itself, so a
+    reservation is durable before the model is called and a redelivered webhook
+    cannot start a second answer.
+    """
+    if chat_guid is None:
+        log.info("trade advisor disabled: registered self-test chat only, mode is %s",
+                 settings.delivery_mode)
+        return
+    if find_hermes_binary() is None:
+        log.warning("trade advisor disabled: hermes CLI not found")
+        notifier.ops("Trade Advisor disabled: hermes CLI not found")
+        return
+    advisor = TradeAdvisor(
+        settings,
+        conn,
+        advisor_client(settings.hermes_profile_home, model=settings.hermes_model),
+        delivery,
+        notifier,
+        MemberContactRepository(conn),
+        MemberAliasRepository(conn),
+        SnapshotRepository(conn),
+        PriceRepository(conn),
+        CommittingRepo(RunRepository(conn), conn),
+    )
+    registry.register(advisor_trigger(advisor, chat_guid))
+
+
 def _register_trade_registrar(
     settings: Settings, conn, delivery, notifier, registry, chat_guid: str | None
 ) -> None:
@@ -193,6 +260,10 @@ def build_processor(
     _register_trade_registrar(
         settings, conn, delivery, notifier, registry,
         trade_chat_guid(settings, production_target),
+    )
+    _register_trade_advisor(
+        settings, conn, delivery, notifier, registry,
+        advisor_chat_guid(settings, test_target),
     )
     processor = InboundProcessor(
         allowed,
