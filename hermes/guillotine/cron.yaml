@@ -16,10 +16,10 @@ jobs:
     max_gap_minutes: 15
   - name: guillotine-sleeper-sync
     agent: sleeper-sync
-    schedule: "0 */6 * * *"
+    schedule: "every 10m"
     script: guillotine_sleeper_sync.sh
     deliver: "discord:#guillotine-ops"
-    max_gap_minutes: 420
+    max_gap_minutes: 30
   - name: guillotine-run-audit
     agent: run-audit
     schedule: "0 8 * * *"
