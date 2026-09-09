@@ -35,7 +35,7 @@
 
 ## Spec issues
 
-Ten contradictions or gaps found while checking the board spec against the data layer spec, and against Ben's decisions of 2026-09-09 recorded at the end of both specs. Each is resolved here and the resolution is implemented in the tasks below.
+Eleven contradictions or gaps found while checking the board spec against the data layer spec, against Ben's decisions of 2026-09-09 recorded at the end of both specs, and against the merged data layer migration `supabase/migrations/20260909151435_league_data_layer.sql`. Each is resolved here and the resolution is implemented in the tasks below.
 
 1. **Two sources for record and points-for.** The board spec's Data section says record and points come from `public.weekly_results` "aggregated client-side into wins, losses, and points for", but the data layer's `public.team_season_state` already carries `wins`, `losses`, `ties`, `points_for`, `points_against` recombined from Sleeper's split integers. **Resolution:** `team_season_state` is the displayed source of record and points-for. `weekly_results` is still queried and still aggregated by a tested pure function, used as the points-for fallback when a team has no `team_season_state` row yet (Task 3, Task 6).
 
@@ -55,22 +55,32 @@ Ten contradictions or gaps found while checking the board spec against the data 
 
 9. **The data layer's `public.player_projections` collides with the legacy table of the same name.** `apps/web/src/queries/usePlayerProjections.tsx` reads `player_projections` with a completely different FantasyData shape (`player`, `game_week`, `fpts_ppr`). Typing the shared `supabase` client with the new `Database` type would make that legacy file fail `tsc` and break `pnpm build` in Tasks 2–10, while that file still exists. **Resolution:** the shared client stays untyped and `src/board/boardClient.ts` exports a typed view of it for board code only (Task 2). Task 11 deletes the legacy hook, which removes the collision, but `boardClient.ts` stays as-is — it is one line, every board module already imports it, and re-typing the shared client would be churn with no behaviour change.
 
-10. **`public.final_rosters` does not exist yet.** Ben's data-layer decision says an eliminated team's holdings must be snapshotted at elimination and never overwritten by later Sleeper roster changes, and it leaves the shape to the plan — "a `public.final_rosters` table keyed by season and team, or an `as_of_week`/`frozen_at` marker on `roster_holdings`". This plan needs one concrete shape to type and query. **Resolution:** the board is written against a table, not a marker:
+10. **`public.final_rosters` did not exist when this plan was written.** Ben's data-layer decision says an eliminated team's holdings must be snapshotted at elimination and never overwritten by later Sleeper roster changes, and it left the shape to the plan — "a `public.final_rosters` table keyed by season and team, or an `as_of_week`/`frozen_at` marker on `roster_holdings`". This plan needed one concrete shape to type and query. **Resolution:** the board is written against a table, not a marker, and the data layer landed exactly that table in `supabase/migrations/20260909151435_league_data_layer.sql`:
 
     ```sql
     public.final_rosters (
+      id              bigint generated always as identity primary key,
+      created_at      timestamptz not null default now(),
       season_id       bigint  not null references public.seasons (id),
       team_id         bigint  not null references public.teams (id),
-      eliminated_week integer not null,
+      eliminated_week int,
       holdings        jsonb   not null,
       frozen_at       timestamptz not null,
-      primary key (season_id, team_id)
+      unique (season_id, team_id)
     )
     ```
 
-    `holdings` is a JSON array whose entries mirror the `roster_holdings` columns the board already reads — `{ "sleeper_player_id": string, "slot": "starter" | "bench" | "ir" | "taxi", "slot_index": number | null, "lineup_position": string | null }` — so one `RosterPlayer` builder serves both live and frozen rosters. The table is anon-readable like the rest of the board's tables and is **not** in the realtime publication; a new snapshot arrives with the `team_season_state` change that marks the team eliminated, so Task 8 invalidates the final-rosters query alongside the state query.
+    `holdings` is a JSON array whose entries mirror the `roster_holdings` columns the board already reads — `{ "sleeper_player_id": string, "slot": "starter" | "bench" | "ir" | "taxi", "slot_index": number | null, "lineup_position": string | null }` — so one `RosterPlayer` builder serves both live and frozen rosters. The table is anon-readable like the rest of the board's tables. A new snapshot arrives with the `team_season_state` change that marks the team eliminated, so Task 8 invalidates the final-rosters query alongside the state query.
 
-    **The data layer plan must provide exactly that table, with exactly those column names and exactly that `holdings` entry shape.** If it instead lands the `frozen_at` marker on `roster_holdings`, this plan's Task 2 type, Task 7 fetcher and Task 6 join all change together and Task 6's frozen-roster tests are the ones that fail first. Raise it against the data layer plan before starting Task 2.
+    The two shape differences from the sketch this plan originally carried are recorded in Spec issue 11; neither changes a column name the board reads, and the board never reads `id` or `created_at`.
+
+11. **The plan's data contract checked against the merged data layer.** Every column this plan types, selects, or joins on was re-read against `supabase/migrations/20260909151435_league_data_layer.sql` on 2026-09-09. `team_week_projections` (`season_id`, `team_id`, `week`, `projected_points`, `starter_slots`, `filled_slots`, `empty_slots`, `starters_projected`, `missing_projections`, `coverage_pct`, `is_provisional`, `computed_at`), `team_season_state` (`faab_budget`, `faab_used`, the generated `faab_remaining`, `wins`, `losses`, `ties`, `points_for`, `points_against`, `is_eliminated`, `eliminated_week`, `elimination_source`, `state_version`, `synced_at`), `roster_holdings` (`season_id`, `team_id`, `sleeper_player_id`, `slot`, `slot_index`, `lineup_position`, `synced_at`), `members` (`nickname`, `sleeper_display_name`, both nullable `text`) and `nfl_state` (`season`, `season_type`, `week`, `display_week`, `synced_at`) all match this plan exactly — no renames, no missing columns. **Three differences found, one of them a column:**
+
+    - **Column: `final_rosters.eliminated_week` is nullable.** The shipped column is `eliminated_week int`, not `not null` — the migration's own comment explains why ("a provisional Sleeper-inferred elimination may not know the week yet; the snapshot is still taken, because the roster is what changes"). Task 2's `Database` type had it as `number`. **Fix:** it is `number | null` in Task 2. Task 6's join already reads it as `state?.eliminated_week ?? frozen?.eliminated_week ?? null`, so no join or fetcher change follows, and `TeamCard` already renders the `Eliminated week N` label only when a week is known.
+    - **Key shape (not a column): `final_rosters` has an identity `id` primary key plus `unique (season_id, team_id)`**, rather than the composite primary key this plan sketched, and carries a `created_at` like every other public table. The board selects neither, so nothing changes.
+    - **Publication (not a column): `final_rosters` *is* in `supabase_realtime`.** The migration publishes `roster_holdings`, `team_season_state`, `final_rosters`, `team_week_projections` and `nfl_state`; only `player_projections` is held out. This plan's Task 8 says `final_rosters` is unpublished. **Fix:** the wording is corrected in Task 8, but the behaviour stands — the board subscribes to the four tables in `BOARD_REALTIME_TABLES` and pulls the snapshot through the `team_season_state` invalidation, which fires in the same transaction. Subscribing to fewer tables than are published is safe; adding `final_rosters` to the channel would only duplicate an invalidation the board already does.
+
+    One more data-layer behaviour the board depends on and does **not** re-implement: an eliminated team's `team_week_projections` rows are computed from its frozen `final_rosters` holdings, not from its live `roster_holdings`, by the data layer. So the board's projection number for an eliminated team already matches the frozen roster it renders, and the join needs no eliminated-team special case on the projection side — only on the roster side (Task 6).
 
 ---
 
@@ -685,7 +695,11 @@ export interface Database {
       final_rosters: ReadOnlyTable<{
         season_id: number;
         team_id: number;
-        eliminated_week: number;
+        /**
+         * Nullable in the shipped migration (Spec issue 11): a provisional Sleeper-inferred
+         * elimination may not know the week yet, but the snapshot is still taken.
+         */
+        eliminated_week: number | null;
         holdings: FinalRosterHolding[];
         frozen_at: string;
       }>;
@@ -2988,8 +3002,9 @@ describe("keysForTable", () => {
   });
 
   it("maps a state change to the state query and the frozen rosters", () => {
-    // `final_rosters` is not published, so the elimination that writes a snapshot arrives
-    // only as the team_season_state change that flips is_eliminated.
+    // The board does not subscribe to `final_rosters` (Spec issue 11), so the elimination
+    // that writes a snapshot reaches it as the team_season_state change that flips
+    // is_eliminated, in the same transaction.
     expect(keysForTable("team_season_state", context)).toEqual([
       boardKeys.teamSeasonState(1),
       boardKeys.finalRosters(1),
@@ -3027,8 +3042,11 @@ Create `apps/web/src/board/realtime.ts`:
 import { boardKeys } from "./queryKeys";
 
 /**
- * Exactly the tables the data layer adds to the supabase_realtime publication.
- * public.player_projections is deliberately not published — a run touches thousands of rows.
+ * The published tables the board subscribes to. The data layer also publishes
+ * `final_rosters`, which the board deliberately leaves off this list (Spec issue 11): a
+ * snapshot lands in the same transaction as the `team_season_state` change that flips
+ * `is_eliminated`, and `keysForTable` already invalidates the snapshot query from there.
+ * public.player_projections is not published at all — a run touches thousands of rows.
  */
 export const BOARD_REALTIME_TABLES = [
   "roster_holdings",
@@ -3065,7 +3083,7 @@ export function keysForTable(
   }
   if (table === "team_season_state") {
     // An elimination flips is_eliminated here and writes the final_rosters snapshot in the
-    // same transaction, but final_rosters is not in the publication — so pull it from here.
+    // same transaction; the board does not subscribe to final_rosters, so pull it from here.
     return [
       boardKeys.teamSeasonState(seasonId) as unknown as unknown[],
       boardKeys.finalRosters(seasonId) as unknown as unknown[],
@@ -4925,18 +4943,24 @@ Expected: `legacy site gone`.
 pnpm dev
 ```
 
-Open `http://localhost:5173/board` and, in the browser's device toolbar, set the viewport to **375 × 812**. Work through this list and note the result of each in the commit message:
+Open `http://localhost:5173/` — the board is the home page, there is no other page — and, in the browser's device toolbar, set the viewport to **375 × 812**. Work through this list and note the result of each in the commit message:
 
 1. **Single column.** Every card is full width; the page does not scroll horizontally at any scroll position.
 2. **Sticky header.** Scroll down — the header stays pinned, and the sort toggles and search field remain tappable.
 3. **Expansion.** Tap one card. The roster opens in place with a "Starters" heading, then "Bench"; the chevron rotates; tapping again collapses it and focus returns to the toggle button.
 4. **Both themes.** Toggle dark and light with the existing mode toggle. No hard-coded colour shows through — text stays readable on `bg-card` in both.
-5. **Sort in the URL.** Tap "FAAB". The order changes and the address bar reads `/board?sort=faab`. Reload the page: the FAAB sort survives.
+5. **Sort in the URL.** Tap "FAAB". The order changes and the address bar reads `http://localhost:5173/?sort=faab`. Reload the page: the FAAB sort survives.
 6. **Search.** Type a player surname. Only the holding team stays, its card auto-expands, and the matched player row is highlighted.
 7. **Eliminated group.** If any team is eliminated, it renders dimmed under the "Eliminated (N)" divider, below every active team, and stays there when the sort changes.
-8. **Live update.** Trigger a sync on the Mac mini (`ug sleeper sync`). Within a few seconds the "updated N seconds ago" line resets without the page reloading and without the card layout shifting.
-9. **Reconnect indicator.** In devtools, set the network to Offline. Within a few seconds the header gains the muted "reconnecting" label and the "Live updates are paused" banner appears under it, with the already-loaded data still on screen. Go back online: the banner clears and the board refetches.
-10. **Reduced motion.** Enable "Emulate CSS prefers-reduced-motion: reduce" in devtools' Rendering panel. Expanding a card becomes an instant state change with no slide animation.
+8. **Frozen eliminated roster.** Expand an eliminated team. Its card carries an `Eliminated week N` label and the roster shown is the frozen `final_rosters` snapshot — the players it held at elimination — not whatever Sleeper's live roster says now. Cross-check one player against the `final_rosters.holdings` row in Supabase Studio. If a provisional elimination has no week yet, the label is absent rather than reading "Eliminated week null".
+9. **Owner labels.** Every card names its owner by the member's `nickname`, or by `sleeper_display_name` when there is no nickname. No card shows a bare Sleeper username (`members.display_name`). Check a member you know has no nickname set.
+10. **Last-pull indicator.** The header reads a localized absolute time in your own timezone — `Updated 12:41 PM`, with the date prefixed when the pull was not today — with the relative form (`3 min ago`) as smaller secondary text beneath it, not as the headline.
+11. **Provider named once.** `Projections: Sleeper` appears exactly once, in the small footer line. No card, badge, tooltip or header text names the provider a second time.
+12. **Live update.** Trigger a sync on the Mac mini (`ug sleeper sync`). Within a few seconds the absolute time in the last-pull indicator advances to the new pull, without the page reloading and without the card layout shifting.
+13. **Reconnect indicator.** In devtools, set the network to Offline. Within a few seconds the header gains the muted "reconnecting" label and the "Live updates are paused" banner appears under it, with the already-loaded data still on screen. Go back online: the banner clears and the board refetches.
+14. **Reduced motion.** Enable "Emulate CSS prefers-reduced-motion: reduce" in devtools' Rendering panel. Expanding a card becomes an instant state change with no slide animation.
+15. **The old site is gone.** Visit `http://localhost:5173/rosters`, `/rules` and `/history` in turn. None of them renders its old page: each is either the router's 404 error page or a redirect to `/`. There is no nav anywhere on the board to reach them from.
+16. **The `board` path still works.** Visit `http://localhost:5173/board?sort=faab`. It redirects to `/?sort=faab` with the sort preserved, so links shared while the board lived at `/board` keep working.
 
 Stop the dev server when finished.
 
@@ -4950,22 +4974,28 @@ git commit --allow-empty -m "chore: verify league board build, lint, tests and 3
 - pnpm --filter @ultimate-guillotine/web build: pass
 - pnpm test:agents: pass
 - manual 375px check: single column, sticky header, expansion, light and dark,
-  sort in URL, search auto-expand, eliminated group, live sync, reconnect banner,
-  reduced motion"
+  sort in URL, search auto-expand, eliminated group, frozen eliminated roster with
+  its week label, owner labels (nickname else Sleeper display name), absolute
+  last-pull time with relative secondary, one Projections: Sleeper footer line,
+  live sync, reconnect banner, reduced motion, old routes gone, board redirects to /"
 ```
 
 - [ ] **Step 7: Open the pull request and confirm on the Vercel preview**
 
-Push the branch and open a PR. On the Vercel preview URL, repeat steps 5.1, 5.3, 5.4 and 5.8 at 375 px so Ben reviews the deployed board rather than a local dev server, as the board spec's Done criteria require.
+Push the branch and open a PR. On the Vercel preview URL, repeat steps 5.1, 5.3, 5.4, 5.12 and 5.16 at 375 px — layout, expansion, both themes, a live sync, and the `board` redirect — so Ben reviews the deployed board rather than a local dev server, as the board spec's Done criteria require. The preview's root URL is the board; there is no `/board` page to open.
 
 ---
 
-## Remaining open questions for Ben
+## Decided
 
-These stay open — none of them block this plan, and each is implemented in a way that a one-line change flips:
+Ben settled the board spec's four open questions on 2026-09-09 (`docs/superpowers/specs/2026-09-09-league-board-design.md`, "Decisions from Ben"). This plan implements those decisions; they are not open, and a task that appears to contradict one is a bug in the task.
 
-1. **Promote to `/`?** The board ships at `/board` with a nav link. The board spec recommends promoting it to the home page after a week of live use; that is a follow-up.
-2. **Provider naming.** The header says "Projections from Sleeper" once rather than naming the provider on every card (Spec issue 8).
-3. **Eliminated rosters.** They stay expandable, frozen at whatever `roster_holdings` currently holds. Freezing or permanently collapsing them is a change inside `TeamCard`.
-4. **Display names.** `public.members.display_name` is used as-is. `private.member_aliases` is never read, per the board's privacy rule.
-5. **Below-gate projections.** Implemented as number-plus-caveat (Spec issue 4). Reverting to hiding the number entirely is a single branch in `resolveProjectionDisplay`.
+1. **The board is the home page at `/`.** `BoardPage` is served at `/`, `board` is kept only as a redirect to `/` that preserves the query string, and there is no other route. The rosters, rules and history pages, the old home page, the nav and the direct-Sleeper hooks are deleted in Task 11 — not left beside the board.
+2. **No projection caveats; show when the projections were last pulled.** The header shows a localized absolute time in the viewer's timezone (`Updated 12:41 PM`, dated when the pull was not today) with the relative form as smaller secondary text, sourced from the newest `team_week_projections.computed_at`. The provider is named exactly once, in the `Projections: Sleeper` footer line (Spec issue 8).
+3. **Eliminated rosters are frozen and stay expandable.** An eliminated team's card renders the `public.final_rosters.holdings` snapshot taken at elimination, never its live `roster_holdings` rows, and carries an `Eliminated week N` label (Spec issue 10, Task 6).
+4. **Owner labels are `members.nickname`, else `members.sleeper_display_name`.** Never the bare Sleeper username in `members.display_name`, and `private.member_aliases` is never read (Task 6).
+
+### Still open
+
+1. **Should an eliminated team show a projection at all?** The data layer computes `team_week_projections` for eliminated teams from their frozen `final_rosters` holdings, so the board currently renders a real, if meaningless, weekly number on a dimmed eliminated card. Suppressing it — an em dash, or no projection row — is a branch in `TeamCard`, and it also decides whether an eliminated team keeps a place in the projection sort or is always sorted last on record instead.
+2. **Below-gate projections.** Implemented as number-plus-caveat (Spec issue 4). Reverting to hiding the number entirely is a single branch in `resolveProjectionDisplay`.
