@@ -37,6 +37,8 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from types import MappingProxyType
 
+from ultimate_guillotine.advisor.candidates import Candidate, CandidateLeg
+from ultimate_guillotine.advisor.models import AdvisedTrade, OfferLeg, TradeAdviceResponse
 from ultimate_guillotine.advisor.state import (
     COVERAGE_GATE,
     LAST_REGULAR_WEEK,
@@ -213,4 +215,51 @@ def fixture_snapshot(
         synced_at=synced_at,
         oldest_synced_at=synced_at if oldest_synced_at is None else oldest_synced_at,
         teams=tuple(_team(team, coverage_pct, weeks, keep_player_points) for team in range(1, 19)),
+    )
+
+
+def _offer_leg(leg: CandidateLeg) -> OfferLeg:
+    return OfferLeg(
+        kind=leg.kind,
+        player_id=leg.player_id,
+        player_name=leg.player_name,
+        amount=leg.amount,
+        from_member=leg.from_member,
+        to_member=leg.to_member,
+    )
+
+
+def advised_response(
+    candidate: Candidate,
+    *,
+    index: int = 1,
+    rank: int = 1,
+    status: str = "ok",
+    headline: str = "RB help",
+    note: str | None = None,
+    **overrides: object,
+) -> TradeAdviceResponse:
+    """A faithful answer to one candidate, which a test then tampers with.
+
+    Every test in :mod:`tests.advisor.test_verify` starts from a response the
+    verifier must accept and changes exactly one thing, so a failure names the
+    one field that broke rather than the whole shape of the answer.
+    """
+    proposal = AdvisedTrade(
+        candidate_index=index,
+        rank=rank,
+        counterparties=[candidate.counterparty],
+        structure=candidate.structure,
+        return_condition=candidate.return_condition,
+        reasoning="They are deep at RB and you are thin.",
+        risk="His RB has a Week 12 bye.",
+        comparable_trade_code=candidate.comparable_trade_code,
+        asker_receives=[_offer_leg(leg) for leg in candidate.asker_receives],
+        asker_sends=[_offer_leg(leg) for leg in candidate.asker_sends],
+    )
+    return TradeAdviceResponse(
+        status=status,
+        headline=headline,
+        note=note,
+        proposals=[proposal.model_copy(update=overrides)],
     )

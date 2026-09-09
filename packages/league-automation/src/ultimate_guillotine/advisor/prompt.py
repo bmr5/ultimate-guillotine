@@ -27,7 +27,13 @@ from decimal import Decimal
 from functools import lru_cache
 from pathlib import Path
 
-from ultimate_guillotine.advisor.candidates import Candidate, CandidateLeg, DeltaBasis
+from ultimate_guillotine.advisor.candidates import (
+    Candidate,
+    CandidateLeg,
+    DeltaBasis,
+    span_text,
+    weeks_covered,
+)
 from ultimate_guillotine.advisor.detect import Ask
 from ultimate_guillotine.advisor.models import TradeAdviceResponse
 from ultimate_guillotine.advisor.pricing import PricePoint, comparables_for
@@ -110,34 +116,6 @@ def _delta_text(value: Decimal | None, basis: DeltaBasis) -> str:
     return f"{value:+.2f}"
 
 
-def _covered_weeks(snapshot: LeagueSnapshot, candidate: Candidate) -> tuple[int, ...]:
-    """The weeks this candidate's point changes were summed over.
-
-    The same arithmetic
-    :func:`~ultimate_guillotine.advisor.candidates._covered_weeks` used to
-    produce the figures, read back off the candidate rather than off the ask, so
-    the span in the sentence is the span of the number beside it: a permanent
-    trade is judged on the snapshot's own week, and a rental on every loaded
-    week before it returns.
-    """
-    if candidate.structure != "rental" or candidate.return_week is None:
-        return (snapshot.week,)
-    return tuple(w for w in snapshot.weeks if w < candidate.return_week) or (snapshot.week,)
-
-
-def _span_text(weeks: Sequence[int]) -> str:
-    """``Week 6`` or ``Weeks 6–9`` -- which weeks a summed figure covers.
-
-    A three-week rental's ``+12.00`` and a one-week trade's ``+12.00`` are not
-    the same offer, and without this the facts gave the model no way to tell
-    them apart. Every point change carries its own span, so the number and the
-    weeks behind it can never drift out of step.
-    """
-    if len(weeks) == 1:
-        return f"Week {weeks[0]}"
-    return f"Weeks {weeks[0]}–{weeks[-1]}"
-
-
 def _team_lines(snapshot: LeagueSnapshot, scores: dict[int, TeamScore], known: bool) -> list[str]:
     lines: list[str] = []
     for team in snapshot.teams:
@@ -178,7 +156,7 @@ def _candidate_lines(
     lines: list[str] = []
     for index, candidate in enumerate(candidates, start=1):
         reasons = candidate.reasons
-        span = _span_text(_covered_weeks(snapshot, candidate))
+        span = span_text(weeks_covered(snapshot, candidate))
         lines.append(f"CANDIDATE {index}: counterparty {candidate.counterparty}")
         for leg in candidate.asker_receives:
             lines.append(f"  asker receives: {_leg_text(leg)}")

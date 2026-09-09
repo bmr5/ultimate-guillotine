@@ -148,6 +148,8 @@ __all__ = [
     "DeltaBasis",
     "PriceBasis",
     "generate_candidates",
+    "span_text",
+    "weeks_covered",
 ]
 
 
@@ -275,6 +277,33 @@ class Candidate:
             tuple(sorted(self.player_ids())),
             sum(leg.amount or 0 for leg in self.asker_receives + self.asker_sends),
         )
+
+
+def weeks_covered(snapshot: LeagueSnapshot, candidate: Candidate) -> tuple[int, ...]:
+    """The weeks a built candidate's point changes were summed over.
+
+    The same arithmetic :func:`_covered_weeks` applied to the ask, read back off
+    the finished candidate so that anything rendering one of its figures -- the
+    facts block, the chat text -- names the span the number really covers: a
+    permanent trade is judged on the snapshot's own week, and a rental on every
+    loaded week before it returns.
+    """
+    if candidate.structure != "rental" or candidate.return_week is None:
+        return (snapshot.week,)
+    return tuple(w for w in snapshot.weeks if w < candidate.return_week) or (snapshot.week,)
+
+
+def span_text(weeks: Sequence[int]) -> str:
+    """``Week 6`` or ``Weeks 6–9`` -- which weeks a summed figure covers.
+
+    A three-week rental's ``+12.00`` and a one-week trade's ``+12.00`` are not
+    the same offer. Every point change is rendered beside its own span, and both
+    come from here, so the number and the weeks behind it cannot drift apart in
+    one consumer while staying right in the other.
+    """
+    if len(weeks) == 1:
+        return f"Week {weeks[0]}"
+    return f"Weeks {weeks[0]}–{weeks[-1]}"
 
 
 def _leg_player(holding: AdvisorHolding, sender: str, receiver: str) -> CandidateLeg:
