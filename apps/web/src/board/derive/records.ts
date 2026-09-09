@@ -22,7 +22,11 @@ const POINTS_ROUNDING_FACTOR = 10 ** POINTS_DECIMALS;
  */
 export interface TeamPointsSummary {
   pointsFor: number;
-  weeksScored: number;
+  /**
+   * The highest week this team has a final row for. `latestFinalWeek` folds it across the
+   * league to give the board a real week to scope to once `nfl_state` has left the regular
+   * season and its own `week` no longer names a week the league played.
+   */
   lastFinalWeek: number | null;
 }
 
@@ -63,12 +67,10 @@ export function summarizeWeeklyResults(
     }
     const current = summaries.get(row.team_id) ?? {
       pointsFor: 0,
-      weeksScored: 0,
       lastFinalWeek: null,
     };
     summaries.set(row.team_id, {
       pointsFor: addPoints(current.pointsFor, row.points),
-      weeksScored: current.weeksScored + 1,
       lastFinalWeek:
         current.lastFinalWeek === null
           ? row.week
@@ -76,4 +78,24 @@ export function summarizeWeeklyResults(
     });
   }
   return summaries;
+}
+
+/**
+ * The newest week the league has a final result for, or `null` when it has none.
+ *
+ * The board is scoped to `nfl_state.week`, which is the right week right up until the regular
+ * season ends: in the post-season and the offseason that number names a week this league never
+ * played, so every week-scoped query filters to nothing and the board goes blank. This is the
+ * week it falls back to — the last one that actually has rows — folded from the same corrected,
+ * deduplicated summaries the points-for column is built from.
+ */
+export function latestFinalWeek(rows: readonly WeeklyResultRow[]): number | null {
+  let latest: number | null = null;
+  for (const summary of summarizeWeeklyResults(rows).values()) {
+    if (summary.lastFinalWeek === null) {
+      continue;
+    }
+    latest = latest === null ? summary.lastFinalWeek : Math.max(latest, summary.lastFinalWeek);
+  }
+  return latest;
 }

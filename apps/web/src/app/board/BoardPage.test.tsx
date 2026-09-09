@@ -70,6 +70,9 @@ const player = (
 const result = (over: Partial<BoardDataResult> = {}): BoardDataResult => ({
   season: 2026,
   week: 3,
+  displayWeek: 3,
+  isSeasonFallback: false,
+  isOffRegularSeason: false,
   seasonId: 1,
   teams: [],
   isPending: false,
@@ -132,6 +135,7 @@ describe("BoardPage", () => {
     boardData.current = result({
       season: null,
       week: null,
+      displayWeek: null,
       seasonId: null,
       projectionsUpdatedAt: null,
       isEmpty: true,
@@ -386,5 +390,34 @@ describe("BoardPage", () => {
         "No projections available, so teams are sorted by points for.",
       ),
     ).toBeInTheDocument();
+  });
+
+  it("labels the season when nfl_state has rolled past the last one played", () => {
+    // The offseason shape. Unlabelled, last season's final table reads as this week's board.
+    boardData.current = result({
+      season: 2026,
+      week: 17,
+      displayWeek: 1,
+      isSeasonFallback: true,
+      isOffRegularSeason: true,
+      teams: [team({ teamId: 1 })],
+    });
+    renderPage();
+    expect(screen.getByText("Season 2026 (final)")).toBeInTheDocument();
+    // The header names Sleeper's own week; the caveat names the week the numbers are from.
+    expect(screen.getByRole("heading", { name: "Week 1" })).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Regular season complete. Showing week 17, the last week with results.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("says nothing about the season or the scope during the regular season", () => {
+    boardData.current = result({ teams: [team({ teamId: 1 })] });
+    renderPage();
+    expect(screen.getByRole("heading", { name: "Week 3" })).toBeInTheDocument();
+    expect(screen.queryByText(/\(final\)/)).toBeNull();
+    expect(screen.queryByText(/last week with results/)).toBeNull();
   });
 });

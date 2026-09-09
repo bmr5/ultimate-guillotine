@@ -23,6 +23,12 @@ export const boardKeys = {
   all: ["board"] as const,
   nflState: () => ["board", "nfl_state"] as const,
   season: (year: number) => ["board", "seasons", year] as const,
+  /**
+   * The offseason fallback: the newest `seasons` row, whatever year it is. Deliberately not
+   * `season(year)` — the year is the answer here, not the question, so keying it by year would
+   * mean knowing it before asking.
+   */
+  latestSeason: () => ["board", "seasons", "latest"] as const,
   teams: (seasonId: number) => ["board", "teams", seasonId] as const,
   members: () => ["board", "members"] as const,
   teamSeasonState: (seasonId: number) =>

@@ -105,6 +105,30 @@ export async function fetchSeasonByYear(
   return rows[0] ?? null;
 }
 
+/**
+ * The newest `seasons` row, whatever year it is.
+ *
+ * `nfl_state.season` rolls over to the next year the moment the NFL does, months before this
+ * league has a `seasons` row for it. Scoped to that year alone the board finds no season, so
+ * every query below it stays disabled and the page reads as empty all offseason. This is the
+ * fallback: the last season the league actually played, which the header labels as final.
+ */
+export async function fetchLatestSeason(
+  client: BoardClient,
+): Promise<SeasonRow | null> {
+  const rows = await unwrap<SeasonRow>(
+    client
+      .from("seasons")
+      .select(
+        "id, year, sleeper_league_id, phase, expected_rosters, waiver_budget, roster_positions, league_synced_at",
+      )
+      .order("year", { ascending: false })
+      .limit(1),
+    "seasons",
+  );
+  return rows[0] ?? null;
+}
+
 export function fetchTeams(
   client: BoardClient,
   seasonId: number,

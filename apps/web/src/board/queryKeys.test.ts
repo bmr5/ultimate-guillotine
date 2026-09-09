@@ -60,10 +60,18 @@ describe("boardKeys", () => {
     expect(boardKeys.players(1, "x")[1]).toBe("players");
   });
 
+  it("keeps the latest-season fallback off the year-keyed season entry", () => {
+    // Same branch, different question: one asks for a named year, the other for whichever year
+    // is newest. Sharing a key would serve the fallback row as the answer for that year.
+    expect(boardKeys.latestSeason()).toEqual(["board", "seasons", "latest"]);
+    expect(boardKeys.latestSeason()).not.toEqual(boardKeys.season(2026));
+  });
+
   it("nests every key under the all key so one invalidation covers the board", () => {
     const keys = [
       boardKeys.nflState(),
       boardKeys.season(2026),
+      boardKeys.latestSeason(),
       boardKeys.teams(1),
       boardKeys.members(),
       boardKeys.teamSeasonState(1),

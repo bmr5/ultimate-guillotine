@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("./boardClient", () => ({ boardClient: {} }));
 vi.mock("./fetchers", () => ({
   fetchFinalRosters: vi.fn(),
+  fetchLatestSeason: vi.fn(),
   fetchMembers: vi.fn(),
   fetchNflState: vi.fn(),
   fetchPlayerProjections: vi.fn(),
@@ -51,6 +52,7 @@ const TEAM = {
 
 function stubFetchers(): void {
   vi.mocked(fetchers.fetchNflState).mockResolvedValue(NFL_STATE);
+  vi.mocked(fetchers.fetchLatestSeason).mockResolvedValue(SEASON);
   vi.mocked(fetchers.fetchSeasonByYear).mockResolvedValue(SEASON);
   vi.mocked(fetchers.fetchTeams).mockResolvedValue([TEAM]);
   vi.mocked(fetchers.fetchMembers).mockResolvedValue([]);
@@ -266,6 +268,140 @@ describe("useBoardData", () => {
     ]);
     await waitFor(() => {
       expect(result.current.teams[0].roster[1].fullName).toBe("Puka Nacua");
+    });
+  });
+});
+
+describe("useBoardData outside the regular season", () => {
+  /** One final week 17 result, so the fallback week has something to land on. */
+  const WEEK_17 = {
+    week: 17,
+    team_id: 11,
+    points: 101.5,
+    is_final: true,
+    state_version: 1,
+  };
+
+  it("falls back to the newest season row when nfl_state has rolled past it", async () => {
+    // The offseason shape: the NFL is in 2027, the league's last season row is 2026.
+    vi.mocked(fetchers.fetchNflState).mockResolvedValue({
+      ...NFL_STATE,
+      season: 2027,
+      season_type: "off",
+      week: 1,
+      display_week: 1,
+    });
+    vi.mocked(fetchers.fetchSeasonByYear).mockResolvedValue(null);
+    vi.mocked(fetchers.fetchWeeklyResults).mockResolvedValue([WEEK_17]);
+
+    const { result } = renderBoardData();
+    await waitFor(() => {
+      expect(result.current.teams).toHaveLength(1);
+    });
+
+    // Without the fallback the season never resolves, teams stays disabled, and the board
+    // reads as empty for the whole offseason.
+    expect(vi.mocked(fetchers.fetchSeasonByYear).mock.calls[0][1]).toBe(2027);
+    expect(vi.mocked(fetchers.fetchLatestSeason)).toHaveBeenCalled();
+    expect(result.current.isSeasonFallback).toBe(true);
+    expect(result.current.seasonId).toBe(7);
+    // The year of the row on screen, not nfl_state's — player_projections is keyed on the year.
+    expect(result.current.season).toBe(2026);
+    expect(result.current.isEmpty).toBe(false);
+    expect(result.current.errors).toEqual([]);
+  });
+
+  it("scopes the week-scoped queries to the last week with results", async () => {
+    vi.mocked(fetchers.fetchNflState).mockResolvedValue({
+      ...NFL_STATE,
+      season_type: "post",
+      week: 19,
+      display_week: 19,
+    });
+    vi.mocked(fetchers.fetchWeeklyResults).mockResolvedValue([WEEK_17]);
+    vi.mocked(fetchers.fetchRosterHoldings).mockResolvedValue([
+      holding(11, "4046", 0),
+    ]);
+
+    const { result } = renderBoardData();
+    await waitFor(() => {
+      expect(vi.mocked(fetchers.fetchTeamWeekProjections)).toHaveBeenCalled();
+    });
+
+    // Week 19 is an NFL post-season week this league never played: filtering to it returns no
+    // rows at all, and the board goes blank under a heading that says it is live.
+    expect(vi.mocked(fetchers.fetchTeamWeekProjections).mock.calls).toHaveLength(1);
+    expect(
+      vi.mocked(fetchers.fetchTeamWeekProjections).mock.calls[0].slice(1),
+    ).toEqual([7, 17]);
+    await waitFor(() => {
+      expect(vi.mocked(fetchers.fetchPlayerProjections)).toHaveBeenCalled();
+    });
+    expect(
+      vi.mocked(fetchers.fetchPlayerProjections).mock.calls[0].slice(1, 3),
+    ).toEqual([2026, 17]);
+    expect(result.current.week).toBe(17);
+    // The header still names Sleeper's own week.
+    expect(result.current.displayWeek).toBe(19);
+    expect(result.current.isOffRegularSeason).toBe(true);
+    expect(result.current.isSeasonFallback).toBe(false);
+  });
+
+  it("degrades to the raw week when the season has no final results at all", async () => {
+    vi.mocked(fetchers.fetchNflState).mockResolvedValue({
+      ...NFL_STATE,
+      season_type: "pre",
+      week: 1,
+      display_week: 1,
+    });
+    vi.mocked(fetchers.fetchWeeklyResults).mockResolvedValue([]);
+
+    const { result } = renderBoardData();
+    await waitFor(() => {
+      expect(vi.mocked(fetchers.fetchTeamWeekProjections)).toHaveBeenCalled();
+    });
+    expect(
+      vi.mocked(fetchers.fetchTeamWeekProjections).mock.calls[0].slice(1),
+    ).toEqual([7, 1]);
+    expect(result.current.week).toBe(1);
+    expect(result.current.errors).toEqual([]);
+  });
+
+  it("drops the projection placeholder when the week moves under it", async () => {
+    vi.mocked(fetchers.fetchRosterHoldings).mockResolvedValue([
+      holding(11, "4046", 0),
+    ]);
+    vi.mocked(fetchers.fetchPlayerProjections).mockResolvedValue([
+      { sleeper_player_id: "4046", league_points: 22.5 },
+    ]);
+    const { result, queryClient } = renderBoardData();
+    await waitFor(() => {
+      expect(result.current.teams[0]?.roster[0]?.projectedPoints).toBe(22.5);
+    });
+
+    // The week rolls over. keepPreviousData would hold week 3's points up under week 4's
+    // heading — a stale number that reads as current, which is worse than a blank.
+    let release: (rows: fetchers.PlayerProjectionRow[]) => void = () => {};
+    vi.mocked(fetchers.fetchPlayerProjections).mockImplementationOnce(
+      () =>
+        new Promise<fetchers.PlayerProjectionRow[]>((resolve) => {
+          release = resolve;
+        }),
+    );
+    vi.mocked(fetchers.fetchNflState).mockResolvedValue({ ...NFL_STATE, week: 4 });
+    await queryClient.invalidateQueries({ queryKey: boardKeys.nflState() });
+
+    await waitFor(() => {
+      expect(result.current.week).toBe(4);
+    });
+    await waitFor(() => {
+      expect(vi.mocked(fetchers.fetchPlayerProjections).mock.calls).toHaveLength(2);
+    });
+    expect(result.current.teams[0].roster[0].projectedPoints).toBeNull();
+
+    release([{ sleeper_player_id: "4046", league_points: 18 }]);
+    await waitFor(() => {
+      expect(result.current.teams[0].roster[0].projectedPoints).toBe(18);
     });
   });
 });

@@ -17,7 +17,16 @@ import {
 import { SORT_MODE_LABELS, SORT_MODES, type SortMode } from "../types";
 
 interface BoardHeaderProps {
+  /** The week this header names — `display_week` once the regular season is over. */
   week: number | null;
+  /** The year of the `seasons` row on screen; only labelled when it is a fallback. */
+  season: number | null;
+  /** True when `nfl_state` has rolled to a year the league has no season row for. */
+  isSeasonFallback: boolean;
+  /** The week the numbers below are actually scoped to; see `scopedWeek` in the caveat. */
+  scopedWeek: number | null;
+  /** True when `nfl_state.season_type` is anything but `regular`. */
+  isOffRegularSeason: boolean;
   sortMode: SortMode;
   onSortModeChange: (mode: SortMode) => void;
   sortFellBack: boolean;
@@ -35,6 +44,14 @@ interface BoardHeaderProps {
 
 /** Shown in place of the week number before `nfl_state` resolves. */
 const UNKNOWN_WEEK_LABEL = "Week —";
+
+/**
+ * The season badge shown when `nfl_state` has rolled past the last season the league has a row
+ * for: without it an offseason board silently reads as if last season's final table were live.
+ */
+function seasonFallbackLabel(season: number | null): string {
+  return season === null ? "Final season" : `Season ${season} (final)`;
+}
 
 /** The header's own label for a dropped socket, beside the week. */
 const RECONNECTING_LABEL = "reconnecting";
@@ -60,6 +77,10 @@ const TOUCH_TARGET_CLASS = "min-h-[44px]";
  */
 export function BoardHeader({
   week,
+  season,
+  isSeasonFallback,
+  scopedWeek,
+  isOffRegularSeason,
   sortMode,
   onSortModeChange,
   sortFellBack,
@@ -132,6 +153,9 @@ export function BoardHeader({
         <span className="text-xs text-muted-foreground/80" aria-hidden="true">
           {formatUpdatedAgo(projectionsUpdatedAt, now)}
         </span>
+        {isSeasonFallback ? (
+          <Badge variant="outline">{seasonFallbackLabel(season)}</Badge>
+        ) : null}
         {stale ? <Badge variant="outline">Stale data</Badge> : null}
         {isReconnecting ? (
           <span className="text-xs text-muted-foreground">
@@ -200,6 +224,17 @@ export function BoardHeader({
           )}
         </div>
       </div>
+
+      {/*
+        Outside the regular season `nfl_state.week` names a week this league never played, so
+        the numbers come from the last week that has results. Saying so is the difference
+        between a final table and one that looks stale for no stated reason.
+      */}
+      {isOffRegularSeason && scopedWeek !== null && scopedWeek !== week ? (
+        <p className="text-xs text-muted-foreground">
+          {`Regular season complete. Showing week ${scopedWeek}, the last week with results.`}
+        </p>
+      ) : null}
 
       {sortFellBack ? (
         <p className="text-xs text-muted-foreground">

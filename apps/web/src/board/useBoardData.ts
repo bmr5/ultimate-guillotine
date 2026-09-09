@@ -3,8 +3,10 @@ import { useMemo } from "react";
 
 import { boardClient } from "./boardClient";
 import { joinBoardTeams } from "./derive/join";
+import { latestFinalWeek } from "./derive/records";
 import {
   fetchFinalRosters,
+  fetchLatestSeason,
   fetchMembers,
   fetchNflState,
   fetchPlayerProjections,
@@ -30,8 +32,23 @@ export interface BoardQueryError {
 }
 
 export interface BoardDataResult {
+  /**
+   * The year of the `seasons` row the board is actually showing — which is `nfl_state.season`
+   * during a season the league has a row for, and the newest row's year otherwise.
+   */
   season: number | null;
+  /**
+   * The week every week-scoped query is filtered by. Outside the regular season this is the
+   * last week with final results, not `nfl_state.week`: that number names a week this league
+   * never played, so filtering to it returns nothing and blanks the board.
+   */
   week: number | null;
+  /** The week the header names: `display_week` once the regular season is over. */
+  displayWeek: number | null;
+  /** True when `nfl_state.season` has no `seasons` row and the newest one is standing in. */
+  isSeasonFallback: boolean;
+  /** True when `nfl_state.season_type` is anything but `regular`. */
+  isOffRegularSeason: boolean;
   seasonId: number | null;
   teams: BoardTeam[];
   isPending: boolean;
@@ -61,18 +78,50 @@ export function useBoardData(options: BoardDataOptions): BoardDataResult {
 
   // Spec issue 7: the season and week the whole board is scoped to come from nfl_state, never
   // from a hardcoded year. Every select below is filtered by one or both.
-  const season = nflState.data?.season ?? null;
-  const week = nflState.data?.week ?? null;
+  const nflSeason = nflState.data?.season ?? null;
+  const nflWeek = nflState.data?.week ?? null;
+  /**
+   * `pre`, `post` and `off` all mean the same thing to this board: `nfl_state.week` is no
+   * longer a week the league played. A null season_type (nfl_state has not resolved) is treated
+   * as regular, since nothing is scoped yet anyway.
+   */
+  const isOffRegularSeason =
+    nflState.data != null && nflState.data.season_type !== "regular";
 
   const seasonRow = useQuery({
-    queryKey: boardKeys.season(season ?? 0),
-    queryFn: () => fetchSeasonByYear(boardClient, season as number),
-    enabled: season !== null,
+    queryKey: boardKeys.season(nflSeason ?? 0),
+    queryFn: () => fetchSeasonByYear(boardClient, nflSeason as number),
+    enabled: nflSeason !== null,
     ...shared,
   });
 
-  const seasonId = seasonRow.data?.id ?? null;
+  /**
+   * `nfl_state.season` rolls to the next year the moment the NFL does — months before this
+   * league has a `seasons` row for it. Without this hop the season lookup resolves to `null`,
+   * every query below it stays disabled, and the board reads as empty all offseason. Asked for
+   * only once the year-scoped lookup has come back empty, so an in-season board never runs it.
+   */
+  const latestSeason = useQuery({
+    queryKey: boardKeys.latestSeason(),
+    queryFn: () => fetchLatestSeason(boardClient),
+    enabled: seasonRow.isSuccess && seasonRow.data === null,
+    ...shared,
+  });
+
+  const isSeasonFallback =
+    seasonRow.isSuccess &&
+    seasonRow.data === null &&
+    (latestSeason.data ?? null) !== null;
+  const resolvedSeason = seasonRow.data ?? latestSeason.data ?? null;
+
+  const seasonId = resolvedSeason?.id ?? null;
   const hasSeason = seasonId !== null;
+  /**
+   * The year of the row actually on screen, not `nfl_state.season`. `player_projections` is
+   * keyed on the plain year rather than the season id, so asking for 2027's projections while
+   * showing 2026's rosters would return nothing at all.
+   */
+  const season = resolvedSeason?.year ?? null;
 
   const teams = useQuery({
     queryKey: boardKeys.teams(seasonId ?? 0),
@@ -94,14 +143,6 @@ export function useBoardData(options: BoardDataOptions): BoardDataResult {
     ...shared,
   });
 
-  const teamProjections = useQuery({
-    queryKey: boardKeys.teamWeekProjections(seasonId ?? 0, week ?? 0),
-    queryFn: () =>
-      fetchTeamWeekProjections(boardClient, seasonId as number, week as number),
-    enabled: hasSeason && week !== null,
-    ...shared,
-  });
-
   const holdings = useQuery({
     queryKey: boardKeys.rosterHoldings(seasonId ?? 0),
     queryFn: () => fetchRosterHoldings(boardClient, seasonId as number),
@@ -113,6 +154,41 @@ export function useBoardData(options: BoardDataOptions): BoardDataResult {
     queryKey: boardKeys.weeklyResults(seasonId ?? 0),
     queryFn: () => fetchWeeklyResults(boardClient, seasonId as number),
     enabled: hasSeason,
+    ...shared,
+  });
+
+  /**
+   * The week the numbers come from.
+   *
+   * In the regular season that is `nfl_state.week`. Once `season_type` leaves `regular` the
+   * board falls back to the last week with final results — `nfl_state.week` then names a
+   * post-season week this league never played, and every week-scoped filter would match no
+   * rows and blank the board. With no final week at all there is nothing better than the raw
+   * week, which degrades to an empty week rather than a wrong one; the header carries the
+   * caveat either way.
+   */
+  const lastScoredWeek = useMemo(
+    () => latestFinalWeek(weeklyResults.data ?? []),
+    [weeklyResults.data],
+  );
+  const week = isOffRegularSeason ? (lastScoredWeek ?? nflWeek) : nflWeek;
+  /** What the header names. Sleeper's own post-season week number, not the scoped week. */
+  const displayWeek = isOffRegularSeason
+    ? (nflState.data?.display_week ?? nflWeek)
+    : nflWeek;
+  /**
+   * Outside the regular season the scoped week is not known until `weekly_results` lands, so
+   * the week-scoped queries wait for it rather than firing once for `nfl_state.week` and again
+   * for the real one.
+   */
+  const hasWeekScope =
+    !isOffRegularSeason || weeklyResults.isSuccess || weeklyResults.isError;
+
+  const teamProjections = useQuery({
+    queryKey: boardKeys.teamWeekProjections(seasonId ?? 0, week ?? 0),
+    queryFn: () =>
+      fetchTeamWeekProjections(boardClient, seasonId as number, week as number),
+    enabled: hasSeason && week !== null && hasWeekScope,
     ...shared,
   });
 
@@ -170,11 +246,32 @@ export function useBoardData(options: BoardDataOptions): BoardDataResult {
         week as number,
         heldPlayerIds,
       ),
-    enabled: season !== null && week !== null && heldPlayerIds.length > 0,
+    enabled:
+      season !== null &&
+      week !== null &&
+      hasWeekScope &&
+      heldPlayerIds.length > 0,
     ...shared,
-    // Projections do move, so this branch keeps the poll; it only keeps the previous numbers
-    // on screen while the new id set loads.
-    placeholderData: keepPreviousData,
+    /*
+      Projections do move, so this branch keeps the poll; the placeholder only keeps the
+      previous numbers on screen while a new *id set* loads. Scoped to an unchanged season and
+      week on purpose: `keepPreviousData` would also hold last week's points up under this
+      week's heading across a rollover, which is worse than a blank — a stale number that reads
+      as current. Anything but a fingerprint change starts empty.
+    */
+    placeholderData: (previous, previousQuery) => {
+      const previousKey = previousQuery?.queryKey as
+        | readonly unknown[]
+        | undefined;
+      if (previousKey === undefined) {
+        return undefined;
+      }
+      const scope = boardKeys.playerProjectionsPrefix(season ?? 0, week ?? 0);
+      const sameScope = scope.every(
+        (segment, index) => previousKey[index] === segment,
+      );
+      return sameScope ? previous : undefined;
+    },
   });
 
   const boardTeams = useMemo(
@@ -220,6 +317,7 @@ export function useBoardData(options: BoardDataOptions): BoardDataResult {
   const sections: [string, { error: Error | null }][] = [
     ["NFL week", nflState],
     ["Season", seasonRow],
+    ["Season", latestSeason],
     ["Teams", teams],
     ["Owners", members],
     ["Team state", state],
@@ -242,11 +340,18 @@ export function useBoardData(options: BoardDataOptions): BoardDataResult {
   // query below it — sits at status "pending" forever, so isPending would leave the board
   // spinning on an empty database instead of reaching the empty state. isLoading is
   // `isPending && isFetching`, which a disabled query never is.
-  const isPending = nflState.isLoading || seasonRow.isLoading || teams.isLoading;
+  const isPending =
+    nflState.isLoading ||
+    seasonRow.isLoading ||
+    latestSeason.isLoading ||
+    teams.isLoading;
 
   return {
     season,
     week,
+    displayWeek,
+    isSeasonFallback,
+    isOffRegularSeason,
     seasonId,
     teams: boardTeams,
     isPending,

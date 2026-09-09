@@ -12,6 +12,7 @@ import {
   fetchPlayerProjections,
   fetchPlayers,
   fetchRosterHoldings,
+  fetchLatestSeason,
   fetchSeasonByYear,
   fetchTeamSeasonState,
   fetchTeamWeekProjections,
@@ -23,6 +24,9 @@ interface Call {
   table: string;
   columns: string;
   filters: [string, unknown][];
+  /** `[column, ascending]` for the one fetcher that orders; undefined for the rest. */
+  order?: [string, boolean];
+  limit?: number;
 }
 
 /** A fixed row set, or one derived from the filters that call asked for. */
@@ -48,6 +52,14 @@ function createFakeClient(
         },
         in(column: string, values: unknown[]) {
           call.filters.push([column, values]);
+          return builder;
+        },
+        order(column: string, options: { ascending: boolean }) {
+          call.order = [column, options.ascending];
+          return builder;
+        },
+        limit(count: number) {
+          call.limit = count;
           return builder;
         },
         then(resolve: (value: unknown) => unknown) {
@@ -121,6 +133,36 @@ describe("season and team fetchers", () => {
     const season = await fetchSeasonByYear(client, 2026);
     expect(season?.id).toBe(1);
     expect(calls[0].filters).toEqual([["year", 2026]]);
+  });
+
+  it("falls back to the newest season row when the nfl year has none", async () => {
+    // The offseason shape: nfl_state has rolled to a year this league has no seasons row for.
+    const { client, calls } = createFakeClient({
+      seasons: [
+        {
+          id: 1,
+          year: 2026,
+          sleeper_league_id: "x",
+          phase: "complete",
+          expected_rosters: 18,
+          waiver_budget: 100,
+          roster_positions: [],
+          league_synced_at: "t",
+        },
+      ],
+    });
+    const season = await fetchLatestSeason(client);
+    expect(season?.year).toBe(2026);
+    expect(calls[0].table).toBe("seasons");
+    // No year filter at all — newest first, one row.
+    expect(calls[0].filters).toEqual([]);
+    expect(calls[0].order).toEqual(["year", false]);
+    expect(calls[0].limit).toBe(1);
+  });
+
+  it("has no season to fall back to when the table is empty", async () => {
+    const { client } = createFakeClient({ seasons: [] });
+    expect(await fetchLatestSeason(client)).toBeNull();
   });
 
   it("reads teams for the season", async () => {

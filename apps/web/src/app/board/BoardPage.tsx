@@ -142,7 +142,13 @@ export function BoardPage() {
   return (
     <main className="px-4 pb-10 sm:px-0">
       <BoardHeader
-        week={board.week}
+        // The header names `display_week`; `board.week` is what the numbers are scoped to, and
+        // outside the regular season the two are different weeks.
+        week={board.displayWeek}
+        season={board.season}
+        isSeasonFallback={board.isSeasonFallback}
+        scopedWeek={board.week}
+        isOffRegularSeason={board.isOffRegularSeason}
         sortMode={requestedSort}
         onSortModeChange={handleSortModeChange}
         sortFellBack={effective.fellBack}
