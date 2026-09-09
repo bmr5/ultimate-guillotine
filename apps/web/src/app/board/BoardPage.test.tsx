@@ -406,11 +406,12 @@ describe("BoardPage", () => {
     expect(screen.getByText("Season 2026 (final)")).toBeInTheDocument();
     // The header names Sleeper's own week; the caveat names the week the numbers are from.
     expect(screen.getByRole("heading", { name: "Week 1" })).toBeInTheDocument();
+    // Season-neutral: `season_type` leaves `regular` in the preseason too, so the sentence
+    // says what is on screen rather than claiming the regular season is over.
     expect(
-      screen.getByText(
-        "Regular season complete. Showing week 17, the last week with results.",
-      ),
+      screen.getByText("Showing week 17, the last week with final results."),
     ).toBeInTheDocument();
+    expect(screen.queryByText(/Regular season complete/)).toBeNull();
   });
 
   it("says nothing about the season or the scope during the regular season", () => {
@@ -418,6 +419,6 @@ describe("BoardPage", () => {
     renderPage();
     expect(screen.getByRole("heading", { name: "Week 3" })).toBeInTheDocument();
     expect(screen.queryByText(/\(final\)/)).toBeNull();
-    expect(screen.queryByText(/last week with results/)).toBeNull();
+    expect(screen.queryByText(/last week with final results/)).toBeNull();
   });
 });

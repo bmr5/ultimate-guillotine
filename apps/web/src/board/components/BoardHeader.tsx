@@ -229,10 +229,14 @@ export function BoardHeader({
         Outside the regular season `nfl_state.week` names a week this league never played, so
         the numbers come from the last week that has results. Saying so is the difference
         between a final table and one that looks stale for no stated reason.
+
+        Season-neutral wording: `season_type` is anything but `regular` in the preseason too,
+        and "Regular season complete" is a lie in August. The sentence states what the board is
+        showing and why, which is true in every phase this branch is reachable in.
       */}
       {isOffRegularSeason && scopedWeek !== null && scopedWeek !== week ? (
         <p className="text-xs text-muted-foreground">
-          {`Regular season complete. Showing week ${scopedWeek}, the last week with results.`}
+          {`Showing week ${scopedWeek}, the last week with final results.`}
         </p>
       ) : null}
 
