@@ -14,6 +14,7 @@ class FakeConn:
     def __init__(self, reserve_result: int | None) -> None:
         self.reserve_result = reserve_result
         self.reserve_calls = 0
+        self.reserve_args: list[tuple[str, str, str]] = []
         self.finish_calls: list[tuple[int, str, str | None]] = []
         self.commits = 0
 
@@ -29,6 +30,7 @@ class FakeRunRepository:
         self, agent: str, trigger: str, idempotency_key: str, invoked_by: str | None = None
     ) -> int | None:
         self._conn.reserve_calls += 1
+        self._conn.reserve_args.append((agent, trigger, idempotency_key))
         return self._conn.reserve_result
 
     def finish(
@@ -103,3 +105,30 @@ def test_build_deps_propagates_connect_failure(monkeypatch: pytest.MonkeyPatch) 
 
     with pytest.raises(BoomError):
         build_deps()
+
+
+def test_run_scheduled_defaults_to_one_cron_key_per_agent_per_minute() -> None:
+    conn = FakeConn(reserve_result=7)
+
+    run_scheduled(conn, "health", NOW, lambda run_id: 0)
+
+    assert conn.reserve_args == [("health", "cron", "health:20260908T1200")]
+
+
+def test_run_scheduled_forwards_an_explicit_trigger_and_key() -> None:
+    """The self-test is re-run by hand inside the same minute during Gate 0, so it
+    supplies a per-attempt key rather than sharing the per-minute cron one."""
+    conn = FakeConn(reserve_result=7)
+
+    run_scheduled(
+        conn,
+        "self-test",
+        NOW,
+        lambda run_id: 0,
+        trigger="cli",
+        idempotency_key="self-test:20260908T120000123456",
+    )
+
+    assert conn.reserve_args == [
+        ("self-test", "cli", "self-test:20260908T120000123456")
+    ]
