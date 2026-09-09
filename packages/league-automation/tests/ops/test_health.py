@@ -15,11 +15,15 @@ class FakeBeats:
 
 
 class FakeRuns:
-    def __init__(self, last):
+    def __init__(self, last, stuck=()):
         self._last = last
+        self._stuck = list(stuck)
 
     def last_started(self, agent):
         return self._last.get(agent)
+
+    def stale_running(self, older_than, now):
+        return self._stuck
 
 
 class FakeExpected:
@@ -82,3 +86,13 @@ def test_reports_outbound_messages_stuck_in_sending() -> None:
         "Outbound message #12 stuck in sending",
         "Outbound message #13 stuck in sending",
     ]
+
+
+def test_reports_runs_left_running() -> None:
+    """A run still `running` long after it started means an agent died mid-flight:
+    the audit trail says nothing happened, and `ug trades retry` is the remedy."""
+    runs = FakeRuns({}, stuck=[("trade-registrar", "trade:g1"), ("trade-registrar", "trade:g2")])
+    problems = check_health(
+        NOW, FakeBeats([]), runs, FakeExpected([]), FakeClient(True), FakeOutbound()
+    )
+    assert problems == ["runs stuck running > 15m: 2 (agent trade-registrar)"]

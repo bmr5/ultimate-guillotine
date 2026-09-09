@@ -21,15 +21,16 @@ import contextlib
 import hashlib
 import re
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from ultimate_guillotine.config import Settings
 from ultimate_guillotine.core.signature import is_signed
+from ultimate_guillotine.data.repositories import SeasonRepository, chat_guid_hash
 from ultimate_guillotine.listener.processing import Trigger
 from ultimate_guillotine.messages.bluebubbles import InboundMessage
 from ultimate_guillotine.trades.detect import is_rescission_candidate, is_trade_candidate
 from ultimate_guillotine.trades.extract import PROMPT_VERSION, extract_trade
-from ultimate_guillotine.trades.fingerprint import trade_context_key
+from ultimate_guillotine.trades.fingerprint import message_fingerprint, trade_context_key
 from ultimate_guillotine.trades.format import (
     format_clarification,
     format_confirmation,
@@ -51,6 +52,10 @@ AGENT = "trade-registrar"
 TRADE_CODE = re.compile(r"(?:TEST|T)-\d{4}-\d{3}")
 EXCERPT_LIMIT = 2000
 NO_CODE_REASON = "Which trade is rescinded? Include its T- code"
+#: How far back a repost of the same text counts as the same announcement.
+#: Long enough to cover a chat someone scrolls up and re-sends from, short
+#: enough that the same terms agreed again next month are a new trade.
+REPOST_WINDOW = timedelta(days=7)
 
 
 def _output_hash(content: str) -> str:
@@ -63,7 +68,13 @@ class TradeRegistrar:
     ``conn`` may be ``None`` (the tests and ``ug trades extract`` pass none), in
     which case nothing is committed and the roster index is empty. A ``None``
     ``sleeper_client`` likewise means ``RosterIndex.empty()``: resolution still
-    works, it just loses roster evidence for duplicate last names.
+    works, it just loses roster evidence for duplicate last names. A ``None``
+    ``sources_repo`` means no repost lookup, which only costs a re-extraction.
+
+    ``season`` pins the season every proposal is recorded under; left ``None``
+    it is read from ``public.seasons`` once per ``handle``, which is what the
+    listener wants -- the calendar year is wrong for a January trade in a season
+    that started the previous September.
     """
 
     def __init__(
@@ -77,7 +88,9 @@ class TradeRegistrar:
         players_repo,
         trades_repo,
         runs_repo,
+        sources_repo=None,
         sleeper_client=None,
+        season: int | None = None,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         self._settings = settings
@@ -89,7 +102,9 @@ class TradeRegistrar:
         self._players = players_repo
         self._trades = trades_repo
         self._runs = runs_repo
+        self._sources = sources_repo
         self._sleeper = sleeper_client
+        self._season = season
         self._clock = clock
 
     # -- public ---------------------------------------------------------
@@ -148,12 +163,19 @@ class TradeRegistrar:
             self._commit()
 
     def _process(self, run_id: int, msg: InboundMessage) -> str:
+        if self._is_repost(msg):
+            # Someone scrolled up and sent the same announcement again. The
+            # terms would come back as a `duplicate` anyway, one model call
+            # later; catching it on the text costs nothing and says nothing.
+            self._finish(run_id, "duplicate")
+            return "duplicate"
+
         rescinded = self._rescind_by_code(run_id, msg)
         if rescinded is not None:
             return rescinded
 
         members = self._members.all_members()
-        season = self._clock().year
+        season = self._resolve_season()
         extracted, usage = extract_trade(
             self._ai, msg.text, season, None, [_member_line(m) for m in members]
         )
@@ -170,7 +192,7 @@ class TradeRegistrar:
                 extracted,
                 members,
                 self._players.all_active(),
-                self._rosters(),
+                self._rosters(season),
                 season,
                 msg.guid,
                 msg.text[:EXCERPT_LIMIT],
@@ -245,7 +267,36 @@ class TradeRegistrar:
         self._finish(run_id, "succeeded", content=content, input_version=input_version)
         return "clarification"
 
-    def _rosters(self) -> RosterIndex:
+    def _is_repost(self, msg: InboundMessage) -> bool:
+        """Has this exact text already arrived in this chat from another message
+        in the last week?
+
+        The chat hash and the content fingerprint are computed the way
+        ``InboundProcessor`` computes them, because it is that processor's rows
+        this reads -- including the row for this very message, which it upserts
+        before any trigger runs, so the current GUID has to be excluded.
+        """
+        if self._sources is None:
+            return False
+        return self._sources.find_repost(
+            chat_guid_hash(msg.chat_guid),
+            message_fingerprint(msg.text),
+            msg.guid,
+            self._clock() - REPOST_WINDOW,
+        )
+
+    def _resolve_season(self) -> int:
+        """The season to record under: the configured one, the newest row in
+        ``public.seasons``, or -- with no database and no rows -- the clock's year."""
+        if self._season is not None:
+            return self._season
+        if self._conn is not None:
+            current = SeasonRepository(self._conn).current()
+            if current is not None:
+                return current
+        return self._clock().year
+
+    def _rosters(self, season: int) -> RosterIndex:
         """Current roster holdings, or an empty index when Sleeper is unreachable.
 
         Roster evidence only disambiguates duplicate names, so losing it degrades
@@ -255,7 +306,9 @@ class TradeRegistrar:
         if self._sleeper is None or self._conn is None:
             return RosterIndex.empty()
         try:
-            return build_roster_index(self._sleeper, self._conn, self._settings.sleeper_league_id)
+            return build_roster_index(
+                self._sleeper, self._conn, self._settings.sleeper_league_id, season
+            )
         except Exception as exc:  # noqa: BLE001 - any roster failure degrades the same way
             self._notifier.ops(
                 f"Trade Registrar could not load rosters: {exc.__class__.__name__}"

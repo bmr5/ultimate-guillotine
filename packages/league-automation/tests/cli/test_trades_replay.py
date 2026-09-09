@@ -1,15 +1,18 @@
+import argparse
 from pathlib import Path
+from types import SimpleNamespace
 
+import openpyxl
 import pytest
 
+from ultimate_guillotine.cli import trades as trades_cli
 from ultimate_guillotine.cli.trades import load_replay_rows, replay_rows
+from ultimate_guillotine.config import Settings
 
 TERMS = "Member01 swaps Player Alpha for Player Beta with Member02"
 
 
 def test_load_replay_rows_reads_terms_and_parties(tmp_path: Path) -> None:
-    import openpyxl
-
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.append(["Date", "Week", "Terms", "Parties"])
@@ -61,3 +64,62 @@ def test_replay_rows_prints_one_line_per_row_and_a_summary(
         "replay: 5 rows, created 1, duplicate 0, clarification 1, not-a-candidate 1, "
         "revised 1, failed 1\n"
     )
+
+
+class NoSeasonCursor:
+    """A cursor whose `public.seasons` lookup comes back empty."""
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+    def execute(self, sql, params=None) -> None:
+        pass
+
+    def fetchone(self):
+        return None
+
+
+class NoSeasonConn:
+    def cursor(self) -> NoSeasonCursor:
+        return NoSeasonCursor()
+
+    def commit(self) -> None:
+        pass
+
+    def rollback(self) -> None:
+        pass
+
+
+def _settings() -> Settings:
+    return Settings(
+        database_url="postgresql://x:y@example.invalid/db", delivery_mode="disabled",
+        openrouter_api_key="sk-test", _env_file=None,
+    )
+
+
+def test_replay_write_mode_refuses_without_a_season_row(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Every accept hangs off the season row, so without it the replay would burn
+    one model call per row to fail on all of them."""
+    wb = openpyxl.Workbook()
+    wb.active.append(["Date", "Week", "Terms", "Parties"])
+    wb.active.append(["2025-09-07", "Week 1", TERMS, "Member01", "Member02"])
+    path = tmp_path / "c.xlsx"
+    wb.save(path)
+
+    settings = _settings()
+    deps = SimpleNamespace(settings=settings, conn=NoSeasonConn(), client=None, notifier=None)
+    monkeypatch.setattr(trades_cli, "load_settings", lambda: settings)
+    monkeypatch.setattr(trades_cli, "build_deps", lambda: deps)
+    monkeypatch.setattr(trades_cli, "build_ai", lambda _deps: None)
+
+    exit_code = trades_cli.cmd_replay(
+        argparse.Namespace(xlsx=str(path), limit=None, dry_run=False)
+    )
+
+    assert exit_code == 2
+    assert capsys.readouterr().out == "no public.seasons row for 2025; insert it first\n"

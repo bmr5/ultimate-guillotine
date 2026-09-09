@@ -22,6 +22,7 @@ from ultimate_guillotine.config import DeliveryMode, load_settings
 from ultimate_guillotine.data.repositories import (
     MemberAliasRepository,
     RunRepository,
+    SeasonRepository,
     SourceMessageRepository,
 )
 from ultimate_guillotine.messages.bluebubbles import InboundMessage
@@ -49,9 +50,9 @@ NOT_A_TRADE = Unresolved("not a trade")
 WEEK_COLUMN = 1
 TERMS_COLUMN = 2
 
-#: The season the 2025-26 contract sheet belongs to. The registrar takes its
-#: season from its clock, so replay hands it a clock inside that season rather
-#: than a season argument.
+#: The season the 2025-26 contract sheet belongs to. Replay names it outright
+#: rather than letting the registrar read `public.seasons`, and dates each
+#: replayed message from a clock inside that season.
 REPLAY_SEASON = 2025
 REPLAY_CLOCK = datetime(REPLAY_SEASON, 12, 31, tzinfo=UTC)
 REPLAY_START = datetime(REPLAY_SEASON, 9, 1, tzinfo=UTC)
@@ -148,15 +149,20 @@ def cmd_extract(args: argparse.Namespace) -> int:
     """Print what the registrar would record, without recording or sending it."""
     deps = build_deps()
     conn = deps.conn
+    # The same season the registrar would record under, so a dry run and the
+    # real thing never disagree about which season a name belongs to.
+    season = SeasonRepository(conn).current() or datetime.now(UTC).year
     rosters = (
-        build_roster_index(SleeperClient(httpx.Client()), conn, deps.settings.sleeper_league_id)
+        build_roster_index(
+            SleeperClient(httpx.Client()), conn, deps.settings.sleeper_league_id, season
+        )
         if args.rosters
         else RosterIndex.empty()
     )
     result = dry_run_pipeline(
         build_ai(deps),
         args.text,
-        datetime.now(UTC).year,
+        season,
         MemberAliasRepository(conn).all_members(),
         PlayerRepository(conn).all_active(),
         rosters,
@@ -296,6 +302,21 @@ def _outcome(status: str) -> str:
     return "not-a-trade" if status == "not_a_trade" else status
 
 
+class _SilentNotifier:
+    """Stands in for Hermes so a replay never pages Discord.
+
+    A replay of a past season fails on rows nobody is going to fix -- a member
+    who left the league, a player who retired -- and each failure would
+    otherwise post an alert. The per-row `row N: failed` line is the report.
+    """
+
+    def ops(self, text: str) -> bool:
+        return True
+
+    def alerts(self, text: str) -> bool:
+        return True
+
+
 class _SilentDelivery:
     """Stands in for the delivery service so a replay can never post to a chat.
 
@@ -328,6 +349,11 @@ def cmd_replay(args: argparse.Namespace) -> int:
     # Before the workbook is walked, so a missing key costs no HTTP call at all.
     ai = build_ai(deps)
     conn = deps.conn
+    # Every accept needs the season row, and finding that out row by row would
+    # burn a model call per failure before reporting the one thing that is wrong.
+    if not args.dry_run and not SeasonRepository(conn).exists(REPLAY_SEASON):
+        print(f"no public.seasons row for {REPLAY_SEASON}; insert it first")
+        return 2
     if args.dry_run:
         members = MemberAliasRepository(conn).all_members()
         players = PlayerRepository(conn).all_active()
@@ -349,11 +375,12 @@ def cmd_replay(args: argparse.Namespace) -> int:
         conn,
         ai,
         _SilentDelivery(),
-        deps.notifier,
+        _SilentNotifier(),
         MemberAliasRepository(conn),
         PlayerRepository(conn),
         TradeRepository(conn, code_prefix_for(deps.settings.delivery_mode)),
         RunRepository(conn),
+        season=REPLAY_SEASON,
         clock=lambda: REPLAY_CLOCK,
     )
 

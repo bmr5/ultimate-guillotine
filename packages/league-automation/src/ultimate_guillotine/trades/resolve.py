@@ -9,7 +9,6 @@ here is deterministic.
 """
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
 
 import psycopg
 
@@ -62,11 +61,15 @@ class RosterIndex:
 
 
 def build_roster_index(
-    client: SleeperClient, conn: psycopg.Connection, league_id: str
+    client: SleeperClient, conn: psycopg.Connection, league_id: str, season: int
 ) -> RosterIndex:
-    """Join Sleeper's roster holdings to this season's teams, by ``sleeper_roster_id``."""
+    """Join Sleeper's roster holdings to ``season``'s teams, by ``sleeper_roster_id``.
+
+    The season is passed in rather than read off the clock: the caller has
+    already settled which season it is recording under, and a January trade
+    belongs to the season that started the previous September.
+    """
     rosters = client.get_rosters(league_id)
-    year = datetime.now(UTC).year
     with conn.cursor() as cur:
         cur.execute(
             """
@@ -75,7 +78,7 @@ def build_roster_index(
             join public.seasons s on s.id = t.season_id
             where s.year = %s
             """,
-            (year,),
+            (season,),
         )
         roster_to_member = {row[0]: row[1] for row in cur.fetchall()}
     if not roster_to_member:

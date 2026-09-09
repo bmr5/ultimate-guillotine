@@ -251,6 +251,19 @@ anywhere else in this file.
 `/cron run <job name>` (for example `/cron run guillotine-health`) to
 trigger an immediate run of that job outside its schedule.
 
+**Re-run a trade the registrar left stuck.** `ug ops health` prints
+`runs stuck running > 15m: N (agent trade-registrar)` when a run was
+reserved and never finished — the agent died between the two, so nothing
+was recorded and nothing was said in the chat. The idempotency key of
+such a run is `trade:<source guid>`; re-run that candidate with:
+
+```bash
+uv run --project packages/league-automation ug trades retry <guid>
+```
+
+It reserves a fresh run under a per-attempt key, so the stuck one does
+not block it. The stuck row stays as the record of the crash.
+
 **Read listener logs.** The listener's stdout and stderr are written to:
 
 ```
@@ -342,8 +355,13 @@ Write mode — no `--dry-run` — runs the registrar for real and fills the
 trade tables from history. It never sends, whatever the delivery mode,
 and it exits 2 without writing anything when `DELIVERY_MODE` is
 `production`: replaying a past season into the live league would be
-indistinguishable from a flood of new trades. Run it only with
-`DELIVERY_MODE` set to `disabled` or `test`:
+indistinguishable from a flood of new trades. It also exits 2 with `no
+public.seasons row for 2025; insert it first` when that season has no
+row — every trade hangs off its season, so without it each row would
+cost a model call and fail. Failures are printed as `row N: failed` and
+nothing is posted to Discord: a replay of a past season fails on rows
+nobody is going to fix, and alerting on each one would page for
+history. Run it only with `DELIVERY_MODE` set to `disabled` or `test`:
 
 ```bash
 uv run --project packages/league-automation ug trades replay \
@@ -359,10 +377,17 @@ Each row prints `row N: <outcome>`, where the outcome is one of:
 | `revised` | an existing trade was updated with new terms |
 | `rescinded` | an existing trade was rescinded |
 | `clarification: <reason>` | the registrar would have asked the chat this |
+| `duplicate` (write mode) | the same text or terms were already recorded |
 | `not-a-trade` | the model read the row as chatter |
 | `not-a-candidate` | the `🚨` trigger would never have looked at the row |
 | `failed` | the row raised; the run is recorded `failed` |
 | `skipped` | the run key was already reserved, so nothing ran |
+
+Only `--dry-run` can spell the reason out: it has the `Unresolved` in
+hand. Write mode goes through the registrar, which answers with its
+status alone, so those rows print a bare `clarification` — the question
+it would have asked is in the chat message it did not send, not in the
+replay output.
 
 A summary line closes the run. It always names `created`, `duplicate`,
 `clarification`, and `not-a-candidate`, then appends any of the others

@@ -1,5 +1,3 @@
-from datetime import UTC, datetime
-
 import pytest
 
 from ultimate_guillotine.sleeper.models import SleeperRoster
@@ -216,8 +214,8 @@ class FakeRosterClient:
 
 
 def test_build_roster_index_maps_members_to_their_holdings(conn) -> None:
-    # build_roster_index reads the season whose year is the current UTC year (2026 today).
-    year = datetime.now(UTC).year
+    # build_roster_index reads the season it is handed, not the clock's year.
+    year = 2031
     with conn.cursor() as cur:
         cur.execute(
             "insert into public.members (display_name) values ('Roster Member') returning id"
@@ -247,6 +245,6 @@ def test_build_roster_index_maps_members_to_their_holdings(conn) -> None:
         SleeperRoster(roster_id=71, owner_id="v", players=["p2"]),
         SleeperRoster(roster_id=72, owner_id="w", players=None),
     ])
-    index = build_roster_index(client, conn, "league-1")
+    index = build_roster_index(client, conn, "league-1", year)
     assert index.holdings == {member_id: frozenset({"p1"})}
     assert index.holds(member_id, "p1") is True

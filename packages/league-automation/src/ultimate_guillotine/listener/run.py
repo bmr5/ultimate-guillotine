@@ -165,6 +165,7 @@ def _register_trade_registrar(
         PlayerRepository(conn),
         TradeRepository(conn, code_prefix_for(settings.delivery_mode)),
         CommittingRepo(RunRepository(conn), conn),
+        sources_repo=SourceMessageRepository(conn),
         sleeper_client=SleeperClient(httpx.Client()),
     )
     registry.register(trade_trigger(registrar, chat_guid))

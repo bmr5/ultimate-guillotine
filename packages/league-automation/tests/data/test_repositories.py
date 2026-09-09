@@ -11,9 +11,11 @@ from ultimate_guillotine.data.repositories import (
     OutboundRepository,
     ReceiptRepository,
     RunRepository,
+    SeasonRepository,
     SourceMessage,
     SourceMessageRepository,
     TargetRepository,
+    chat_guid_hash,
 )
 from ultimate_guillotine.trades.names import normalize_name
 
@@ -177,3 +179,76 @@ def test_repositories_do_not_import_the_http_client() -> None:
         [sys.executable, "-c", code], capture_output=True, text=True, check=False
     )
     assert result.returncode == 0, result.stderr
+
+
+def test_stale_running_reports_runs_that_never_finished(conn) -> None:
+    """A run left in `running` is an agent that died mid-flight; the health job
+    names the agent so a human knows what to re-run."""
+    runs = RunRepository(conn)
+    stuck = runs.reserve("trade-registrar", "webhook", "trade:stuck")
+    fresh = runs.reserve("trade-registrar", "webhook", "trade:fresh")
+    done = runs.reserve("trade-registrar", "webhook", "trade:done")
+    runs.finish(done, "succeeded")
+    with conn.cursor() as cur:
+        cur.execute(
+            "update private.agent_runs set started_at = now() - interval '30 minutes' "
+            "where id in (%s, %s)",
+            (stuck, done),
+        )
+
+    now = datetime.now(UTC)
+    assert runs.stale_running(timedelta(minutes=15), now) == [("trade-registrar", "trade:stuck")]
+    assert runs.stale_running(timedelta(hours=2), now) == []
+    assert fresh is not None
+
+
+def test_season_repository_reads_the_newest_season(conn) -> None:
+    repo = SeasonRepository(conn)
+    # Years past anything the local database is seeded with, so "newest" is ours.
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            insert into public.seasons (year, sleeper_league_id, rules_version)
+            values (2521, 'l', 'v1'), (2522, 'l', 'v1')
+            on conflict (year) do update set rules_version = excluded.rules_version
+            """
+        )
+    assert repo.current() == 2522
+    assert repo.exists(2521) is True
+    assert repo.exists(1999) is False
+
+
+def test_find_repost_matches_the_same_text_from_another_message(conn) -> None:
+    """A repost is the same text in the same chat under a different GUID; the
+    message's own row is always there, so it has to be excluded by GUID."""
+    repo = SourceMessageRepository(conn)
+    sent = datetime.now(UTC)
+    chat = chat_guid_hash("iMessage;+;chat-test")
+    original = SourceMessage(
+        source_guid="g1", chat_guid_hash=chat, sender_hash=None, direction="inbound",
+        sent_at=sent - timedelta(days=1), content_fingerprint="fp-1", excerpt="🚨 ...",
+        trigger_name="trade-registrar",
+    )
+    repo.upsert(original)
+    repo.upsert(
+        SourceMessage(
+            source_guid="g2", chat_guid_hash=chat, sender_hash=None, direction="inbound",
+            sent_at=sent, content_fingerprint="fp-1", excerpt="🚨 ...",
+            trigger_name="trade-registrar",
+        )
+    )
+    repo.upsert(
+        SourceMessage(
+            source_guid="g3", chat_guid_hash=chat, sender_hash=None, direction="outbound",
+            sent_at=sent, content_fingerprint="fp-bot", excerpt="🚨 ...", trigger_name=None,
+        )
+    )
+    since = sent - timedelta(days=7)
+
+    assert repo.find_repost(chat, "fp-1", "g2", since) is True
+    assert repo.find_repost(chat, "fp-other", "g2", since) is False
+    assert repo.find_repost(chat_guid_hash("other-chat"), "fp-1", "g2", since) is False
+    # The only other row with this text is older than the window.
+    assert repo.find_repost(chat, "fp-1", "g2", sent - timedelta(hours=1)) is False
+    # The bot's own posts are outbound and never count as a repost.
+    assert repo.find_repost(chat, "fp-bot", "g9", since) is False

@@ -105,6 +105,17 @@ class FakePlayers:
         return [Player("p1", "Player Alpha", "WR", "KC", True)]
 
 
+class FakeSources:
+    """Source messages that have never seen this announcement before."""
+
+    def __init__(self, repost=False):
+        self.repost, self.asked = repost, []
+
+    def find_repost(self, chat_hash, fingerprint, exclude_guid, since):
+        self.asked.append((chat_hash, fingerprint, exclude_guid, since))
+        return self.repost
+
+
 class FakeConn:
     """A connection that records its transaction calls in a shared journal."""
 
@@ -116,6 +127,36 @@ class FakeConn:
 
     def rollback(self):
         self.journal.append("rollback")
+
+
+class SeasonCursor:
+    """A cursor whose only query is the current-season lookup."""
+
+    def __init__(self, row):
+        self._row = row
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+    def execute(self, sql, params=None):
+        pass
+
+    def fetchone(self):
+        return self._row
+
+
+class SeasonConn(FakeConn):
+    """A connection whose `public.seasons` table answers with one year."""
+
+    def __init__(self, journal, row):
+        super().__init__(journal)
+        self._row = row
+
+    def cursor(self):
+        return SeasonCursor(self._row)
 
 
 class JournalRuns(FakeRuns):
@@ -161,13 +202,16 @@ class RefusingTrades(FakeTrades):
         return False
 
 
-def build(ai, trades=None, delivery=None, conn=None, members=None, runs=None, sleeper=None):
+def build(ai, trades=None, delivery=None, conn=None, members=None, runs=None, sleeper=None,
+          sources=None, season=None):
     settings = Settings(database_url="postgresql://x:y@example.invalid/db", delivery_mode="test",
                         test_chat_guid=CHAT, _env_file=None)
     runs, notifier = runs or FakeRuns(), FakeNotifier()
     reg = TradeRegistrar(settings, conn, ai, delivery or FakeDelivery(), notifier,
                          members or FakeMembers(), FakePlayers(),
-                         trades or FakeTrades(), runs, sleeper_client=sleeper,
+                         trades or FakeTrades(), runs,
+                         sources_repo=sources if sources is not None else FakeSources(),
+                         sleeper_client=sleeper, season=season,
                          clock=lambda: datetime(2026, 9, 10, tzinfo=UTC))
     return reg, runs, notifier
 
@@ -293,7 +337,7 @@ def test_a_sleeper_outage_degrades_to_an_empty_roster_index() -> None:
     a trade being logged."""
     delivery = FakeDelivery()
     reg, runs, notifier = build(FakeAI(good_extraction()), delivery=delivery,
-                                conn=FakeConn([]), sleeper=ExplodingSleeper())
+                                conn=SeasonConn([], (2026,)), sleeper=ExplodingSleeper())
     assert reg.handle(msg("🚨 Member01 sends Player Alpha to Member02 for 450 FAAB")) == "created"
     assert notifier.ops_sent == ["Trade Registrar could not load rosters: TimeoutError"]
     assert runs.finished[0][1] == "succeeded"
@@ -317,3 +361,46 @@ def test_rescission_by_a_test_mode_code_is_recognised() -> None:
     assert reg.handle(msg("🚨 Trade TEST-2026-001 is rescinded")) == "rescinded"
     assert trades.rescinded == ["TEST-2026-001"]
     assert delivery.sent[0][1] == "🚨 Trade TEST-2026-001 rescinded"
+
+
+ALERT_TEXT = "🚨 Member01 sends Player Alpha to Member02 for 450 FAAB"
+
+
+def test_the_season_comes_from_the_seasons_table() -> None:
+    """The league's season is a row, not the calendar year: a trade announced in
+    January belongs to the season that is still running."""
+    trades = FakeTrades()
+    reg, _, _ = build(FakeAI(good_extraction()), trades=trades, conn=SeasonConn([], (2025,)))
+    assert reg.handle(msg(ALERT_TEXT)) == "created"
+    assert trades.accepted[0].season == 2025
+
+
+def test_the_season_falls_back_to_the_clock_with_no_seasons_row() -> None:
+    trades = FakeTrades()
+    reg, _, _ = build(FakeAI(good_extraction()), trades=trades, conn=SeasonConn([], None))
+    assert reg.handle(msg(ALERT_TEXT)) == "created"
+    assert trades.accepted[0].season == 2026
+
+
+def test_an_explicit_season_wins_over_the_table() -> None:
+    """`ug trades replay` walks a past season and says so outright."""
+    trades = FakeTrades()
+    reg, _, _ = build(FakeAI(good_extraction()), trades=trades,
+                      conn=SeasonConn([], (2026,)), season=2025)
+    assert reg.handle(msg(ALERT_TEXT)) == "created"
+    assert trades.accepted[0].season == 2025
+
+
+def test_a_repost_of_a_recent_alert_is_a_duplicate_without_calling_the_model() -> None:
+    """The same text posted twice under two GUIDs is one announcement: the
+    fingerprint match is enough, and the model never sees the second copy."""
+    delivery, trades = FakeDelivery(), FakeTrades()
+    sources = FakeSources(repost=True)
+    reg, runs, _ = build(FakeAI(error=AssertionError("model must not be called")),
+                         trades=trades, delivery=delivery, sources=sources)
+    assert reg.handle(msg(ALERT_TEXT, guid="g2")) == "duplicate"
+    assert delivery.sent == [] and trades.accepted == []
+    assert runs.finished[0][1] == "duplicate"
+    # The message's own row is already recorded by the processor, so the lookup
+    # has to exclude it or every alert would look like a repost of itself.
+    assert sources.asked[0][2] == "g2"

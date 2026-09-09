@@ -111,6 +111,28 @@ class RunRepository:
                 (status, output_hash, error, input_version, run_id),
             )
 
+    def stale_running(
+        self, older_than: timedelta, now: datetime
+    ) -> list[tuple[str, str]]:
+        """Return ``(agent, idempotency_key)`` for runs still ``running`` since
+        longer than ``older_than`` relative to ``now``.
+
+        A run in this state is one whose agent died between reserving it and
+        finishing it: nothing was recorded, nothing was said in the chat, and
+        the idempotency key names the message a human has to re-run.
+        """
+        cutoff = now - older_than
+        with self._conn.cursor() as cur:
+            cur.execute(
+                """
+                select agent, idempotency_key from private.agent_runs
+                where status = 'running' and started_at < %s
+                order by id
+                """,
+                (cutoff,),
+            )
+            return [(row[0], row[1]) for row in cur.fetchall()]
+
     def last_started(self, agent: str) -> datetime | None:
         """Return the most recent ``started_at`` for the given agent, if any."""
         with self._conn.cursor() as cur:
@@ -120,6 +142,29 @@ class RunRepository:
             )
             row = cur.fetchone()
             return row[0] if row else None
+
+
+class SeasonRepository:
+    def __init__(self, conn: psycopg.Connection) -> None:
+        self._conn = conn
+
+    def current(self) -> int | None:
+        """Return the newest season year on file, or ``None`` when there are none.
+
+        The league's season is a row, not the calendar year: a trade announced
+        in January belongs to the season that started the previous September.
+        """
+        with self._conn.cursor() as cur:
+            cur.execute("select year from public.seasons order by year desc limit 1")
+            row = cur.fetchone()
+            return row[0] if row else None
+
+    def exists(self, year: int) -> bool:
+        """Is this season on file? Everything a trade is recorded against hangs
+        off its season row, so a replay of a season with no row can only fail."""
+        with self._conn.cursor() as cur:
+            cur.execute("select 1 from public.seasons where year = %s", (year,))
+            return cur.fetchone() is not None
 
 
 class TargetRepository:
@@ -333,6 +378,32 @@ class SourceMessageRepository:
             )
             row = cur.fetchone()
             return SourceMessage(*row) if row else None
+
+    def find_repost(
+        self,
+        chat_guid_hash: str,
+        fingerprint: str,
+        exclude_guid: str,
+        since: datetime,
+    ) -> bool:
+        """Has this chat already carried this exact text, in another message, since
+        ``since``?
+
+        Only inbound messages count -- the bot's own posts are outbound -- and
+        the message being asked about is excluded by GUID, because the processor
+        records it before any agent runs.
+        """
+        with self._conn.cursor() as cur:
+            cur.execute(
+                """
+                select 1 from private.source_messages
+                where chat_guid_hash = %s and content_fingerprint = %s
+                  and source_guid <> %s and direction = 'inbound' and sent_at >= %s
+                limit 1
+                """,
+                (chat_guid_hash, fingerprint, exclude_guid, since),
+            )
+            return cur.fetchone() is not None
 
     def latest_sent_at(self, chat_guid_hash: str) -> datetime | None:
         """Return the latest ``sent_at`` recorded for a given chat, if any."""
