@@ -1,5 +1,7 @@
+import asyncio
 import json
 import os
+import threading
 from pathlib import Path
 
 import psycopg
@@ -72,6 +74,44 @@ def test_processes_new_message_and_beats() -> None:
     assert response.json() == {"outcome": "no_trigger"}
     assert processor.calls == [("p:0/ABC", "p:0/ABC")]
     assert beats.beats == 1
+
+
+class ThreadRecordingProcessor:
+    """Records where it was called from: the event loop, or a worker thread."""
+
+    def __init__(self):
+        self.in_event_loop = None
+        self.thread = None
+
+    def process(self, msg, event_id):
+        self.thread = threading.current_thread()
+        try:
+            asyncio.get_running_loop()
+            self.in_event_loop = True
+        except RuntimeError:
+            self.in_event_loop = False
+        return "no_trigger"
+
+
+def test_processing_runs_off_the_event_loop() -> None:
+    """`process` blocks for a database round trip and, on a trade, a Hermes
+    subprocess of up to a minute. On the event loop that would freeze the whole
+    worker -- /healthz included, which is what launchd and `ug ops doctor` read.
+
+    Asserting there is no running loop in that thread is the property itself: a
+    thread name would only be a proxy for it.
+    """
+    processor = ThreadRecordingProcessor()
+    client = TestClient(create_app(processor, FakeHeartbeats(), "secret"))
+
+    response = client.post(
+        "/bluebubbles-webhook?password=secret", json=json.loads(FIXTURE.read_text())
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"outcome": "no_trigger"}
+    assert processor.in_event_loop is False
+    assert processor.thread is not threading.main_thread()
 
 
 def test_healthz_is_ok_without_a_database_check() -> None:

@@ -15,6 +15,7 @@ import subprocess
 from json import dumps
 from pathlib import Path
 from tempfile import mkstemp
+from time import monotonic
 from typing import TypeVar
 
 import yaml
@@ -56,6 +57,11 @@ _REJECTION = (
     "Your previous answer was rejected: {detail}. Reply again with only the corrected JSON."
 )
 
+#: A retry with less than this much of the budget left is not worth starting: the
+#: caller is a webhook handler, and a second call that is going to time out anyway
+#: only doubles the wait before the same `AIInvalidOutput` is raised.
+MIN_RETRY_SECONDS = 5.0
+
 
 class HermesStructuredClient:
     def __init__(
@@ -65,8 +71,11 @@ class HermesStructuredClient:
         model: str | None = None,
         runner=subprocess.run,
         binary: str | None = None,
-        timeout: float = 180.0,
+        timeout: float = 60.0,
     ) -> None:
+        """`timeout` is the budget for the whole `parse`, retry included -- see
+        `parse`. A trade extraction that has not answered in a minute is not going
+        to; the listener has a webhook to answer."""
         self._home = str(Path(profile_home).expanduser())
         self._model = model
         self._runner = runner
@@ -81,18 +90,29 @@ class HermesStructuredClient:
         schema: type[T],
         schema_name: str,
     ) -> tuple[T, AIUsage]:
+        """One call, plus at most one retry, inside a single `timeout` budget.
+
+        The budget is shared rather than per call: the caller waits for `parse`, not
+        for a subprocess, and two full-length calls in a row would keep the listener
+        waiting for twice the timeout it was configured with. The retry gets whatever
+        is left; when that is less than `MIN_RETRY_SECONDS` the first rejection stands.
+        """
+        deadline = monotonic() + self._timeout
         query = (
             f"{system}\n\n"
             f"{_INSTRUCTION.format(name=schema_name)}\n"
             f"{dumps(strict_schema(schema), indent=2)}\n\n"
             f"{user}"
         )
-        text, session_id = self._run(query)
+        text, session_id = self._run(query, self._timeout)
         try:
             return parse_model_text(text, schema), self._usage(session_id)
         except AIInvalidOutput as rejected:
+            remaining = deadline - monotonic()
+            if remaining < MIN_RETRY_SECONDS:
+                raise
             retry = f"{query}\n\n{_REJECTION.format(detail=_detail(rejected))}"
-        text, session_id = self._run(retry)
+        text, session_id = self._run(retry, remaining)
         return parse_model_text(text, schema), self._usage(session_id)
 
     def _usage(self, session_id: str) -> AIUsage:
@@ -100,7 +120,7 @@ class HermesStructuredClient:
         stands in for a response id: it is what `hermes chat --resume` takes."""
         return AIUsage(session_id, 0, 0, self._reported_model)
 
-    def _run(self, query: str) -> tuple[str, str]:
+    def _run(self, query: str, timeout: float) -> tuple[str, str]:
         handle, path = mkstemp(suffix=".txt", prefix="ug-query-")
         try:
             with os.fdopen(handle, "w", encoding="utf-8") as query_file:
@@ -115,9 +135,9 @@ class HermesStructuredClient:
                     env={**os.environ, "HERMES_HOME": self._home},
                     capture_output=True,
                     text=True,
-                    timeout=self._timeout,
+                    timeout=timeout,
                 )
-            except Exception as exc:
+            except (OSError, subprocess.SubprocessError) as exc:
                 raise AIUnavailable(f"hermes call raised {exc.__class__.__name__}") from exc
         finally:
             Path(path).unlink(missing_ok=True)

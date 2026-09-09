@@ -6,6 +6,7 @@ from typing import NoReturn
 
 import psycopg
 from fastapi import FastAPI, HTTPException, Request
+from starlette.concurrency import run_in_threadpool
 
 from ultimate_guillotine.messages.bluebubbles import parse_webhook
 
@@ -58,7 +59,11 @@ def create_app(
             msg = parse_webhook(payload)
             if msg is None:
                 return {"outcome": "ignored_event"}
-            return {"outcome": processor.process(msg, msg.guid)}
+            # `process` is entirely blocking -- a database round trip and, for a
+            # trade candidate, a Hermes subprocess that can take the better part of a
+            # minute. Running it on the event loop would stop this worker answering
+            # anything at all, /healthz included, for that whole time.
+            return {"outcome": await run_in_threadpool(processor.process, msg, msg.guid)}
         except psycopg.OperationalError as exc:
             _die_on_lost_connection(exc)
 

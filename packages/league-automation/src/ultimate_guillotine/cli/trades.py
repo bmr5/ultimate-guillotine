@@ -17,6 +17,7 @@ from pathlib import Path
 import httpx
 import openpyxl
 
+from ultimate_guillotine.ai.structured import AIInvalidOutput
 from ultimate_guillotine.cli.deps import build_ai, build_delivery, build_deps
 from ultimate_guillotine.config import DeliveryMode, load_settings
 from ultimate_guillotine.data.repositories import (
@@ -169,14 +170,20 @@ def cmd_extract(args: argparse.Namespace) -> int:
         if args.rosters
         else RosterIndex.empty()
     )
-    result = dry_run_pipeline(
-        build_ai(deps),
-        args.text,
-        season,
-        MemberAliasRepository(conn).all_members(),
-        PlayerRepository(conn).all_active(),
-        rosters,
-    )
+    try:
+        result = dry_run_pipeline(
+            build_ai(deps),
+            args.text,
+            season,
+            MemberAliasRepository(conn).all_members(),
+            PlayerRepository(conn).all_active(),
+            rosters,
+        )
+    except AIInvalidOutput as exc:
+        # Only the class name: the exception chains a pydantic error whose body
+        # quotes the model's answer, which is this announcement's text back again.
+        print(exc.__class__.__name__)
+        return 1
     if result is NOT_A_TRADE:
         print("not a trade")
     elif isinstance(result, Unresolved):
