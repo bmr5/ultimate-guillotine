@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     discord_feed_channel: str = "#guillotine-feed"
     discord_drafts_channel: str = "#guillotine-drafts"
     discord_alerts_channel: str = "#guillotine-alerts"
+    openrouter_api_key: SecretStr | None = None
+    trade_extraction_model: str = "openai/gpt-5-mini"
+    sleeper_players_ttl_hours: int = 24
 
     @model_validator(mode="after")
     def validate_delivery_target(self) -> "Settings":

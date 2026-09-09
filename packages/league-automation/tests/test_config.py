@@ -40,3 +40,10 @@ def test_disabled_needs_no_targets() -> None:
 def test_secrets_do_not_repr() -> None:
     settings = Settings(**BASE, bluebubbles_password="hunter2")
     assert "hunter2" not in repr(settings)
+
+
+def test_trade_settings_defaults() -> None:
+    settings = Settings(**BASE)
+    assert settings.trade_extraction_model == "openai/gpt-5-mini"
+    assert settings.sleeper_players_ttl_hours == 24
+    assert settings.openrouter_api_key is None
