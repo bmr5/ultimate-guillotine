@@ -7,7 +7,12 @@ from decimal import Decimal
 import httpx
 import psycopg
 
-from ultimate_guillotine.cli.deps import build_deps, run_scheduled, run_scheduled_with_notes
+from ultimate_guillotine.cli.deps import (
+    build_deps,
+    post_ops,
+    run_scheduled,
+    run_scheduled_with_notes,
+)
 from ultimate_guillotine.sleeper.client import SleeperClient
 from ultimate_guillotine.sleeper.players import sync_players
 from ultimate_guillotine.sleeper.projections import ProjectionRepository, fetch_projection_rows
@@ -145,8 +150,17 @@ def cmd_projections(args: argparse.Namespace) -> int:
     coverage stamp then land in one `conn.transaction()`, so nothing downstream
     can read team totals computed from a different run's player rows.
 
-    The ops notes are posted after the transaction closes, never inside it: a note
-    about numbers that were then rolled back would be a lie in the channel.
+    That block is a savepoint rather than a top-level transaction: `run_scheduled`
+    has already reserved this run on the same non-autocommit connection, so a
+    transaction is open before the action ever starts. That is what this command
+    wants -- rolling the savepoint back discards the week's writes and leaves the
+    reservation standing, so the failure can still be finished and committed.
+
+    The ops notes are posted after the block closes, never inside it: a note about
+    numbers that were then rolled back would be a lie in the channel. They are
+    posted only when a flag actually changes state -- this job fires every five
+    minutes during a game window, and a note per run is a wall of identical lines
+    nobody reads.
     """
     deps = build_deps()
     conn = deps.conn
@@ -159,22 +173,22 @@ def cmd_projections(args: argparse.Namespace) -> int:
             # `week` restarts inside each season type, so a preseason 2 is not week
             # 2 of the season. There is no regular-season slate to project, and
             # writing these numbers would look exactly like a real week downstream.
-            # A refusal is a non-zero exit, so the transition notes say it once and
-            # then go quiet for the rest of the preseason; under `--quiet` the line
-            # is not printed either, so cron delivers nothing every half hour.
+            # Refusing is not failing: the run finishes `succeeded` so the
+            # every-half-hour off-season fire posts no failure note, and under
+            # `--quiet` it says nothing at all.
             if not args.quiet:
-                print(
-                    f"projections: nfl_state is in the {state.season_type} season, "
-                    "not the regular season; nothing to project"
-                )
-            return 2
+                print(f"projections: skipped, season_type={state.season_type}")
+            return 0
         week = args.week if args.week is not None else state.week
         season_id, scoring_settings = _season_row(conn, state.season)
         version = scoring_version(scoring_settings)
+        repo = ProjectionRepository(conn)
+        # The state this run is about to overwrite: the notes below compare against
+        # it, so they fire on the edges instead of once per five-minute fire.
+        before = repo.week_flags(state.season, week)
         # Outside the transaction on purpose -- see the docstring.
         fetched = None if args.rescore else fetch_projection_rows(client, state.season, week, now)
 
-        repo = ProjectionRepository(conn)
         with conn.transaction():
             if fetched is None:
                 report = repo.rescore(state.season, week, scoring_settings, version, now)
@@ -183,22 +197,39 @@ def cmd_projections(args: argparse.Namespace) -> int:
                     state.season, week, fetched, scoring_settings, version, now
                 )
             rows, run_pct = recompute_team_week(conn, season_id, state.season, week, now)
-            repo.flag_coverage(
-                state.season, week, run_pct, flagged=run_pct < COVERAGE_GATE
-            )
+            coverage_flagged = run_pct < COVERAGE_GATE
+            repo.flag_coverage(state.season, week, run_pct, flagged=coverage_flagged)
 
-        if run_pct < COVERAGE_GATE:
-            provisional = sum(1 for r in rows if r.is_provisional)
-            deps.notifier.ops(
-                f"projections week {week}: coverage {run_pct}% is below "
-                f"{COVERAGE_GATE}%; {provisional} teams marked provisional"
-            )
-        if report.drift_flagged:
-            deps.notifier.ops(
-                f"projections week {week}: {report.drift_share * Decimal(100):.1f}% of "
-                f"scored players differ from the nearest Sleeper preset by more than "
-                f"{DRIFT_POINTS} points; check seasons.scoring_settings"
-            )
+        if coverage_flagged != before.coverage_flagged:
+            if coverage_flagged:
+                provisional = sum(1 for r in rows if r.is_provisional)
+                post_ops(
+                    deps.notifier,
+                    f"projections week {week}: coverage {run_pct}% is below "
+                    f"{COVERAGE_GATE}%; {provisional} teams marked provisional",
+                )
+            else:
+                post_ops(
+                    deps.notifier,
+                    f"projections week {week}: coverage recovered to {run_pct}%, "
+                    f"at or above {COVERAGE_GATE}%",
+                )
+        if report.drift_flagged != before.drift_flagged:
+            share = f"{report.drift_share * Decimal(100):.1f}"
+            if report.drift_flagged:
+                post_ops(
+                    deps.notifier,
+                    f"projections week {week}: {share}% of scored players differ from "
+                    f"the nearest Sleeper preset by more than {DRIFT_POINTS} points; "
+                    f"check seasons.scoring_settings",
+                )
+            else:
+                post_ops(
+                    deps.notifier,
+                    f"projections week {week}: scoring drift cleared, {share}% of "
+                    f"scored players now differ from the nearest Sleeper preset by "
+                    f"more than {DRIFT_POINTS} points",
+                )
         if not args.quiet:
             print(
                 f"projections: week {week}, {report.rows} players "

@@ -4,10 +4,11 @@ The raw stat map is kept verbatim so a scoring change can be replayed without
 refetching, and so a wrong scoring rule is a bug that can be corrected rather
 than data that has to be re-downloaded.
 
-The writes here take a connection and never open a transaction of their own:
-Task 10 runs this and the team-week recompute inside one ``conn.transaction()``,
-so a week's player rows and the team totals derived from them land together or
-not at all.
+The writes here take a connection and never open a transaction of their own.
+``ug sleeper projections`` is the only caller: it fetches first, then runs the
+upsert, the team-week recompute, and the coverage stamp inside one
+``conn.transaction()``, so a week's player rows and the team totals derived from
+them land together or not at all.
 
 **A player who leaves the feed keeps his row and loses his points.** A sync never
 deletes: any stored row of the same ``(season, week)`` that this run's payload did
@@ -33,9 +34,7 @@ from ultimate_guillotine.sleeper.scoring import (
     DRIFT_SHARE,
     preset_drift,
     score_stat_line,
-    scoring_version,
 )
-from ultimate_guillotine.sleeper.state import NflState, current_week
 
 #: A live week has roughly 9,400 rows. Anything under this is a broken payload, not a
 #: quiet week, and writing it would zero out a week that already had good numbers.
@@ -62,6 +61,19 @@ class ProjectionReport:
     unscored: int
     scoring_version: str
     drift_share: Decimal
+    drift_flagged: bool
+
+
+@dataclass(frozen=True)
+class WeekFlags:
+    """The flagged state a week is already in, read before a run overwrites it.
+
+    The ops notes fire on the edges, so a run has to know what the last one left
+    behind. Coverage is a stored column; drift is not stored, and is re-derived
+    from the rows themselves -- see :meth:`ProjectionRepository.week_flags`.
+    """
+
+    coverage_flagged: bool
     drift_flagged: bool
 
 
@@ -118,27 +130,15 @@ def load_projections(
     return rows
 
 
-def projection_week(state: NflState) -> tuple[int, int]:
-    """The ``(season, week)`` to project, or a refusal.
+def _drift(
+    scored_points: list[Decimal | None], lines: list[dict[str, float]]
+) -> tuple[Decimal, bool]:
+    """The share of scored players far from every Sleeper preset, and the verdict.
 
-    ``NflState.week`` restarts inside each season type, so a preseason or
-    postseason week number is not a regular-season week and there is no
-    regular-season slate to project. Refusing here is the whole point: writing
-    preseason numbers into ``player_projections`` would look exactly like a real
-    week to everything downstream.
+    Split out of :func:`_report` so the same rule can be applied to rows already
+    in the table, which is how the previous run's drift verdict is recovered
+    without storing it.
     """
-    if state.season_type != "regular":
-        raise RuntimeError(
-            f"nfl_state is in the {state.season_type} season, not the regular season: "
-            "there is no week to project"
-        )
-    return state.season, state.week
-
-
-def _report(
-    scored_points: list[Decimal | None], lines: list[dict[str, float]], version: str
-) -> ProjectionReport:
-    scored = [p for p in scored_points if p is not None]
     drifted = 0
     compared = 0
     for points, line in zip(scored_points, lines, strict=True):
@@ -149,13 +149,21 @@ def _report(
         if drift > DRIFT_POINTS:
             drifted += 1
     share = Decimal(drifted) / Decimal(compared) if compared else Decimal(0)
+    return share.quantize(_DRIFT_QUANTUM, rounding=ROUND_HALF_UP), share > DRIFT_SHARE
+
+
+def _report(
+    scored_points: list[Decimal | None], lines: list[dict[str, float]], version: str
+) -> ProjectionReport:
+    scored = [p for p in scored_points if p is not None]
+    share, flagged = _drift(scored_points, lines)
     return ProjectionReport(
         rows=len(scored_points),
         scored=len(scored),
         unscored=len(scored_points) - len(scored),
         scoring_version=version,
-        drift_share=share.quantize(_DRIFT_QUANTUM, rounding=ROUND_HALF_UP),
-        drift_flagged=share > DRIFT_SHARE,
+        drift_share=share,
+        drift_flagged=flagged,
     )
 
 
@@ -276,6 +284,34 @@ class ProjectionRepository:
             )
         return _report(points, [line for _pid, line in stored], version)
 
+    def week_flags(self, season: int, week: int) -> WeekFlags:
+        """The flagged state the week is currently in, as the last run left it.
+
+        Coverage is a stored column, stamped on every row of the week by
+        :meth:`flag_coverage`. Drift is not stored, and does not need to be: the
+        stored ``league_points`` and ``stat_line`` are precisely what the last run
+        scored, so re-running the drift rule over them recovers that run's verdict
+        exactly. A week with no rows yet is clear on both counts, so the first
+        flagged run of a week reads as a transition and says so once.
+        """
+        with self._conn.cursor() as cur:
+            cur.execute(
+                "select coverage_flagged, league_points, stat_line "
+                "from public.player_projections where season = %s and week = %s",
+                (season, week),
+            )
+            rows = cur.fetchall()
+        if not rows:
+            return WeekFlags(coverage_flagged=False, drift_flagged=False)
+        _share, drift_flagged = _drift(
+            [points for _flag, points, _line in rows],
+            [line for _flag, _points, line in rows],
+        )
+        return WeekFlags(
+            coverage_flagged=any(flag for flag, _points, _line in rows),
+            drift_flagged=drift_flagged,
+        )
+
     def flag_coverage(
         self, season: int, week: int, run_coverage_pct: Decimal, flagged: bool
     ) -> None:
@@ -296,10 +332,10 @@ def fetch_projection_rows(
 ) -> list[ProjectionRow]:
     """Fetch and parse one week of projections, refusing a payload too thin to be real.
 
-    Touches no database. It is split out from ``sync_projections`` so a caller that
-    owns a transaction can do the fetch *before* opening one: a 200 with no body is
-    the likeliest failure of the whole command, and it should abort the run rather
-    than roll back a transaction that had already begun writing.
+    Touches no database, so the caller can fetch *before* opening its transaction:
+    a 200 with no body is the likeliest failure of the whole command, and it should
+    abort the run rather than roll back a transaction that had already begun
+    writing.
     """
     rows = load_projections(client.get_projections(season, week), week, now)
     if len(rows) < MIN_PROJECTION_ROWS:
@@ -309,59 +345,3 @@ def fetch_projection_rows(
             f"sleeper returned too few projections for {season} week {week}: {len(rows)}"
         )
     return rows
-
-
-def sync_projections(
-    client: SleeperClient,
-    conn: psycopg.Connection,
-    season: int,
-    week: int,
-    scoring_settings: dict[str, object],
-    now: datetime,
-    rescore: bool = False,
-) -> ProjectionReport:
-    """Fetch (or reuse) a week of projections, score them, and upsert.
-
-    The caller owns the transaction. This function writes on ``conn`` and never
-    opens or commits one of its own, so Task 10 can wrap it and the team-week
-    recompute in a single ``conn.transaction()`` and have the two land together.
-
-    ``rescore`` skips the fetch entirely: the stat lines are already stored, and
-    a scoring change is not a reason to ask Sleeper for the same numbers again.
-    It rewrites only ``league_points`` and ``scoring_version``, leaving ``synced_at``
-    at the sync that actually fetched the row, and refuses a week with no rows.
-
-    On the fetch path, a stored row of this week that the payload did not carry
-    keeps its stat line but has ``league_points`` nulled — see the module docstring.
-    """
-    version = scoring_version(scoring_settings)
-    repo = ProjectionRepository(conn)
-    if rescore:
-        return repo.rescore(season, week, scoring_settings, version, now)
-    rows = fetch_projection_rows(client, season, week, now)
-    return repo.upsert_many(season, week, rows, scoring_settings, version, now)
-
-
-def sync_current_week_projections(
-    client: SleeperClient,
-    conn: psycopg.Connection,
-    scoring_settings: dict[str, object],
-    now: datetime,
-    rescore: bool = False,
-) -> ProjectionReport:
-    """Sync the week ``public.nfl_state`` reports, refusing anything but the regular season.
-
-    The season and week are read from state rather than passed in, so a scheduled
-    run cannot drift onto a week the league is not actually playing. The state read
-    happens before the fetch, so a preseason run costs nothing and writes nothing.
-
-    **This call is not atomic on its own.** Unlike ``sync_projections``, it reaches
-    ``current_week``, which may refresh ``public.nfl_state`` in a ``conn.transaction()``
-    of its own; called outside a caller transaction that refresh commits before the
-    projection write runs, so a later failure leaves the new state row behind. A
-    caller that needs the state refresh and the projection write to land together
-    must wrap this call in its own ``conn.transaction()``, inside which the refresh
-    nests as a savepoint.
-    """
-    season, week = projection_week(current_week(client, conn, now))
-    return sync_projections(client, conn, season, week, scoring_settings, now, rescore=rescore)

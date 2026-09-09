@@ -216,6 +216,38 @@ def test_a_deduplicated_run_is_not_a_success_and_not_a_failure() -> None:
     assert conn.finish_calls == []
 
 
+class BrokenNotifier:
+    """Discord is unreachable, and says so by raising."""
+
+    def ops(self, text: str) -> bool:
+        raise ConnectionError("discord is unreachable")
+
+
+def test_an_undeliverable_note_does_not_fail_a_run_that_worked() -> None:
+    """The note is a courtesy; the run's verdict is the fact. A Discord outage must
+    not turn a recovered run into a traceback out of the CLI."""
+    conn = FakeConn(reserve_result=7, last_finished="failed")
+    deps = SimpleNamespace(conn=conn, notifier=BrokenNotifier())
+
+    assert run_scheduled_with_notes(deps, "projections-sync", NOW, lambda run_id: 0) == 0
+    assert conn.finish_calls == [(7, "succeeded", None)]
+
+
+def test_an_undeliverable_note_does_not_mask_the_failure_it_was_about() -> None:
+    conn = FakeConn(reserve_result=7, last_finished="succeeded")
+    deps = SimpleNamespace(conn=conn, notifier=BrokenNotifier())
+
+    class BoomError(Exception):
+        pass
+
+    def action(run_id: int) -> int:
+        raise BoomError("kaboom")
+
+    with pytest.raises(BoomError):
+        run_scheduled_with_notes(deps, "projections-sync", NOW, action)
+    assert conn.finish_calls == [(7, "failed", "BoomError")]
+
+
 def _deps(**overrides) -> Deps:
     settings = Settings(
         database_url="postgresql://x:y@example.invalid/db", _env_file=None, **overrides

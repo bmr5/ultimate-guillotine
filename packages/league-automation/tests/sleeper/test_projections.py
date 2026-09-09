@@ -1,3 +1,11 @@
+"""The projections fetch and the repository writes `ug sleeper projections` composes.
+
+There is no `sync_projections` wrapper any more: the CLI owns the composition, so
+these tests call the two halves the way it does -- `fetch_projection_rows` outside
+the transaction, then `ProjectionRepository.upsert_many` or `.rescore` -- and pin
+what each half does against a real database.
+"""
+
 import json
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -7,13 +15,11 @@ import pytest
 
 from ultimate_guillotine.sleeper.projections import (
     ProjectionRepository,
+    WeekFlags,
+    fetch_projection_rows,
     load_projections,
-    projection_week,
-    sync_current_week_projections,
-    sync_projections,
 )
 from ultimate_guillotine.sleeper.scoring import scoring_version
-from ultimate_guillotine.sleeper.state import parse_nfl_state
 
 FIXTURE = Path(__file__).parent.parent / "fixtures" / "sleeper" / "projections_2026_w1.json"
 NOW = datetime(2026, 9, 9, 12, 0, tzinfo=UTC)
@@ -21,37 +27,20 @@ LATER = NOW + timedelta(hours=6)
 SETTINGS = json.loads(
     (Path(__file__).parent.parent / "fixtures" / "sleeper" / "league_2026.json").read_text()
 )["scoring_settings"]
-
-# Recorded NFL state: regular season week 1, plus the preseason shape that must never be
-# projected -- `week` restarts inside the season type, so a preseason 3 is not week 3.
-STATE_RAW = {
-    "week": 1,
-    "leg": 1,
-    "season_type": "regular",
-    "season": "2026",
-    "previous_season": "2025",
-    "season_start_date": "2026-09-09",
-    "display_week": 1,
-}
-PRE_STATE_RAW = {**STATE_RAW, "week": 3, "season_type": "pre", "display_week": 1}
-
+VERSION = scoring_version(SETTINGS)
 
 def payload() -> list[dict]:
     return json.loads(FIXTURE.read_text())
 
 
 class FakeProjClient:
-    def __init__(self, rows: list[dict], state: dict | None = None) -> None:
+    def __init__(self, rows: list[dict]) -> None:
         self.rows = rows
         self.calls = 0
-        self.state = STATE_RAW if state is None else state
 
     def get_projections(self, season: int, week: int) -> list[dict]:
         self.calls += 1
         return self.rows
-
-    def get_nfl_state(self) -> dict:
-        return self.state
 
 
 class OutageClient:
@@ -78,6 +67,15 @@ def bulk(rows: list[dict], count: int) -> list[dict]:
     return out
 
 
+def sync(conn, client, season=2026, week=1, settings=None, now=NOW):
+    """Fetch then upsert, in the order and with the calls `cmd_projections` uses."""
+    settings = SETTINGS if settings is None else settings
+    rows = fetch_projection_rows(client, season, week, now)
+    return ProjectionRepository(conn).upsert_many(
+        season, week, rows, settings, scoring_version(settings), now
+    )
+
+
 def test_load_parses_the_recorded_shape() -> None:
     rows = load_projections(payload(), week=1, now=NOW)
     by_id = {r.sleeper_player_id: r for r in rows}
@@ -100,9 +98,8 @@ def test_load_skips_rows_for_another_week_or_another_category() -> None:
 
 
 def test_sync_writes_points_from_the_league_settings(conn) -> None:
-    client = FakeProjClient(bulk(payload(), 250))
-    report = sync_projections(client, conn, 2026, 1, SETTINGS, NOW)
-    assert report.rows == 257 and report.scoring_version == scoring_version(SETTINGS)
+    report = sync(conn, FakeProjClient(bulk(payload(), 250)))
+    assert report.rows == 257 and report.scoring_version == VERSION
     with conn.cursor() as cur:
         cur.execute(
             "select league_points, pts_ppr, scoring_version, source, projected_at "
@@ -113,12 +110,12 @@ def test_sync_writes_points_from_the_league_settings(conn) -> None:
     # 6.83*1 + 94.17*0.1 + 0.53*6 + 1.85*0.1 + 0.03*-2 + 6.83*0.0 = 19.552 -> 19.55
     assert points == Decimal("19.55")
     assert ppr == Decimal("19.69") and source == "sleeper"
-    assert version == scoring_version(SETTINGS) and projected_at is not None
+    assert version == VERSION and projected_at is not None
 
 
 def test_the_stat_line_round_trips_as_a_queryable_json_object(conn) -> None:
     """One jsonb object, not a double-encoded string: the rescore path scores these keys."""
-    sync_projections(FakeProjClient(bulk(payload(), 250)), conn, 2026, 1, SETTINGS, NOW)
+    sync(conn, FakeProjClient(bulk(payload(), 250)))
     with conn.cursor() as cur:
         cur.execute(
             "select stat_line, stat_line->>'rec_yd' from public.player_projections "
@@ -130,7 +127,7 @@ def test_the_stat_line_round_trips_as_a_queryable_json_object(conn) -> None:
 
 
 def test_a_stat_line_the_league_cannot_score_stays_null_not_zero(conn) -> None:
-    sync_projections(FakeProjClient(bulk(payload(), 250)), conn, 2026, 1, SETTINGS, NOW)
+    sync(conn, FakeProjClient(bulk(payload(), 250)))
     with conn.cursor() as cur:
         cur.execute(
             "select league_points from public.player_projections "
@@ -140,9 +137,11 @@ def test_a_stat_line_the_league_cannot_score_stays_null_not_zero(conn) -> None:
 
 
 def test_a_thin_payload_is_refused_before_anything_is_written(conn) -> None:
-    sync_projections(FakeProjClient(bulk(payload(), 250)), conn, 2026, 1, SETTINGS, NOW)
+    """The refusal is in the fetch, which the command runs before it opens its
+    transaction, so a broken payload cannot reach a write at all."""
+    sync(conn, FakeProjClient(bulk(payload(), 250)))
     with pytest.raises(RuntimeError, match="too few"):
-        sync_projections(FakeProjClient(payload()), conn, 2026, 1, SETTINGS, NOW)
+        fetch_projection_rows(FakeProjClient(payload()), 2026, 1, NOW)
     with conn.cursor() as cur:
         cur.execute("select count(*) from public.player_projections where week = 1")
         assert cur.fetchone()[0] == 257
@@ -150,19 +149,19 @@ def test_a_thin_payload_is_refused_before_anything_is_written(conn) -> None:
 
 def test_an_empty_payload_is_refused(conn) -> None:
     with pytest.raises(RuntimeError, match="too few"):
-        sync_projections(FakeProjClient([]), conn, 2026, 1, SETTINGS, NOW)
+        fetch_projection_rows(FakeProjClient([]), 2026, 1, NOW)
 
 
 def test_repeated_runs_produce_identical_rows(conn) -> None:
     client = FakeProjClient(bulk(payload(), 250))
-    sync_projections(client, conn, 2026, 1, SETTINGS, NOW)
+    sync(conn, client)
     with conn.cursor() as cur:
         cur.execute(
             "select sleeper_player_id, league_points, scoring_version, projected_at "
             "from public.player_projections where week = 1 order by sleeper_player_id"
         )
         first = cur.fetchall()
-    sync_projections(client, conn, 2026, 1, SETTINGS, NOW)
+    sync(conn, client)
     with conn.cursor() as cur:
         cur.execute(
             "select sleeper_player_id, league_points, scoring_version, projected_at "
@@ -173,10 +172,12 @@ def test_repeated_runs_produce_identical_rows(conn) -> None:
 
 def test_rescore_recomputes_from_stored_stat_lines_without_refetching(conn) -> None:
     client = FakeProjClient(bulk(payload(), 250))
-    sync_projections(client, conn, 2026, 1, SETTINGS, NOW)
+    sync(conn, client)
     client.calls = 0
     doubled = {**SETTINGS, "rec": 2.0}
-    report = sync_projections(client, conn, 2026, 1, doubled, NOW, rescore=True)
+    report = ProjectionRepository(conn).rescore(
+        2026, 1, doubled, scoring_version(doubled), NOW
+    )
     assert client.calls == 0 and report.scoring_version == scoring_version(doubled)
     with conn.cursor() as cur:
         cur.execute(
@@ -190,15 +191,15 @@ def test_rescore_recomputes_from_stored_stat_lines_without_refetching(conn) -> N
 
 def test_rescore_leaves_synced_at_alone(conn) -> None:
     """A rescore refetches nothing, so it must not claim the row was synced again."""
-    client = FakeProjClient(bulk(payload(), 250))
-    sync_projections(client, conn, 2026, 1, SETTINGS, NOW)
+    sync(conn, FakeProjClient(bulk(payload(), 250)))
     with conn.cursor() as cur:
         cur.execute(
             "select sleeper_player_id, synced_at from public.player_projections "
             "where season = 2026 and week = 1 order by sleeper_player_id"
         )
         before = cur.fetchall()
-    sync_projections(client, conn, 2026, 1, {**SETTINGS, "rec": 2.0}, LATER, rescore=True)
+    doubled = {**SETTINGS, "rec": 2.0}
+    ProjectionRepository(conn).rescore(2026, 1, doubled, scoring_version(doubled), LATER)
     with conn.cursor() as cur:
         cur.execute(
             "select sleeper_player_id, synced_at from public.player_projections "
@@ -210,14 +211,14 @@ def test_rescore_leaves_synced_at_alone(conn) -> None:
 
 def test_rescore_refuses_a_week_with_nothing_stored(conn) -> None:
     with pytest.raises(RuntimeError, match="no stored projections for 2026 week 4"):
-        sync_projections(FakeProjClient([]), conn, 2026, 4, SETTINGS, NOW, rescore=True)
+        ProjectionRepository(conn).rescore(2026, 4, SETTINGS, VERSION, NOW)
 
 
 def test_a_player_who_leaves_the_feed_keeps_his_row_and_loses_his_points(conn) -> None:
     """Missing is not zero and not gone: null the points, keep the row and its stamp."""
-    sync_projections(FakeProjClient(bulk(payload(), 250)), conn, 2026, 1, SETTINGS, NOW)
+    sync(conn, FakeProjClient(bulk(payload(), 250)))
     without_9488 = [r for r in payload() if r["player_id"] != "9488"]
-    sync_projections(FakeProjClient(bulk(without_9488, 250)), conn, 2026, 1, SETTINGS, LATER)
+    sync(conn, FakeProjClient(bulk(without_9488, 250)), now=LATER)
     with conn.cursor() as cur:
         cur.execute(
             "select league_points, synced_at, stat_line->>'rec' "
@@ -240,7 +241,7 @@ def test_a_player_who_leaves_the_feed_keeps_his_row_and_loses_his_points(conn) -
 
 
 def test_a_fetch_outage_leaves_the_prior_runs_rows_untouched(conn) -> None:
-    sync_projections(FakeProjClient(bulk(payload(), 250)), conn, 2026, 1, SETTINGS, NOW)
+    sync(conn, FakeProjClient(bulk(payload(), 250)))
     with conn.cursor() as cur:
         cur.execute(
             "select sleeper_player_id, league_points, scoring_version, synced_at "
@@ -249,7 +250,7 @@ def test_a_fetch_outage_leaves_the_prior_runs_rows_untouched(conn) -> None:
         before = cur.fetchall()
     client = OutageClient()
     with pytest.raises(ConnectionError):
-        sync_projections(client, conn, 2026, 1, SETTINGS, LATER)
+        sync(conn, client, now=LATER)
     assert client.calls == 1
     with conn.cursor() as cur:
         cur.execute(
@@ -261,7 +262,7 @@ def test_a_fetch_outage_leaves_the_prior_runs_rows_untouched(conn) -> None:
 
 
 def test_flag_coverage_marks_the_runs_rows(conn) -> None:
-    sync_projections(FakeProjClient(bulk(payload(), 250)), conn, 2026, 1, SETTINGS, NOW)
+    sync(conn, FakeProjClient(bulk(payload(), 250)))
     ProjectionRepository(conn).flag_coverage(2026, 1, Decimal("81.25"), flagged=True)
     with conn.cursor() as cur:
         cur.execute(
@@ -271,43 +272,46 @@ def test_flag_coverage_marks_the_runs_rows(conn) -> None:
         assert cur.fetchall() == [(True, Decimal("81.25"))]
 
 
+def test_week_flags_reads_a_week_with_nothing_stored_as_clear(conn) -> None:
+    """The first run of a week has nothing to compare against, so it starts clear
+    and a flagged first run reads as a transition worth one note."""
+    assert ProjectionRepository(conn).week_flags(2026, 4) == WeekFlags(False, False)
+
+
+def test_week_flags_reports_the_stored_coverage_stamp(conn) -> None:
+    repo = ProjectionRepository(conn)
+    sync(conn, FakeProjClient(bulk(payload(), 250)))
+    assert repo.week_flags(2026, 1).coverage_flagged is False
+    repo.flag_coverage(2026, 1, Decimal("81.25"), flagged=True)
+    assert repo.week_flags(2026, 1).coverage_flagged is True
+    repo.flag_coverage(2026, 1, Decimal("99.00"), flagged=False)
+    assert repo.week_flags(2026, 1).coverage_flagged is False
+
+
+def test_week_flags_recovers_the_last_runs_drift_verdict_from_the_rows(conn) -> None:
+    """Drift is not stored anywhere. It does not have to be: the stored points and
+    stat lines are exactly what the last run scored, so re-running the rule over
+    them returns that run's verdict."""
+    repo = ProjectionRepository(conn)
+    clean = sync(conn, FakeProjClient(bulk(payload(), 250)))
+    assert clean.drift_flagged is False
+    assert repo.week_flags(2026, 1).drift_flagged is False
+
+    # Five points a passing yard: nearly every scored player now sits hundreds of
+    # points from every Sleeper preset, which is the shape a broken settings map has.
+    wrong = {**SETTINGS, "pass_yd": 5.0}
+    drifted = repo.rescore(2026, 1, wrong, scoring_version(wrong), NOW)
+    assert drifted.drift_flagged is True
+    assert repo.week_flags(2026, 1).drift_flagged is True
+
+
 def test_the_write_runs_inside_the_callers_transaction(conn) -> None:
-    """Task 10 wraps this write and the team-week recompute in one transaction, so the
-    write must join the caller's transaction and be discarded with it."""
+    """The command wraps this write and the team-week recompute in one transaction,
+    so the write must join the caller's and be discarded with it."""
     client = FakeProjClient(bulk(payload(), 250))
     with pytest.raises(Boom), conn.transaction():
-        sync_projections(client, conn, 2026, 1, SETTINGS, NOW)
+        sync(conn, client)
         raise Boom
     with conn.cursor() as cur:
         cur.execute("select count(*) from public.player_projections where week = 1")
         assert cur.fetchone()[0] == 0
-
-
-def test_projection_week_reads_the_regular_season_week_from_state() -> None:
-    assert projection_week(parse_nfl_state(STATE_RAW, NOW)) == (2026, 1)
-
-
-def test_projection_week_refuses_a_preseason_week() -> None:
-    with pytest.raises(RuntimeError, match="regular season"):
-        projection_week(parse_nfl_state(PRE_STATE_RAW, NOW))
-
-
-def test_the_current_week_sync_never_fetches_a_preseason_slate(conn) -> None:
-    client = FakeProjClient(bulk(payload(), 250), state=PRE_STATE_RAW)
-    with pytest.raises(RuntimeError, match="regular season"):
-        sync_current_week_projections(client, conn, SETTINGS, NOW)
-    assert client.calls == 0
-    with conn.cursor() as cur:
-        cur.execute("select count(*) from public.player_projections")
-        assert cur.fetchone()[0] == 0
-
-
-def test_the_current_week_sync_writes_the_week_state_reports(conn) -> None:
-    client = FakeProjClient(bulk(payload(), 250))
-    report = sync_current_week_projections(client, conn, SETTINGS, NOW)
-    assert report.rows == 257
-    with conn.cursor() as cur:
-        cur.execute(
-            "select count(*) from public.player_projections where season = 2026 and week = 1"
-        )
-        assert cur.fetchone()[0] == 257

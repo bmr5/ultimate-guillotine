@@ -10,7 +10,7 @@ the SQL, which Tasks 8 and 9 cover against a real database.
 import argparse
 import subprocess
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
 from types import SimpleNamespace
 from typing import Self
@@ -18,9 +18,11 @@ from typing import Self
 import pytest
 
 from ultimate_guillotine.cli import sleeper as sleeper_cli
+from ultimate_guillotine.sleeper.projections import WeekFlags
 from ultimate_guillotine.sleeper.scoring import DRIFT_POINTS
 
 SETTINGS = {"rec": 1.0}
+CLEAR = WeekFlags(coverage_flagged=False, drift_flagged=False)
 
 
 def test_sleeper_help_lists_every_subcommand() -> None:
@@ -106,6 +108,12 @@ class FakeRepo:
     """Stands in for `ProjectionRepository`, recording the writes inside the transaction."""
 
     conn: FakeConn
+    before: WeekFlags = field(default=CLEAR)
+
+    def week_flags(self, season, week):
+        # Deliberately not an event: this read happens before the transaction opens,
+        # and the ordering assertions below would not catch it if it slipped inside.
+        return self.before
 
     def upsert_many(self, season, week, rows, scoring_settings, version, now):
         self.conn.events.append(f"upsert {season}w{week} {len(rows)} rows")
@@ -134,6 +142,7 @@ def _wire(
     week: int = 3,
     run_pct: Decimal = Decimal("100.00"),
     report: SimpleNamespace = REPORT,
+    before: WeekFlags = CLEAR,
     fetch=None,
 ) -> FakeNotifier:
     notifier = FakeNotifier()
@@ -157,17 +166,15 @@ def _wire(
     )
 
     def fake_repo(target: FakeConn) -> FakeRepo:
-        return FakeRepo(target)
+        return FakeRepo(target, before)
 
     monkeypatch.setattr(sleeper_cli, "ProjectionRepository", fake_repo)
-    monkeypatch.setattr(
-        sleeper_cli,
-        "recompute_team_week",
-        lambda c, season_id, season_year, w, now: (
-            [SimpleNamespace(is_provisional=run_pct < 95)] * 18,
-            run_pct,
-        ),
-    )
+
+    def fake_recompute(target, season_id, season_year, w, now):
+        target.events.append("recompute")
+        return [SimpleNamespace(is_provisional=run_pct < 95)] * 18, run_pct
+
+    monkeypatch.setattr(sleeper_cli, "recompute_team_week", fake_recompute)
     monkeypatch.setattr(REPORT, "drift_flagged", report.drift_flagged)
     monkeypatch.setattr(REPORT, "drift_share", report.drift_share)
     monkeypatch.setattr(
@@ -187,12 +194,18 @@ def _args(**overrides) -> argparse.Namespace:
 def test_the_write_the_recompute_and_the_stamp_share_one_transaction(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """All three writes, in order, inside one block: the team totals are derived
+    from the player rows this run wrote, and the stamp describes that recompute."""
     conn = FakeConn()
     _wire(monkeypatch, conn=conn)
 
     assert sleeper_cli.cmd_projections(_args()) == 0
     assert conn.events == [
-        "begin", "upsert 2026w3 9400 rows", "flag 100.00 flagged=False", "commit"
+        "begin",
+        "upsert 2026w3 9400 rows",
+        "recompute",
+        "flag 100.00 flagged=False",
+        "commit",
     ]
 
 
@@ -226,18 +239,27 @@ def test_a_thin_payload_never_opens_the_transaction(
     assert conn.events == []
 
 
-def test_a_preseason_week_is_refused_before_anything_is_fetched(
-    monkeypatch: pytest.MonkeyPatch,
+def test_a_preseason_run_is_a_clean_no_op_not_a_failure(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
 ) -> None:
+    """Off-season there is no slate to project, and refusing is not failing: the
+    half-hourly job has to finish `succeeded` all winter, or the transition notes
+    would announce a failure the first time and the run history would read as
+    broken for months."""
     conn = FakeConn()
 
     def never(client, season, week, now):
         raise AssertionError("fetched during the preseason")
 
-    _wire(monkeypatch, conn=conn, season_type="pre", fetch=never)
+    notifier = _wire(monkeypatch, conn=conn, season_type="pre", fetch=never)
 
-    assert sleeper_cli.cmd_projections(_args()) == 2
+    assert sleeper_cli.cmd_projections(_args()) == 0
     assert conn.events == []
+    assert notifier.notes == []
+    assert capsys.readouterr().out == ""
+
+    assert sleeper_cli.cmd_projections(_args(quiet=False)) == 0
+    assert capsys.readouterr().out == "projections: skipped, season_type=pre\n"
 
 
 def test_rescore_skips_the_fetch_and_still_recomputes(
@@ -252,22 +274,71 @@ def test_rescore_skips_the_fetch_and_still_recomputes(
 
     assert sleeper_cli.cmd_projections(_args(rescore=True)) == 0
     assert conn.events == [
-        "begin", "rescore 2026w3", "flag 100.00 flagged=False", "commit"
+        "begin", "rescore 2026w3", "recompute", "flag 100.00 flagged=False", "commit"
     ]
 
 
-def test_coverage_below_the_gate_posts_one_ops_note(
+def test_coverage_falling_below_the_gate_posts_one_ops_note(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     conn = FakeConn()
-    notifier = _wire(monkeypatch, conn=conn, run_pct=Decimal("91.00"))
+    notifier = _wire(monkeypatch, conn=conn, run_pct=Decimal("91.00"), before=CLEAR)
 
     sleeper_cli.cmd_projections(_args())
 
-    assert conn.events[2] == "flag 91.00 flagged=True"
+    assert conn.events[3] == "flag 91.00 flagged=True"
     assert notifier.notes == [
         "projections week 3: coverage 91.00% is below 95%; 18 teams marked provisional"
     ]
+
+
+def test_coverage_still_below_the_gate_says_nothing_a_second_time(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """This job fires every five minutes during a game window. A week that is short
+    a projection stays short for hours; saying so once is a report, saying so forty
+    times is noise nobody reads."""
+    conn = FakeConn()
+    notifier = _wire(
+        monkeypatch,
+        conn=conn,
+        run_pct=Decimal("91.00"),
+        before=WeekFlags(coverage_flagged=True, drift_flagged=False),
+    )
+
+    sleeper_cli.cmd_projections(_args())
+
+    assert conn.events[3] == "flag 91.00 flagged=True"
+    assert notifier.notes == []
+
+
+def test_coverage_climbing_back_over_the_gate_posts_one_recovery_note(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = FakeConn()
+    notifier = _wire(
+        monkeypatch,
+        conn=conn,
+        run_pct=Decimal("97.00"),
+        before=WeekFlags(coverage_flagged=True, drift_flagged=False),
+    )
+
+    sleeper_cli.cmd_projections(_args())
+
+    assert notifier.notes == [
+        "projections week 3: coverage recovered to 97.00%, at or above 95%"
+    ]
+
+
+def test_a_healthy_run_after_a_healthy_run_says_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = FakeConn()
+    notifier = _wire(monkeypatch, conn=conn, before=CLEAR)
+
+    sleeper_cli.cmd_projections(_args())
+
+    assert notifier.notes == []
 
 
 def test_the_drift_note_quotes_the_configured_threshold(
@@ -280,6 +351,7 @@ def test_the_drift_note_quotes_the_configured_threshold(
         monkeypatch,
         conn=conn,
         report=SimpleNamespace(drift_flagged=True, drift_share=Decimal("0.0431")),
+        before=CLEAR,
     )
 
     sleeper_cli.cmd_projections(_args())
@@ -287,6 +359,61 @@ def test_the_drift_note_quotes_the_configured_threshold(
     assert len(notifier.notes) == 1
     assert notifier.notes[0].startswith("projections week 3: 4.3% of scored players")
     assert f"more than {DRIFT_POINTS} points" in notifier.notes[0]
+
+
+def test_drift_that_was_already_flagged_is_not_announced_again(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = FakeConn()
+    notifier = _wire(
+        monkeypatch,
+        conn=conn,
+        report=SimpleNamespace(drift_flagged=True, drift_share=Decimal("0.0431")),
+        before=WeekFlags(coverage_flagged=False, drift_flagged=True),
+    )
+
+    sleeper_cli.cmd_projections(_args())
+
+    assert notifier.notes == []
+
+
+def test_drift_falling_back_under_the_threshold_posts_one_note(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Ben fixes `seasons.scoring_settings` and reruns with `--rescore`; the channel
+    should say the fix took, and then go quiet again."""
+    conn = FakeConn()
+    notifier = _wire(
+        monkeypatch,
+        conn=conn,
+        report=SimpleNamespace(drift_flagged=False, drift_share=Decimal("0.0031")),
+        before=WeekFlags(coverage_flagged=False, drift_flagged=True),
+    )
+
+    sleeper_cli.cmd_projections(_args(rescore=True))
+
+    assert notifier.notes == [
+        (
+            "projections week 3: scoring drift cleared, 0.3% of scored players now "
+            f"differ from the nearest Sleeper preset by more than {DRIFT_POINTS} points"
+        )
+    ]
+
+
+def test_an_undeliverable_note_does_not_fail_a_good_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Discord being unreachable is not a reason to record a run that wrote a full
+    week of projections as `failed`."""
+    conn = FakeConn()
+    notifier = _wire(monkeypatch, conn=conn, run_pct=Decimal("91.00"), before=CLEAR)
+
+    def boom(text: str) -> bool:
+        raise ConnectionError("discord is unreachable")
+
+    monkeypatch.setattr(notifier, "ops", boom)
+
+    assert sleeper_cli.cmd_projections(_args()) == 0
 
 
 def test_quiet_prints_nothing_on_success(

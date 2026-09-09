@@ -1,5 +1,6 @@
 """Shared dependency construction and run-recording helper for `ug` subcommands."""
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
@@ -21,6 +22,8 @@ from ultimate_guillotine.messages.bluebubbles import BlueBubblesClient
 from ultimate_guillotine.messages.delivery import DeliveryService
 from ultimate_guillotine.ops.notify import HermesNotifier
 from ultimate_guillotine.ops.transitions import transition_note
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -77,6 +80,21 @@ def build_delivery(deps: Deps, crash_after_send: bool = False) -> DeliveryServic
         crash_after_send=crash_after_send,
         commit=deps.conn.commit,
     )
+
+
+def post_ops(notifier: HermesNotifier, text: str) -> None:
+    """Post one ops note, absorbing anything Discord or Hermes does in reply.
+
+    The note is a courtesy; the run's verdict is the fact. `HermesNotifier.send`
+    already swallows a failing `hermes` invocation, but locating the binary and
+    looking up the channel id happen outside that guard, and neither is a reason
+    to turn a run that did its job into a `failed` one. Only the exception class
+    is logged -- the note itself is right there in the caller.
+    """
+    try:
+        notifier.ops(text)
+    except Exception as exc:  # noqa: BLE001 - an undelivered note is not a failed run
+        log.warning("ops note not delivered: %s", exc.__class__.__name__)
 
 
 def run_scheduled(
@@ -142,7 +160,7 @@ def run_scheduled_with_notes(
     def note(status: str) -> None:
         text = transition_note(agent, previous, status, now)
         if text:
-            deps.notifier.ops(text)
+            post_ops(deps.notifier, text)
 
     try:
         exit_code = run_scheduled(deps.conn, agent, now, action)

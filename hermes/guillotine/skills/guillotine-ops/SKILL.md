@@ -64,16 +64,20 @@ cd <repo> && uv run --project packages/league-automation ug sleeper projections
 
 Fetches the week `nfl_state` reports, scores it with the league's settings, and
 recomputes every team's projected points. Prints the player count, how many went
-unscored, and the run's coverage percentage. It refuses outside the regular
-season, and refuses a payload too thin to be a real week rather than blanking a
-week that already has good numbers.
+unscored, and the run's coverage percentage. Outside the regular season it does
+nothing and says so (`projections: skipped, season_type=pre`) — a no-op, not a
+failure, so the half-hourly job stays green all winter. It does refuse a payload
+too thin to be a real week, rather than blanking a week that already has good
+numbers.
 
 `--week N` syncs a specific week. `--rescore` recomputes points from the stat
 lines already stored, with no call to Sleeper — that is the command to run after
 the league's scoring settings change, never a re-sync.
 
-Coverage below 95% and a scoring-drift warning both post their own note to
-`#guillotine-ops`; the numbers are still written, flagged, never withheld.
+Coverage below 95% and a scoring-drift warning each post one note to
+`#guillotine-ops` — only when the week's flagged state actually changes, in
+either direction, since this job fires every five minutes during a game window.
+The numbers are still written, flagged, never withheld.
 
 ## List recently logged trades
 
