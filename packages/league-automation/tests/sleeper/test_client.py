@@ -52,6 +52,7 @@ def test_get_rosters_reads_players_from_a_list_or_null() -> None:
     client = SleeperClient(httpx.Client())
     by_id = {r.roster_id: r for r in client.get_rosters("1389372259260452864")}
     assert by_id[1].players[:2] == ["4034", "6794"]
+    assert len(by_id[1].players) == 9
     assert by_id[2].players == []
 
 

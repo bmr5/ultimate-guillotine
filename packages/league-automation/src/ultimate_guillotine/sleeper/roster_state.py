@@ -35,14 +35,16 @@ def classify_holdings(roster: SleeperRoster, roster_positions: list[str]) -> Ros
 
     An id in ``starters`` is a starter, in ``reserve`` is ``ir``, in ``taxi`` is
     ``taxi``, and anything else in ``players`` is bench. A blank starter slot
-    produces no row at all -- there is nobody to record.
+    produces no row at all -- there is nobody to record. Every id yields at most
+    one holding: an id repeated inside ``starters`` keeps its first (lowest-index)
+    slot, and a later list never re-claims an id an earlier one already took.
     """
     # Starter-slot and empty-slot counts are not derived here: Task 9 derives them
     # from the database rather than from this payload.
     holdings: list[Holding] = []
     seen: set[str] = set()
     for index, player_id in enumerate(roster.starters):
-        if not player_id or player_id == EMPTY_SLOT:
+        if not player_id or player_id == EMPTY_SLOT or player_id in seen:
             continue
         position = roster_positions[index] if index < len(roster_positions) else None
         holdings.append(Holding(player_id, "starter", index, position))
@@ -72,19 +74,44 @@ def _int(settings: dict[str, object], key: str) -> int:
     return int(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else 0
 
 
+def _whole(settings: dict[str, object], key: str) -> Decimal:
+    """The whole part of a points value, exactly.
+
+    Sleeper normally sends an integer, but some payloads carry the whole points
+    as a float already holding the fraction (``"fpts": 312.45``). Truncating that
+    to an ``int`` would silently drop hundredths, so it is read through
+    ``Decimal(str(value))``, which keeps the digits the payload actually showed.
+    """
+    value = settings.get(key)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return Decimal(0)
+    return Decimal(str(value)) if isinstance(value, float) else Decimal(value)
+
+
 def _recombine(settings: dict[str, object], whole_key: str, decimal_key: str) -> Decimal:
-    """Sleeper splits fantasy points into two integers; put them back together."""
-    whole = Decimal(_int(settings, whole_key))
-    hundredths = Decimal(_int(settings, decimal_key))
-    return whole + hundredths / Decimal(100)
+    """Sleeper splits fantasy points into two integers; put them back together.
+
+    The hundredths are a magnitude, not a signed addend: they carry the sign of
+    the whole part, so ``fpts_against = -12`` with ``fpts_against_decimal = 5``
+    is ``-12.05``, not ``-11.95``.
+    """
+    whole = _whole(settings, whole_key)
+    hundredths = Decimal(abs(_int(settings, decimal_key))) / Decimal(100)
+    return whole - hundredths if whole < 0 else whole + hundredths
 
 
 def team_state_from_roster(roster: SleeperRoster, waiver_budget: int | None) -> TeamState:
-    """Record, points, and FAAB for one team, from the roster's settings block."""
+    """Record, points, and FAAB for one team, from the roster's settings block.
+
+    ``faab_used`` is clamped into ``[0, faab_budget]``. A league with no waiver
+    budget still reports a per-roster ``waiver_budget_used``, and reporting more
+    spent than the league ever offered would show a negative remaining balance.
+    """
     settings = roster.settings
+    budget = int(waiver_budget or 0)
     return TeamState(
-        faab_budget=int(waiver_budget or 0),
-        faab_used=_int(settings, "waiver_budget_used"),
+        faab_budget=budget,
+        faab_used=min(max(_int(settings, "waiver_budget_used"), 0), budget),
         wins=_int(settings, "wins"),
         losses=_int(settings, "losses"),
         ties=_int(settings, "ties"),
@@ -120,10 +147,20 @@ def infer_elimination(roster: SleeperRoster, week: int | None) -> Elimination:
 
 
 def merge_elimination(stored: Elimination | None, incoming: Elimination) -> Elimination:
-    """Keep the higher-ranked source. The Weekly Adjudicator is authoritative."""
+    """Keep the higher-ranked source. The Weekly Adjudicator is authoritative.
+
+    Elimination is one-way for inference: clearing the Sleeper ``eliminated`` tag
+    makes ``infer_elimination`` return ``Elimination.none()``, whose source is
+    ``None`` and therefore outranked by any stored record -- so a stored
+    ``sleeper_inferred`` elimination is never un-eliminated by the tag going away.
+    Only a ``manual`` or ``adjudicator`` record can reverse an elimination.
+
+    An unrecognised stored source ranks 0, the lowest: an unknown provenance
+    yields to a known one rather than raising mid-sync.
+    """
     if stored is None:
         return incoming
-    if _SOURCE_RANK[incoming.source] >= _SOURCE_RANK[stored.source]:
+    if _SOURCE_RANK.get(incoming.source, 0) >= _SOURCE_RANK.get(stored.source, 0):
         return incoming
     return stored
 

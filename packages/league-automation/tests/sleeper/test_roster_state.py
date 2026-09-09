@@ -53,6 +53,31 @@ def test_a_bench_only_roster_classifies_everything_bench() -> None:
     assert [h.slot for h in result.holdings] == ["bench", "bench"]
 
 
+def test_a_repeated_starter_id_keeps_its_first_slot() -> None:
+    """Sleeper has been seen repeating an id across two starter slots; one row wins."""
+    roster = SleeperRoster.model_validate(
+        {"roster_id": 5, "owner_id": "u5", "players": ["a", "b"], "starters": ["a", "a", "b"]}
+    )
+    holdings = classify_holdings(roster, POSITIONS).holdings
+    assert [h.sleeper_player_id for h in holdings] == ["a", "b"]
+    assert [(h.slot, h.slot_index, h.lineup_position) for h in holdings] == [
+        ("starter", 0, "QB"),
+        ("starter", 2, "RB"),
+    ]
+
+
+def test_a_starter_missing_from_players_is_still_a_starter() -> None:
+    """``starters`` is authoritative: an id Sleeper left out of ``players`` still starts."""
+    roster = SleeperRoster.model_validate(
+        {"roster_id": 6, "owner_id": "u6", "players": ["b"], "starters": ["ghost", "b"]}
+    )
+    holdings = classify_holdings(roster, POSITIONS).holdings
+    assert [(h.sleeper_player_id, h.slot) for h in holdings] == [
+        ("ghost", "starter"),
+        ("b", "starter"),
+    ]
+
+
 def test_null_lists_and_dicts_become_empty() -> None:
     roster = rosters()[1]
     assert roster.starters == [] and roster.players == []
@@ -81,6 +106,42 @@ def test_a_league_without_a_waiver_budget_records_zero_not_none() -> None:
     assert state.points_for == Decimal(0) and state.points_against == Decimal(0)
 
 
+def test_points_keep_every_hundredth_a_float_payload_carries() -> None:
+    """A float ``fpts`` already holds the fraction; truncating it would lose it."""
+    roster = SleeperRoster.model_validate(
+        {"roster_id": 7, "owner_id": "u7", "settings": {"fpts": 312.45}}
+    )
+    assert team_state_from_roster(roster, waiver_budget=0).points_for == Decimal("312.45")
+
+
+def test_hundredths_take_the_sign_of_a_negative_whole_part() -> None:
+    roster = SleeperRoster.model_validate(
+        {
+            "roster_id": 8,
+            "owner_id": "u8",
+            "settings": {"fpts_against": -12, "fpts_against_decimal": 5},
+        }
+    )
+    assert team_state_from_roster(roster, waiver_budget=0).points_against == Decimal("-12.05")
+
+
+def test_faab_spent_never_exceeds_the_budget() -> None:
+    """Remaining FAAB is budget minus used, so used above budget would go negative."""
+    spender = SleeperRoster.model_validate(
+        {"roster_id": 9, "owner_id": "u9", "settings": {"waiver_budget_used": 250}}
+    )
+    for budget in (None, 0):
+        state = team_state_from_roster(spender, waiver_budget=budget)
+        assert (state.faab_budget, state.faab_used) == (0, 0)
+        assert state.faab_budget - state.faab_used == 0
+    overspent = SleeperRoster.model_validate(
+        {"roster_id": 10, "owner_id": "u10", "settings": {"waiver_budget_used": 1200}}
+    )
+    state = team_state_from_roster(overspent, waiver_budget=1000)
+    assert (state.faab_budget, state.faab_used) == (1000, 1000)
+    assert state.faab_budget - state.faab_used == 0
+
+
 def test_inference_reads_only_bens_metadata_tag() -> None:
     assert infer_elimination(rosters()[0], week=3) == Elimination.none()
     inferred = infer_elimination(rosters()[1], week=3)
@@ -96,6 +157,21 @@ def test_inferred_never_overwrites_adjudicated() -> None:
     assert merge_elimination(manual, Elimination(True, 6, "sleeper_inferred")) == manual
     assert merge_elimination(manual, ruled) == ruled
     assert merge_elimination(None, Elimination(True, 3, "sleeper_inferred")).is_eliminated
+
+
+def test_an_unknown_stored_source_loses_precedence_instead_of_raising() -> None:
+    stored = Elimination(True, 2, "imported_from_2025")
+    incoming = Elimination(True, 5, "sleeper_inferred")
+    assert merge_elimination(stored, incoming) == incoming
+
+
+def test_clearing_the_sleeper_tag_never_un_eliminates_an_inferred_record() -> None:
+    """Elimination is one-way for inference; only manual or adjudicator can reverse it."""
+    stored = Elimination(True, 3, "sleeper_inferred")
+    assert merge_elimination(stored, Elimination.none()) == stored
+    assert merge_elimination(stored, infer_elimination(rosters()[0], week=4)) == stored
+    reversed_by_hand = Elimination(False, None, "manual")
+    assert merge_elimination(stored, reversed_by_hand) == reversed_by_hand
 
 
 def test_state_version_bumps_only_on_an_actual_elimination_change() -> None:
