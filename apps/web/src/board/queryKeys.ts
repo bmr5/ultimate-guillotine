@@ -5,6 +5,20 @@
  * Every key starts with `"board"`, so `invalidateQueries({ queryKey: boardKeys.all })` covers
  * the whole page in one call.
  */
+/**
+ * The prefixes the fingerprinted player keys are built from, exposed on `boardKeys` so Realtime
+ * can invalidate on them: a Postgres change event does not carry the new held-id set, so the
+ * fingerprint segment is unknowable there. The concrete keys below spread these, which is what
+ * keeps a prefix from drifting away from the key it is supposed to match.
+ */
+function playersPrefix(seasonId: number) {
+  return ["board", "players", seasonId] as const;
+}
+
+function playerProjectionsPrefix(season: number, week: number) {
+  return ["board", "player_projections", season, week] as const;
+}
+
 export const boardKeys = {
   all: ["board"] as const,
   nflState: () => ["board", "nfl_state"] as const,
@@ -18,6 +32,7 @@ export const boardKeys = {
   rosterHoldings: (seasonId: number) =>
     ["board", "roster_holdings", seasonId] as const,
   finalRosters: (seasonId: number) => ["board", "final_rosters", seasonId] as const,
+  playersPrefix,
   /**
    * Keyed on a fingerprint of the held ids as well as the season. The `.in()` filter is part of
    * the request, so a cache entry keyed on the season alone would keep serving the directory
@@ -27,10 +42,11 @@ export const boardKeys = {
    * change (a slot moves) far more often than the set of ids does.
    */
   players: (seasonId: number, heldIdsFingerprint: string) =>
-    ["board", "players", seasonId, heldIdsFingerprint] as const,
+    [...playersPrefix(seasonId), heldIdsFingerprint] as const,
+  playerProjectionsPrefix,
   /** Keyed on the plain season year — `player_projections` is not league-scoped — plus the ids. */
   playerProjections: (season: number, week: number, heldIdsFingerprint: string) =>
-    ["board", "player_projections", season, week, heldIdsFingerprint] as const,
+    [...playerProjectionsPrefix(season, week), heldIdsFingerprint] as const,
   weeklyResults: (seasonId: number) => ["board", "weekly_results", seasonId] as const,
 };
 

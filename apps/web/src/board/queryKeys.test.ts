@@ -36,6 +36,25 @@ describe("boardKeys", () => {
     expect(key).toHaveLength(5);
   });
 
+  it("builds the fingerprinted keys from the prefixes Realtime invalidates on", () => {
+    const fingerprint = fingerprintIds(["4046", "9999"]);
+    // Realtime cannot know the fingerprint, so it invalidates the prefix. If the two ever
+    // drifted apart, a roster change would silently stop reaching the cached rows.
+    expect(boardKeys.players(1, fingerprint)).toEqual([
+      ...boardKeys.playersPrefix(1),
+      fingerprint,
+    ]);
+    expect(boardKeys.playerProjections(2026, 3, fingerprint)).toEqual([
+      ...boardKeys.playerProjectionsPrefix(2026, 3),
+      fingerprint,
+    ]);
+  });
+
+  it("nests the prefixes under the all key too", () => {
+    expect(boardKeys.playersPrefix(1)[0]).toBe(boardKeys.all[0]);
+    expect(boardKeys.playerProjectionsPrefix(2026, 3)[0]).toBe(boardKeys.all[0]);
+  });
+
   it("keeps the roster_holdings branch separate from the players branch", () => {
     expect(boardKeys.rosterHoldings(1)).toEqual(["board", "roster_holdings", 1]);
     expect(boardKeys.players(1, "x")[1]).toBe("players");

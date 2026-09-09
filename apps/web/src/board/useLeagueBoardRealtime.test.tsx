@@ -9,41 +9,58 @@ import { REALTIME_MAX_WAIT_MS } from "./realtime";
 import type { FakeableChannel, RealtimeTransport } from "./useLeagueBoardRealtime";
 import { useLeagueBoardRealtime } from "./useLeagueBoardRealtime";
 
-function createFakeTransport() {
-  const handlers = new Map<string, () => void>();
-  let statusHandler: ((status: string) => void) | null = null;
-  const removeChannel = vi.fn();
-  const channelNames: string[] = [];
+/**
+ * A fresh object per `channel()` call, exactly as `supabase.channel` returns — so a test can
+ * reach a channel the hook has already torn down and check that its callbacks are inert.
+ */
+interface FakeChannel extends FakeableChannel {
+  name: string;
+  handlers: Map<string, () => void>;
+  statusHandler: ((status: string) => void) | null;
+}
 
-  const channel: FakeableChannel = {
-    on(_event, filter, handler) {
-      handlers.set(filter.table, handler);
-      return channel;
-    },
-    subscribe(handler) {
-      statusHandler = handler;
-      return channel;
-    },
-  };
+function createFakeTransport() {
+  const channels: FakeChannel[] = [];
+  const removeChannel = vi.fn();
 
   const transport: RealtimeTransport = {
     channel: (name) => {
-      channelNames.push(name);
-      return channel;
+      const created: FakeChannel = {
+        name,
+        handlers: new Map(),
+        statusHandler: null,
+        on(_event, filter, handler) {
+          created.handlers.set(filter.table, handler);
+          return created;
+        },
+        subscribe(handler) {
+          created.statusHandler = handler;
+          return created;
+        },
+      };
+      channels.push(created);
+      return created;
     },
     removeChannel,
   };
+
+  const latest = () => channels.at(-1);
 
   return {
     transport,
     removeChannel,
-    emit: (table: string) => handlers.get(table)?.(),
-    setStatus: (status: string) => statusHandler?.(status),
-    channelCount: () => channelNames.length,
-    channelNames: () => [...channelNames],
-    subscribedTables: () => [...handlers.keys()],
+    emit: (table: string) => latest()?.handlers.get(table)?.(),
+    setStatus: (status: string) => latest()?.statusHandler?.(status),
+    setStatusOn: (index: number, status: string) =>
+      channels[index]?.statusHandler?.(status),
+    channelCount: () => channels.length,
+    channelNames: () => channels.map((channel) => channel.name),
+    subscribedTables: () => [...(latest()?.handlers.keys() ?? [])],
   };
 }
+
+/** The midpoint of the jitter range, so a backoff lands on exactly its undithered delay. */
+const NO_JITTER = () => 0.5;
 
 function wrapper(queryClient: QueryClient) {
   return function Wrapper({ children }: { children: ReactNode }) {
@@ -74,6 +91,7 @@ describe("useLeagueBoardRealtime", () => {
           season: 2026,
           week: 3,
           transport: fake.transport,
+          random: NO_JITTER,
         }),
       { wrapper: wrapper(queryClient) },
     );
@@ -110,10 +128,10 @@ describe("useLeagueBoardRealtime", () => {
   }[] = [
     {
       table: "roster_holdings",
+      // Not the player directory: its key already carries a fingerprint of the held ids.
       expected: [
         boardKeys.rosterHoldings(1),
-        ["board", "players", 1],
-        ["board", "player_projections", 2026, 3],
+        boardKeys.playerProjectionsPrefix(2026, 3),
       ],
     },
     {
@@ -313,11 +331,113 @@ describe("useLeagueBoardRealtime", () => {
     });
     expect(result.current.reconnectAttempts).toBe(2);
     expect(fake.channelCount()).toBe(3);
-    expect(fake.channelNames()).toEqual([
-      "league-board-0",
-      "league-board-1",
-      "league-board-2",
+    // One topic per attempt, all under this mount's own prefix.
+    expect(fake.channelNames().map((name) => name.split("-").at(-1))).toEqual([
+      "0",
+      "1",
+      "2",
     ]);
+    expect(new Set(fake.channelNames().map((name) => name.slice(0, -1))).size).toBe(1);
+  });
+
+  it("jitters the retry delay by the injected factor", () => {
+    const fake = createFakeTransport();
+    const { result } = renderHook(
+      () =>
+        useLeagueBoardRealtime({
+          seasonId: 1,
+          season: 2026,
+          week: 3,
+          transport: fake.transport,
+          // The bottom of the jitter band: 1_000 ms * 0.8.
+          random: () => 0,
+        }),
+      { wrapper: wrapper(queryClient) },
+    );
+
+    act(() => {
+      fake.setStatus("SUBSCRIBED");
+      fake.setStatus("CHANNEL_ERROR");
+      vi.advanceTimersByTime(799);
+    });
+    expect(fake.channelCount()).toBe(1);
+
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(fake.channelCount()).toBe(2);
+    expect(result.current.reconnectAttempts).toBe(1);
+  });
+
+  it("gives every mount its own topic, so a StrictMode double mount cannot race", () => {
+    const first = createFakeTransport();
+    const second = createFakeTransport();
+    mount(first);
+    mount(second);
+
+    expect(first.channelNames()).toHaveLength(1);
+    expect(second.channelNames()).toHaveLength(1);
+    expect(first.channelNames()[0]).not.toBe(second.channelNames()[0]);
+    // Both are the first channel of their mount, so only the mount id can be telling them apart.
+    expect(first.channelNames()[0].endsWith("-0")).toBe(true);
+    expect(second.channelNames()[0].endsWith("-0")).toBe(true);
+  });
+
+  it("ignores a status callback from a channel it has already torn down", () => {
+    const fake = createFakeTransport();
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries").mockResolvedValue();
+    const { result } = mount(fake);
+
+    act(() => {
+      fake.setStatus("SUBSCRIBED");
+      fake.setStatus("CHANNEL_ERROR");
+      vi.advanceTimersByTime(1_000);
+    });
+    expect(fake.channelCount()).toBe(2);
+    invalidate.mockClear();
+
+    // The dead channel's socket can still fire once after removeChannel.
+    act(() => {
+      fake.setStatusOn(0, "SUBSCRIBED");
+    });
+    expect(result.current.isConnected).toBe(false);
+    expect(invalidate).not.toHaveBeenCalled();
+  });
+
+  it("refreshNow reconnects immediately instead of waiting out the backoff", () => {
+    const fake = createFakeTransport();
+    const { result } = mount(fake);
+
+    act(() => {
+      fake.setStatus("SUBSCRIBED");
+      fake.setStatus("CHANNEL_ERROR");
+      fake.setStatus("CHANNEL_ERROR");
+      vi.advanceTimersByTime(1_000);
+      fake.setStatus("CHANNEL_ERROR");
+    });
+    expect(result.current.reconnectAttempts).toBe(1);
+    expect(fake.channelCount()).toBe(2);
+
+    act(() => {
+      result.current.refreshNow();
+    });
+    // A new channel on the spot, and the attempt counter back at the bottom of the curve.
+    expect(fake.channelCount()).toBe(3);
+    expect(result.current.reconnectAttempts).toBe(0);
+
+    // The retry the old channel had armed was cancelled with it, so nothing else rebuilds.
+    act(() => {
+      vi.advanceTimersByTime(30_000);
+    });
+    expect(fake.channelCount()).toBe(3);
+
+    // And the next failure starts from the one-second rung again.
+    act(() => {
+      fake.setStatus("CHANNEL_ERROR");
+      vi.advanceTimersByTime(1_000);
+    });
+    expect(fake.channelCount()).toBe(4);
+    expect(result.current.reconnectAttempts).toBe(1);
   });
 
   it("notifies the caller when the connection state changes", () => {
@@ -332,6 +452,7 @@ describe("useLeagueBoardRealtime", () => {
           week: 3,
           transport: fake.transport,
           onConnectionChange,
+          random: NO_JITTER,
         }),
       { wrapper: wrapper(queryClient) },
     );

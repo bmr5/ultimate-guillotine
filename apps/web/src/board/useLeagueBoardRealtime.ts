@@ -35,12 +35,19 @@ export interface UseLeagueBoardRealtimeArgs {
   week: number | null;
   transport?: RealtimeTransport;
   onConnectionChange?: (isConnected: boolean) => void;
+  /** Injectable source for the backoff jitter, so tests get a fixed delay. */
+  random?: () => number;
 }
 
 export interface LeagueBoardRealtime {
   /** The header turns this into the "reconnecting" label, and the page into its poll interval. */
   isConnected: boolean;
   reconnectAttempts: number;
+  /**
+   * Refetches the whole board and rebuilds the channel immediately. The disconnected banner's
+   * refresh button is the one place a person overrides the backoff, so it must not have to wait
+   * out a pending retry timer that may be most of half a minute away.
+   */
   refreshNow: () => void;
 }
 
@@ -53,10 +60,18 @@ const defaultTransport: RealtimeTransport = {
 
 const DISCONNECTED_STATUSES = new Set(["CHANNEL_ERROR", "TIMED_OUT", "CLOSED"]);
 
+/**
+ * A Realtime topic is a server-side identity: two channels on one topic are the same
+ * subscription, and React StrictMode mounts every hook twice, so a topic built from the
+ * reconnect nonce alone would have the discarded first mount and the surviving second one
+ * racing for it — the teardown of the first can drop the second. Every mount gets its own id.
+ */
+let nextMountId = 0;
+
 export function useLeagueBoardRealtime(
   args: UseLeagueBoardRealtimeArgs,
 ): LeagueBoardRealtime {
-  const { seasonId, season, week, transport, onConnectionChange } = args;
+  const { seasonId, season, week, transport, onConnectionChange, random } = args;
   const queryClient = useQueryClient();
 
   const [isConnected, setIsConnected] = useState(false);
@@ -68,6 +83,14 @@ export function useLeagueBoardRealtime(
    */
   const [reconnectNonce, setReconnectNonce] = useState(0);
   const attemptsRef = useRef(0);
+  const mountIdRef = useRef<number | null>(null);
+  if (mountIdRef.current === null) {
+    nextMountId += 1;
+    mountIdRef.current = nextMountId;
+  }
+
+  const randomRef = useRef(random);
+  randomRef.current = random;
 
   /**
    * The first SUBSCRIBED is the page's own connect, on a board whose queries have just
@@ -103,6 +126,12 @@ export function useLeagueBoardRealtime(
 
   const refreshNow = useCallback(() => {
     invalidateAll();
+    // Bumping the nonce tears the current channel down and builds a new one on the spot, which
+    // cancels any pending retry timer; zeroing the attempts puts the next failure back at the
+    // bottom of the backoff curve, where a person who just asked for a retry expects it.
+    attemptsRef.current = 0;
+    setReconnectAttempts(0);
+    setReconnectNonce((nonce) => nonce + 1);
   }, [invalidateAll]);
 
   const flush = useCallback(() => {
@@ -156,7 +185,13 @@ export function useLeagueBoardRealtime(
     let retryTimer: number | null = null;
     let cancelled = false;
 
-    const channel = active.channel(`league-board-${reconnectNonce}`);
+    const channel = active.channel(`league-board-${mountIdRef.current}-${reconnectNonce}`);
+    // Unfiltered on purpose: `roster_holdings`, `team_season_state` and `team_week_projections`
+    // all carry a `season_id`, but the league runs exactly one live season at a time, so every
+    // event on them belongs to the season the board is showing. `keysForTable` scopes the
+    // invalidation to the board's own season anyway, so a stray row from an archived season
+    // would cost a redundant refetch and nothing else. If a second live season ever exists, add
+    // `filter: \`season_id=eq.${seasonId}\`` here (and gate the subscribe on a resolved id).
     for (const table of BOARD_REALTIME_TABLES) {
       channel.on("postgres_changes", { event: "*", schema: "public", table }, () => {
         enqueue(table);
@@ -188,7 +223,7 @@ export function useLeagueBoardRealtime(
             attemptsRef.current += 1;
             setReconnectAttempts(attemptsRef.current);
             setReconnectNonce((nonce) => nonce + 1);
-          }, backoffDelayMs(attemptsRef.current));
+          }, backoffDelayMs(attemptsRef.current, randomRef.current));
         }
       }
     });

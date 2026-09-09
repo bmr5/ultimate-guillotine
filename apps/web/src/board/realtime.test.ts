@@ -6,6 +6,8 @@ import {
   BOARD_REALTIME_TABLES,
   keysForTable,
   REALTIME_BACKOFF_CAP_MS,
+  REALTIME_BACKOFF_JITTER_MAX,
+  REALTIME_BACKOFF_JITTER_MIN,
   REALTIME_DEBOUNCE_MS,
   REALTIME_MAX_EVENTS_PER_BURST,
   REALTIME_MAX_WAIT_MS,
@@ -36,11 +38,38 @@ describe("realtime constants", () => {
 });
 
 describe("backoffDelayMs", () => {
+  /** The midpoint of the jitter range, which reproduces the undithered delay exactly. */
+  const noJitter = () => 0.5;
+
   it("doubles from one second and caps at thirty", () => {
-    expect(backoffDelayMs(0)).toBe(1_000);
-    expect(backoffDelayMs(1)).toBe(2_000);
-    expect(backoffDelayMs(2)).toBe(4_000);
-    expect(backoffDelayMs(10)).toBe(30_000);
+    expect(backoffDelayMs(0, noJitter)).toBe(1_000);
+    expect(backoffDelayMs(1, noJitter)).toBe(2_000);
+    expect(backoffDelayMs(2, noJitter)).toBe(4_000);
+    expect(backoffDelayMs(10, noJitter)).toBe(30_000);
+  });
+
+  it("scales the delay by the jitter factor so a league does not reconnect in lockstep", () => {
+    expect(backoffDelayMs(1, () => 0)).toBe(2_000 * REALTIME_BACKOFF_JITTER_MIN);
+    // The top of the band is exclusive before rounding, which is why this is not `toBeLessThan`.
+    expect(backoffDelayMs(1, () => 0.999_999)).toBeLessThanOrEqual(
+      2_000 * REALTIME_BACKOFF_JITTER_MAX,
+    );
+    expect(backoffDelayMs(1, () => 0.999_999)).toBeGreaterThan(2_000);
+  });
+
+  it("keeps the spread at the cap, where a synchronised herd would be worst", () => {
+    expect(backoffDelayMs(20, () => 0)).toBe(
+      REALTIME_BACKOFF_CAP_MS * REALTIME_BACKOFF_JITTER_MIN,
+    );
+    expect(backoffDelayMs(20, () => 0.999_999)).toBeGreaterThan(REALTIME_BACKOFF_CAP_MS);
+  });
+
+  it("uses Math.random by default and stays inside the jittered band", () => {
+    for (let index = 0; index < 50; index += 1) {
+      const delay = backoffDelayMs(3);
+      expect(delay).toBeGreaterThanOrEqual(8_000 * REALTIME_BACKOFF_JITTER_MIN);
+      expect(delay).toBeLessThanOrEqual(8_000 * REALTIME_BACKOFF_JITTER_MAX);
+    }
   });
 });
 
@@ -50,17 +79,24 @@ describe("keysForTable", () => {
   it("maps a roster change to rosters and the player projections that hang off them", () => {
     expect(keysForTable("roster_holdings", context)).toEqual([
       boardKeys.rosterHoldings(1),
-      ["board", "players", 1],
-      ["board", "player_projections", 2026, 3],
+      boardKeys.playerProjectionsPrefix(2026, 3),
     ]);
   });
 
-  it("invalidates the player branches by prefix, since the fingerprint is not known here", () => {
-    const [, playersKey, projectionsKey] = keysForTable("roster_holdings", context);
+  it("leaves the static player directory alone, since its own key tracks the id set", () => {
+    // `boardKeys.players` carries a fingerprint of the held ids, so a roster change that alters
+    // the set already produces a different key and a fresh fetch; one that only moves a holding
+    // between teams leaves the directory correct. Refetching it here would be pure waste — it
+    // is the largest request on the board.
+    const keys = keysForTable("roster_holdings", context);
+    expect(keys.some((key) => key[1] === "players")).toBe(false);
+  });
+
+  it("invalidates the projections branch by prefix, since the fingerprint is not known here", () => {
+    const [, projectionsKey] = keysForTable("roster_holdings", context);
     const fingerprint = fingerprintIds(["4034", "6794"]);
     // A prefix of the concrete key is what invalidateQueries needs to reach every cache entry
-    // for the season regardless of which held-id set produced it.
-    expect(boardKeys.players(1, fingerprint)).toEqual([...playersKey, fingerprint]);
+    // for the week regardless of which held-id set produced it.
     expect(boardKeys.playerProjections(2026, 3, fingerprint)).toEqual([
       ...projectionsKey,
       fingerprint,
