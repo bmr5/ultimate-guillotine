@@ -119,8 +119,20 @@ describe("keysForTable", () => {
     ]);
   });
 
-  it("maps an nfl_state change to the whole board, since the week may have moved", () => {
-    expect(keysForTable("nfl_state", context)).toEqual([boardKeys.all]);
+  it("maps an nfl_state change to the nfl_state query alone", () => {
+    // The heartbeat rewrites this row every few minutes without changing the season or the
+    // week, so invalidating the whole board here refetched every query — the id-fingerprinted
+    // player directory included — for nothing. A real rollover re-keys the dependent queries
+    // by itself, since they are keyed on the season id, the season and the week.
+    expect(keysForTable("nfl_state", context)).toEqual([boardKeys.nflState()]);
+    expect(keysForTable("nfl_state", context)).not.toContainEqual(boardKeys.all);
+  });
+
+  it("still falls back to the whole board for an nfl_state event before the context resolves", () => {
+    // The first nfl_state row is what resolves the context, so there is no narrower key yet.
+    expect(
+      keysForTable("nfl_state", { seasonId: null, season: null, week: null }),
+    ).toEqual([boardKeys.all]);
   });
 
   it("falls back to the whole board when the context is not resolved yet", () => {

@@ -142,7 +142,9 @@ describe("useLeagueBoardRealtime", () => {
       table: "team_week_projections",
       expected: [boardKeys.teamWeekProjections(1, 3)],
     },
-    { table: "nfl_state", expected: [boardKeys.all] },
+    // The heartbeat rewrites nfl_state without moving the week, so this stays on its own key;
+    // a real rollover re-keys every dependent query by itself.
+    { table: "nfl_state", expected: [boardKeys.nflState()] },
   ];
 
   it.each(TABLE_CASES)(

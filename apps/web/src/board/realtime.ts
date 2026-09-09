@@ -62,8 +62,19 @@ export function keysForTable(
   context: RealtimeContext,
 ): readonly BoardQueryKey[] {
   const { seasonId, season, week } = context;
-  if (table === "nfl_state" || seasonId === null || season === null || week === null) {
+  if (seasonId === null || season === null || week === null) {
+    // Nothing below is keyable yet: without a season and a week there is no narrower key to
+    // name, so an event on an unresolved board refetches the whole thing.
     return [boardKeys.all];
+  }
+  if (table === "nfl_state") {
+    // Only the nfl_state query itself. A rollover moves the season or the week, and every
+    // dependent query is keyed on one or both — teams, state and holdings on the season id,
+    // the projections on the season and week — so the new values are a different cache key
+    // and a fresh fetch on their own. Invalidating `boardKeys.all` here instead made the
+    // ten-minute nfl_state heartbeat refetch every board query, id-fingerprinted player
+    // directory included, for a row that had not changed.
+    return [boardKeys.nflState()];
   }
   if (table === "team_season_state") {
     // An elimination flips is_eliminated here and writes the final_rosters snapshot in the
