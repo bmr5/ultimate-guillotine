@@ -47,3 +47,10 @@ def test_trade_settings_defaults() -> None:
     assert settings.trade_extraction_model == "openai/gpt-5-mini"
     assert settings.sleeper_players_ttl_hours == 24
     assert settings.openrouter_api_key is None
+
+
+def test_openrouter_key_treats_blank_as_unset() -> None:
+    assert Settings(**BASE).openrouter_key() is None
+    assert Settings(**BASE, openrouter_api_key="").openrouter_key() is None
+    assert Settings(**BASE, openrouter_api_key="  ").openrouter_key() is None
+    assert Settings(**BASE, openrouter_api_key=" sk-test ").openrouter_key() == "sk-test"

@@ -146,8 +146,10 @@ def cmd_retry(args: argparse.Namespace) -> int:
         RunRepository(conn),
         sleeper_client=SleeperClient(httpx.Client()),
     )
-    print(f"retry: {registrar.handle(msg, retry=True)}")
-    return 0
+    status = registrar.handle(msg, retry=True)
+    print(f"retry: {status}")
+    # A failed retry has to be visible to whatever re-ran it, not just printed.
+    return 1 if status == "failed" else 0
 
 
 def cmd_replay(args: argparse.Namespace) -> int:

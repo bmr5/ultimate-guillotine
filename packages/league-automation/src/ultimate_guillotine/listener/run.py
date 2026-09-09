@@ -113,7 +113,8 @@ def _check_db(connection_factory: Callable[[], psycopg.Connection]) -> bool:
 def _register_trade_registrar(settings: Settings, conn, delivery, notifier, registry) -> None:
     """Register the Trade Registrar, or say once why it is not running.
 
-    Without an OpenRouter key the registrar cannot extract anything, so the
+    Without an OpenRouter key -- unset or blank, which `openrouter_key`
+    treats alike -- the registrar cannot extract anything, so the
     listener starts without it rather than failing every alert one at a time.
     That is a configuration problem someone has to fix, so it is announced in
     ops at startup -- once, here, and never again per message.
@@ -124,15 +125,12 @@ def _register_trade_registrar(settings: Settings, conn, delivery, notifier, regi
     repository is wrapped, so a reservation is durable before the model is
     called and a redelivered webhook cannot start a second extraction.
     """
-    if settings.openrouter_api_key is None:
+    key = settings.openrouter_key()
+    if key is None:
         log.warning("trade registrar disabled: no OpenRouter key configured")
         notifier.ops("Trade Registrar disabled: OPENROUTER_API_KEY not set")
         return
-    ai = StructuredOutputClient(
-        settings.openrouter_api_key.get_secret_value(),
-        settings.trade_extraction_model,
-        httpx.Client(),
-    )
+    ai = StructuredOutputClient(key, settings.trade_extraction_model, httpx.Client())
     registrar = TradeRegistrar(
         settings,
         conn,

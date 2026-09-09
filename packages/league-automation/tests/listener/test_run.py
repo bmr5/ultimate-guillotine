@@ -303,3 +303,16 @@ def test_build_processor_announces_the_registrar_is_disabled_exactly_once() -> N
 
     assert "trade-registrar" not in _registry_names(processor)
     assert notifier.ops_sent == ["Trade Registrar disabled: OPENROUTER_API_KEY not set"]
+
+
+def test_build_processor_treats_a_blank_key_as_no_key() -> None:
+    """`OPENROUTER_API_KEY=` in a `.env` is not a configured key: it must disable
+    the registrar rather than reach OpenRouter unauthenticated."""
+    notifier = RecordingNotifier()
+
+    processor, _allowed = run_module.build_processor(
+        _settings(openrouter_api_key=""), EmptyConnection(), None, None, notifier
+    )
+
+    assert "trade-registrar" not in _registry_names(processor)
+    assert notifier.ops_sent == ["Trade Registrar disabled: OPENROUTER_API_KEY not set"]

@@ -33,6 +33,18 @@ class Settings(BaseSettings):
     trade_extraction_model: str = "openai/gpt-5-mini"
     sleeper_players_ttl_hours: int = 24
 
+    def openrouter_key(self) -> str | None:
+        """The OpenRouter key, or `None` when it is unset, blank, or whitespace.
+
+        `OPENROUTER_API_KEY=` in a `.env` is not a configured key, but pydantic
+        turns it into `SecretStr("")`, which an `is None` check waves through --
+        and the first request then leaves the machine unauthenticated. Blank
+        means absent, and every caller asks this one question instead.
+        """
+        if self.openrouter_api_key is None:
+            return None
+        return self.openrouter_api_key.get_secret_value().strip() or None
+
     @model_validator(mode="after")
     def validate_delivery_target(self) -> "Settings":
         if self.delivery_mode is DeliveryMode.TEST and not self.test_chat_guid:

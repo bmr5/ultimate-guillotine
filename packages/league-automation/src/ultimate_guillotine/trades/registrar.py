@@ -17,6 +17,7 @@ exception finishes the run ``failed`` and alerts Hermes, but posts nothing to
 the league -- a half-understood trade is worse than no message at all.
 """
 
+import contextlib
 import hashlib
 import re
 from collections.abc import Callable
@@ -109,16 +110,39 @@ class TradeRegistrar:
         run_id = self._runs.reserve(AGENT, "webhook", key)
         if run_id is None:
             return "skipped"
+        # Make the reservation durable before the model is called: `ug trades
+        # retry` passes an unwrapped `RunRepository`, so without this commit a
+        # crash mid-extraction would roll the reservation away and a redelivery
+        # could start a second extraction of the same message.
+        self._commit()
         try:
             return self._process(run_id, msg)
         except Exception as exc:  # noqa: BLE001 - every failure is reported the same way
-            name = exc.__class__.__name__
-            self._runs.finish(run_id, "failed", error=name)
-            self._commit()
-            self._notifier.alerts(f"Trade Registrar failed on a candidate: {name}")
+            self._fail(run_id, exc.__class__.__name__)
             return "failed"
 
     # -- internals ------------------------------------------------------
+
+    def _fail(self, run_id: int, name: str) -> None:
+        """Report one failed candidate without letting the report itself fail.
+
+        The connection is not autocommit, so a statement that raised leaves the
+        transaction aborted: `finish` on that connection would raise
+        `InFailedSqlTransaction`, the exception would escape `handle`, the run
+        would be stranded in `running`, and nobody would be alerted. So roll
+        back first, then finish and alert under their own suppressions -- a dead
+        connection must still produce an alert, and a dead Hermes must still
+        leave the run marked `failed`.
+        """
+        if self._conn is not None:
+            with contextlib.suppress(Exception):
+                self._conn.rollback()
+        with contextlib.suppress(Exception):
+            self._runs.finish(run_id, "failed", error=name)
+        with contextlib.suppress(Exception):
+            self._notifier.alerts(f"Trade Registrar failed on a candidate: {name}")
+        with contextlib.suppress(Exception):
+            self._commit()
 
     def _process(self, run_id: int, msg: InboundMessage) -> str:
         rescinded = self._rescind_by_code(run_id, msg)

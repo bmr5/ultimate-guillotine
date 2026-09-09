@@ -47,15 +47,13 @@ def build_ai(deps: Deps) -> StructuredOutputClient:
 
     A missing key is a configuration problem, not a runtime failure: exiting
     with a plain message beats a traceback from inside the HTTP client, and the
-    key itself is never echoed.
+    key itself is never echoed. A blank key counts as missing -- otherwise the
+    command sends one unauthenticated request before finding that out.
     """
-    if deps.settings.openrouter_api_key is None:
+    key = deps.settings.openrouter_key()
+    if key is None:
         raise SystemExit("OPENROUTER_API_KEY is not set")
-    return StructuredOutputClient(
-        deps.settings.openrouter_api_key.get_secret_value(),
-        deps.settings.trade_extraction_model,
-        httpx.Client(),
-    )
+    return StructuredOutputClient(key, deps.settings.trade_extraction_model, httpx.Client())
 
 
 def build_delivery(deps: Deps, crash_after_send: bool = False) -> DeliveryService:

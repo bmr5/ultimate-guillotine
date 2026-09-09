@@ -105,12 +105,70 @@ class FakePlayers:
         return [Player("p1", "Player Alpha", "WR", "KC", True)]
 
 
-def build(ai, trades=None, delivery=None):
+class FakeConn:
+    """A connection that records its transaction calls in a shared journal."""
+
+    def __init__(self, journal):
+        self.journal = journal
+
+    def commit(self):
+        self.journal.append("commit")
+
+    def rollback(self):
+        self.journal.append("rollback")
+
+
+class JournalRuns(FakeRuns):
+    """FakeRuns that notes each finish in the same journal as the connection,
+    so a test can assert what happened before what."""
+
+    def __init__(self, journal):
+        super().__init__()
+        self.journal = journal
+
+    def finish(self, run_id, status, output_hash=None, error=None, input_version=None):
+        self.journal.append("finish")
+        super().finish(run_id, status, output_hash, error, input_version)
+
+
+class ExplodingMembers:
+    """A repository that fails the way a dropped connection would."""
+
+    def all_members(self):
+        raise RuntimeError("connection is dead")
+
+
+class ExplodingSleeper:
+    def get_rosters(self, league_id):
+        raise TimeoutError("sleeper is down")
+
+
+class ContextTrades(FakeTrades):
+    """Trades whose context lookup names an already-logged trade."""
+
+    def find_by_context(self, key):
+        return 7
+
+    def find_by_id(self, trade_id):
+        return {"trade_code": "T-2026-002"}
+
+
+class RefusingTrades(FakeTrades):
+    """Trades that carry no such code, as `rescind` reports with False."""
+
+    def rescind(self, code, source_guid, occurred_at):
+        self.rescinded.append(code)
+        return False
+
+
+def build(ai, trades=None, delivery=None, conn=None, members=None, runs=None, sleeper=None):
     settings = Settings(database_url="postgresql://x:y@example.invalid/db", delivery_mode="test",
                         test_chat_guid=CHAT, _env_file=None)
-    runs, notifier = FakeRuns(), FakeNotifier()
-    reg = TradeRegistrar(settings, None, ai, delivery or FakeDelivery(), notifier, FakeMembers(), FakePlayers(),
-                         trades or FakeTrades(), runs, clock=lambda: datetime(2026, 9, 10, tzinfo=UTC))
+    runs, notifier = runs or FakeRuns(), FakeNotifier()
+    reg = TradeRegistrar(settings, conn, ai, delivery or FakeDelivery(), notifier,
+                         members or FakeMembers(), FakePlayers(),
+                         trades or FakeTrades(), runs, sleeper_client=sleeper,
+                         clock=lambda: datetime(2026, 9, 10, tzinfo=UTC))
     return reg, runs, notifier
 
 
@@ -193,3 +251,49 @@ def test_trigger_matches_alerts_and_ignores_signed_bot_text() -> None:
     assert trigger.matches(msg("🚨 Member01 sends Player Alpha to Member02"))
     assert not trigger.matches(msg("🚨 Trade T-2026-001 logged\nMember02 receives: Player Alpha\n— 🤖 Guillotine Bot", from_me=True))
     assert not trigger.matches(msg("no alert here"))
+
+
+def test_a_failure_rolls_back_before_finishing_the_run() -> None:
+    """The connection is not autocommit, so the failed statement left the
+    transaction aborted: without a rollback first, `finish` itself raises and the
+    run is stranded in `running` with nobody alerted."""
+    journal, delivery = [], FakeDelivery()
+    runs = JournalRuns(journal)
+    reg, _, notifier = build(FakeAI(good_extraction()), delivery=delivery,
+                             conn=FakeConn(journal), members=ExplodingMembers(), runs=runs)
+    assert reg.handle(msg("🚨 Member01 sends Player Alpha to Member02")) == "failed"
+    assert [f[1] for f in runs.finished] == ["failed"]
+    assert notifier.alerts_sent == ["Trade Registrar failed on a candidate: RuntimeError"]
+    assert delivery.sent == []
+    assert journal.index("rollback") < journal.index("finish")
+
+
+def test_an_uncoded_rescission_resolves_its_target_by_context() -> None:
+    delivery, trades = FakeDelivery(), ContextTrades()
+    rescission = good_extraction().model_copy(update={"kind": "rescission"})
+    reg, runs, _ = build(FakeAI(rescission), trades=trades, delivery=delivery)
+    assert reg.handle(msg("🚨 that Player Alpha deal is off")) == "rescinded"
+    assert trades.rescinded == ["T-2026-002"]
+    assert delivery.sent[0][1] == "🚨 Trade T-2026-002 rescinded"
+    assert runs.finished[0][1] == "succeeded"
+
+
+def test_rescinding_a_code_with_no_trade_asks_instead_of_claiming_it_happened() -> None:
+    delivery, trades = FakeDelivery(), RefusingTrades()
+    reg, runs, _ = build(FakeAI(error=AssertionError("model must not be called")),
+                         trades=trades, delivery=delivery)
+    assert reg.handle(msg("🚨 Trade T-2026-009 is rescinded")) == "clarification"
+    assert trades.rescinded == ["T-2026-009"]
+    assert "T-2026-009" in delivery.sent[0][1]
+    assert runs.finished[0][1] == "succeeded"
+
+
+def test_a_sleeper_outage_degrades_to_an_empty_roster_index() -> None:
+    """Roster evidence only disambiguates duplicate names: losing it must not stop
+    a trade being logged."""
+    delivery = FakeDelivery()
+    reg, runs, notifier = build(FakeAI(good_extraction()), delivery=delivery,
+                                conn=FakeConn([]), sleeper=ExplodingSleeper())
+    assert reg.handle(msg("🚨 Member01 sends Player Alpha to Member02 for 450 FAAB")) == "created"
+    assert notifier.ops_sent == ["Trade Registrar could not load rosters: TimeoutError"]
+    assert runs.finished[0][1] == "succeeded"
