@@ -1,12 +1,22 @@
-import { createBrowserRouter, RouteObject } from "react-router-dom";
+import { createBrowserRouter, redirect, RouteObject } from "react-router-dom";
 
+import { BoardPage } from "@/app/board/BoardPage";
 import ErrorPage from "@/app/error-page";
 import App from "@/app/layout";
 
-import { HistoryPage } from "./app/history/HistoryPage";
-import HomePage from "./app/home/HomePage";
-import { RostersPage } from "./app/rosters/RostersPage";
-import { RulesPage } from "./app/rules/RulesPage";
+/**
+ * Ben's decision 1: the board is the home page. Everything else is a redirect onto it.
+ *
+ * The redirects are route loaders rather than a `<Navigate>` component, for two reasons: a
+ * loader runs before anything renders, so a shared link never paints a page it is about to
+ * leave; and defining a redirect component in this file would trip
+ * `react-refresh/only-export-components`, since the file also exports the router itself.
+ */
+function redirectHome(request: Request): Response {
+  // The board was reviewed at `/board` and members have shared `/board?sort=faab` links, so the
+  // query string rides along and the sort they shared survives the hop.
+  return redirect(`/${new URL(request.url).search}`);
+}
 
 export const router = createBrowserRouter([
   {
@@ -16,19 +26,15 @@ export const router = createBrowserRouter([
     children: [
       {
         path: "",
-        element: <HomePage />,
+        element: <BoardPage />,
       },
       {
-        path: "rosters",
-        element: <RostersPage />,
+        path: "board",
+        loader: ({ request }) => redirectHome(request),
       },
       {
-        path: "rules",
-        element: <RulesPage />,
-      },
-      {
-        path: "history",
-        element: <HistoryPage />,
+        path: "*",
+        loader: () => redirect("/"),
       },
     ],
   },
