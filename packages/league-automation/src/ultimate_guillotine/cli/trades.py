@@ -4,14 +4,21 @@
 the send, so a prompt or resolution change can be checked against a real
 announcement without touching the league. ``retry`` is the opposite -- it
 re-runs a candidate for real, from the excerpt already recorded for it.
+``replay`` is ``extract`` in bulk: a whole season of announcements out of the
+contracts spreadsheet, so a prompt change can be measured against real history.
 """
 
 import argparse
-from datetime import UTC, datetime
+import hashlib
+from collections.abc import Callable, Iterable
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import httpx
+import openpyxl
 
 from ultimate_guillotine.cli.deps import build_ai, build_delivery, build_deps
+from ultimate_guillotine.config import DeliveryMode
 from ultimate_guillotine.data.repositories import (
     MemberAliasRepository,
     RunRepository,
@@ -20,7 +27,9 @@ from ultimate_guillotine.data.repositories import (
 from ultimate_guillotine.messages.bluebubbles import InboundMessage
 from ultimate_guillotine.sleeper.client import SleeperClient
 from ultimate_guillotine.sleeper.players import PlayerRepository
+from ultimate_guillotine.trades.detect import ALERT, is_trade_candidate
 from ultimate_guillotine.trades.extract import PROMPT_VERSION, extract_trade
+from ultimate_guillotine.trades.models import TradeProposal
 from ultimate_guillotine.trades.registrar import TradeRegistrar
 from ultimate_guillotine.trades.repository import TradeRepository
 from ultimate_guillotine.trades.resolve import (
@@ -30,6 +39,22 @@ from ultimate_guillotine.trades.resolve import (
     resolve_extracted,
     validate,
 )
+
+#: What the model called a joke rather than a trade. A sentinel rather than a
+#: reason string so callers compare identity instead of matching prose.
+NOT_A_TRADE = Unresolved("not a trade")
+
+#: Column layout of `history/contracts/<season>/all-contracts.xlsx`:
+#: `Date, Week, Terms, Parties...`, with each extra column holding one party.
+WEEK_COLUMN = 1
+TERMS_COLUMN = 2
+
+#: The season the 2025-26 contract sheet belongs to. The registrar takes its
+#: season from its clock, so replay hands it a clock inside that season rather
+#: than a season argument.
+REPLAY_SEASON = 2025
+REPLAY_CLOCK = datetime(REPLAY_SEASON, 12, 31, tzinfo=UTC)
+REPLAY_START = datetime(REPLAY_SEASON, 9, 1, tzinfo=UTC)
 
 
 def register(subparsers) -> None:
@@ -55,48 +80,84 @@ def register(subparsers) -> None:
     retry.add_argument("source_guid")
     retry.set_defaults(handler=cmd_retry)
 
-    replay = trades_sub.add_parser("replay", help="replay a season of trades from a spreadsheet")
-    replay.add_argument("xlsx")
-    replay.add_argument("--limit", type=int, default=None)
-    replay.add_argument("--dry-run", action="store_true")
+    replay = trades_sub.add_parser(
+        "replay",
+        help="replay a season of announcements from the contracts spreadsheet",
+    )
+    replay.add_argument("xlsx", help="path to all-contracts.xlsx")
+    replay.add_argument(
+        "--limit", type=int, default=None, help="stop after this many rows (default: all)"
+    )
+    replay.add_argument(
+        "--dry-run", action="store_true", help="resolve only; write nothing and send nothing"
+    )
     replay.set_defaults(handler=cmd_replay)
+
+
+def dry_run_pipeline(
+    ai,
+    text: str,
+    season: int,
+    members,
+    players,
+    rosters: RosterIndex,
+    source_guid: str = "dry-run",
+) -> TradeProposal | Unresolved:
+    """Extract, resolve, and validate one announcement without writing or sending.
+
+    Returns the resolved proposal, `NOT_A_TRADE` when the model read the text as
+    chatter, or the `Unresolved` that stopped resolution -- whose `reason` is the
+    question the registrar would have asked the chat. Nothing here touches the
+    database or the delivery service, which is what makes it safe to point at a
+    whole season of history.
+    """
+    member_names = [
+        f"{m.display_name}: {', '.join(m.aliases) or 'no known nicknames'}" for m in members
+    ]
+    extracted, usage = extract_trade(ai, text, season, None, member_names)
+    if extracted.kind == "not_a_trade":
+        return NOT_A_TRADE
+    try:
+        proposal = resolve_extracted(
+            extracted,
+            members,
+            players,
+            rosters,
+            season,
+            source_guid,
+            text[:2000],
+            PROMPT_VERSION,
+            usage.model,
+        )
+        validate(proposal)
+    except Unresolved as exc:
+        return exc
+    return proposal
 
 
 def cmd_extract(args: argparse.Namespace) -> int:
     """Print what the registrar would record, without recording or sending it."""
     deps = build_deps()
     conn = deps.conn
-    members = MemberAliasRepository(conn).all_members()
-    member_names = [
-        f"{m.display_name}: {', '.join(m.aliases) or 'no known nicknames'}" for m in members
-    ]
-    season = datetime.now(UTC).year
-    extracted, usage = extract_trade(build_ai(deps), args.text, season, None, member_names)
-    if extracted.kind == "not_a_trade":
-        print("not a trade")
-        return 0
     rosters = (
         build_roster_index(SleeperClient(httpx.Client()), conn, deps.settings.sleeper_league_id)
         if args.rosters
         else RosterIndex.empty()
     )
-    try:
-        proposal = resolve_extracted(
-            extracted,
-            members,
-            PlayerRepository(conn).all_active(),
-            rosters,
-            season,
-            "dry-run",
-            args.text[:2000],
-            PROMPT_VERSION,
-            usage.model,
-        )
-        validate(proposal)
-    except Unresolved as exc:
-        print(f"clarification: {exc.reason}")
-        return 0
-    print(proposal.model_dump_json(indent=2))
+    result = dry_run_pipeline(
+        build_ai(deps),
+        args.text,
+        datetime.now(UTC).year,
+        MemberAliasRepository(conn).all_members(),
+        PlayerRepository(conn).all_active(),
+        rosters,
+    )
+    if result is NOT_A_TRADE:
+        print("not a trade")
+    elif isinstance(result, Unresolved):
+        print(f"clarification: {result.reason}")
+    else:
+        print(result.model_dump_json(indent=2))
     return 0
 
 
@@ -152,6 +213,134 @@ def cmd_retry(args: argparse.Namespace) -> int:
     return 1 if status == "failed" else 0
 
 
-def cmd_replay(args: argparse.Namespace) -> int:
-    print("replay is implemented in Task 9")
+def load_replay_rows(path: str | Path) -> list[tuple[str, str, list[str]]]:
+    """Read `(week, alert text, parties)` out of a contracts spreadsheet.
+
+    The sheet is `Date, Week, Terms, Parties...`, one trade per row, with each
+    column after `Terms` holding one party name. Rows with an empty `Terms` cell
+    are spacers and are skipped. The `Terms` cell is the announcement without its
+    siren, so the siren is put back: detection keys on it, and replaying text the
+    trigger would never have seen would measure the wrong thing.
+    """
+    workbook = openpyxl.load_workbook(path, read_only=True, data_only=True)
+    try:
+        sheet = workbook[workbook.sheetnames[0]]
+        rows = []
+        for row in list(sheet.iter_rows(values_only=True))[1:]:
+            terms = _cell(row, TERMS_COLUMN)
+            if not terms:
+                continue
+            parties = [p for p in (_cell(row, i) for i in range(TERMS_COLUMN + 1, len(row))) if p]
+            rows.append((_cell(row, WEEK_COLUMN), f"{ALERT} {terms}", parties))
+        return rows
+    finally:
+        workbook.close()
+
+
+def _cell(row: tuple, index: int) -> str:
+    if index >= len(row) or row[index] is None:
+        return ""
+    return str(row[index]).strip()
+
+
+def replay_rows(
+    rows: Iterable[tuple[str, str, list[str]]], run_row: Callable[[str], str]
+) -> int:
+    """Print one outcome line per row and a closing summary; return an exit code.
+
+    Detection lives here rather than in `run_row` so both modes agree on what the
+    listener would even have looked at: a row the trigger would have ignored costs
+    no model call and is reported as `not-a-candidate`.
+    """
+    counts = {"created": 0, "duplicate": 0, "clarification": 0, "not-a-candidate": 0}
+    total = 0
+    for index, (_week, text, _parties) in enumerate(rows, start=1):
+        total = index
+        outcome = run_row(text) if is_trade_candidate(text) else "not-a-candidate"
+        print(f"row {index}: {outcome}")
+        # `clarification: <reason>` counts as a clarification; statuses outside
+        # the four the summary names (revised, rescinded, failed) show per row only.
+        head = outcome.split(":", 1)[0].strip()
+        if head in counts:
+            counts[head] += 1
+    print(
+        f"replay: {total} rows, created {counts['created']}, "
+        f"duplicate {counts['duplicate']}, clarification {counts['clarification']}, "
+        f"not-a-candidate {counts['not-a-candidate']}"
+    )
     return 0
+
+
+class _SilentDelivery:
+    """Stands in for the delivery service so a replay can never post to a chat.
+
+    Write mode exists to fill the tables from history, not to re-announce a season
+    of trades years late. Refusing to send is enforced here rather than by trusting
+    `DELIVERY_MODE`, so a mis-set mode cannot turn a replay into a broadcast.
+    """
+
+    def deliver(self, run_id, agent: str, content: str) -> None:
+        return None
+
+
+def cmd_replay(args: argparse.Namespace) -> int:
+    """Replay a season of announcements from the contracts spreadsheet.
+
+    `--dry-run` resolves only. Without it the registrar runs for real -- writes
+    included, sends never -- and only outside production: replaying history into
+    the live league would be indistinguishable from a flood of new trades.
+    """
+    rows = load_replay_rows(args.xlsx)
+    if args.limit is not None:
+        rows = rows[: args.limit]
+    deps = build_deps()
+    if not args.dry_run and deps.settings.delivery_mode is DeliveryMode.PRODUCTION:
+        print("replay refuses to write in production; unset DELIVERY_MODE or use --dry-run")
+        return 2
+    # Before the workbook is walked, so a missing key costs no HTTP call at all.
+    ai = build_ai(deps)
+    conn = deps.conn
+    if args.dry_run:
+        members = MemberAliasRepository(conn).all_members()
+        players = PlayerRepository(conn).all_active()
+
+        def run_row(text: str) -> str:
+            result = dry_run_pipeline(
+                ai, text, REPLAY_SEASON, members, players, RosterIndex.empty()
+            )
+            if result is NOT_A_TRADE:
+                return "not_a_trade"
+            if isinstance(result, Unresolved):
+                return f"clarification: {result.reason}"
+            return "created"
+
+        return replay_rows(rows, run_row)
+
+    registrar = TradeRegistrar(
+        deps.settings,
+        conn,
+        ai,
+        _SilentDelivery(),
+        deps.notifier,
+        MemberAliasRepository(conn),
+        PlayerRepository(conn),
+        TradeRepository(conn),
+        RunRepository(conn),
+        clock=lambda: REPLAY_CLOCK,
+    )
+    counter = iter(range(len(rows)))
+
+    def run_row(text: str) -> str:
+        digest = hashlib.sha256(text.encode()).hexdigest()[:16]
+        msg = InboundMessage(
+            guid=f"replay:{digest}",
+            chat_guid=deps.settings.test_chat_guid or "replay",
+            sender_address=None,
+            text=text,
+            is_from_me=False,
+            is_group=True,
+            sent_at=REPLAY_START + timedelta(days=next(counter)),
+        )
+        return registrar.handle(msg)
+
+    return replay_rows(rows, run_row)
