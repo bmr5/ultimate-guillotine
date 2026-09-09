@@ -25,6 +25,10 @@ class CatalogRow:
     confidence: str
     unresolved_parties: int
     loaded_at: datetime
+    # Where the trade came from: the analyst's catalog, or a trade registered through
+    # the league's own flow. The migration's check constraint holds the same two
+    # values, so a third one is refused by the database rather than published.
+    source: str = "catalog"
 
 
 @dataclass(frozen=True)

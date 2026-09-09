@@ -4,11 +4,18 @@ Both upsert on a natural key, so a rerun after Ben fixes an alias updates the ro
 in place rather than allocating a second one. `xmax = 0` is Postgres' own answer to
 "did this INSERT ... ON CONFLICT insert or update", which beats a prior SELECT.
 
-Each write runs inside its own savepoint so that a row the jsonb validators refuse
-rolls back alone: the loader keeps its connection and can carry on with the next
-row. The rejection is re-raised as `HistoryRowRejected`, which names the offending
-row by its natural key and the constraint that refused it -- never the text that
-tripped it, which is exactly the unvetted chat or workbook content the validators
+Writes run on the caller's connection and inside the caller's transaction, the same
+convention the other repositories in this package follow: the loader decides what a
+whole run means, and a half-loaded catalog is rolled back as one. A write attempted
+on a connection with no open transaction raises rather than committing on its own,
+because `conn.transaction()` on an idle connection opens *and commits* a real
+transaction -- the row would be published the moment it was written.
+
+Inside that transaction each write opens a savepoint, so a row the jsonb validators
+refuse rolls back alone: the loader keeps its connection and can carry on with the
+next row. The rejection is re-raised as `HistoryRowRejected`, which names the
+offending row by its natural key and the constraint that refused it -- never the text
+that tripped it, which is exactly the unvetted chat or workbook content the validators
 exist to keep out of Postgres and out of the logs.
 """
 
@@ -22,16 +29,32 @@ class HistoryRowRejected(RuntimeError):
     """A history row the database refused. Carries the natural key, not the payload."""
 
 
-def _rejected(label: str, exc: psycopg.errors.IntegrityError) -> HistoryRowRejected:
+def _rejected(label: str, exc: psycopg.Error) -> HistoryRowRejected:
     constraint = exc.diag.constraint_name or "an unnamed constraint"
     # `from None` at the raise site keeps psycopg's own message -- which quotes the
     # failing row in full -- out of the traceback.
     return HistoryRowRejected(f"{label} was refused by {constraint}")
 
 
+# A row the database refuses either as a constraint violation (the jsonb shapes, the
+# foreign keys) or as a value it cannot store at all (a count wider than int4). Both
+# are the loader's problem with one row, not a broken connection.
+_REFUSALS = (psycopg.errors.IntegrityError, psycopg.errors.DataError)
+
+
 class HistoryRepository:
     def __init__(self, conn: psycopg.Connection) -> None:
         self._conn = conn
+
+    def _require_caller_transaction(self) -> None:
+        """Refuse to write outside a transaction the caller opened.
+
+        `conn.transaction()` on an idle connection is a real transaction, not a
+        savepoint, and commits on the way out -- so a loader that forgot to open one
+        would publish each row as it was written and could not roll a bad run back.
+        """
+        if self._conn.info.transaction_status == psycopg.pq.TransactionStatus.IDLE:
+            raise RuntimeError("HistoryRepository writes require the caller's transaction")
 
     def season_id_for(self, year: int) -> int | None:
         """The public.seasons id for a year, or None for a season the league has no row for."""
@@ -41,15 +64,16 @@ class HistoryRepository:
         return row[0] if row else None
 
     def upsert_catalog(self, row: CatalogRow) -> str:
+        self._require_caller_transaction()
         try:
             with self._conn.transaction(), self._conn.cursor() as cur:
                 cur.execute(
                     """
                     insert into public.trade_catalog (
                         catalog_id, season, season_id, week, occurred_on, trade_type, structure,
-                        party_member_ids, party_count, assets, faab_total, confidence,
+                        party_member_ids, party_count, assets, faab_total, confidence, source,
                         unresolved_parties, loaded_at
-                    ) values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ) values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     on conflict (catalog_id) do update set
                         season = excluded.season,
                         season_id = excluded.season_id,
@@ -62,6 +86,7 @@ class HistoryRepository:
                         assets = excluded.assets,
                         faab_total = excluded.faab_total,
                         confidence = excluded.confidence,
+                        source = excluded.source,
                         unresolved_parties = excluded.unresolved_parties,
                         loaded_at = excluded.loaded_at
                     returning (xmax = 0)
@@ -69,16 +94,17 @@ class HistoryRepository:
                     (
                         row.catalog_id, row.season, row.season_id, row.week, row.occurred_on,
                         row.trade_type, row.structure, row.party_member_ids, row.party_count,
-                        Jsonb(row.assets), row.faab_total, row.confidence,
+                        Jsonb(row.assets), row.faab_total, row.confidence, row.source,
                         row.unresolved_parties, row.loaded_at,
                     ),
                 )
                 inserted = cur.fetchone()[0]
-        except psycopg.errors.IntegrityError as exc:
+        except _REFUSALS as exc:
             raise _rejected(f"trade_catalog row {row.catalog_id}", exc) from None
         return "inserted" if inserted else "updated"
 
     def upsert_season_result(self, row: SeasonResultRow) -> str:
+        self._require_caller_transaction()
         try:
             with self._conn.transaction(), self._conn.cursor() as cur:
                 cur.execute(
@@ -110,6 +136,6 @@ class HistoryRepository:
                     ),
                 )
                 inserted = cur.fetchone()[0]
-        except psycopg.errors.IntegrityError as exc:
+        except _REFUSALS as exc:
             raise _rejected(f"season_results row for season {row.season}", exc) from None
         return "inserted" if inserted else "updated"
