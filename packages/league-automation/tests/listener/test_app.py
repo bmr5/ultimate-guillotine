@@ -50,11 +50,16 @@ class FakeHeartbeats:
 
 
 def test_rejects_wrong_password() -> None:
-    client = TestClient(create_app(FakeProcessor(), FakeHeartbeats(), "secret"))
+    processor, beats = FakeProcessor(), FakeHeartbeats()
+    client = TestClient(create_app(processor, beats, "secret"))
     response = client.post(
         "/bluebubbles-webhook?password=nope", json=json.loads(FIXTURE.read_text())
     )
     assert response.status_code == 401
+    # Rejection happens before anything is read or written: an unauthenticated caller
+    # can neither drive a trigger nor fake a listener heartbeat.
+    assert processor.calls == []
+    assert beats.beats == 0
 
 
 def test_processes_new_message_and_beats() -> None:

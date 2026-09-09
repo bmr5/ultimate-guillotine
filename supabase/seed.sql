@@ -1,0 +1,3 @@
+-- Non-secret local development fixtures, referenced by db.seed.sql_paths in
+-- supabase/config.toml. Intentionally empty: the 2026 season row is seeded by the
+-- public schema migration, and nothing else in this project is safe to keep in Git.

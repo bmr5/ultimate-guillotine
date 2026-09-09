@@ -1,14 +1,29 @@
+"""`Settings` validation.
+
+Every construction here passes `_env_file=None`. `Settings` reads `.env` from the
+working directory by default, and both the repository root and the Mac mini have a
+real one, so without this the suite would silently validate the developer's live
+configuration instead of the values under test.
+"""
+
 import pytest
 from pydantic import ValidationError
 
 from ultimate_guillotine.config import DeliveryMode, Settings
 
-BASE = {"database_url": "postgresql://worker:secret@example.invalid/postgres"}
+BASE = {
+    "database_url": "postgresql://worker:secret@example.invalid/postgres",
+    "_env_file": None,
+}
 
 
 def test_production_requires_exact_target_identity() -> None:
     with pytest.raises(ValidationError):
-        Settings(**BASE, delivery_mode=DeliveryMode.PRODUCTION, test_chat_guid="iMessage;+;chat-test")
+        Settings(
+            **BASE,
+            delivery_mode=DeliveryMode.PRODUCTION,
+            test_chat_guid="iMessage;+;chat-test",
+        )
 
 
 def test_test_mode_requires_test_chat() -> None:
