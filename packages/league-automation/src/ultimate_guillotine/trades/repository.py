@@ -220,6 +220,10 @@ class TradeRepository:
             )
             trade_id = cur.fetchone()[0]
             revision = self._insert_revision(cur, trade_id, terms, fingerprint, proposal)
+            # The trade code is in the key as well as the fingerprint: a rescinded
+            # trade re-announced with identical terms repeats the fingerprint, and
+            # keying on that alone would let ``do nothing`` swallow the new trade's
+            # event. The code is unique per trade and stable across replays.
             cur.execute(
                 """
                 insert into public.league_events
@@ -231,7 +235,7 @@ class TradeRepository:
                     season_id,
                     proposal.effective_week,
                     Jsonb({"trade_code": trade_code, "revision": revision}),
-                    f"trade:{fingerprint}",
+                    f"trade:{trade_code}:{fingerprint}",
                 ),
             )
             return TradeAcceptance("created", trade_id, trade_code, revision, None)

@@ -99,6 +99,15 @@ def test_reannounced_rescinded_trade_gets_new_code(conn) -> None:
     assert again.trade_id != first.trade_id
     assert repo.find_by_code("T-2026-001")["status"] == "rescinded"
     assert repo.find_by_code("T-2026-002")["status"] == "accepted"
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            select payload->>'trade_code' from public.league_events
+            where event_type = 'trade'
+            order by payload->>'trade_code'
+            """
+        )
+        assert [row[0] for row in cur.fetchall()] == ["T-2026-001", "T-2026-002"]
 
 
 def test_list_recent_orders_newest_first_and_honours_limit(conn) -> None:
