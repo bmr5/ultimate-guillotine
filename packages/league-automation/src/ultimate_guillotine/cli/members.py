@@ -1,9 +1,11 @@
 """`ug members` subcommands: list, aliases load.
 
 Nicknames are the one piece of league knowledge the model cannot infer, and
-they are also personal: the alias file is git-ignored and nothing here ever
-prints an alias back out. The loader reports counts only, so a run of it can be
-pasted into ops without leaking who is called what.
+they are also personal: the alias file is git-ignored and nothing here prints an
+alias back out -- except the nickname, the first alias, which the league already
+publishes on the board as each owner's label. Every other alias stays in
+``private.member_aliases``, and the loader reports counts only, so a run of it
+can be pasted into ops without leaking who else is called what.
 """
 
 import argparse
@@ -32,7 +34,7 @@ def register(subparsers) -> None:
 def cmd_list(args: argparse.Namespace) -> int:
     deps = build_deps()
     for member in MemberAliasRepository(deps.conn).all_members():
-        print(f"{member.display_name}  {len(member.aliases)}")
+        print(f"{member.display_name}  {len(member.aliases)}  {member.nickname or '-'}")
     return 0
 
 
@@ -54,6 +56,10 @@ def cmd_aliases_load(args: argparse.Namespace) -> int:
     members = 0
     aliases = 0
     skipped = 0
+    # Only the members the file names are touched. Anyone absent keeps the
+    # aliases and the nickname they already have, by design: the file is the
+    # whole roster's alias list, so a full reload lists everyone, and a partial
+    # file is a deliberate edit to those members rather than a league-wide wipe.
     for entry in document.get("members", []):
         username = entry.get("sleeper_username", "")
         try:

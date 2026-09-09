@@ -130,10 +130,17 @@ class FakeConn:
 
 
 class SeasonCursor:
-    """A cursor whose only query is the current-season lookup."""
+    """A cursor that answers each query the registrar actually issues.
+
+    ``execute`` notes the SQL so ``fetchone`` can answer in kind: the season
+    lookup gets the year row, and ``build_roster_index``'s ``max(synced_at)``
+    probe gets ``(None,)`` -- no holdings rows for the season, which is the case
+    that still reaches Sleeper. ``fetchall`` is empty for the same reason.
+    """
 
     def __init__(self, row):
         self._row = row
+        self._sql = ""
 
     def __enter__(self):
         return self
@@ -142,10 +149,15 @@ class SeasonCursor:
         return False
 
     def execute(self, sql, params=None):
-        pass
+        self._sql = sql
 
     def fetchone(self):
-        return self._row
+        if "from public.seasons" in self._sql:
+            return self._row
+        return (None,)
+
+    def fetchall(self):
+        return []
 
 
 class SeasonConn(FakeConn):

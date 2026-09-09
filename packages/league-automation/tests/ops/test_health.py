@@ -1,7 +1,7 @@
 from datetime import UTC, datetime, timedelta
 
 from ultimate_guillotine.data.repositories import ExpectedRun
-from ultimate_guillotine.ops.health import check_health
+from ultimate_guillotine.ops.health import check_health, failing_agents, missed_runs
 
 NOW = datetime(2026, 9, 8, 12, 0, tzinfo=UTC)
 
@@ -15,12 +15,16 @@ class FakeBeats:
 
 
 class FakeRuns:
-    def __init__(self, last, stuck=()):
+    def __init__(self, last, stuck=(), finished=None):
         self._last = last
         self._stuck = list(stuck)
+        self._finished = finished or {}
 
     def last_started(self, agent):
         return self._last.get(agent)
+
+    def last_finished_status(self, agent):
+        return self._finished.get(agent)
 
     def stale_running(self, older_than, now):
         return self._stuck
@@ -96,3 +100,95 @@ def test_reports_runs_left_running() -> None:
         NOW, FakeBeats([]), runs, FakeExpected([]), FakeClient(True), FakeOutbound()
     )
     assert problems == ["runs stuck running > 15m: 2 (agent trade-registrar)"]
+
+
+def _projections_jobs(gaps=(90, 90, 90, 90)):
+    """The four cron rows that share the `projections-sync` agent on purpose."""
+    names = (
+        "guillotine-sleeper-projections",
+        "guillotine-sleeper-projections-monday",
+        "guillotine-sleeper-projections-sunday",
+        "guillotine-sleeper-projections-thursday",
+    )
+    return FakeExpected(
+        [
+            ExpectedRun(name, "projections-sync", gap, "*/5 * * * *")
+            for name, gap in zip(names, gaps, strict=True)
+        ]
+    )
+
+
+def test_four_cron_rows_sharing_one_agent_are_one_missed_line() -> None:
+    """The projections baseline and its three game-window bursts share an agent and
+    therefore a run history. One silence is one problem, not four."""
+    runs = FakeRuns({"projections-sync": NOW - timedelta(minutes=200)})
+
+    assert missed_runs(NOW, runs, _projections_jobs()) == [
+        "Expected job guillotine-sleeper-projections last ran 200 minutes ago (limit 90)"
+    ]
+
+
+def test_a_never_run_shared_agent_is_also_one_line() -> None:
+    assert missed_runs(NOW, FakeRuns({}), _projections_jobs()) == [
+        "Expected job guillotine-sleeper-projections has never run"
+    ]
+
+
+def test_the_line_quotes_the_tightest_budget_of_the_agents_jobs() -> None:
+    """The tightest gap is the deadline the silence broke first, so that is the one
+    the report has to be measured against -- a laxer sibling row must not hide it."""
+    jobs = _projections_jobs(gaps=(240, 240, 45, 240))
+    runs = FakeRuns({"projections-sync": NOW - timedelta(minutes=60)})
+
+    assert missed_runs(NOW, runs, jobs) == [
+        (
+            "Expected job guillotine-sleeper-projections-sunday last ran 60 minutes "
+            "ago (limit 45)"
+        )
+    ]
+
+
+def test_an_agent_inside_its_tightest_budget_is_not_reported() -> None:
+    runs = FakeRuns({"projections-sync": NOW - timedelta(minutes=20)})
+
+    assert missed_runs(NOW, runs, _projections_jobs()) == []
+
+
+def test_an_agent_whose_last_finished_run_failed_is_reported() -> None:
+    """A job that fires every five minutes and fails every five minutes keeps
+    `last_started` moving, so no gap budget is ever broken and `missed_runs` sees
+    a healthy agent. The standing status is what makes the outage visible."""
+    runs = FakeRuns(
+        {"projections-sync": NOW - timedelta(minutes=4)},
+        finished={"projections-sync": "failed"},
+    )
+
+    assert failing_agents(runs, _projections_jobs()) == [
+        "projections-sync: last run failed at 2026-09-08 11:56 UTC"
+    ]
+    assert check_health(
+        NOW, FakeBeats([]), runs, _projections_jobs(), FakeClient(True), FakeOutbound()
+    ) == ["projections-sync: last run failed at 2026-09-08 11:56 UTC"]
+
+
+def test_a_succeeding_or_never_finished_agent_is_not_reported() -> None:
+    fresh = {"projections-sync": NOW - timedelta(minutes=4)}
+
+    assert failing_agents(FakeRuns(fresh), _projections_jobs()) == []
+    assert failing_agents(
+        FakeRuns(fresh, finished={"projections-sync": "succeeded"}), _projections_jobs()
+    ) == []
+
+
+def test_four_cron_rows_sharing_one_agent_are_one_failure_line() -> None:
+    """The same reason `missed_runs` reports per agent: one thing is wrong once."""
+    runs = FakeRuns(
+        {"projections-sync": NOW - timedelta(minutes=4)},
+        finished={"projections-sync": "failed", "health": "failed"},
+    )
+
+    # `health` has no expected-runs row here, so it is not one of the scheduled
+    # jobs this check speaks for.
+    assert failing_agents(runs, _projections_jobs()) == [
+        "projections-sync: last run failed at 2026-09-08 11:56 UTC"
+    ]

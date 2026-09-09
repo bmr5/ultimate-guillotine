@@ -1,4 +1,5 @@
 import json
+from dataclasses import replace
 from pathlib import Path
 
 from ultimate_guillotine.sleeper.models import SleeperLeague, SleeperRoster, SleeperUser
@@ -33,14 +34,41 @@ class FakeSleeperClient:
         return self._rosters
 
 
+def _holdings_in_fixture() -> int:
+    """Every distinct player id the roster fixtures name, which is one holding each.
+
+    `classify_holdings` writes one row per id, whichever list it appeared in, and
+    skips Sleeper's `"0"` placeholder for an empty starter slot.
+    """
+    return sum(
+        len(
+            {
+                player_id
+                for key in ("starters", "players", "reserve", "taxi")
+                for player_id in (roster.get(key) or [])
+                if player_id and player_id != "0"
+            }
+        )
+        for roster in _load("rosters_2026.json")
+    )
+
+
 def test_sync_season_is_idempotent(conn) -> None:
     client = FakeSleeperClient()
 
-    first = sync_season(client, conn, year=2026, league_id=LEAGUE_ID)
-    assert first == SyncReport(members=18, teams=18)
+    expected_holdings = _holdings_in_fixture()
+    assert expected_holdings > 0, "the roster fixtures name no players"
 
+    first = sync_season(client, conn, year=2026, league_id=LEAGUE_ID)
+    assert first == SyncReport(
+        members=18, teams=18, holdings=expected_holdings, states=18, frozen=1
+    )
+
+    # The rows are idempotent, and `frozen` is honest about that rather than in
+    # spite of it: it counts the final-roster snapshots *this* run wrote, and the
+    # one eliminated team in the fixture was already frozen by the first pass.
     second = sync_season(client, conn, year=2026, league_id=LEAGUE_ID)
-    assert second == SyncReport(members=18, teams=18)
+    assert second == replace(first, frozen=0)
 
     with conn.cursor() as cur:
         cur.execute("select count(*) from public.members")

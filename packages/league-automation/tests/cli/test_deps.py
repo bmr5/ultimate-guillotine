@@ -1,20 +1,28 @@
-"""Tests for `cli.deps`'s `run_scheduled` and `build_deps`, using fakes (no database)."""
+"""Tests for `cli.deps`'s run helpers and `build_deps`, using fakes (no database)."""
 
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
 import pytest
 
 from ultimate_guillotine.ai.hermes import HermesStructuredClient
 from ultimate_guillotine.cli import deps as deps_module
-from ultimate_guillotine.cli.deps import Deps, build_ai, build_deps, run_scheduled
+from ultimate_guillotine.cli.deps import (
+    Deps,
+    build_ai,
+    build_deps,
+    run_scheduled,
+    run_scheduled_with_notes,
+)
 from ultimate_guillotine.config import Settings
 
 NOW = datetime(2026, 9, 8, 12, 0, tzinfo=UTC)
 
 
 class FakeConn:
-    def __init__(self, reserve_result: int | None) -> None:
+    def __init__(self, reserve_result: int | None, last_finished: str | None = None) -> None:
         self.reserve_result = reserve_result
+        self.last_finished = last_finished
         self.reserve_calls = 0
         self.reserve_args: list[tuple[str, str, str]] = []
         self.finish_calls: list[tuple[int, str, str | None]] = []
@@ -43,6 +51,9 @@ class FakeRunRepository:
         error: str | None = None,
     ) -> None:
         self._conn.finish_calls.append((run_id, status, error))
+
+    def last_finished_status(self, agent: str) -> str | None:
+        return self._conn.last_finished
 
 
 @pytest.fixture(autouse=True)
@@ -134,6 +145,107 @@ def test_run_scheduled_forwards_an_explicit_trigger_and_key() -> None:
     assert conn.reserve_args == [
         ("self-test", "cli", "self-test:20260908T120000123456")
     ]
+
+
+class FakeNotifier:
+    def __init__(self) -> None:
+        self.notes: list[str] = []
+
+    def ops(self, text: str) -> bool:
+        self.notes.append(text)
+        return True
+
+
+def _noted(conn: FakeConn, action, agent: str = "projections-sync"):
+    """Run `action` through the note-posting wrapper; return its code and the notes."""
+    notifier = FakeNotifier()
+    deps = SimpleNamespace(conn=conn, notifier=notifier)
+    return run_scheduled_with_notes(deps, agent, NOW, action), notifier.notes
+
+
+def test_a_first_failure_after_a_success_posts_one_note() -> None:
+    conn = FakeConn(reserve_result=7, last_finished="succeeded")
+
+    code, notes = _noted(conn, lambda run_id: 1)
+
+    assert code == 1
+    assert conn.finish_calls == [(7, "failed", None)]
+    assert notes == ["projections-sync: run failed at 2026-09-08 12:00 UTC"]
+
+
+def test_a_raising_action_posts_the_failure_note_and_reraises() -> None:
+    conn = FakeConn(reserve_result=7, last_finished="succeeded")
+
+    class BoomError(Exception):
+        pass
+
+    def action(run_id: int) -> int:
+        raise BoomError("kaboom")
+
+    with pytest.raises(BoomError):
+        _noted(conn, action)
+
+
+def test_a_second_failure_in_a_row_says_nothing() -> None:
+    conn = FakeConn(reserve_result=7, last_finished="failed")
+
+    code, notes = _noted(conn, lambda run_id: 1)
+
+    assert code == 1
+    assert notes == []
+
+
+def test_recovery_posts_one_note() -> None:
+    conn = FakeConn(reserve_result=7, last_finished="failed")
+
+    code, notes = _noted(conn, lambda run_id: 0)
+
+    assert code == 0
+    assert notes == ["projections-sync: recovered at 2026-09-08 12:00 UTC"]
+
+
+def test_a_deduplicated_run_is_not_a_success_and_not_a_failure() -> None:
+    """Two cron fires inside one minute reserve nothing the second time. Nothing
+    ran, so there is no status change to report -- and no failure to invent."""
+    conn = FakeConn(reserve_result=None, last_finished="failed")
+
+    code, notes = _noted(conn, lambda run_id: 0)
+
+    assert code == 0
+    assert notes == []
+    assert conn.finish_calls == []
+
+
+class BrokenNotifier:
+    """Discord is unreachable, and says so by raising."""
+
+    def ops(self, text: str) -> bool:
+        raise ConnectionError("discord is unreachable")
+
+
+def test_an_undeliverable_note_does_not_fail_a_run_that_worked() -> None:
+    """The note is a courtesy; the run's verdict is the fact. A Discord outage must
+    not turn a recovered run into a traceback out of the CLI."""
+    conn = FakeConn(reserve_result=7, last_finished="failed")
+    deps = SimpleNamespace(conn=conn, notifier=BrokenNotifier())
+
+    assert run_scheduled_with_notes(deps, "projections-sync", NOW, lambda run_id: 0) == 0
+    assert conn.finish_calls == [(7, "succeeded", None)]
+
+
+def test_an_undeliverable_note_does_not_mask_the_failure_it_was_about() -> None:
+    conn = FakeConn(reserve_result=7, last_finished="succeeded")
+    deps = SimpleNamespace(conn=conn, notifier=BrokenNotifier())
+
+    class BoomError(Exception):
+        pass
+
+    def action(run_id: int) -> int:
+        raise BoomError("kaboom")
+
+    with pytest.raises(BoomError):
+        run_scheduled_with_notes(deps, "projections-sync", NOW, action)
+    assert conn.finish_calls == [(7, "failed", "BoomError")]
 
 
 def _deps(**overrides) -> Deps:

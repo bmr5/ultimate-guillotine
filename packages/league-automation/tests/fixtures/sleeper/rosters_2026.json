@@ -2,21 +2,60 @@
   {
     "roster_id": 1,
     "owner_id": "user-01",
-    "players": ["4034", "6794"],
+    "starters": [
+      "4034",
+      "6794",
+      "0",
+      "9488",
+      "12517",
+      "0",
+      "7611",
+      "12713",
+      "SEA"
+    ],
+    "players": [
+      "4034",
+      "6794",
+      "9488",
+      "12517",
+      "7611",
+      "12713",
+      "SEA",
+      "4943",
+      "10881"
+    ],
+    "reserve": [
+      "10881"
+    ],
+    "taxi": [
+      "4943"
+    ],
     "settings": {
-      "wins": 0,
-      "losses": 0,
-      "ties": 0
-    }
+      "wins": 2,
+      "losses": 1,
+      "ties": 0,
+      "fpts": 312,
+      "fpts_decimal": 45,
+      "fpts_against": 289,
+      "fpts_against_decimal": 7,
+      "waiver_budget_used": 250
+    },
+    "metadata": {}
   },
   {
     "roster_id": 2,
     "owner_id": "user-02",
+    "starters": null,
     "players": null,
+    "reserve": null,
+    "taxi": null,
     "settings": {
       "wins": 0,
-      "losses": 0,
+      "losses": 3,
       "ties": 0
+    },
+    "metadata": {
+      "eliminated": "true"
     }
   },
   {

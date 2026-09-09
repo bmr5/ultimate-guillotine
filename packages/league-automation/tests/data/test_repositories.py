@@ -202,6 +202,22 @@ def test_stale_running_reports_runs_that_never_finished(conn) -> None:
     assert fresh is not None
 
 
+def test_last_finished_status_ignores_this_run_and_other_agents(conn) -> None:
+    """The transition notes ask "did the answer change?", so the run in flight --
+    still `running` -- must not be the answer, and neither must another agent's."""
+    runs = RunRepository(conn)
+    assert runs.last_finished_status("projections-sync") is None
+
+    runs.finish(runs.reserve("projections-sync", "cron", "proj:1"), "succeeded")
+    assert runs.last_finished_status("projections-sync") == "succeeded"
+
+    runs.finish(runs.reserve("projections-sync", "cron", "proj:2"), "failed")
+    runs.finish(runs.reserve("sleeper-sync", "cron", "sleeper:1"), "succeeded")
+    runs.reserve("projections-sync", "cron", "proj:3")  # the run asking the question
+    assert runs.last_finished_status("projections-sync") == "failed"
+    assert runs.last_finished_status("sleeper-sync") == "succeeded"
+
+
 def test_season_repository_reads_the_newest_season(conn) -> None:
     repo = SeasonRepository(conn)
     # Years past anything the local database is seeded with, so "newest" is ours.
@@ -270,3 +286,114 @@ def test_replace_aliases_leaves_the_old_rows_when_one_alias_is_taken(conn) -> No
 
     aliases = {m.display_name: m.aliases for m in repo.all_members()}
     assert aliases["Alias One"] == ("keeper",)
+
+
+def test_replace_aliases_skips_aliases_that_are_only_whitespace(conn) -> None:
+    """A blank line in the aliases file is not an alias. It would store a row
+    nothing can match on, and first in the list it would publish an empty string
+    as the member's public label."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "insert into public.members (display_name) values ('Blank One') returning id"
+        )
+        member_id = cur.fetchone()[0]
+    repo = MemberAliasRepository(conn)
+
+    assert repo.replace_aliases("Blank One", ["   ", "Real"]) == 1
+
+    member = next(m for m in repo.all_members() if m.member_id == member_id)
+    assert member.aliases == ("Real",)
+    assert member.nickname == "Real"
+
+
+def test_replace_aliases_of_nothing_but_whitespace_clears_the_nickname(conn) -> None:
+    with conn.cursor() as cur:
+        cur.execute(
+            "insert into public.members (display_name) values ('Blank Two') returning id"
+        )
+        member_id = cur.fetchone()[0]
+    repo = MemberAliasRepository(conn)
+
+    assert repo.replace_aliases("Blank Two", ["  "]) == 0
+
+    member = next(m for m in repo.all_members() if m.member_id == member_id)
+    assert member.aliases == ()
+    assert member.nickname is None
+
+
+def test_replace_aliases_publishes_the_first_alias_as_the_nickname(conn) -> None:
+    """The board and the Concierge label owners by nickname, so exactly one alias
+    becomes public. The rest stay in private.member_aliases, which anon cannot read."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "insert into public.members (display_name) values ('Nick One') returning id"
+        )
+        member_id = cur.fetchone()[0]
+    repo = MemberAliasRepository(conn)
+
+    repo.replace_aliases("Nick One", ["Benny", "The Hammer"])
+
+    with conn.cursor() as cur:
+        cur.execute("select nickname from public.members where id = %s", (member_id,))
+        assert cur.fetchone()[0] == "Benny"
+    member = next(m for m in repo.all_members() if m.member_id == member_id)
+    assert member.nickname == "Benny"
+
+
+def test_a_member_with_no_aliases_has_a_null_nickname(conn) -> None:
+    with conn.cursor() as cur:
+        cur.execute(
+            "insert into public.members (display_name) values ('Nick Two') returning id"
+        )
+        member_id = cur.fetchone()[0]
+    repo = MemberAliasRepository(conn)
+
+    repo.replace_aliases("Nick Two", ["Solo"])
+    repo.replace_aliases("Nick Two", [])
+
+    with conn.cursor() as cur:
+        cur.execute("select nickname from public.members where id = %s", (member_id,))
+        assert cur.fetchone()[0] is None
+    member = next(m for m in repo.all_members() if m.member_id == member_id)
+    assert member.nickname is None
+
+
+def test_a_rejected_alias_load_leaves_the_old_nickname_in_place(conn) -> None:
+    """The nickname write shares the savepoint with the alias rows: a load that
+    collides on somebody else's alias must not strand a member half-renamed."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "insert into public.members (display_name) values ('Nick Three'), ('Nick Four')"
+        )
+    repo = MemberAliasRepository(conn)
+    repo.replace_aliases("Nick Three", ["keeper"])
+    repo.replace_aliases("Nick Four", ["taken"])
+
+    with pytest.raises(ValueError, match="already belongs to another member"):
+        repo.replace_aliases("Nick Three", ["fresh", "taken"])
+
+    with conn.cursor() as cur:
+        cur.execute(
+            "select nickname from public.members where display_name = 'Nick Three'"
+        )
+        assert cur.fetchone()[0] == "keeper"
+
+
+def test_a_padded_alias_is_stored_and_published_trimmed(conn) -> None:
+    """The alias row and the nickname come from the same trimmed spelling, so the
+    private list and the public label can never disagree by a stray space."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "insert into public.members (display_name) values ('Nick Five') returning id"
+        )
+        member_id = cur.fetchone()[0]
+    repo = MemberAliasRepository(conn)
+
+    assert repo.replace_aliases("Nick Five", ["  Padded  ", "Second"]) == 2
+
+    with conn.cursor() as cur:
+        cur.execute("select nickname from public.members where id = %s", (member_id,))
+        assert cur.fetchone()[0] == "Padded"
+    member = next(m for m in repo.all_members() if m.member_id == member_id)
+    assert member.nickname == "Padded"
+    assert set(member.aliases) == {"Padded", "Second"}

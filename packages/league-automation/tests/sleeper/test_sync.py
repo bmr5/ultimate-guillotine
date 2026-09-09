@@ -66,6 +66,7 @@ class FakeSyncCursor:
     def __init__(self, season_row: tuple[int, int]) -> None:
         self._season_row = season_row
         self._next_member_id = 100
+        self._next_team_id = 200
         self._last_query = None
 
     def __enter__(self):
@@ -76,6 +77,10 @@ class FakeSyncCursor:
 
     def execute(self, sql: str, params=None):
         # Store the SQL query to determine what to return on fetchone().
+        self._last_query = sql
+
+    def executemany(self, sql: str, params_seq=()):
+        # The holdings upsert batches its rows; nothing here reads them back.
         self._last_query = sql
 
     def fetchone(self):
@@ -89,6 +94,12 @@ class FakeSyncCursor:
             result = (self._next_member_id,)
             self._next_member_id += 1
             return result
+        # The teams upsert returns the new team's id in the same statement.
+        if "insert into public.teams" in self._last_query:
+            result = (self._next_team_id,)
+            self._next_team_id += 1
+            return result
+        # Every other select (the stored elimination) finds nothing.
         return None
 
 

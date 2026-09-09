@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 from ultimate_guillotine.cli import members as members_cli
+from ultimate_guillotine.trades.models import MemberRef
 
 
 def test_members_help_lists_commands() -> None:
@@ -42,3 +43,33 @@ def test_aliases_load_exits_1_when_every_entry_was_skipped(
 
     assert exit_code == 1
     assert "aliases: 0 members, 0 aliases" in capsys.readouterr().out
+
+
+class FakeListRepo:
+    """One member with a nickname, one without."""
+
+    def __init__(self, conn) -> None:
+        pass
+
+    def all_members(self):
+        return [
+            MemberRef(1, "Member01", ("Benny", "The Hammer"), "Benny"),
+            MemberRef(2, "Member02", (), None),
+        ]
+
+
+def test_members_list_prints_the_nickname_and_no_other_alias(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The nickname is the label the board already shows, so printing it here is
+    fair game; every other alias stays private, and a member without one gets a
+    dash rather than a blank column."""
+    monkeypatch.setattr(members_cli, "build_deps", lambda: SimpleNamespace(conn=None))
+    monkeypatch.setattr(members_cli, "MemberAliasRepository", FakeListRepo)
+
+    assert members_cli.cmd_list(argparse.Namespace()) == 0
+
+    out = capsys.readouterr().out
+    assert "Member01  2  Benny" in out
+    assert "Member02  0  -" in out
+    assert "Hammer" not in out

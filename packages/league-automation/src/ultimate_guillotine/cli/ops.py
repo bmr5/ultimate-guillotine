@@ -27,7 +27,11 @@ from ultimate_guillotine.data.repositories import (
 from ultimate_guillotine.messages.bluebubbles import BlueBubblesClient
 from ultimate_guillotine.messages.delivery import DeliveryDisabled, TargetMismatch
 from ultimate_guillotine.messages.fingerprint import participant_fingerprint
-from ultimate_guillotine.ops.health import LISTENER_STALE_AFTER, check_health
+from ultimate_guillotine.ops.health import (
+    LISTENER_STALE_AFTER,
+    check_health,
+    missed_runs,
+)
 from ultimate_guillotine.ops.notify import HermesNotifier
 
 log = logging.getLogger(__name__)
@@ -142,19 +146,11 @@ def cmd_audit_runs(args: argparse.Namespace) -> int:
     now = datetime.now(UTC)
 
     def action(run_id: int) -> int:
-        expected = ExpectedRunRepository(conn)
-        runs = RunRepository(conn)
-        for job in expected.all():
-            last = runs.last_started(job.agent)
-            if last is None:
-                print(f"Missed: Expected job {job.job_name} has never run")
-                continue
-            age = int((now - last).total_seconds() // 60)
-            if age > job.max_gap_minutes:
-                print(
-                    f"Missed: Expected job {job.job_name} last ran {age} minutes ago "
-                    f"(limit {job.max_gap_minutes})"
-                )
+        # One line per agent, not per cron row: the four projections jobs share
+        # the `projections-sync` agent and its run history, so `missed_runs`
+        # collapses them into the single fact that the agent has gone quiet.
+        for problem in missed_runs(now, RunRepository(conn), ExpectedRunRepository(conn)):
+            print(f"Missed: {problem}")
         return 0
 
     return run_scheduled(conn, "run-audit", now, action)

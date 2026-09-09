@@ -133,6 +133,26 @@ class RunRepository:
             )
             return [(row[0], row[1]) for row in cur.fetchall()]
 
+    def last_finished_status(self, agent: str) -> str | None:
+        """The newest terminal status for ``agent``, ignoring runs still running.
+
+        This is the "before" the ops transition notes compare against, which is
+        why a ``running`` row is not an answer: the run asking the question is
+        itself still running, and it must not read its own reservation as the
+        previous verdict.
+        """
+        with self._conn.cursor() as cur:
+            cur.execute(
+                """
+                select status from private.agent_runs
+                where agent = %s and status in ('succeeded', 'failed')
+                order by id desc limit 1
+                """,
+                (agent,),
+            )
+            row = cur.fetchone()
+            return row[0] if row else None
+
     def last_started(self, agent: str) -> datetime | None:
         """Return the most recent ``started_at`` for the given agent, if any."""
         with self._conn.cursor() as cur:
@@ -487,15 +507,20 @@ class MemberAliasRepository:
             cur.execute(
                 """
                 select m.id, m.display_name,
-                    coalesce(array_agg(a.alias) filter (where a.alias is not null), '{}')
+                    coalesce(array_agg(a.alias) filter (where a.alias is not null), '{}'),
+                    m.nickname
                 from public.members m left join private.member_aliases a on a.member_id = m.id
-                group by m.id, m.display_name order by m.id
+                group by m.id, m.display_name, m.nickname order by m.id
                 """
             )
-            return [MemberRef(row[0], row[1], tuple(row[2])) for row in cur.fetchall()]
+            return [MemberRef(row[0], row[1], tuple(row[2]), row[3]) for row in cur.fetchall()]
 
     def replace_aliases(self, member_display_name: str, aliases: list[str]) -> int:
         """Replace a member's aliases wholesale, returning how many rows were written.
+
+        Also republishes ``public.members.nickname`` as the member's first alias --
+        the one label the board and the Concierge are allowed to show. Every other
+        alias stays in ``private.member_aliases``.
 
         Aliases that normalize alike (``Big Ben`` and ``big  ben!``) collapse to
         one row, so the count returned may be smaller than ``len(aliases)``.
@@ -507,9 +532,19 @@ class MemberAliasRepository:
         and the caller's transaction unusable.
         """
         # First spelling wins for each normalized form; later duplicates drop.
+        # Surrounding whitespace is stripped first so the stored alias row and
+        # the nickname published from it agree: ``normalize_name`` already
+        # strips, so a padded alias would otherwise store one spelling here and
+        # publish a differently padded one to ``public.members.nickname``.
+        # An entry that is nothing but whitespace is not an alias at all: it would
+        # store a blank row nobody can match on and, if it came first, publish an
+        # empty string as the member's public label.
         wanted: dict[str, str] = {}
         for alias in aliases:
-            wanted.setdefault(normalize_name(alias), alias)
+            trimmed = alias.strip()
+            if not trimmed:
+                continue
+            wanted.setdefault(normalize_name(trimmed), trimmed)
 
         with self._conn.transaction(), self._conn.cursor() as cur:
             cur.execute(
@@ -535,4 +570,14 @@ class MemberAliasRepository:
                     raise ValueError(
                         f"alias '{alias}' already belongs to another member"
                     ) from exc
+
+            # The first alias in the file's order is the public label. `wanted` is
+            # keyed by normalized form but preserves first-appearance order, so this
+            # is the member's first alias in its original spelling. An empty list
+            # clears the nickname: a member with no aliases has no public label, and
+            # consumers fall back to sleeper_display_name.
+            cur.execute(
+                "update public.members set nickname = %s where id = %s",
+                (next(iter(wanted.values()), None), member_id),
+            )
         return len(wanted)

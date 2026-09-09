@@ -1,5 +1,6 @@
 """Shared dependency construction and run-recording helper for `ug` subcommands."""
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
@@ -20,6 +21,9 @@ from ultimate_guillotine.data.repositories import (
 from ultimate_guillotine.messages.bluebubbles import BlueBubblesClient
 from ultimate_guillotine.messages.delivery import DeliveryService
 from ultimate_guillotine.ops.notify import HermesNotifier
+from ultimate_guillotine.ops.transitions import transition_note
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -78,6 +82,21 @@ def build_delivery(deps: Deps, crash_after_send: bool = False) -> DeliveryServic
     )
 
 
+def post_ops(notifier: HermesNotifier, text: str) -> None:
+    """Post one ops note, absorbing anything Discord or Hermes does in reply.
+
+    The note is a courtesy; the run's verdict is the fact. `HermesNotifier.send`
+    already swallows a failing `hermes` invocation, but locating the binary and
+    looking up the channel id happen outside that guard, and neither is a reason
+    to turn a run that did its job into a `failed` one. Only the exception class
+    is logged -- the note itself is right there in the caller.
+    """
+    try:
+        notifier.ops(text)
+    except Exception as exc:  # noqa: BLE001 - an undelivered note is not a failed run
+        log.warning("ops note not delivered: %s", exc.__class__.__name__)
+
+
 def run_scheduled(
     conn: psycopg.Connection,
     agent: str,
@@ -112,4 +131,43 @@ def run_scheduled(
         raise
     runs.finish(run_id, "succeeded" if exit_code == 0 else "failed")
     conn.commit()
+    return exit_code
+
+
+def run_scheduled_with_notes(
+    deps: Deps,
+    agent: str,
+    now: datetime,
+    action: Callable[[int], int],
+) -> int:
+    """`run_scheduled`, plus one Discord ops note when this agent's verdict changes.
+
+    Every scheduled Sleeper job wants the same thing: run, record, and say
+    something in `#guillotine-ops` only on the edges -- the first failure after a
+    success, and the recovery. Three copies of that wrapper would be three places
+    to get the edge cases wrong, so it lives here once.
+
+    The previous verdict is read *before* the run, from the newest finished run of
+    the same agent; `RunRepository.last_finished_status` ignores `running` rows, so
+    the reservation this call is about to make cannot be mistaken for it.
+
+    A `None` from `run_scheduled` is a deduplicated fire -- a second cron tick
+    inside the same minute. Nothing ran, so nothing changed: no note, and a zero
+    exit, because a duplicate is not a failure.
+    """
+    previous = RunRepository(deps.conn).last_finished_status(agent)
+
+    def note(status: str) -> None:
+        text = transition_note(agent, previous, status, now)
+        if text:
+            post_ops(deps.notifier, text)
+
+    try:
+        exit_code = run_scheduled(deps.conn, agent, now, action)
+    except Exception:
+        note("failed")
+        raise
+    if exit_code is None:
+        return 0
+    note("succeeded" if exit_code == 0 else "failed")
     return exit_code
