@@ -89,6 +89,11 @@ class TradeRepository:
 
         Returns ``False`` when no trade carries ``trade_code``. Re-rescinding
         from the same source message leaves the event log unchanged.
+
+        The rescinded trade's revisions give up their semantic fingerprints, so
+        the partial unique index no longer blocks the identical trade being
+        announced again: a re-announcement becomes a new trade with a new code
+        rather than a duplicate of the dead one.
         """
         with self._conn.transaction(), self._conn.cursor() as cur:
             cur.execute(
@@ -102,7 +107,14 @@ class TradeRepository:
             row = cur.fetchone()
             if row is None:
                 return False
-            season_id = row[1]
+            trade_id, season_id = row
+            cur.execute(
+                """
+                update public.trade_revisions set semantic_fingerprint = null
+                where trade_id = %s
+                """,
+                (trade_id,),
+            )
             cur.execute(
                 """
                 insert into public.league_events
@@ -163,6 +175,11 @@ class TradeRepository:
                 raise LookupError(f"No season row for {proposal.season}")
             season_id = row[0]
 
+            # Trade codes are allocated from a count, so two accepts in the same
+            # season must not overlap. The lock is held to the end of the
+            # transaction and serializes every accept in this season.
+            cur.execute("select pg_advisory_xact_lock(%s)", (season_id,))
+
             duplicate = self._duplicate(fingerprint, cur)
             if duplicate is not None:
                 return duplicate
@@ -184,7 +201,9 @@ class TradeRepository:
                     (current_revision_id,),
                 )
                 current = cur.fetchone()
-                previous_terms = current[0] if current else None
+                if current is None:
+                    raise RuntimeError(f"Trade {trade_code} has no current revision")
+                previous_terms = current[0]
                 revision = self._insert_revision(cur, trade_id, terms, fingerprint, proposal)
                 return TradeAcceptance("revised", trade_id, trade_code, revision, previous_terms)
 
@@ -206,6 +225,7 @@ class TradeRepository:
                 insert into public.league_events
                     (season_id, week, event_type, occurred_at, payload, idempotency_key)
                 values (%s, %s, 'trade', now(), %s, %s)
+                on conflict (idempotency_key) do nothing
                 """,
                 (
                     season_id,
@@ -259,7 +279,11 @@ class TradeRepository:
         fingerprint: str,
         cur: psycopg.Cursor | None = None,
     ) -> TradeAcceptance | None:
-        """Return the acceptance for an already-recorded fingerprint, if any."""
+        """Return the acceptance for an already-recorded fingerprint, if any.
+
+        Only live trades count: a rescinded trade's terms may be announced
+        again, and that is a new trade rather than a duplicate.
+        """
         if cur is None:
             with self._conn.cursor() as own_cur:
                 return self._duplicate(fingerprint, own_cur)
@@ -267,7 +291,7 @@ class TradeRepository:
             """
             select r.trade_id, t.trade_code, r.revision
             from public.trade_revisions r
-            join public.trades t on t.id = r.trade_id
+            join public.trades t on t.id = r.trade_id and t.status = 'accepted'
             where r.semantic_fingerprint = %s
             """,
             (fingerprint,),

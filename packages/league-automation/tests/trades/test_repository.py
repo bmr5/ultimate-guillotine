@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 
 import pytest
 
+from ultimate_guillotine.trades.fingerprint import trade_context_key
 from ultimate_guillotine.trades.models import TradeAsset, TradeParty, TradeProposal
 from ultimate_guillotine.trades.repository import TradeRepository
 
@@ -85,3 +86,70 @@ def test_accept_raises_without_season(conn) -> None:
     repo = TradeRepository(conn)
     with pytest.raises(LookupError, match="No season row for 1999"):
         repo.accept(make(conn, season=1999))
+
+
+def test_reannounced_rescinded_trade_gets_new_code(conn) -> None:
+    repo = TradeRepository(conn)
+    first = repo.accept(make(conn))
+    assert first.trade_code == "T-2026-001"
+    assert repo.rescind(first.trade_code, "g9", datetime.now(UTC)) is True
+    again = repo.accept(make(conn, source_message_guid="g2"))
+    assert again.status == "created"
+    assert again.trade_code == "T-2026-002"
+    assert again.trade_id != first.trade_id
+    assert repo.find_by_code("T-2026-001")["status"] == "rescinded"
+    assert repo.find_by_code("T-2026-002")["status"] == "accepted"
+
+
+def test_list_recent_orders_newest_first_and_honours_limit(conn) -> None:
+    repo = TradeRepository(conn)
+    other = make(conn)
+    first = repo.accept(other)
+    second = repo.accept(
+        make(
+            conn,
+            source_message_guid="g4",
+            assets=[
+                TradeAsset(
+                    "player", other.parties[0].member_id, other.parties[1].member_id,
+                    "p2", "Player Beta", None, None, None,
+                ),
+                other.assets[1],
+            ],
+        )
+    )
+    assert second.status == "created" and second.trade_code == "T-2026-002"
+    recent = repo.list_recent()
+    assert [row["trade_code"] for row in recent[:2]] == [second.trade_code, first.trade_code]
+    assert [row["trade_code"] for row in repo.list_recent(limit=1)] == [second.trade_code]
+
+
+def test_find_by_context_tracks_accepted_trades(conn) -> None:
+    repo = TradeRepository(conn)
+    proposal = make(conn)
+    created = repo.accept(proposal)
+    context = trade_context_key(proposal)
+    assert repo.find_by_context(context) == created.trade_id
+    assert repo.rescind(created.trade_code, "g9", datetime.now(UTC)) is True
+    assert repo.find_by_context(context) is None
+
+
+def test_accept_recovers_from_concurrent_fingerprint_insert(conn, monkeypatch) -> None:
+    repo = TradeRepository(conn)
+    first = repo.accept(make(conn))
+    real_duplicate = TradeRepository._duplicate
+    calls = {"n": 0}
+
+    def blind_first_lookup(self, fingerprint, cur=None):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return None
+        return real_duplicate(self, fingerprint, cur)
+
+    monkeypatch.setattr(TradeRepository, "_duplicate", blind_first_lookup)
+    again = repo.accept(make(conn, source_message_guid="g5"))
+    assert again.status == "duplicate"
+    assert again.trade_id == first.trade_id
+    assert again.trade_code == first.trade_code
+    # More than the one blinded lookup: the recovery branch re-read the row.
+    assert calls["n"] > 1
