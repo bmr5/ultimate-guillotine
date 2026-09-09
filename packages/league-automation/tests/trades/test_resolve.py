@@ -24,6 +24,7 @@ PLAYERS = [
     Player("p2", "Mike Williams", "WR", "NYJ", True),
     Player("p3", "Mike Williams", "WR", "PIT", True),
     Player("KC", "Kansas City Chiefs", "DEF", "KC", True),
+    Player("BUF", "Buffalo Bills", "DEF", "BUF", True),
 ]
 
 
@@ -131,6 +132,60 @@ def test_a_bare_suffix_matches_no_player() -> None:
 @pytest.mark.parametrize("name", ["Kansas City Chiefs", "KC D/ST", "KC DEF"])
 def test_defense_resolves_by_full_name_or_team_code(name: str) -> None:
     assert resolve(extracted(assets=[player_asset(name)])).assets[0].player_id == "KC"
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "Buffalo Bills defense",
+        "the Bills D/ST",
+        "Bills DEF",
+        "BUF",
+        "buffalo bills",
+        "the BUF D",
+        "Buffalo",
+    ],
+)
+def test_a_team_defense_resolves_however_it_was_typed(name: str) -> None:
+    """City, nickname, both, or the abbreviation -- all one row."""
+    assert resolve(extracted(assets=[player_asset(name)])).assets[0].player_id == "BUF"
+
+
+def test_a_city_two_clubs_share_names_no_defense() -> None:
+    """`the New York defense` names neither the Giants nor the Jets, so it asks."""
+    with pytest.raises(Unresolved) as info:
+        resolve(extracted(assets=[player_asset("the New York defense")]))
+    assert info.value.reason == "I can't find a player named the New York defense"
+
+
+WALKER = Player("p10", "Kenneth Walker III", "RB", "SEA", True)
+
+
+@pytest.mark.parametrize(
+    ("typed", "player_id"),
+    [
+        ("Marvin Harrison Jr.", "p9"),
+        ("Marvin Harrison", "p9"),
+        ("Kenneth Walker III", "p10"),
+        ("Kenneth Walker", "p10"),
+        ("Kenneth Walker Jr", "p10"),
+    ],
+)
+def test_a_generational_suffix_matches_with_or_without_it(typed: str, player_id: str) -> None:
+    """The directory and the chat rarely agree on the suffix; either spelling
+    has to find the one row."""
+    proposal = resolve_with([*PLAYERS, HARRISON, WALKER], extracted(assets=[player_asset(typed)]))
+    assert proposal.assets[0].player_id == player_id
+
+
+def test_an_exact_name_still_beats_a_suffix_insensitive_match() -> None:
+    """Suffix-blind matching runs only after an exact match has failed, so a
+    father and son both on file stay separate players."""
+    father = Player("p11", "Marvin Harrison", "WR", "IND", True)
+    proposal = resolve_with(
+        [*PLAYERS, HARRISON, father], extracted(assets=[player_asset("Marvin Harrison")])
+    )
+    assert proposal.assets[0].player_id == "p11"
 
 
 def test_unknown_player_name_is_unresolved() -> None:

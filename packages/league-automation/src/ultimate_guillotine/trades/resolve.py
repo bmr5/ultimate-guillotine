@@ -34,7 +34,44 @@ __all__ = [
     "validate",
 ]
 
-_DEFENSE_WORDS = {"defense", "def", "dst"}
+_DEFENSE_WORDS = {"defense", "defenses", "def", "dst", "d"}
+#: The NFL clubs, keyed by the abbreviation Sleeper files a ``DEF`` row under
+#: (``SEA``), each listing the words people type for it: city first, nickname
+#: second, then everyday alternates. `_build_defense_aliases` expands these.
+_NFL_TEAMS: dict[str, tuple[str, ...]] = {
+    "ARI": ("Arizona", "Cardinals"),
+    "ATL": ("Atlanta", "Falcons"),
+    "BAL": ("Baltimore", "Ravens"),
+    "BUF": ("Buffalo", "Bills"),
+    "CAR": ("Carolina", "Panthers"),
+    "CHI": ("Chicago", "Bears"),
+    "CIN": ("Cincinnati", "Bengals"),
+    "CLE": ("Cleveland", "Browns"),
+    "DAL": ("Dallas", "Cowboys"),
+    "DEN": ("Denver", "Broncos"),
+    "DET": ("Detroit", "Lions"),
+    "GB": ("Green Bay", "Packers", "GNB"),
+    "HOU": ("Houston", "Texans"),
+    "IND": ("Indianapolis", "Colts"),
+    "JAX": ("Jacksonville", "Jaguars", "JAC", "Jags"),
+    "KC": ("Kansas City", "Chiefs", "KAN"),
+    "LAC": ("Los Angeles", "Chargers"),
+    "LAR": ("Los Angeles", "Rams"),
+    "LV": ("Las Vegas", "Raiders", "LVR"),
+    "MIA": ("Miami", "Dolphins"),
+    "MIN": ("Minnesota", "Vikings"),
+    "NE": ("New England", "Patriots", "NWE", "Pats"),
+    "NO": ("New Orleans", "Saints", "NOR"),
+    "NYG": ("New York", "Giants"),
+    "NYJ": ("New York", "Jets"),
+    "PHI": ("Philadelphia", "Eagles"),
+    "PIT": ("Pittsburgh", "Steelers"),
+    "SEA": ("Seattle", "Seahawks"),
+    "SF": ("San Francisco", "49ers", "SFO", "Niners"),
+    "TB": ("Tampa Bay", "Buccaneers", "TAM", "Bucs"),
+    "TEN": ("Tennessee", "Titans"),
+    "WAS": ("Washington", "Commanders", "WSH"),
+}
 #: Asset kinds that carry a number, and are their own unit when none is given.
 _MONEY_KINDS = {"faab", "usd", "draft_dollars"}
 #: Asset kinds that are a term rather than a quantity, whatever number the
@@ -169,25 +206,73 @@ def _build_member_index(members: list[MemberRef]) -> dict[str, list[MemberRef]]:
     return index
 
 
+def _build_defense_aliases() -> dict[str, str]:
+    """Every spelling of a club that names its defense, mapped to its abbreviation.
+
+    A spelling two clubs share -- ``los angeles``, ``new york`` -- names neither
+    of them, so it is dropped and ``the New York D`` still asks the chat which.
+    """
+    aliases: dict[str, str] = {}
+    shared: set[str] = set()
+    for abbr, words in _NFL_TEAMS.items():
+        city, nickname = words[0], words[1]
+        keys = {normalize_name(abbr), normalize_name(f"{city} {nickname}")}
+        keys.update(normalize_name(word) for word in words)
+        for key in keys:
+            if aliases.setdefault(key, abbr) != abbr:
+                shared.add(key)
+    return {key: abbr for key, abbr in aliases.items() if key not in shared}
+
+
+#: Normalized team wording -> the abbreviation the ``DEF`` row is filed under.
+_DEFENSE_ALIASES = _build_defense_aliases()
+
+
 def _match_defense(norm: str, players: list[Player]) -> Player | None:
-    tokens = norm.split(" ")
-    if len(tokens) != 2 or tokens[1] not in _DEFENSE_WORDS:
+    """Resolve a team defense, however it was typed, to its ``DEF`` row.
+
+    ``Buffalo Bills defense``, ``the Bills D/ST``, ``Bills DEF`` and ``BUF`` all
+    name one row, and the directory files that row under the club's
+    abbreviation, so every spelling is reduced to the abbreviation before the
+    lookup. A leading ``the`` is ignored, and the defense word is optional --
+    half the league types the abbreviation on its own.
+    """
+    tokens = [t for t in norm.split(" ") if t]
+    if tokens and tokens[0] == "the":
+        tokens = tokens[1:]
+    if tokens and tokens[-1] in _DEFENSE_WORDS:
+        tokens = tokens[:-1]
+    abbr = _DEFENSE_ALIASES.get(" ".join(tokens))
+    if abbr is None:
         return None
-    team_code = tokens[0].upper()
-    matches = [p for p in players if p.position == "DEF" and (p.team or "").upper() == team_code]
+    matches = [
+        p
+        for p in players
+        if p.position == "DEF" and abbr in {(p.team or "").upper(), p.sleeper_player_id.upper()}
+    ]
     return matches[0] if len(matches) == 1 else None
+
+
+def _without_suffix(norm: str) -> str:
+    """An already-normalized name with its generational suffixes removed.
+
+    ``marvin harrison jr`` -> ``marvin harrison``; a name that is nothing but
+    suffixes (someone typing ``III``) is left empty and must match nobody.
+    """
+    tokens = [t for t in norm.split(" ") if t]
+    while tokens and tokens[-1] in _NAME_SUFFIXES:
+        tokens.pop()
+    return " ".join(tokens)
 
 
 def _last_name(norm: str) -> str | None:
     """The last name in an already-normalized name, ignoring generational suffixes.
 
     ``marvin harrison jr`` -> ``harrison``; a name that is nothing but suffixes
-    (someone typing ``III``) has no last name and must match nobody.
+    has no last name and must match nobody.
     """
-    tokens = [t for t in norm.split(" ") if t]
-    while tokens and tokens[-1] in _NAME_SUFFIXES:
-        tokens.pop()
-    return tokens[-1] if tokens else None
+    base = _without_suffix(norm)
+    return base.split(" ")[-1] if base else None
 
 
 def _money(kind: str, amount: int | None, unit: str | None) -> tuple[str, int | None, str | None]:
@@ -214,12 +299,21 @@ def _is_single_token(norm: str) -> bool:
 
     ``harrison`` and ``harrison jr`` are; ``justin jefferson`` is not.
     """
-    return len([t for t in norm.split(" ") if t and t not in _NAME_SUFFIXES]) == 1
+    return len(_without_suffix(norm).split()) == 1
 
 
 def _resolve_player(name: str, players: list[Player]) -> str:
     norm = normalize_name(name)
     exact = [p for p in players if normalize_name(p.full_name) == norm]
+    if not exact:
+        # A generational suffix is decoration the two sides rarely agree on:
+        # `Marvin Harrison Jr.` has to find a row filed as `Marvin Harrison`,
+        # and `Kenneth Walker` a row filed as `Kenneth Walker III`. Tried only
+        # after an exact match has failed, so a directory that spells the
+        # suffix out is still matched on its own terms first.
+        base = _without_suffix(norm)
+        if base:
+            exact = [p for p in players if _without_suffix(normalize_name(p.full_name)) == base]
     if not exact:
         defense = _match_defense(norm, players)
         if defense is not None:
