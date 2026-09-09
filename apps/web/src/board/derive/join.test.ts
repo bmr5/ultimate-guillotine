@@ -324,4 +324,209 @@ describe("joinBoardTeams", () => {
       lineupPosition: null,
     });
   });
+
+  it("accepts a numeric frozen player id and leaves an alphabetic one alone", () => {
+    const base = raw();
+    const [team] = joinBoardTeams({
+      ...base,
+      teamSeasonState: [
+        { ...base.teamSeasonState[0], is_eliminated: true, eliminated_week: 4 },
+      ],
+      finalRosters: [
+        {
+          team_id: 7,
+          eliminated_week: 4,
+          holdings: [
+            {
+              sleeper_player_id: 4046,
+              slot: "starter",
+              slot_index: 0,
+              lineup_position: "QB",
+            },
+            {
+              sleeper_player_id: "SEA",
+              slot: "starter",
+              slot_index: 1,
+              lineup_position: "DEF",
+            },
+            {
+              sleeper_player_id: Number.NaN,
+              slot: "bench",
+              slot_index: null,
+              lineup_position: null,
+            },
+          ] as unknown as FinalRosterHolding[],
+          frozen_at: "2026-10-01T05:00:00Z",
+        },
+      ],
+    });
+    // 4046 arrived as a number and still joins the player directory; SEA is a defence's
+    // alphabetic id and passes through untouched; a non-finite number has no usable id.
+    expect(team.roster.map((p) => p.sleeperPlayerId)).toEqual(["4046", "SEA"]);
+    expect(team.roster[0]).toMatchObject({
+      fullName: "Patrick Mahomes",
+      projectedPoints: 22.6,
+    });
+    expect(team.roster[1].fullName).toBe("Unknown player SEA");
+  });
+
+  it("falls back to live holdings when a snapshot narrows to no roster at all", () => {
+    const base = raw();
+    const eliminated = {
+      ...base,
+      teamSeasonState: [
+        { ...base.teamSeasonState[0], is_eliminated: true, eliminated_week: null },
+      ],
+    };
+
+    // Written empty.
+    const [emptySnapshot] = joinBoardTeams({
+      ...eliminated,
+      finalRosters: [
+        { team_id: 7, eliminated_week: 6, holdings: [], frozen_at: "2026-10-15T05:00:00Z" },
+      ],
+    });
+    expect(emptySnapshot.isRosterFrozen).toBe(false);
+    expect(emptySnapshot.roster.map((p) => p.sleeperPlayerId)).toEqual([
+      "4046",
+      "9999",
+    ]);
+    // The snapshot still supplies the elimination week the state row lacks.
+    expect(emptySnapshot.isEliminated).toBe(true);
+    expect(emptySnapshot.eliminatedWeek).toBe(6);
+
+    // Every entry unusable, which narrows to the same nothing.
+    const [malformedSnapshot] = joinBoardTeams({
+      ...eliminated,
+      finalRosters: [
+        {
+          team_id: 7,
+          eliminated_week: 6,
+          holdings: [null, { slot: "starter", slot_index: 0 }] as unknown as
+            FinalRosterHolding[],
+          frozen_at: "2026-10-15T05:00:00Z",
+        },
+      ],
+    });
+    expect(malformedSnapshot.isRosterFrozen).toBe(false);
+    expect(malformedSnapshot.roster.map((p) => p.sleeperPlayerId)).toEqual([
+      "4046",
+      "9999",
+    ]);
+    expect(malformedSnapshot.eliminatedWeek).toBe(6);
+  });
+
+  // Every test above drives a one-team board. This one drives three teams through a single call
+  // — one fully populated, one with no state, projection or holdings rows at all, and one
+  // eliminated onto a frozen snapshot — so a row landing on the wrong card shows up here.
+  it("joins three teams at once without leaking a row across cards", () => {
+    const base = raw();
+    const board = joinBoardTeams({
+      ...base,
+      teams: [
+        { id: 7, member_id: 3, sleeper_roster_id: 1, team_name: "The Choppers" },
+        { id: 8, member_id: 4, sleeper_roster_id: 2, team_name: "Fresh Meat" },
+        { id: 9, member_id: 5, sleeper_roster_id: 3, team_name: "Headless" },
+      ],
+      members: [
+        { id: 3, sleeper_display_name: "benray", nickname: "Ben" },
+        { id: 4, sleeper_display_name: "kayla", nickname: null },
+        { id: 5, sleeper_display_name: null, nickname: null },
+      ],
+      teamSeasonState: [
+        base.teamSeasonState[0],
+        {
+          ...base.teamSeasonState[0],
+          team_id: 9,
+          faab_remaining: 12,
+          wins: 0,
+          losses: 3,
+          points_for: 190.25,
+          is_eliminated: true,
+          eliminated_week: 4,
+          elimination_source: "sleeper_inferred",
+        },
+      ],
+      teamWeekProjections: [
+        base.teamWeekProjections[0],
+        { ...base.teamWeekProjections[0], team_id: 9, projected_points: 88.1 },
+      ],
+      rosterHoldings: [
+        ...base.rosterHoldings,
+        {
+          team_id: 9,
+          sleeper_player_id: "5000",
+          slot: "starter",
+          slot_index: 0,
+          lineup_position: "WR",
+        },
+      ],
+      players: [
+        ...base.players,
+        {
+          sleeper_player_id: "6794",
+          full_name: "Justin Jefferson",
+          position: "WR",
+          team: "MIN",
+        },
+      ],
+      finalRosters: [
+        {
+          team_id: 9,
+          eliminated_week: 4,
+          holdings: [
+            {
+              sleeper_player_id: "6794",
+              slot: "starter",
+              slot_index: 0,
+              lineup_position: "WR",
+            },
+          ],
+          frozen_at: "2026-10-01T05:00:00Z",
+        },
+      ],
+    });
+
+    expect(board.map((t) => t.teamId)).toEqual([7, 8, 9]);
+    const [populated, bare, eliminated] = board;
+
+    expect(populated.ownerName).toBe("Ben");
+    expect(populated.roster.map((p) => p.sleeperPlayerId)).toEqual(["4046", "9999"]);
+    expect(populated.pointsFor).toBe(301.5);
+    expect(populated.faabRemaining).toBe(75);
+    expect(populated.isRosterFrozen).toBe(false);
+
+    // No state row, no projection row, no holdings and no weekly results still gets a card.
+    expect(bare.ownerName).toBe("kayla");
+    expect(bare.teamName).toBe("Fresh Meat");
+    expect(bare.roster).toEqual([]);
+    expect(bare.pointsFor).toBe(0);
+    expect(bare.faabRemaining).toBeNull();
+    expect(bare.wins).toBe(0);
+    expect(bare.losses).toBe(0);
+    expect(bare.ties).toBe(0);
+    expect(bare.projectedPoints).toBeNull();
+    expect(bare.coveragePct).toBeNull();
+    expect(bare.isProvisional).toBe(true);
+    expect(bare.isEliminated).toBe(false);
+    expect(bare.isRosterFrozen).toBe(false);
+
+    expect(eliminated.ownerName).toBe("Unknown owner");
+    expect(eliminated.isEliminated).toBe(true);
+    expect(eliminated.eliminatedWeek).toBe(4);
+    expect(eliminated.projectedPoints).toBe(88.1);
+    expect(eliminated.isRosterFrozen).toBe(true);
+    expect(eliminated.roster.map((p) => p.sleeperPlayerId)).toEqual(["6794"]);
+
+    // No holding reached a card it does not belong to, and team 9's live holding stayed off
+    // the board entirely because its snapshot won.
+    expect(board.map((t) => t.roster.map((p) => p.sleeperPlayerId))).toEqual([
+      ["4046", "9999"],
+      [],
+      ["6794"],
+    ]);
+    expect(
+      board.flatMap((t) => t.roster.map((p) => p.sleeperPlayerId)),
+    ).not.toContain("5000");
+  });
 });

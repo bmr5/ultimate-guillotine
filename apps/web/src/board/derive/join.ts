@@ -2,6 +2,7 @@ import type {
   BoardTeam,
   FinalRosterHolding,
   RosterPlayer,
+  RosterSlot,
   TableRow,
 } from "../types";
 import { summarizeWeeklyResults, type WeeklyResultRow } from "./records";
@@ -30,13 +31,27 @@ export function resolveOwnerLabel(member: OwnerLabelSource | undefined): string 
   return "Unknown owner";
 }
 
+/**
+ * The eleven flat row sets the board reads, already scoped by the caller.
+ *
+ * **The caller must pass single-season, single-week rows.** Every join key here is a team id
+ * alone: `teamSeasonState`, `teamWeekProjections` and `finalRosters` are each keyed into a `Map`
+ * by `team_id`, and `season_id` / `week` are read but never matched on. So a `teamSeasonState`
+ * carrying two seasons, or a `teamWeekProjections` carrying two weeks, silently collapses to
+ * whichever row for that team came last in the array — not an error, just the wrong number on
+ * the card. The query layer (Task 8) filters by `season_id` and, for projections, by `week`
+ * before handing rows over; `weeklyResults` is the one exception, since points-for is an
+ * aggregate over a season's weeks and Task 3's `summarizeWeeklyResults` folds it.
+ */
 export interface BoardRawData {
   teams: Pick<
     TableRow<"teams">,
     "id" | "member_id" | "sleeper_roster_id" | "team_name"
   >[];
   members: Pick<TableRow<"members">, "id" | "sleeper_display_name" | "nickname">[];
+  /** One row per team, for one season. */
   teamSeasonState: TableRow<"team_season_state">[];
+  /** One row per team, for one season and one week. */
   teamWeekProjections: TableRow<"team_week_projections">[];
   rosterHoldings: Pick<
     TableRow<"roster_holdings">,
@@ -50,7 +65,9 @@ export interface BoardRawData {
     TableRow<"player_projections">,
     "sleeper_player_id" | "league_points"
   >[];
+  /** Every final week of the one season; `summarizeWeeklyResults` folds these per team. */
   weeklyResults: WeeklyResultRow[];
+  /** One row per eliminated team, for one season. */
   finalRosters: Pick<
     TableRow<"final_rosters">,
     "team_id" | "eliminated_week" | "holdings" | "frozen_at"
@@ -62,7 +79,10 @@ export interface BoardRawData {
  * the typed `Database` says so, but a snapshot is data at rest that some earlier build wrote, and
  * no `tsc` run over this build can vouch for it. So the shape is checked on the way in. An entry
  * with no usable player id is the only kind dropped — without an id there is nothing to render or
- * to look a player up by. Everything else degrades: an unranked `slot` is passed through for
+ * to look a player up by. A finite number is a usable id: Sleeper's own payloads carry numeric
+ * player ids and `JSON.stringify` of one round-trips as a number, so `4046` becomes `"4046"`
+ * rather than vanishing; a defence's alphabetic id such as `"SEA"` is already a string and
+ * passes through untouched. Everything else degrades: an unranked `slot` is passed through for
  * `orderRoster` to fold into the bench, and a non-numeric index or non-string lineup position
  * becomes null rather than reaching the card as a stray value.
  */
@@ -79,16 +99,25 @@ function narrowFrozenHoldings(
     if (typeof entry !== "object" || entry === null) {
       continue;
     }
-    const holding = entry as Partial<FinalRosterHolding>;
-    if (
-      typeof holding.sleeper_player_id !== "string" ||
-      holding.sleeper_player_id === ""
-    ) {
+    const holding = entry as Record<string, unknown>;
+
+    const rawId = holding.sleeper_player_id;
+    let sleeperPlayerId = "";
+    if (typeof rawId === "string") {
+      sleeperPlayerId = rawId;
+    } else if (typeof rawId === "number" && Number.isFinite(rawId)) {
+      sleeperPlayerId = String(rawId);
+    }
+    if (sleeperPlayerId === "") {
       continue;
     }
+
     narrowed.push({
-      sleeper_player_id: holding.sleeper_player_id,
-      slot: typeof holding.slot === "string" ? holding.slot : "bench",
+      sleeper_player_id: sleeperPlayerId,
+      slot:
+        typeof holding.slot === "string"
+          ? (holding.slot as RosterSlot)
+          : "bench",
       slot_index:
         typeof holding.slot_index === "number" ? holding.slot_index : null,
       lineup_position:
@@ -150,7 +179,16 @@ export function joinBoardTeams(raw: BoardRawData): BoardTeam[] {
     // elimination. Sleeper's live roster for an eliminated team is unreliable — players get
     // dropped out of it — so live holdings are ignored entirely once a snapshot exists.
     const isEliminated = state?.is_eliminated ?? false;
-    const frozen = isEliminated ? (finalRosterByTeamId.get(team.id) ?? null) : null;
+    const snapshot = isEliminated ? (finalRosterByTeamId.get(team.id) ?? null) : null;
+
+    // A snapshot that narrows to nothing — written empty, or entirely malformed — carries no
+    // roster to show, and an empty card is worse than a stale one. So the team falls back to its
+    // live holdings and reads as unfrozen, which is what the card's "frozen" affordance should
+    // say: what is on screen is not the snapshot. The snapshot's `eliminated_week` still counts,
+    // since that fact does not depend on the holdings surviving.
+    const frozenRoster =
+      snapshot === null ? [] : narrowFrozenHoldings(snapshot.holdings);
+    const isRosterFrozen = frozenRoster.length > 0;
 
     return {
       teamId: team.id,
@@ -168,13 +206,12 @@ export function joinBoardTeams(raw: BoardRawData): BoardTeam[] {
       ties: state?.ties ?? 0,
       pointsFor: state === null ? (summary?.pointsFor ?? 0) : state.points_for,
       isEliminated,
-      eliminatedWeek: state?.eliminated_week ?? frozen?.eliminated_week ?? null,
+      eliminatedWeek: state?.eliminated_week ?? snapshot?.eliminated_week ?? null,
       eliminationSource: state?.elimination_source ?? null,
-      isRosterFrozen: frozen !== null,
-      roster:
-        frozen === null
-          ? orderRoster(rosterByTeamId.get(team.id) ?? [])
-          : orderRoster(narrowFrozenHoldings(frozen.holdings).map(buildRosterPlayer)),
+      isRosterFrozen,
+      roster: isRosterFrozen
+        ? orderRoster(frozenRoster.map(buildRosterPlayer))
+        : orderRoster(rosterByTeamId.get(team.id) ?? []),
     };
   });
 }
