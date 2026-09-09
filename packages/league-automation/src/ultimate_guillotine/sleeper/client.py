@@ -13,6 +13,11 @@ import httpx
 from ultimate_guillotine.sleeper.models import SleeperLeague, SleeperRoster, SleeperUser
 
 BASE_URL = "https://api.sleeper.app/v1"
+
+#: Sleeper's projections live outside the versioned API, so this one call uses an
+#: absolute URL instead of the client's pinned ``base_url``. Verified 2026-09-09.
+PROJECTIONS_URL = "https://api.sleeper.app/projections/nfl/{season}/{week}"
+
 TIMEOUT = 10.0
 
 
@@ -73,3 +78,24 @@ class SleeperClient:
         response.raise_for_status()
         result: dict[str, dict[str, Any]] = response.json()
         return result
+
+    def get_projections(self, season: int, week: int) -> list[dict[str, Any]]:
+        """Fetch weekly player projections for ``season``/``week``.
+
+        The endpoint sits outside ``/v1`` and answers with a JSON array of one
+        object per player (roughly 9,400 rows, 5.6 MB), so it gets an absolute
+        URL and the same longer timeout the player dump uses. Redirects stay
+        disabled by the client's constructor.
+        """
+        response = self._http.get(
+            PROJECTIONS_URL.format(season=season, week=week),
+            params={"season_type": "regular"},
+            timeout=60.0,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, list):
+            # TRY004 asks for TypeError; a malformed payload is bad data, not a
+            # bad argument, and every caller in the data layer catches ValueError.
+            raise ValueError("sleeper projections payload is not a list")  # noqa: TRY004
+        return payload

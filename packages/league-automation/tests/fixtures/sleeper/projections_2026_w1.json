@@ -1,0 +1,100 @@
+[
+  {
+    "player_id": "4943", "team": "SEA", "opponent": "NE", "date": "2026-09-09",
+    "week": 1, "season": "2026", "season_type": "regular", "sport": "nfl",
+    "category": "proj", "company": "rotowire", "status": null,
+    "game_id": "202610130", "week_shard": "1_5",
+    "updated_at": 1788963030547, "last_modified": 1788963030547,
+    "player": {"first_name": "Sam", "last_name": "Darnold", "position": "QB", "team": "SEA"},
+    "stats": {
+      "adp_dd_ppr": 117.0, "cmp_pct": 63.77, "fum": 0.43, "fum_lost": 0.19, "gp": 1.0,
+      "pass_2pt": 0.1, "pass_att": 32.56, "pass_cmp": 20.76, "pass_int": 0.9,
+      "pass_td": 1.71, "pass_yd": 243.94, "pts_half_ppr": 17.11, "pts_ppr": 17.11,
+      "pts_std": 17.11, "rush_att": 2.92, "rush_td": 0.1, "rush_yd": 9.79
+    }
+  },
+  {
+    "player_id": "7611", "team": "NE", "opponent": "SEA", "date": "2026-09-09",
+    "week": 1, "season": "2026", "season_type": "regular", "sport": "nfl",
+    "category": "proj", "company": "rotowire", "status": null,
+    "game_id": "202610130", "week_shard": "1_5",
+    "updated_at": 1788963030551, "last_modified": 1788963030551,
+    "player": {"first_name": "Rhamondre", "last_name": "Stevenson", "position": "RB",
+               "team": "NE"},
+    "stats": {
+      "adp_dd_ppr": 20.0, "bonus_rec_rb": 2.94, "fum_lost": 0.07, "gp": 1.0, "rec": 2.94,
+      "rec_td": 0.12, "rec_yd": 20.57, "rush_att": 16.66, "rush_td": 0.59,
+      "rush_yd": 72.39, "pts_half_ppr": 14.96, "pts_ppr": 16.43, "pts_std": 13.49
+    }
+  },
+  {
+    "player_id": "9488", "team": "SEA", "opponent": "NE", "date": "2026-09-09",
+    "week": 1, "season": "2026", "season_type": "regular", "sport": "nfl",
+    "category": "proj", "company": "rotowire", "status": null,
+    "game_id": "202610130", "week_shard": "1_5",
+    "updated_at": 1788963030549, "last_modified": 1788963030549,
+    "player": {"first_name": "Jaxon", "last_name": "Smith-Njigba", "position": "WR",
+               "team": "SEA"},
+    "stats": {
+      "adp_dd_ppr": 7.0, "bonus_rec_wr": 6.83, "fum_lost": 0.03, "gp": 1.0, "rec": 6.83,
+      "rec_td": 0.53, "rec_yd": 94.17, "rush_yd": 1.85, "pts_half_ppr": 16.28,
+      "pts_ppr": 19.69, "pts_std": 12.86
+    }
+  },
+  {
+    "player_id": "12517", "team": "CHI", "opponent": "MIN", "date": "2026-09-13",
+    "week": 1, "season": "2026", "season_type": "regular", "sport": "nfl",
+    "category": "proj", "company": "rotowire", "status": null,
+    "game_id": "202610101", "week_shard": "1_1",
+    "updated_at": 1788963030553, "last_modified": 1788963030553,
+    "player": {"first_name": "Colston", "last_name": "Loveland", "position": "TE",
+               "team": "CHI"},
+    "stats": {
+      "adp_dd_ppr": 27.0, "bonus_rec_te": 5.1, "fum_lost": 0.02, "gp": 1.0, "rec": 5.1,
+      "rec_td": 0.46, "rec_yd": 62.78, "pts_half_ppr": 11.62, "pts_ppr": 14.17,
+      "pts_std": 9.07
+    }
+  },
+  {
+    "player_id": "12713", "team": "NE", "opponent": "SEA", "date": "2026-09-09",
+    "week": 1, "season": "2026", "season_type": "regular", "sport": "nfl",
+    "category": "proj", "company": "rotowire", "status": null,
+    "game_id": "202610130", "week_shard": "1_5",
+    "updated_at": 1788963030555, "last_modified": 1788963030555,
+    "player": {"first_name": "Andy", "last_name": "Borregales", "position": "K",
+               "team": "NE"},
+    "stats": {
+      "adp_dd_ppr": 999.0, "fga": 1.99, "fgm": 1.64, "fgm_0_19": 0.05, "fgm_20_29": 0.25,
+      "fgm_30_39": 0.45, "fgm_40_49": 0.4, "fgm_yds": 44.07, "gp": 1.0, "xpm": 2.4,
+      "pts_half_ppr": 6.1, "pts_ppr": 6.1, "pts_std": 6.1
+    }
+  },
+  {
+    "player_id": "SEA", "team": "SEA", "opponent": "NE", "date": "2026-09-09",
+    "week": 1, "season": "2026", "season_type": "regular", "sport": "nfl",
+    "category": "proj", "company": "rotowire", "status": null,
+    "game_id": "202610130", "week_shard": "1_5",
+    "updated_at": 1788963030557, "last_modified": 1788963030557,
+    "player": {"first_name": "Seattle", "last_name": "Seahawks", "position": "DEF",
+               "team": "SEA"},
+    "stats": {
+      "adp_dd_ppr": 999.0, "blk_kick": 0.05, "def_td": 0.21, "ff": 0.78, "fum_rec": 0.57,
+      "gp": 1.0, "int": 0.83, "pts_allow": 20.75, "pts_allow_14_20": 1.0, "sack": 2.45,
+      "safe": 0.05, "pts_half_ppr": 8.81, "pts_ppr": 8.81, "pts_std": 8.81
+    }
+  },
+  {
+    "player_id": "10881", "team": "NE", "opponent": "SEA", "date": "2026-09-09",
+    "week": 1, "season": "2026", "season_type": "regular", "sport": "nfl",
+    "category": "proj", "company": "rotowire", "status": null,
+    "game_id": "202610130", "week_shard": "1_5",
+    "updated_at": 1788963030535, "last_modified": 1788963030535,
+    "player": {"first_name": "Christian", "last_name": "Gonzalez", "position": "DB",
+               "team": "NE"},
+    "stats": {
+      "adp_dd_ppr": 999.0, "gp": 1.0, "idp_int": 0.11, "idp_tkl": 2.98,
+      "idp_tkl_ast": 0.49, "idp_tkl_solo": 2.5, "pts_half_ppr": 0.22, "pts_ppr": 0.22,
+      "pts_std": 0.22
+    }
+  }
+]
