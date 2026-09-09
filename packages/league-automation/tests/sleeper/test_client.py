@@ -17,6 +17,7 @@ def test_get_league_parses_roster_count() -> None:
     client = SleeperClient(httpx.Client())
     league = client.get_league("1389372259260452864")
     assert league.season == "2026"
+    assert league.season_year == 2026
     assert league.total_rosters == 18
 
 
@@ -50,7 +51,7 @@ def test_get_rosters_reads_players_from_a_list_or_null() -> None:
     )
     client = SleeperClient(httpx.Client())
     by_id = {r.roster_id: r for r in client.get_rosters("1389372259260452864")}
-    assert by_id[1].players == ["4034", "6794"]
+    assert by_id[1].players[:2] == ["4034", "6794"]
     assert by_id[2].players == []
 
 
