@@ -29,7 +29,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
-from ultimate_guillotine.ai.openrouter import AIUsage
+from ultimate_guillotine.ai.structured import AIUsage
 from ultimate_guillotine.cli.deps import build_ai, build_deps
 from ultimate_guillotine.data.repositories import MemberAliasRepository, SeasonRepository
 from ultimate_guillotine.sleeper.client import SleeperClient
