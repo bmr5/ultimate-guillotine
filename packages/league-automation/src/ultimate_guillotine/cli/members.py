@@ -32,7 +32,8 @@ def register(subparsers) -> None:
 def cmd_list(args: argparse.Namespace) -> int:
     deps = build_deps()
     for member in MemberAliasRepository(deps.conn).all_members():
-        print(f"{member.display_name}  {len(member.aliases)}")
+        flag = "nickname" if member.has_nickname else "-"
+        print(f"{member.display_name}  {len(member.aliases)}  {flag}")
     return 0
 
 

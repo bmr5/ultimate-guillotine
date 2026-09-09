@@ -506,16 +506,20 @@ class MemberAliasRepository:
         with self._conn.cursor() as cur:
             cur.execute(
                 """
-                select m.id, m.display_name,
+                select m.id, m.display_name, m.nickname is not null,
                     coalesce(array_agg(a.alias) filter (where a.alias is not null), '{}')
                 from public.members m left join private.member_aliases a on a.member_id = m.id
-                group by m.id, m.display_name order by m.id
+                group by m.id, m.display_name, m.nickname order by m.id
                 """
             )
-            return [MemberRef(row[0], row[1], tuple(row[2])) for row in cur.fetchall()]
+            return [MemberRef(row[0], row[1], tuple(row[3]), row[2]) for row in cur.fetchall()]
 
     def replace_aliases(self, member_display_name: str, aliases: list[str]) -> int:
         """Replace a member's aliases wholesale, returning how many rows were written.
+
+        Also republishes ``public.members.nickname`` as the member's first alias --
+        the one label the board and the Concierge are allowed to show. Every other
+        alias stays in ``private.member_aliases``.
 
         Aliases that normalize alike (``Big Ben`` and ``big  ben!``) collapse to
         one row, so the count returned may be smaller than ``len(aliases)``.
@@ -555,4 +559,14 @@ class MemberAliasRepository:
                     raise ValueError(
                         f"alias '{alias}' already belongs to another member"
                     ) from exc
+
+            # The first alias in the file's order is the public label. `wanted` is
+            # keyed by normalized form but preserves first-appearance order, so this
+            # is the member's first alias in its original spelling. An empty list
+            # clears the nickname: a member with no aliases has no public label, and
+            # consumers fall back to sleeper_display_name.
+            cur.execute(
+                "update public.members set nickname = %s where id = %s",
+                (next(iter(wanted.values()), None), member_id),
+            )
         return len(wanted)

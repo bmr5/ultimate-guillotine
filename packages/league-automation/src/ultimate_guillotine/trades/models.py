@@ -45,11 +45,16 @@ class MemberRef:
 
     Lives here rather than in ``trades.resolve`` so ``data.repositories`` can
     return one without importing the Sleeper HTTP client.
+
+    ``has_nickname`` says only whether ``public.members.nickname`` is set. The
+    value itself is deliberately absent: ``ug members list`` reports presence and
+    nothing else, and trade resolution matches on ``aliases``, never on this.
     """
 
     member_id: int
     display_name: str
     aliases: tuple[str, ...]
+    has_nickname: bool = False
 
 
 @dataclass(frozen=True)

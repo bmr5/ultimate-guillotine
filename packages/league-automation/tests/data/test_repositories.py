@@ -286,3 +286,61 @@ def test_replace_aliases_leaves_the_old_rows_when_one_alias_is_taken(conn) -> No
 
     aliases = {m.display_name: m.aliases for m in repo.all_members()}
     assert aliases["Alias One"] == ("keeper",)
+
+
+def test_replace_aliases_publishes_the_first_alias_as_the_nickname(conn) -> None:
+    """The board and the Concierge label owners by nickname, so exactly one alias
+    becomes public. The rest stay in private.member_aliases, which anon cannot read."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "insert into public.members (display_name) values ('Nick One') returning id"
+        )
+        member_id = cur.fetchone()[0]
+    repo = MemberAliasRepository(conn)
+
+    repo.replace_aliases("Nick One", ["Benny", "The Hammer"])
+
+    with conn.cursor() as cur:
+        cur.execute("select nickname from public.members where id = %s", (member_id,))
+        assert cur.fetchone()[0] == "Benny"
+    member = next(m for m in repo.all_members() if m.member_id == member_id)
+    assert member.has_nickname is True
+
+
+def test_a_member_with_no_aliases_has_a_null_nickname(conn) -> None:
+    with conn.cursor() as cur:
+        cur.execute(
+            "insert into public.members (display_name) values ('Nick Two') returning id"
+        )
+        member_id = cur.fetchone()[0]
+    repo = MemberAliasRepository(conn)
+
+    repo.replace_aliases("Nick Two", ["Solo"])
+    repo.replace_aliases("Nick Two", [])
+
+    with conn.cursor() as cur:
+        cur.execute("select nickname from public.members where id = %s", (member_id,))
+        assert cur.fetchone()[0] is None
+    member = next(m for m in repo.all_members() if m.member_id == member_id)
+    assert member.has_nickname is False
+
+
+def test_a_rejected_alias_load_leaves_the_old_nickname_in_place(conn) -> None:
+    """The nickname write shares the savepoint with the alias rows: a load that
+    collides on somebody else's alias must not strand a member half-renamed."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "insert into public.members (display_name) values ('Nick Three'), ('Nick Four')"
+        )
+    repo = MemberAliasRepository(conn)
+    repo.replace_aliases("Nick Three", ["keeper"])
+    repo.replace_aliases("Nick Four", ["taken"])
+
+    with pytest.raises(ValueError, match="already belongs to another member"):
+        repo.replace_aliases("Nick Three", ["fresh", "taken"])
+
+    with conn.cursor() as cur:
+        cur.execute(
+            "select nickname from public.members where display_name = 'Nick Three'"
+        )
+        assert cur.fetchone()[0] == "keeper"
