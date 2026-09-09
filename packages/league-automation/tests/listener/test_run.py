@@ -16,6 +16,7 @@ from typing import Self
 import psycopg
 import pytest
 
+from ultimate_guillotine.config import Settings
 from ultimate_guillotine.listener import run as run_module
 
 
@@ -223,3 +224,82 @@ def test_check_db_never_touches_a_connection_it_did_not_open() -> None:
     assert result is True
     assert request_conn.commits == 0
     assert request_conn.rollbacks == 0
+
+
+class EmptyCursor:
+    """A cursor whose every query comes back empty, as an unconfigured database would."""
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> bool:
+        return False
+
+    def execute(self, sql, params=None) -> None:
+        pass
+
+    def fetchone(self):
+        return None
+
+    def fetchall(self) -> list:
+        return []
+
+
+class EmptyConnection:
+    """A connection that answers `build_processor`'s target lookups with nothing."""
+
+    def cursor(self) -> EmptyCursor:
+        return EmptyCursor()
+
+    def commit(self) -> None:
+        pass
+
+    def rollback(self) -> None:
+        pass
+
+
+class RecordingNotifier:
+    """Records the ops notes `build_processor` posts at startup."""
+
+    def __init__(self) -> None:
+        self.ops_sent: list[str] = []
+
+    def ops(self, text: str) -> bool:
+        self.ops_sent.append(text)
+        return True
+
+
+def _settings(**overrides) -> Settings:
+    base = {
+        "database_url": "postgresql://x:y@example.invalid/db",
+        "delivery_mode": "test",
+        "test_chat_guid": "iMessage;+;chat-test",
+        "_env_file": None,
+    }
+    return Settings(**{**base, **overrides})
+
+
+def _registry_names(processor) -> list[str]:
+    return [t.name for t in processor._registry._triggers]
+
+
+def test_build_processor_registers_the_trade_registrar_when_the_key_is_set() -> None:
+    notifier = RecordingNotifier()
+
+    processor, _allowed = run_module.build_processor(
+        _settings(openrouter_api_key="sk-test"), EmptyConnection(), None, None, notifier
+    )
+
+    assert "trade-registrar" in _registry_names(processor)
+    assert notifier.ops_sent == []
+
+
+def test_build_processor_announces_the_registrar_is_disabled_exactly_once() -> None:
+    notifier = RecordingNotifier()
+
+    processor, _allowed = run_module.build_processor(
+        _settings(), EmptyConnection(), None, None, notifier
+    )
+
+    assert "trade-registrar" not in _registry_names(processor)
+    assert notifier.ops_sent == ["Trade Registrar disabled: OPENROUTER_API_KEY not set"]

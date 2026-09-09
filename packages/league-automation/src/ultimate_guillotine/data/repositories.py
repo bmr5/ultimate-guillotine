@@ -91,16 +91,24 @@ class RunRepository:
         status: str,
         output_hash: str | None = None,
         error: str | None = None,
+        input_version: str | None = None,
     ) -> None:
-        """Mark a run finished, recording its terminal status."""
+        """Mark a run finished, recording its terminal status.
+
+        ``input_version`` names what produced the run's output -- for the Trade
+        Registrar, the prompt version and the model that answered. It is how a
+        later regression is traced back to a prompt or model change; runs that
+        have no versioned input leave it null.
+        """
         with self._conn.cursor() as cur:
             cur.execute(
                 """
                 update private.agent_runs
-                set status = %s, output_hash = %s, error = %s, finished_at = now()
+                set status = %s, output_hash = %s, error = %s,
+                    input_version = coalesce(%s, input_version), finished_at = now()
                 where id = %s
                 """,
-                (status, output_hash, error, run_id),
+                (status, output_hash, error, input_version, run_id),
             )
 
     def last_started(self, agent: str) -> datetime | None:
@@ -306,6 +314,25 @@ class SourceMessageRepository:
                 ),
             )
             return cur.fetchone() is not None
+
+    def get(self, source_guid: str) -> SourceMessage | None:
+        """Return the recorded message with this GUID, or ``None``.
+
+        The raw chat GUID and sender address were never stored, so a message
+        rebuilt from this row carries hashes and an excerpt only -- enough to
+        re-run an agent over it, and nothing that identifies the chat.
+        """
+        with self._conn.cursor() as cur:
+            cur.execute(
+                """
+                select source_guid, chat_guid_hash, sender_hash, direction, sent_at,
+                       content_fingerprint, excerpt, trigger_name
+                from private.source_messages where source_guid = %s
+                """,
+                (source_guid,),
+            )
+            row = cur.fetchone()
+            return SourceMessage(*row) if row else None
 
     def latest_sent_at(self, chat_guid_hash: str) -> datetime | None:
         """Return the latest ``sent_at`` recorded for a given chat, if any."""

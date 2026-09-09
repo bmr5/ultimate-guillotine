@@ -13,12 +13,15 @@ import httpx
 import psycopg
 import uvicorn
 
+from ultimate_guillotine.ai.openrouter import StructuredOutputClient
 from ultimate_guillotine.config import DeliveryMode, Settings, load_settings
 from ultimate_guillotine.data.database import connect
 from ultimate_guillotine.data.repositories import (
     HeartbeatRepository,
+    MemberAliasRepository,
     OutboundRepository,
     ReceiptRepository,
+    RunRepository,
     SourceMessageRepository,
     TargetRepository,
 )
@@ -32,6 +35,10 @@ from ultimate_guillotine.listener.processing import (
 from ultimate_guillotine.messages.bluebubbles import BlueBubblesClient
 from ultimate_guillotine.messages.delivery import DeliveryService
 from ultimate_guillotine.ops.notify import HermesNotifier
+from ultimate_guillotine.sleeper.client import SleeperClient
+from ultimate_guillotine.sleeper.players import PlayerRepository
+from ultimate_guillotine.trades.registrar import TradeRegistrar, trade_trigger
+from ultimate_guillotine.trades.repository import TradeRepository
 
 log = logging.getLogger(__name__)
 
@@ -103,6 +110,44 @@ def _check_db(connection_factory: Callable[[], psycopg.Connection]) -> bool:
     return True
 
 
+def _register_trade_registrar(settings: Settings, conn, delivery, notifier, registry) -> None:
+    """Register the Trade Registrar, or say once why it is not running.
+
+    Without an OpenRouter key the registrar cannot extract anything, so the
+    listener starts without it rather than failing every alert one at a time.
+    That is a configuration problem someone has to fix, so it is announced in
+    ops at startup -- once, here, and never again per message.
+
+    The repositories are handed the listener's own connection: the registrar
+    commits after each step itself, so the trade, its revision, and the run all
+    land together rather than one commit per repository call. Only the run
+    repository is wrapped, so a reservation is durable before the model is
+    called and a redelivered webhook cannot start a second extraction.
+    """
+    if settings.openrouter_api_key is None:
+        log.warning("trade registrar disabled: no OpenRouter key configured")
+        notifier.ops("Trade Registrar disabled: OPENROUTER_API_KEY not set")
+        return
+    ai = StructuredOutputClient(
+        settings.openrouter_api_key.get_secret_value(),
+        settings.trade_extraction_model,
+        httpx.Client(),
+    )
+    registrar = TradeRegistrar(
+        settings,
+        conn,
+        ai,
+        delivery,
+        notifier,
+        MemberAliasRepository(conn),
+        PlayerRepository(conn),
+        TradeRepository(conn),
+        CommittingRepo(RunRepository(conn), conn),
+        sleeper_client=SleeperClient(httpx.Client()),
+    )
+    registry.register(trade_trigger(registrar))
+
+
 def build_processor(
     settings: Settings, conn, client, delivery, notifier
 ) -> tuple[InboundProcessor, set[str]]:
@@ -124,6 +169,7 @@ def build_processor(
     # Agents from later plans register their triggers here, next to ping_trigger.
     if settings.delivery_mode is DeliveryMode.TEST and settings.test_chat_guid:
         registry.register(ping_trigger(delivery, settings.test_chat_guid))
+    _register_trade_registrar(settings, conn, delivery, notifier, registry)
     processor = InboundProcessor(
         allowed,
         registry,

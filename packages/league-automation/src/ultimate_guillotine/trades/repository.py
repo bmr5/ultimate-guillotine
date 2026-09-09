@@ -138,6 +138,17 @@ class TradeRepository:
             row = cur.fetchone()
             return _trade_row(row) if row else None
 
+    def find_by_id(self, trade_id: int) -> dict | None:
+        """Return the trade with this id and its current terms, or ``None``.
+
+        ``find_by_context`` answers with an id; a rescission that named no code
+        needs the code itself to rescind and to say which trade it killed.
+        """
+        with self._conn.cursor() as cur:
+            cur.execute(f"{_TRADE_SELECT} where t.id = %s", (trade_id,))
+            row = cur.fetchone()
+            return _trade_row(row) if row else None
+
     def find_by_context(self, context_key: str) -> int | None:
         """Return the id of the accepted trade with this context key, if any."""
         with self._conn.cursor() as cur:
