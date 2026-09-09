@@ -175,3 +175,41 @@ def test_non_message_events_are_acknowledged() -> None:
     )
     assert response.json() == {"outcome": "ignored_event"}
     assert processor.calls == []
+
+
+class OverlapDetectingProcessor:
+    """Records whether two `process` calls ever run at the same time."""
+
+    def __init__(self):
+        self.active = 0
+        self.max_active = 0
+        self.lock = threading.Lock()
+
+    def process(self, msg, event_id):
+        with self.lock:
+            self.active += 1
+            self.max_active = max(self.max_active, self.active)
+        threading.Event().wait(0.05)
+        with self.lock:
+            self.active -= 1
+        return "no_trigger"
+
+
+def test_overlapping_webhooks_never_process_concurrently() -> None:
+    """Every repository shares one psycopg connection and `CommittingRepo` commits
+    the whole connection per call, so work may leave the event loop but must stay
+    single-flight: overlapping deliveries are serialized, never interleaved."""
+    processor = OverlapDetectingProcessor()
+    client = TestClient(create_app(processor, FakeHeartbeats(), "secret"))
+    payload = json.loads(FIXTURE.read_text())
+
+    def post() -> None:
+        client.post("/bluebubbles-webhook?password=secret", json=payload)
+
+    threads = [threading.Thread(target=post) for _ in range(6)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert processor.max_active == 1

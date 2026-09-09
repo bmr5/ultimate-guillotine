@@ -1,6 +1,7 @@
 import logging
 import os
 import secrets
+import threading
 from collections.abc import Callable
 from typing import NoReturn
 
@@ -37,6 +38,17 @@ def create_app(
     reach Supabase" rather than only "this process is still answering HTTP".
     """
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+    # Every repository the processor touches shares one psycopg connection, and
+    # `CommittingRepo` commits or rolls back that whole connection per call. Work runs
+    # off the event loop so /healthz stays responsive, but it must stay single-flight:
+    # two overlapping webhooks on one connection would interleave commits and defeat
+    # the registrar's step-by-step commit boundaries.
+    single_flight = threading.Lock()
+
+    def process_serialized(msg, event_id: str) -> str:
+        with single_flight:
+            heartbeats.beat("listener")
+            return processor.process(msg, event_id)
 
     @app.get("/healthz")
     def healthz() -> dict:
@@ -55,15 +67,16 @@ def create_app(
             raise HTTPException(status_code=401)
         payload = await request.json()
         try:
-            heartbeats.beat("listener")
             msg = parse_webhook(payload)
             if msg is None:
+                with single_flight:
+                    heartbeats.beat("listener")
                 return {"outcome": "ignored_event"}
             # `process` is entirely blocking -- a database round trip and, for a
             # trade candidate, a Hermes subprocess that can take the better part of a
             # minute. Running it on the event loop would stop this worker answering
             # anything at all, /healthz included, for that whole time.
-            return {"outcome": await run_in_threadpool(processor.process, msg, msg.guid)}
+            return {"outcome": await run_in_threadpool(process_serialized, msg, msg.guid)}
         except psycopg.OperationalError as exc:
             _die_on_lost_connection(exc)
 
