@@ -1,4 +1,4 @@
 #!/bin/bash
 set -euo pipefail
 cd "__REPO__"
-exec /opt/homebrew/bin/uv run --project packages/league-automation ug sleeper sync
+exec /opt/homebrew/bin/uv run --project packages/league-automation ug sleeper sync --quiet

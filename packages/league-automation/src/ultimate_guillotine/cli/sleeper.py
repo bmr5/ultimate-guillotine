@@ -17,6 +17,11 @@ def register(subparsers) -> None:
     sleeper_sub = parser.add_subparsers(dest="command", required=True)
 
     sync_parser = sleeper_sub.add_parser("sync", help="sync members and teams from Sleeper")
+    sync_parser.add_argument(
+        "--quiet",
+        action="store_true",
+        help="print nothing on success so a scheduled run delivers only failures",
+    )
     sync_parser.set_defaults(handler=cmd_sync)
 
 
@@ -29,7 +34,8 @@ def cmd_sync(args: argparse.Namespace) -> int:
         report = sync_season(
             SleeperClient(httpx.Client()), conn, SYNC_YEAR, deps.settings.sleeper_league_id
         )
-        print(f"sleeper sync: {report.members} members, {report.teams} teams")
+        if not args.quiet:
+            print(f"sleeper sync: {report.members} members, {report.teams} teams")
         return 0
 
     return run_scheduled(conn, "sleeper-sync", now, action)
