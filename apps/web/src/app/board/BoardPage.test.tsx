@@ -64,6 +64,7 @@ const player = (
   slotIndex: 0,
   lineupPosition: "QB",
   projectedPoints: 22.5,
+  injuryStatus: null,
   ...over,
 });
 

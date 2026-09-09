@@ -260,6 +260,7 @@ describe("useBoardData", () => {
         full_name: "Josh Allen",
         position: "QB",
         team: "BUF",
+        injury_status: null,
       },
     ]);
     const { result, queryClient } = renderBoardData();
@@ -300,12 +301,14 @@ describe("useBoardData", () => {
         full_name: "Josh Allen",
         position: "QB",
         team: "BUF",
+        injury_status: null,
       },
       {
         sleeper_player_id: "9999",
         full_name: "Puka Nacua",
         position: "WR",
         team: "LAR",
+        injury_status: null,
       },
     ]);
     await waitFor(() => {

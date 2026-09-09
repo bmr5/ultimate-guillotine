@@ -20,6 +20,7 @@ const player = (
   slotIndex: null,
   lineupPosition: null,
   projectedPoints: null,
+  injuryStatus: null,
   ...over,
 });
 

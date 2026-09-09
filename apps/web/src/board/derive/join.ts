@@ -64,7 +64,7 @@ export interface BoardRawData {
   >[];
   players: Pick<
     TableRow<"players">,
-    "sleeper_player_id" | "full_name" | "position" | "team"
+    "sleeper_player_id" | "full_name" | "position" | "team" | "injury_status"
   >[];
   playerProjections: Pick<
     TableRow<"player_projections">,
@@ -164,6 +164,10 @@ export function joinBoardTeams(raw: BoardRawData): BoardTeam[] {
       slotIndex: holding.slot_index,
       lineupPosition: holding.lineup_position,
       projectedPoints: pointsByPlayerId.get(holding.sleeper_player_id) ?? null,
+      // A holding with no directory row carries no status either: `null` is "nothing is
+      // known", which is exactly what an unmatched id means, and the card reads it as
+      // available rather than inventing an injury.
+      injuryStatus: player?.injury_status ?? null,
     };
   };
 
