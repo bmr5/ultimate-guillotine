@@ -8,6 +8,7 @@ import httpx
 from ultimate_guillotine.cli.deps import build_deps, run_scheduled
 from ultimate_guillotine.sleeper.client import SleeperClient
 from ultimate_guillotine.sleeper.players import sync_players
+from ultimate_guillotine.sleeper.state import sync_nfl_state
 from ultimate_guillotine.sleeper.sync import sync_season
 
 SYNC_YEAR = 2026
@@ -32,6 +33,14 @@ def register(subparsers) -> None:
         help="print nothing on success so a scheduled run delivers only failures",
     )
     players_parser.set_defaults(handler=cmd_players)
+
+    state_parser = sleeper_sub.add_parser("state", help="refresh the NFL week row")
+    state_parser.add_argument(
+        "--quiet",
+        action="store_true",
+        help="print nothing on success so a scheduled run delivers only failures",
+    )
+    state_parser.set_defaults(handler=cmd_state)
 
 
 def cmd_sync(args: argparse.Namespace) -> int:
@@ -62,3 +71,17 @@ def cmd_players(args: argparse.Namespace) -> int:
         return 0
 
     return run_scheduled(conn, "players-sync", now, action)
+
+
+def cmd_state(args: argparse.Namespace) -> int:
+    deps = build_deps()
+    conn = deps.conn
+    now = datetime.now(UTC)
+
+    def action(run_id: int) -> int:
+        state = sync_nfl_state(SleeperClient(httpx.Client()), conn, now)
+        if not args.quiet:
+            print(f"nfl state: {state.season} {state.season_type} week {state.week}")
+        return 0
+
+    return run_scheduled(conn, "nfl-state", now, action)
