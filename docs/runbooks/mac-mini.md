@@ -408,3 +408,123 @@ row and changes nothing: the run key is `trade:replay:<hash of the row
 text>`, so the first replay already reserved it. That is the intended
 guard, not a failure — to replay the same workbook again for real, the
 earlier runs have to be cleared first.
+
+
+## 9. League data layer
+
+Script-only jobs, no model in the loop, that turn the Sleeper facts the board,
+the Concierge, the Trade Advisor, and Game Pulse all read into Supabase rows.
+
+### 9a. What it stores
+
+| Table | One line |
+| --- | --- |
+| `public.nfl_state` | one row — the season, season type, and week every week-scoped job reads instead of guessing from the clock |
+| `public.roster_holdings` | current-state rosters: one row per held player, slotted `starter` / `bench` / `ir` / `taxi`, deleted when a player is dropped |
+| `public.team_season_state` | per team: FAAB budget and used, record, points for and against, and the elimination flag with its source |
+| `public.player_projections` | one row per player per NFL week: Sleeper's raw stat line plus the points it scores under this league's settings |
+| `public.team_week_projections` | one row per team per week: the summed starter projection, slot counts, and the coverage behind it |
+| `public.final_rosters` | the holdings a team was eliminated with, written once and never rewritten |
+
+`public.members` also carries `sleeper_display_name` and `nickname` (the first alias),
+written by `ug sleeper sync` and `ug members aliases load`; labels use that order, never
+the bare username. `public.seasons` caches the scoring settings, roster positions, and
+waiver budget.
+
+### 9b. Jobs and cadence
+
+| Job | Schedule (mini local time) | Delivers to |
+| --- | --- | --- |
+| `guillotine-sleeper-sync` | every 10m | `#guillotine-ops` |
+| `guillotine-nfl-state` | every 10m | `#guillotine-ops` |
+| `guillotine-players-sync` | `30 5 * * *` | `#guillotine-ops` |
+| `guillotine-sleeper-projections` | `*/30 * * * *` | `#guillotine-ops` |
+| `guillotine-sleeper-projections-thursday` | `*/5 20-23 * * 4` | local only |
+| `guillotine-sleeper-projections-sunday` | `*/5 13-23 * * 0` | local only |
+| `guillotine-sleeper-projections-monday` | `*/5 20-23 * * 1` | local only |
+
+The three game-window rows share the agent name `projections-sync` with the baseline,
+so the per-agent, per-minute key absorbs an overlap. They stay local on purpose: a
+five-minute job would post the same outage twelve times an hour, and the half-hourly
+baseline says it in the channel anyway.
+
+### 9c. First run after a fresh deploy
+
+Run these once, in this order — the rest read the week state writes:
+
+```bash
+uv run --project packages/league-automation ug sleeper state
+uv run --project packages/league-automation ug sleeper sync
+uv run --project packages/league-automation ug sleeper projections
+uv run --project packages/league-automation ug members aliases load data/private/member-aliases.json
+```
+
+What they printed on 2026-09-09:
+
+```
+nfl state: 2026 regular week 1
+sleeper sync: 18 members, 18 teams, 161 holdings, 18 team states, 0 rosters frozen
+projections: week 1, 9420 players (8596 unscored), coverage 100.00%
+aliases: 18 members, 33 aliases
+```
+
+18 members and teams is the whole league, 161 holdings every rostered player across
+it, 18 team states one per team, and `0 rosters frozen` is right in week 1 — nobody is
+out yet. Of the 9420 players Sleeper returned, 8596 went **unscored**: no usable stat
+line, because they are inactive or not projected. That is not an error and not a
+coverage problem — coverage counts filled starter slots only, which is why it reads
+100.00% in the same line. The aliases line is counts only; no nickname is printed.
+
+### 9d. Reading the ops notes
+
+Coverage and scoring-drift notes fire only on a change of the week's flagged state,
+in either direction — this job runs every five minutes in a game window, and a note per
+run is a wall of identical lines. A coverage note names the percentage and how many
+teams went provisional; a drift note means `seasons.scoring_settings` is worth
+checking. Both flag the numbers, never withhold them.
+
+Between those edges `ug ops health` is the standing answer: `<agent>: last run failed
+at <time> UTC` for a scheduled agent whose last finished run failed (it breaks no gap
+budget, so nothing else says so), plus `Expected job <name> last ran N minutes ago
+(limit M)` when one goes quiet past its budget.
+
+### 9e. Off-season, rescoring, and past weeks
+
+Outside the regular season it prints `projections: skipped, season_type=pre` and
+exits 0 — a no-op, not a failure, so the job stays green all winter.
+
+```bash
+uv run --project packages/league-automation ug sleeper projections --rescore --week 3
+```
+
+`--rescore` recomputes points from stored stat lines with no call to Sleeper; run it
+after a scoring change, never a re-sync. For a week that is not the live one only the
+*player* rows are rewritten — `roster_holdings` is current-state, so recomputing week 3
+totals would restate it over today's lineups. It says so, and flags no coverage.
+
+### 9f. Eliminated teams
+
+The first sync that sees a team eliminated snapshots its holdings into
+`public.final_rosters`; `rosters frozen` counts the teams that froze on that run.
+Managers keep dropping and adding afterwards and `roster_holdings` follows them, but
+the snapshot never moves — the worker holds only `select` and `insert` there. So a
+wrong provisional freeze cannot be fixed from here: delete that row in the Supabase
+dashboard and the next sync writes the correct one.
+
+### 9g. Verify
+
+Counts and timestamps only, no names. Expect 18 team states and no provisional rows:
+
+```sql
+select 'roster_holdings' as tbl, count(*) from public.roster_holdings
+union all select 'team_season_state', count(*) from public.team_season_state
+union all select 'final_rosters', count(*) from public.final_rosters
+union all select 'player_projections', count(*) from public.player_projections
+union all select 'team_week_projections', count(*) from public.team_week_projections;
+
+select season, season_type, week, synced_at from public.nfl_state;
+select count(*) as teams, count(*) filter (where is_provisional) as provisional,
+       min(coverage_pct) as worst
+from public.team_week_projections
+where week = (select week from public.nfl_state);
+```

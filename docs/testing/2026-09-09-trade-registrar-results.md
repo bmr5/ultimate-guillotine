@@ -1,10 +1,10 @@
 # Trade Registrar case results
 
-Run 2026-09-09 14:20 UTC against the fake client (harness self-check).
+Run 2026-09-09 14:37 UTC against the live extraction model.
 Cases come from `packages/league-automation/tests/fixtures/registrar_cases.json`;
 case text is deliberately not repeated here.
 
-**58 run · 58 passed · 0 failed · 14 skipped (prerequisite state).**
+**58 run · 54 passed · 4 failed · 14 skipped (prerequisite state).**
 
 | # | category | expected kind | expected status | actual kind | outcome | result | mismatch |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -23,7 +23,7 @@ case text is deliberately not repeated here.
 | 13 | happy | `permanent` | `created` | `permanent` | `created` | pass | — |
 | 14 | happy | `permanent` | `created` | `permanent` | `created` | pass | — |
 | 15 | happy | `permanent` | `created` | `permanent` | `created` | pass | — |
-| 16 | happy | `permanent` | `created` | `permanent` | `created` | pass | — |
+| 16 | happy | `permanent` | `created` | `permanent` | `clarification` | FAIL | outcome clarification |
 | 17 | sloppy | `permanent` | `created` | `permanent` | `created` | pass | — |
 | 18 | sloppy | `permanent` | `created` | `permanent` | `created` | pass | — |
 | 19 | sloppy | `permanent` | `clarification` | `permanent` | `clarification` | pass | — |
@@ -46,9 +46,9 @@ case text is deliberately not repeated here.
 | 36 | sloppy | `permanent` | `created` | `permanent` | `created` | pass | — |
 | 51 | not_a_trade | `not_a_trade` | `not_a_trade` | `not_a_trade` | `not_a_trade` | pass | — |
 | 52 | not_a_trade | `not_a_trade` | `not_a_trade` | `not_a_trade` | `not_a_trade` | pass | — |
-| 53 | not_a_trade | `not_a_trade` | `not_a_trade` | `not_a_trade` | `not_a_trade` | pass | — |
+| 53 | not_a_trade | `not_a_trade` | `not_a_trade` | `permanent` | `created` | FAIL | kind permanent, outcome created |
 | 54 | not_a_trade | `not_a_trade` | `not_a_trade` | `not_a_trade` | `not_a_trade` | pass | — |
-| 55 | not_a_trade | `not_a_trade` | `not_a_trade` | `not_a_trade` | `not_a_trade` | pass | — |
+| 55 | not_a_trade | `not_a_trade` | `not_a_trade` | `unclear` | `clarification` | FAIL | kind unclear, outcome clarification |
 | 56 | not_a_trade | `permanent` | `clarification` | `permanent` | `clarification` | pass | — |
 | 57 | not_a_trade | `not_a_trade` | `not_a_trade` | `-` | `not-a-candidate` | pass | — |
 | 58 | not_a_trade | `not_a_trade` | `not_a_trade` | `not_a_trade` | `not_a_trade` | pass | — |
@@ -56,7 +56,7 @@ case text is deliberately not repeated here.
 | 60 | unclear | `unclear` | `clarification` | `unclear` | `clarification` | pass | — |
 | 61 | unclear | `unclear` | `clarification` | `unclear` | `clarification` | pass | — |
 | 62 | unclear | `rental` | `clarification` | `rental` | `clarification` | pass | — |
-| 63 | unclear | `unclear` | `clarification` | `unclear` | `clarification` | pass | — |
+| 63 | unclear | `unclear` | `clarification` | `permanent` | `created` | FAIL | kind permanent, outcome created |
 | 64 | privacy | `permanent` | `created` | `permanent` | `created` | pass | — |
 | 65 | privacy | `permanent` | `created` | `permanent` | `created` | pass | — |
 | 66 | privacy | `permanent` | `created` | `permanent` | `created` | pass | — |
@@ -71,10 +71,10 @@ case text is deliberately not repeated here.
 
 | category | run | passed | failed |
 | --- | --- | --- | --- |
-| happy | 16 | 16 | 0 |
+| happy | 16 | 15 | 1 |
 | sloppy | 20 | 20 | 0 |
-| not_a_trade | 8 | 8 | 0 |
-| unclear | 5 | 5 | 0 |
+| not_a_trade | 8 | 6 | 2 |
+| unclear | 5 | 4 | 1 |
 | privacy | 5 | 5 | 0 |
 | scale | 4 | 4 | 0 |
 
