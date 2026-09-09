@@ -143,7 +143,10 @@ export function formatComputedTitle(
 }
 
 /** The secondary form, shown smaller beside the absolute time. */
-export function formatUpdatedAgo(updatedAt: number | null | undefined, now: number): string {
+export function formatUpdatedAgo(
+  updatedAt: number | null | undefined,
+  now: number,
+): string {
   if (!isRealInstant(updatedAt)) {
     return NEVER_UPDATED_AGO_LABEL;
   }
@@ -186,5 +189,8 @@ export function crossesMinuteBoundary(
   previousElapsedMs: number,
   nextElapsedMs: number,
 ): boolean {
-  return Math.floor(previousElapsedMs / MS_PER_MINUTE) !== Math.floor(nextElapsedMs / MS_PER_MINUTE);
+  return (
+    Math.floor(previousElapsedMs / MS_PER_MINUTE) !==
+    Math.floor(nextElapsedMs / MS_PER_MINUTE)
+  );
 }

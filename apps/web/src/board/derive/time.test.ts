@@ -28,7 +28,10 @@ const NOW = 1_788_972_080_000;
 /** Node's ICU puts U+202F before AM/PM; the assertions compare plain spaces. */
 const plain = (value: string) => value.replace(/[\u202f\u00a0]/g, " ");
 
-const NY: TimeFormatOptions = { locales: "en-US", timeZone: "America/New_York" };
+const NY: TimeFormatOptions = {
+  locales: "en-US",
+  timeZone: "America/New_York",
+};
 
 describe("formatUpdatedAt", () => {
   it("shows a clock time alone for a pull made today, in the viewer's zone", () => {
@@ -37,31 +40,44 @@ describe("formatUpdatedAt", () => {
 
   it("renders the same instant in the viewer's own timezone", () => {
     expect(
-      plain(formatUpdatedAt(NOW, NOW, { locales: "en-US", timeZone: "America/Los_Angeles" })),
+      plain(
+        formatUpdatedAt(NOW, NOW, {
+          locales: "en-US",
+          timeZone: "America/Los_Angeles",
+        }),
+      ),
     ).toBe("Updated 9:41 AM");
   });
 
   it("prefixes the date once the pull is not today", () => {
     const yesterday = NOW - 24 * 60 * 60 * 1000;
-    expect(plain(formatUpdatedAt(yesterday, NOW, NY))).toBe("Updated Sep 8, 12:41 PM");
+    expect(plain(formatUpdatedAt(yesterday, NOW, NY))).toBe(
+      "Updated Sep 8, 12:41 PM",
+    );
   });
 
   it("decides today by the injected zone, not UTC, when the two disagree", () => {
     // Still Sep 9 in UTC, but 10:00 PM on Sep 8 in New York — so a New York viewer must see the
     // date. A UTC-based comparison would wrongly print the bare clock time.
     const lateOnTheEighth = Date.UTC(2026, 8, 9, 2, 0);
-    expect(plain(formatUpdatedAt(lateOnTheEighth, NOW, NY))).toBe("Updated Sep 8, 10:00 PM");
+    expect(plain(formatUpdatedAt(lateOnTheEighth, NOW, NY))).toBe(
+      "Updated Sep 8, 10:00 PM",
+    );
   });
 
   it("counts local midnight as today", () => {
     const midnightInNY = Date.UTC(2026, 8, 9, 4, 0);
-    expect(plain(formatUpdatedAt(midnightInNY, NOW, NY))).toBe("Updated 12:00 AM");
+    expect(plain(formatUpdatedAt(midnightInNY, NOW, NY))).toBe(
+      "Updated 12:00 AM",
+    );
   });
 
   it("counts the last minute of the local day as today, though UTC has rolled over", () => {
     // 11:59 PM on Sep 9 in New York is already Sep 10 in UTC.
     const lastMinuteInNY = Date.UTC(2026, 8, 10, 3, 59);
-    expect(plain(formatUpdatedAt(lastMinuteInNY, NOW, NY))).toBe("Updated 11:59 PM");
+    expect(plain(formatUpdatedAt(lastMinuteInNY, NOW, NY))).toBe(
+      "Updated 11:59 PM",
+    );
   });
 
   it("says so plainly when nothing has been pulled", () => {
@@ -100,9 +116,9 @@ describe("formatComputedTitle", () => {
 
   it("says Computed, not Updated — the board's pull is a different event", () => {
     expect(formatComputedTitle(NOW, NY)).not.toMatch(/Updated/);
-    expect(plain(formatComputedTitle(NOW, NY)).replace("Computed", "Updated")).toBe(
-      plain(formatUpdatedTitle(NOW, NY)),
-    );
+    expect(
+      plain(formatComputedTitle(NOW, NY)).replace("Computed", "Updated"),
+    ).toBe(plain(formatUpdatedTitle(NOW, NY)));
   });
 
   it("degrades to a plain label rather than Invalid Date", () => {

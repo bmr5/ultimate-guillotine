@@ -1,5 +1,9 @@
-import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo } from "react";
+import {
+  keepPreviousData,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 
 import { boardClient } from "./boardClient";
 import { joinBoardTeams } from "./derive/join";
@@ -13,9 +17,9 @@ import {
   fetchPlayers,
   fetchRosterHoldings,
   fetchSeasonByYear,
+  fetchTeams,
   fetchTeamSeasonState,
   fetchTeamWeekProjections,
-  fetchTeams,
   fetchWeeklyResults,
 } from "./fetchers";
 import { boardKeys, fingerprintIds } from "./queryKeys";
@@ -171,10 +175,10 @@ export function useBoardData(options: BoardDataOptions): BoardDataResult {
     () => latestFinalWeek(weeklyResults.data ?? []),
     [weeklyResults.data],
   );
-  const week = isOffRegularSeason ? (lastScoredWeek ?? nflWeek) : nflWeek;
+  const week = isOffRegularSeason ? lastScoredWeek ?? nflWeek : nflWeek;
   /** What the header names. Sleeper's own post-season week number, not the scoped week. */
   const displayWeek = isOffRegularSeason
-    ? (nflState.data?.display_week ?? nflWeek)
+    ? nflState.data?.display_week ?? nflWeek
     : nflWeek;
   /**
    * Outside the regular season the scoped week is not known until `weekly_results` lands, so
@@ -238,7 +242,11 @@ export function useBoardData(options: BoardDataOptions): BoardDataResult {
   });
 
   const playerProjections = useQuery({
-    queryKey: boardKeys.playerProjections(season ?? 0, week ?? 0, heldIdsFingerprint),
+    queryKey: boardKeys.playerProjections(
+      season ?? 0,
+      week ?? 0,
+      heldIdsFingerprint,
+    ),
     queryFn: () =>
       fetchPlayerProjections(
         boardClient,

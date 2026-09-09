@@ -7,7 +7,9 @@ import { boardKeys, fingerprintIds } from "./queryKeys";
 
 describe("fingerprintIds", () => {
   it("is stable regardless of the order the ids arrive in", () => {
-    expect(fingerprintIds(["9999", "4046"])).toBe(fingerprintIds(["4046", "9999"]));
+    expect(fingerprintIds(["9999", "4046"])).toBe(
+      fingerprintIds(["4046", "9999"]),
+    );
   });
 
   it("changes when a player is added to the held set", () => {
@@ -52,11 +54,17 @@ describe("boardKeys", () => {
 
   it("nests the prefixes under the all key too", () => {
     expect(boardKeys.playersPrefix(1)[0]).toBe(boardKeys.all[0]);
-    expect(boardKeys.playerProjectionsPrefix(2026, 3)[0]).toBe(boardKeys.all[0]);
+    expect(boardKeys.playerProjectionsPrefix(2026, 3)[0]).toBe(
+      boardKeys.all[0],
+    );
   });
 
   it("keeps the roster_holdings branch separate from the players branch", () => {
-    expect(boardKeys.rosterHoldings(1)).toEqual(["board", "roster_holdings", 1]);
+    expect(boardKeys.rosterHoldings(1)).toEqual([
+      "board",
+      "roster_holdings",
+      1,
+    ]);
     expect(boardKeys.players(1, "x")[1]).toBe("players");
   });
 

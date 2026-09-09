@@ -27,7 +27,9 @@ describe("index.html", () => {
 
   it("describes the read-only board in every description tag", () => {
     const descriptions = [
-      ...html.matchAll(/(?:name|property)="(?:og:|twitter:)?description"\s+content="([^"]+)"/g),
+      ...html.matchAll(
+        /(?:name|property)="(?:og:|twitter:)?description"\s+content="([^"]+)"/g,
+      ),
     ].map((match) => match[1]);
     expect(descriptions).toHaveLength(3);
     for (const description of descriptions) {

@@ -37,7 +37,8 @@ export const boardKeys = {
     ["board", "team_week_projections", seasonId, week] as const,
   rosterHoldings: (seasonId: number) =>
     ["board", "roster_holdings", seasonId] as const,
-  finalRosters: (seasonId: number) => ["board", "final_rosters", seasonId] as const,
+  finalRosters: (seasonId: number) =>
+    ["board", "final_rosters", seasonId] as const,
   playersPrefix,
   /**
    * Keyed on a fingerprint of the held ids as well as the season. The `.in()` filter is part of
@@ -51,9 +52,13 @@ export const boardKeys = {
     [...playersPrefix(seasonId), heldIdsFingerprint] as const,
   playerProjectionsPrefix,
   /** Keyed on the plain season year — `player_projections` is not league-scoped — plus the ids. */
-  playerProjections: (season: number, week: number, heldIdsFingerprint: string) =>
-    [...playerProjectionsPrefix(season, week), heldIdsFingerprint] as const,
-  weeklyResults: (seasonId: number) => ["board", "weekly_results", seasonId] as const,
+  playerProjections: (
+    season: number,
+    week: number,
+    heldIdsFingerprint: string,
+  ) => [...playerProjectionsPrefix(season, week), heldIdsFingerprint] as const,
+  weeklyResults: (seasonId: number) =>
+    ["board", "weekly_results", seasonId] as const,
 };
 
 const FNV_OFFSET_BASIS = 0x811c9dc5;

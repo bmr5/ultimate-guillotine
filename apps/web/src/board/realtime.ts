@@ -43,10 +43,15 @@ export const REALTIME_BACKOFF_JITTER_MAX = 1.2;
  *
  * `random` is injectable so tests get a fixed delay instead of a range.
  */
-export function backoffDelayMs(attempt: number, random: () => number = Math.random): number {
+export function backoffDelayMs(
+  attempt: number,
+  random: () => number = Math.random,
+): number {
   const base = Math.min(REALTIME_BACKOFF_CAP_MS, 1_000 * 2 ** attempt);
   const jitterSpan = REALTIME_BACKOFF_JITTER_MAX - REALTIME_BACKOFF_JITTER_MIN;
-  return Math.round(base * (REALTIME_BACKOFF_JITTER_MIN + jitterSpan * random()));
+  return Math.round(
+    base * (REALTIME_BACKOFF_JITTER_MIN + jitterSpan * random()),
+  );
 }
 
 export interface RealtimeContext {
@@ -79,7 +84,10 @@ export function keysForTable(
   if (table === "team_season_state") {
     // An elimination flips is_eliminated here and writes the final_rosters snapshot in the
     // same transaction; the board does not subscribe to final_rosters, so pull it from here.
-    return [boardKeys.teamSeasonState(seasonId), boardKeys.finalRosters(seasonId)];
+    return [
+      boardKeys.teamSeasonState(seasonId),
+      boardKeys.finalRosters(seasonId),
+    ];
   }
   if (table === "team_week_projections") {
     return [boardKeys.teamWeekProjections(seasonId, week)];

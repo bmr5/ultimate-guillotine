@@ -14,10 +14,8 @@ import path from "path";
 export function appAliases(rootDir: string): Record<string, string> {
   return {
     "@": path.resolve(rootDir, "./src"),
-    "@/assets": path.resolve(rootDir, "./src/assets"),
     "@/components": path.resolve(rootDir, "./src/components"),
     "@/ui": path.resolve(rootDir, "./src/components/ui"),
     "@/lib": path.resolve(rootDir, "./src/lib"),
-    "@/hooks": path.resolve(rootDir, "./src/lib/hooks"),
   };
 }

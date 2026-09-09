@@ -6,10 +6,12 @@
 import { describe, expect, it } from "vitest";
 
 import type { FinalRosterHolding } from "../types";
-import { type BoardRawData, joinBoardTeams, resolveOwnerLabel } from "./join";
+import { joinBoardTeams, resolveOwnerLabel, type BoardRawData } from "./join";
 
 const raw = (over: Partial<BoardRawData> = {}): BoardRawData => ({
-  teams: [{ id: 7, member_id: 3, sleeper_roster_id: 1, team_name: "The Choppers" }],
+  teams: [
+    { id: 7, member_id: 3, sleeper_roster_id: 1, team_name: "The Choppers" },
+  ],
   members: [{ id: 3, sleeper_display_name: "benray", nickname: "Ben" }],
   teamSeasonState: [
     {
@@ -63,7 +65,12 @@ const raw = (over: Partial<BoardRawData> = {}): BoardRawData => ({
     },
   ],
   players: [
-    { sleeper_player_id: "4046", full_name: "Patrick Mahomes", position: "QB", team: "KC" },
+    {
+      sleeper_player_id: "4046",
+      full_name: "Patrick Mahomes",
+      position: "QB",
+      team: "KC",
+    },
   ],
   playerProjections: [{ sleeper_player_id: "4046", league_points: 22.6 }],
   weeklyResults: [
@@ -94,9 +101,9 @@ describe("resolveOwnerLabel", () => {
   });
 
   it("never falls through to a username, and says so when both are missing", () => {
-    expect(resolveOwnerLabel({ nickname: null, sleeper_display_name: null })).toBe(
-      "Unknown owner",
-    );
+    expect(
+      resolveOwnerLabel({ nickname: null, sleeper_display_name: null }),
+    ).toBe("Unknown owner");
     expect(resolveOwnerLabel(undefined)).toBe("Unknown owner");
   });
 });
@@ -143,7 +150,9 @@ describe("joinBoardTeams", () => {
 
   it("labels the owner by Sleeper display name when the member has no nickname", () => {
     const [team] = joinBoardTeams(
-      raw({ members: [{ id: 3, sleeper_display_name: "benray", nickname: null }] }),
+      raw({
+        members: [{ id: 3, sleeper_display_name: "benray", nickname: null }],
+      }),
     );
     expect(team.ownerName).toBe("benray");
   });
@@ -224,10 +233,19 @@ describe("joinBoardTeams", () => {
     const [team] = joinBoardTeams({
       ...base,
       teamSeasonState: [
-        { ...base.teamSeasonState[0], is_eliminated: true, eliminated_week: null },
+        {
+          ...base.teamSeasonState[0],
+          is_eliminated: true,
+          eliminated_week: null,
+        },
       ],
       finalRosters: [
-        { team_id: 7, eliminated_week: 6, holdings: [], frozen_at: "2026-10-15T05:00:00Z" },
+        {
+          team_id: 7,
+          eliminated_week: 6,
+          holdings: [],
+          frozen_at: "2026-10-15T05:00:00Z",
+        },
       ],
     });
     expect(team.eliminatedWeek).toBe(6);
@@ -249,7 +267,12 @@ describe("joinBoardTeams", () => {
     const [team] = joinBoardTeams(
       raw({
         finalRosters: [
-          { team_id: 7, eliminated_week: 4, holdings: [], frozen_at: "2026-10-01T05:00:00Z" },
+          {
+            team_id: 7,
+            eliminated_week: 4,
+            holdings: [],
+            frozen_at: "2026-10-01T05:00:00Z",
+          },
         ],
       }),
     );
@@ -375,7 +398,11 @@ describe("joinBoardTeams", () => {
     const eliminated = {
       ...base,
       teamSeasonState: [
-        { ...base.teamSeasonState[0], is_eliminated: true, eliminated_week: null },
+        {
+          ...base.teamSeasonState[0],
+          is_eliminated: true,
+          eliminated_week: null,
+        },
       ],
     };
 
@@ -383,7 +410,12 @@ describe("joinBoardTeams", () => {
     const [emptySnapshot] = joinBoardTeams({
       ...eliminated,
       finalRosters: [
-        { team_id: 7, eliminated_week: 6, holdings: [], frozen_at: "2026-10-15T05:00:00Z" },
+        {
+          team_id: 7,
+          eliminated_week: 6,
+          holdings: [],
+          frozen_at: "2026-10-15T05:00:00Z",
+        },
       ],
     });
     expect(emptySnapshot.isRosterFrozen).toBe(false);
@@ -402,8 +434,10 @@ describe("joinBoardTeams", () => {
         {
           team_id: 7,
           eliminated_week: 6,
-          holdings: [null, { slot: "starter", slot_index: 0 }] as unknown as
-            FinalRosterHolding[],
+          holdings: [
+            null,
+            { slot: "starter", slot_index: 0 },
+          ] as unknown as FinalRosterHolding[],
           frozen_at: "2026-10-15T05:00:00Z",
         },
       ],
@@ -424,7 +458,12 @@ describe("joinBoardTeams", () => {
     const board = joinBoardTeams({
       ...base,
       teams: [
-        { id: 7, member_id: 3, sleeper_roster_id: 1, team_name: "The Choppers" },
+        {
+          id: 7,
+          member_id: 3,
+          sleeper_roster_id: 1,
+          team_name: "The Choppers",
+        },
         { id: 8, member_id: 4, sleeper_roster_id: 2, team_name: "Fresh Meat" },
         { id: 9, member_id: 5, sleeper_roster_id: 3, team_name: "Headless" },
       ],
@@ -491,7 +530,10 @@ describe("joinBoardTeams", () => {
     const [populated, bare, eliminated] = board;
 
     expect(populated.ownerName).toBe("Ben");
-    expect(populated.roster.map((p) => p.sleeperPlayerId)).toEqual(["4046", "9999"]);
+    expect(populated.roster.map((p) => p.sleeperPlayerId)).toEqual([
+      "4046",
+      "9999",
+    ]);
     expect(populated.pointsFor).toBe(301.5);
     expect(populated.faabRemaining).toBe(75);
     expect(populated.isRosterFrozen).toBe(false);

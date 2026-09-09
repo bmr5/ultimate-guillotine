@@ -19,7 +19,9 @@ export type OwnerLabelSource = Pick<
  * is never a fallback, so a member with neither public label reads as "Unknown owner" rather
  * than leaking a username.
  */
-export function resolveOwnerLabel(member: OwnerLabelSource | undefined): string {
+export function resolveOwnerLabel(
+  member: OwnerLabelSource | undefined,
+): string {
   const nickname = member?.nickname?.trim() ?? "";
   if (nickname !== "") {
     return nickname;
@@ -48,7 +50,10 @@ export interface BoardRawData {
     TableRow<"teams">,
     "id" | "member_id" | "sleeper_roster_id" | "team_name"
   >[];
-  members: Pick<TableRow<"members">, "id" | "sleeper_display_name" | "nickname">[];
+  members: Pick<
+    TableRow<"members">,
+    "id" | "sleeper_display_name" | "nickname"
+  >[];
   /** One row per team, for one season. */
   teamSeasonState: TableRow<"team_season_state">[];
   /** One row per team, for one season and one week. */
@@ -132,7 +137,9 @@ function narrowFrozenHoldings(
 export function joinBoardTeams(raw: BoardRawData): BoardTeam[] {
   const memberById = new Map(raw.members.map((m) => [m.id, m]));
   const stateByTeamId = new Map(raw.teamSeasonState.map((s) => [s.team_id, s]));
-  const finalRosterByTeamId = new Map(raw.finalRosters.map((f) => [f.team_id, f]));
+  const finalRosterByTeamId = new Map(
+    raw.finalRosters.map((f) => [f.team_id, f]),
+  );
   const projectionByTeamId = new Map(
     raw.teamWeekProjections.map((p) => [p.team_id, p]),
   );
@@ -149,7 +156,8 @@ export function joinBoardTeams(raw: BoardRawData): BoardTeam[] {
     const player = playerById.get(holding.sleeper_player_id);
     return {
       sleeperPlayerId: holding.sleeper_player_id,
-      fullName: player?.full_name ?? `Unknown player ${holding.sleeper_player_id}`,
+      fullName:
+        player?.full_name ?? `Unknown player ${holding.sleeper_player_id}`,
       position: player?.position ?? null,
       nflTeam: player?.team ?? null,
       slot: holding.slot,
@@ -179,7 +187,9 @@ export function joinBoardTeams(raw: BoardRawData): BoardTeam[] {
     // elimination. Sleeper's live roster for an eliminated team is unreliable — players get
     // dropped out of it — so live holdings are ignored entirely once a snapshot exists.
     const isEliminated = state?.is_eliminated ?? false;
-    const snapshot = isEliminated ? (finalRosterByTeamId.get(team.id) ?? null) : null;
+    const snapshot = isEliminated
+      ? finalRosterByTeamId.get(team.id) ?? null
+      : null;
 
     // A snapshot that narrows to nothing — written empty, or entirely malformed — carries no
     // roster to show, and an empty card is worse than a stale one. So the team falls back to its
@@ -204,9 +214,10 @@ export function joinBoardTeams(raw: BoardRawData): BoardTeam[] {
       wins: state?.wins ?? 0,
       losses: state?.losses ?? 0,
       ties: state?.ties ?? 0,
-      pointsFor: state === null ? (summary?.pointsFor ?? 0) : state.points_for,
+      pointsFor: state === null ? summary?.pointsFor ?? 0 : state.points_for,
       isEliminated,
-      eliminatedWeek: state?.eliminated_week ?? snapshot?.eliminated_week ?? null,
+      eliminatedWeek:
+        state?.eliminated_week ?? snapshot?.eliminated_week ?? null,
       eliminationSource: state?.elimination_source ?? null,
       isRosterFrozen,
       roster: isRosterFrozen

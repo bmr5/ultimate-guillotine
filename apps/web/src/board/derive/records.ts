@@ -89,13 +89,18 @@ export function summarizeWeeklyResults(
  * week it falls back to — the last one that actually has rows — folded from the same corrected,
  * deduplicated summaries the points-for column is built from.
  */
-export function latestFinalWeek(rows: readonly WeeklyResultRow[]): number | null {
+export function latestFinalWeek(
+  rows: readonly WeeklyResultRow[],
+): number | null {
   let latest: number | null = null;
   for (const summary of summarizeWeeklyResults(rows).values()) {
     if (summary.lastFinalWeek === null) {
       continue;
     }
-    latest = latest === null ? summary.lastFinalWeek : Math.max(latest, summary.lastFinalWeek);
+    latest =
+      latest === null
+        ? summary.lastFinalWeek
+        : Math.max(latest, summary.lastFinalWeek);
   }
   return latest;
 }

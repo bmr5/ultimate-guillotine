@@ -1,12 +1,15 @@
+import type { ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook } from "@testing-library/react";
-import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { boardKeys } from "./queryKeys";
 import type { BoardRealtimeTable } from "./realtime";
 import { REALTIME_MAX_WAIT_MS } from "./realtime";
-import type { FakeableChannel, RealtimeTransport } from "./useLeagueBoardRealtime";
+import type {
+  FakeableChannel,
+  RealtimeTransport,
+} from "./useLeagueBoardRealtime";
 import { useLeagueBoardRealtime } from "./useLeagueBoardRealtime";
 
 /**
@@ -64,7 +67,9 @@ const NO_JITTER = () => 0.5;
 
 function wrapper(queryClient: QueryClient) {
   return function Wrapper({ children }: { children: ReactNode }) {
-    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
+    return (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
   };
 }
 
@@ -112,7 +117,9 @@ describe("useLeagueBoardRealtime", () => {
 
   it("does not refetch on the first connect, since the board just loaded", () => {
     const fake = createFakeTransport();
-    const invalidate = vi.spyOn(queryClient, "invalidateQueries").mockResolvedValue();
+    const invalidate = vi
+      .spyOn(queryClient, "invalidateQueries")
+      .mockResolvedValue();
 
     mount(fake);
     act(() => {
@@ -151,7 +158,9 @@ describe("useLeagueBoardRealtime", () => {
     "invalidates the $table keys after the debounce",
     ({ table, expected }) => {
       const fake = createFakeTransport();
-      const invalidate = vi.spyOn(queryClient, "invalidateQueries").mockResolvedValue();
+      const invalidate = vi
+        .spyOn(queryClient, "invalidateQueries")
+        .mockResolvedValue();
 
       mount(fake);
       act(() => {
@@ -173,7 +182,9 @@ describe("useLeagueBoardRealtime", () => {
 
   it("collapses a burst on one table into a single invalidation after the debounce", () => {
     const fake = createFakeTransport();
-    const invalidate = vi.spyOn(queryClient, "invalidateQueries").mockResolvedValue();
+    const invalidate = vi
+      .spyOn(queryClient, "invalidateQueries")
+      .mockResolvedValue();
 
     mount(fake);
 
@@ -200,7 +211,9 @@ describe("useLeagueBoardRealtime", () => {
 
   it("invalidates each affected key once per burst", () => {
     const fake = createFakeTransport();
-    const invalidate = vi.spyOn(queryClient, "invalidateQueries").mockResolvedValue();
+    const invalidate = vi
+      .spyOn(queryClient, "invalidateQueries")
+      .mockResolvedValue();
 
     mount(fake);
 
@@ -230,7 +243,9 @@ describe("useLeagueBoardRealtime", () => {
 
   it("flushes at the max wait when events keep resetting the debounce", () => {
     const fake = createFakeTransport();
-    const invalidate = vi.spyOn(queryClient, "invalidateQueries").mockResolvedValue();
+    const invalidate = vi
+      .spyOn(queryClient, "invalidateQueries")
+      .mockResolvedValue();
 
     mount(fake);
     act(() => {
@@ -254,7 +269,9 @@ describe("useLeagueBoardRealtime", () => {
 
   it("collapses to one whole-board refetch past the eighteen-event ceiling", () => {
     const fake = createFakeTransport();
-    const invalidate = vi.spyOn(queryClient, "invalidateQueries").mockResolvedValue();
+    const invalidate = vi
+      .spyOn(queryClient, "invalidateQueries")
+      .mockResolvedValue();
 
     mount(fake);
 
@@ -276,7 +293,9 @@ describe("useLeagueBoardRealtime", () => {
 
   it("reports the connection state and refetches everything on reconnect", () => {
     const fake = createFakeTransport();
-    const invalidate = vi.spyOn(queryClient, "invalidateQueries").mockResolvedValue();
+    const invalidate = vi
+      .spyOn(queryClient, "invalidateQueries")
+      .mockResolvedValue();
 
     const { result } = mount(fake);
 
@@ -339,7 +358,9 @@ describe("useLeagueBoardRealtime", () => {
       "1",
       "2",
     ]);
-    expect(new Set(fake.channelNames().map((name) => name.slice(0, -1))).size).toBe(1);
+    expect(
+      new Set(fake.channelNames().map((name) => name.slice(0, -1))).size,
+    ).toBe(1);
   });
 
   it("jitters the retry delay by the injected factor", () => {
@@ -387,7 +408,9 @@ describe("useLeagueBoardRealtime", () => {
 
   it("ignores a status callback from a channel it has already torn down", () => {
     const fake = createFakeTransport();
-    const invalidate = vi.spyOn(queryClient, "invalidateQueries").mockResolvedValue();
+    const invalidate = vi
+      .spyOn(queryClient, "invalidateQueries")
+      .mockResolvedValue();
     const { result } = mount(fake);
 
     act(() => {
@@ -472,7 +495,9 @@ describe("useLeagueBoardRealtime", () => {
 
   it("refreshNow invalidates the whole board", () => {
     const fake = createFakeTransport();
-    const invalidate = vi.spyOn(queryClient, "invalidateQueries").mockResolvedValue();
+    const invalidate = vi
+      .spyOn(queryClient, "invalidateQueries")
+      .mockResolvedValue();
     const { result } = mount(fake);
 
     act(() => {
@@ -492,7 +517,9 @@ describe("useLeagueBoardRealtime", () => {
 
   it("drops a pending flush when the hook unmounts", () => {
     const fake = createFakeTransport();
-    const invalidate = vi.spyOn(queryClient, "invalidateQueries").mockResolvedValue();
+    const invalidate = vi
+      .spyOn(queryClient, "invalidateQueries")
+      .mockResolvedValue();
     const { unmount } = mount(fake);
 
     act(() => {

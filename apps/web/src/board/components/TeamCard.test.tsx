@@ -55,7 +55,11 @@ interface RenderOptions {
  */
 const renderCard = (
   overrides: Partial<BoardTeam> = {},
-  { open = false, highlightedPlayerIds = noHighlights, onToggle = noop }: RenderOptions = {},
+  {
+    open = false,
+    highlightedPlayerIds = noHighlights,
+    onToggle = noop,
+  }: RenderOptions = {},
 ) =>
   render(
     <ul>
@@ -160,15 +164,18 @@ const STATE_CASES: StateCase[] = [
 ];
 
 describe("TeamCard states", () => {
-  it.each(STATE_CASES)("$name", ({ team: overrides, open, present, absent }) => {
-    renderCard(overrides, { open: open ?? false });
-    for (const text of present) {
-      expect(screen.getByText(text)).toBeInTheDocument();
-    }
-    for (const text of absent ?? []) {
-      expect(screen.queryByText(text)).not.toBeInTheDocument();
-    }
-  });
+  it.each(STATE_CASES)(
+    "$name",
+    ({ team: overrides, open, present, absent }) => {
+      renderCard(overrides, { open: open ?? false });
+      for (const text of present) {
+        expect(screen.getByText(text)).toBeInTheDocument();
+      }
+      for (const text of absent ?? []) {
+        expect(screen.queryByText(text)).not.toBeInTheDocument();
+      }
+    },
+  );
 });
 
 describe("TeamCard", () => {

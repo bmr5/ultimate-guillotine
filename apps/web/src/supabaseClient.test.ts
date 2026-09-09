@@ -3,8 +3,9 @@
  */
 import { describe, expect, it, vi } from "vitest";
 
+/** Rest-typed so the third argument — the options object the assertion is about — is readable. */
 const createClient = vi.hoisted(() =>
-  vi.fn((..._args: unknown[]) => ({})),
+  vi.fn((...args: unknown[]) => ({ args })),
 );
 vi.mock("@supabase/supabase-js", () => ({ createClient }));
 

@@ -49,7 +49,9 @@ describe("backoffDelayMs", () => {
   });
 
   it("scales the delay by the jitter factor so a league does not reconnect in lockstep", () => {
-    expect(backoffDelayMs(1, () => 0)).toBe(2_000 * REALTIME_BACKOFF_JITTER_MIN);
+    expect(backoffDelayMs(1, () => 0)).toBe(
+      2_000 * REALTIME_BACKOFF_JITTER_MIN,
+    );
     // The top of the band is exclusive before rounding, which is why this is not `toBeLessThan`.
     expect(backoffDelayMs(1, () => 0.999_999)).toBeLessThanOrEqual(
       2_000 * REALTIME_BACKOFF_JITTER_MAX,
@@ -61,7 +63,9 @@ describe("backoffDelayMs", () => {
     expect(backoffDelayMs(20, () => 0)).toBe(
       REALTIME_BACKOFF_CAP_MS * REALTIME_BACKOFF_JITTER_MIN,
     );
-    expect(backoffDelayMs(20, () => 0.999_999)).toBeGreaterThan(REALTIME_BACKOFF_CAP_MS);
+    expect(backoffDelayMs(20, () => 0.999_999)).toBeGreaterThan(
+      REALTIME_BACKOFF_CAP_MS,
+    );
   });
 
   it("uses Math.random by default and stays inside the jittered band", () => {
@@ -125,7 +129,9 @@ describe("keysForTable", () => {
     // player directory included — for nothing. A real rollover re-keys the dependent queries
     // by itself, since they are keyed on the season id, the season and the week.
     expect(keysForTable("nfl_state", context)).toEqual([boardKeys.nflState()]);
-    expect(keysForTable("nfl_state", context)).not.toContainEqual(boardKeys.all);
+    expect(keysForTable("nfl_state", context)).not.toContainEqual(
+      boardKeys.all,
+    );
   });
 
   it("still falls back to the whole board for an nfl_state event before the context resolves", () => {

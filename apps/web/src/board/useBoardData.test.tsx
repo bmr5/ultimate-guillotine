@@ -1,7 +1,11 @@
+import type { ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
-import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import * as fetchers from "./fetchers";
+import { boardKeys, fingerprintIds } from "./queryKeys";
+import { useBoardData } from "./useBoardData";
 
 vi.mock("./boardClient", () => ({ boardClient: {} }));
 vi.mock("./fetchers", () => ({
@@ -18,10 +22,6 @@ vi.mock("./fetchers", () => ({
   fetchTeams: vi.fn(),
   fetchWeeklyResults: vi.fn(),
 }));
-
-import * as fetchers from "./fetchers";
-import { boardKeys, fingerprintIds } from "./queryKeys";
-import { useBoardData } from "./useBoardData";
 
 const NFL_STATE = {
   id: 1,
@@ -72,7 +72,9 @@ function renderBoardData() {
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   );
-  const view = renderHook(() => useBoardData({ pollingMs: false }), { wrapper });
+  const view = renderHook(() => useBoardData({ pollingMs: false }), {
+    wrapper,
+  });
   return { ...view, queryClient };
 }
 
@@ -90,9 +92,9 @@ describe("useBoardData", () => {
     expect(result.current.week).toBe(3);
     expect(result.current.seasonId).toBe(7);
     expect(vi.mocked(fetchers.fetchTeams).mock.calls[0][1]).toBe(7);
-    expect(vi.mocked(fetchers.fetchTeamWeekProjections).mock.calls[0].slice(1)).toEqual([
-      7, 3,
-    ]);
+    expect(
+      vi.mocked(fetchers.fetchTeamWeekProjections).mock.calls[0].slice(1),
+    ).toEqual([7, 3]);
     expect(result.current.isPending).toBe(false);
     expect(result.current.isEmpty).toBe(false);
   });
@@ -142,12 +144,13 @@ describe("useBoardData", () => {
       expect(vi.mocked(fetchers.fetchPlayers)).toHaveBeenCalled();
     });
     expect(vi.mocked(fetchers.fetchPlayers).mock.calls).toHaveLength(1);
-    expect(vi.mocked(fetchers.fetchPlayers).mock.calls[0][1]).toEqual(["4046", "9999"]);
-    expect(vi.mocked(fetchers.fetchPlayerProjections).mock.calls[0].slice(1)).toEqual([
-      2026,
-      3,
-      ["4046", "9999"],
+    expect(vi.mocked(fetchers.fetchPlayers).mock.calls[0][1]).toEqual([
+      "4046",
+      "9999",
     ]);
+    expect(
+      vi.mocked(fetchers.fetchPlayerProjections).mock.calls[0].slice(1),
+    ).toEqual([2026, 3, ["4046", "9999"]]);
 
     // Keyed on the ids, so a newly held or newly frozen player is a cache miss rather than a
     // stale directory that renders him as "Unknown player".
@@ -230,7 +233,12 @@ describe("useBoardData", () => {
       holding(11, "4046", 0),
     ]);
     vi.mocked(fetchers.fetchPlayers).mockResolvedValue([
-      { sleeper_player_id: "4046", full_name: "Josh Allen", position: "QB", team: "BUF" },
+      {
+        sleeper_player_id: "4046",
+        full_name: "Josh Allen",
+        position: "QB",
+        team: "BUF",
+      },
     ]);
     const { result, queryClient } = renderBoardData();
     await waitFor(() => {
@@ -250,7 +258,9 @@ describe("useBoardData", () => {
       holding(11, "4046", 0),
       holding(11, "9999", 1),
     ]);
-    await queryClient.invalidateQueries({ queryKey: boardKeys.rosterHoldings(7) });
+    await queryClient.invalidateQueries({
+      queryKey: boardKeys.rosterHoldings(7),
+    });
     await waitFor(() => {
       expect(vi.mocked(fetchers.fetchPlayers).mock.calls).toHaveLength(2);
     });
@@ -263,8 +273,18 @@ describe("useBoardData", () => {
     expect(result.current.teams[0].roster[0].fullName).toBe("Josh Allen");
 
     release([
-      { sleeper_player_id: "4046", full_name: "Josh Allen", position: "QB", team: "BUF" },
-      { sleeper_player_id: "9999", full_name: "Puka Nacua", position: "WR", team: "LAR" },
+      {
+        sleeper_player_id: "4046",
+        full_name: "Josh Allen",
+        position: "QB",
+        team: "BUF",
+      },
+      {
+        sleeper_player_id: "9999",
+        full_name: "Puka Nacua",
+        position: "WR",
+        team: "LAR",
+      },
     ]);
     await waitFor(() => {
       expect(result.current.teams[0].roster[1].fullName).toBe("Puka Nacua");
@@ -330,7 +350,9 @@ describe("useBoardData outside the regular season", () => {
 
     // Week 19 is an NFL post-season week this league never played: filtering to it returns no
     // rows at all, and the board goes blank under a heading that says it is live.
-    expect(vi.mocked(fetchers.fetchTeamWeekProjections).mock.calls).toHaveLength(1);
+    expect(
+      vi.mocked(fetchers.fetchTeamWeekProjections).mock.calls,
+    ).toHaveLength(1);
     expect(
       vi.mocked(fetchers.fetchTeamWeekProjections).mock.calls[0].slice(1),
     ).toEqual([7, 17]);
@@ -388,14 +410,19 @@ describe("useBoardData outside the regular season", () => {
           release = resolve;
         }),
     );
-    vi.mocked(fetchers.fetchNflState).mockResolvedValue({ ...NFL_STATE, week: 4 });
+    vi.mocked(fetchers.fetchNflState).mockResolvedValue({
+      ...NFL_STATE,
+      week: 4,
+    });
     await queryClient.invalidateQueries({ queryKey: boardKeys.nflState() });
 
     await waitFor(() => {
       expect(result.current.week).toBe(4);
     });
     await waitFor(() => {
-      expect(vi.mocked(fetchers.fetchPlayerProjections).mock.calls).toHaveLength(2);
+      expect(
+        vi.mocked(fetchers.fetchPlayerProjections).mock.calls,
+      ).toHaveLength(2);
     });
     expect(result.current.teams[0].roster[0].projectedPoints).toBeNull();
 

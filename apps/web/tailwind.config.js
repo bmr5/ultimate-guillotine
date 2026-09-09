@@ -4,12 +4,9 @@ const defaultTheme = require("tailwindcss/defaultTheme");
 
 module.exports = {
   darkMode: ["class"],
-  content: [
-    "./pages/**/*.{ts,tsx}",
-    "./components/**/*.{ts,tsx}",
-    "./app/**/*.{ts,tsx}",
-    "./src/**/*.{ts,tsx}",
-  ],
+  // The Vite app keeps everything under src, plus the one HTML entry. The Next-shaped
+  // ./pages, ./components and ./app globs this scaffold shipped with match nothing here.
+  content: ["./index.html", "./src/**/*.{ts,tsx}"],
   theme: {
     container: {
       center: true,

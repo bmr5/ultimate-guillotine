@@ -5,19 +5,19 @@ import { describe, expect, it } from "vitest";
 
 import type { BoardClient } from "./fetchers";
 import {
-  IN_CHUNK_SIZE,
   fetchFinalRosters,
+  fetchLatestSeason,
   fetchMembers,
   fetchNflState,
   fetchPlayerProjections,
   fetchPlayers,
   fetchRosterHoldings,
-  fetchLatestSeason,
   fetchSeasonByYear,
+  fetchTeams,
   fetchTeamSeasonState,
   fetchTeamWeekProjections,
-  fetchTeams,
   fetchWeeklyResults,
+  IN_CHUNK_SIZE,
 } from "./fetchers";
 
 interface Call {
@@ -66,7 +66,7 @@ function createFakeClient(
           const message = errors[table];
           const response = responses[table];
           const data =
-            typeof response === "function" ? response(call) : (response ?? []);
+            typeof response === "function" ? response(call) : response ?? [];
           return Promise.resolve(
             message === undefined
               ? { data, error: null }
@@ -169,7 +169,9 @@ describe("season and team fetchers", () => {
     const { client, calls } = createFakeClient({ teams: [] });
     await fetchTeams(client, 1);
     expect(calls[0].table).toBe("teams");
-    expect(calls[0].columns).toBe("id, sleeper_roster_id, team_name, member_id");
+    expect(calls[0].columns).toBe(
+      "id, sleeper_roster_id, team_name, member_id",
+    );
     expect(calls[0].filters).toEqual([["season_id", 1]]);
   });
 
@@ -215,7 +217,9 @@ describe("state, projection and roster fetchers", () => {
   it("reads weekly_results for the season", async () => {
     const { client, calls } = createFakeClient({ weekly_results: [] });
     await fetchWeeklyResults(client, 1);
-    expect(calls[0].columns).toBe("week, team_id, points, is_final, state_version");
+    expect(calls[0].columns).toBe(
+      "week, team_id, points, is_final, state_version",
+    );
     expect(calls[0].filters).toEqual([["season_id", 1]]);
   });
 
@@ -223,7 +227,9 @@ describe("state, projection and roster fetchers", () => {
     const { client, calls } = createFakeClient({ final_rosters: [] });
     await fetchFinalRosters(client, 1);
     expect(calls[0].table).toBe("final_rosters");
-    expect(calls[0].columns).toBe("team_id, eliminated_week, holdings, frozen_at");
+    expect(calls[0].columns).toBe(
+      "team_id, eliminated_week, holdings, frozen_at",
+    );
     expect(calls[0].filters).toEqual([["season_id", 1]]);
   });
 });
@@ -233,7 +239,9 @@ describe("bulk player fetchers", () => {
     const { client, calls } = createFakeClient({ players: [] });
     await fetchPlayers(client, ["4046", "9999"]);
     expect(calls).toHaveLength(1);
-    expect(calls[0].columns).toBe("sleeper_player_id, full_name, position, team");
+    expect(calls[0].columns).toBe(
+      "sleeper_player_id, full_name, position, team",
+    );
     expect(calls[0].filters).toEqual([["sleeper_player_id", ["4046", "9999"]]]);
   });
 
@@ -264,11 +272,9 @@ describe("bulk player fetchers", () => {
     // 400 ids in a single `.in()` is a query string long enough to be refused; three batches
     // are not.
     expect(calls).toHaveLength(3);
-    expect(calls.map((call) => (call.filters[0][1] as string[]).length)).toEqual([
-      IN_CHUNK_SIZE,
-      IN_CHUNK_SIZE,
-      400 - 2 * IN_CHUNK_SIZE,
-    ]);
+    expect(
+      calls.map((call) => (call.filters[0][1] as string[]).length),
+    ).toEqual([IN_CHUNK_SIZE, IN_CHUNK_SIZE, 400 - 2 * IN_CHUNK_SIZE]);
     expect(rows.map((row) => row.sleeper_player_id)).toEqual(ids);
   });
 
@@ -287,11 +293,9 @@ describe("bulk player fetchers", () => {
       expect(call.filters[0]).toEqual(["season", 2026]);
       expect(call.filters[1]).toEqual(["week", 3]);
     }
-    expect(calls.map((call) => (call.filters[2][1] as string[]).length)).toEqual([
-      IN_CHUNK_SIZE,
-      IN_CHUNK_SIZE,
-      400 - 2 * IN_CHUNK_SIZE,
-    ]);
+    expect(
+      calls.map((call) => (call.filters[2][1] as string[]).length),
+    ).toEqual([IN_CHUNK_SIZE, IN_CHUNK_SIZE, 400 - 2 * IN_CHUNK_SIZE]);
     expect(rows.map((row) => row.sleeper_player_id)).toEqual(ids);
   });
 
