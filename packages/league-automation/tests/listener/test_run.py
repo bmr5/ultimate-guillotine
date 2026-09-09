@@ -11,12 +11,15 @@ connection could otherwise discard another thread's uncommitted work between its
 """
 
 import os
+from datetime import UTC, datetime
 from typing import Self
 
 import psycopg
 import pytest
 
+from ultimate_guillotine.config import Settings
 from ultimate_guillotine.listener import run as run_module
+from ultimate_guillotine.messages.bluebubbles import InboundMessage
 
 
 class StopLoop(Exception):
@@ -223,3 +226,132 @@ def test_check_db_never_touches_a_connection_it_did_not_open() -> None:
     assert result is True
     assert request_conn.commits == 0
     assert request_conn.rollbacks == 0
+
+
+class EmptyCursor:
+    """A cursor whose every query comes back empty, as an unconfigured database would."""
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> bool:
+        return False
+
+    def execute(self, sql, params=None) -> None:
+        pass
+
+    def fetchone(self):
+        return None
+
+    def fetchall(self) -> list:
+        return []
+
+
+class EmptyConnection:
+    """A connection that answers `build_processor`'s target lookups with nothing."""
+
+    def cursor(self) -> EmptyCursor:
+        return EmptyCursor()
+
+    def commit(self) -> None:
+        pass
+
+    def rollback(self) -> None:
+        pass
+
+
+class RecordingNotifier:
+    """Records the ops notes `build_processor` posts at startup."""
+
+    def __init__(self) -> None:
+        self.ops_sent: list[str] = []
+
+    def ops(self, text: str) -> bool:
+        self.ops_sent.append(text)
+        return True
+
+
+def _settings(**overrides) -> Settings:
+    base = {
+        "database_url": "postgresql://x:y@example.invalid/db",
+        "delivery_mode": "test",
+        "test_chat_guid": "iMessage;+;chat-test",
+        "_env_file": None,
+    }
+    return Settings(**{**base, **overrides})
+
+
+def _registry_names(processor) -> list[str]:
+    return [t.name for t in processor._registry._triggers]
+
+
+def test_build_processor_registers_the_trade_registrar_when_the_key_is_set() -> None:
+    notifier = RecordingNotifier()
+
+    processor, _allowed = run_module.build_processor(
+        _settings(openrouter_api_key="sk-test"), EmptyConnection(), None, None, notifier
+    )
+
+    assert "trade-registrar" in _registry_names(processor)
+    assert notifier.ops_sent == []
+
+
+def test_build_processor_announces_the_registrar_is_disabled_exactly_once() -> None:
+    notifier = RecordingNotifier()
+
+    processor, _allowed = run_module.build_processor(
+        _settings(), EmptyConnection(), None, None, notifier
+    )
+
+    assert "trade-registrar" not in _registry_names(processor)
+    assert notifier.ops_sent == ["Trade Registrar disabled: OPENROUTER_API_KEY not set"]
+
+
+def test_build_processor_treats_a_blank_key_as_no_key() -> None:
+    """`OPENROUTER_API_KEY=` in a `.env` is not a configured key: it must disable
+    the registrar rather than reach OpenRouter unauthenticated."""
+    notifier = RecordingNotifier()
+
+    processor, _allowed = run_module.build_processor(
+        _settings(openrouter_api_key=""), EmptyConnection(), None, None, notifier
+    )
+
+    assert "trade-registrar" not in _registry_names(processor)
+    assert notifier.ops_sent == ["Trade Registrar disabled: OPENROUTER_API_KEY not set"]
+
+
+def _alert(chat_guid: str) -> InboundMessage:
+    return InboundMessage(
+        guid="g1", chat_guid=chat_guid, sender_address="+15555550100",
+        text="🚨 Member01 sends Player Alpha to Member02", is_from_me=False, is_group=True,
+        sent_at=datetime.now(UTC),
+    )
+
+
+def _trade_trigger(processor):
+    return next(t for t in processor._registry._triggers if t.name == "trade-registrar")
+
+
+def test_the_registrar_trigger_is_gated_on_the_delivery_chat() -> None:
+    """A listener that can see more than one chat must answer trades in one."""
+    processor, _allowed = run_module.build_processor(
+        _settings(openrouter_api_key="sk-test"), EmptyConnection(), None, None,
+        RecordingNotifier(),
+    )
+
+    trigger = _trade_trigger(processor)
+
+    assert trigger.matches(_alert("iMessage;+;chat-test"))
+    assert not trigger.matches(_alert("iMessage;+;chat-elsewhere"))
+
+
+def test_build_processor_skips_the_registrar_when_no_chat_is_configured() -> None:
+    notifier = RecordingNotifier()
+
+    processor, _allowed = run_module.build_processor(
+        _settings(delivery_mode="disabled", test_chat_guid=None, openrouter_api_key="sk-test"),
+        EmptyConnection(), None, None, notifier,
+    )
+
+    assert "trade-registrar" not in _registry_names(processor)
+    assert notifier.ops_sent == ["Trade Registrar disabled: no target chat for disabled"]

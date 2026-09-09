@@ -12,6 +12,8 @@ from datetime import datetime, timedelta
 import psycopg
 
 from ultimate_guillotine.config import DeliveryMode
+from ultimate_guillotine.trades.models import MemberRef
+from ultimate_guillotine.trades.names import normalize_name
 
 
 def chat_guid_hash(chat_guid: str) -> str:
@@ -89,17 +91,47 @@ class RunRepository:
         status: str,
         output_hash: str | None = None,
         error: str | None = None,
+        input_version: str | None = None,
     ) -> None:
-        """Mark a run finished, recording its terminal status."""
+        """Mark a run finished, recording its terminal status.
+
+        ``input_version`` names what produced the run's output -- for the Trade
+        Registrar, the prompt version and the model that answered. It is how a
+        later regression is traced back to a prompt or model change; runs that
+        have no versioned input leave it null.
+        """
         with self._conn.cursor() as cur:
             cur.execute(
                 """
                 update private.agent_runs
-                set status = %s, output_hash = %s, error = %s, finished_at = now()
+                set status = %s, output_hash = %s, error = %s,
+                    input_version = coalesce(%s, input_version), finished_at = now()
                 where id = %s
                 """,
-                (status, output_hash, error, run_id),
+                (status, output_hash, error, input_version, run_id),
             )
+
+    def stale_running(
+        self, older_than: timedelta, now: datetime
+    ) -> list[tuple[str, str]]:
+        """Return ``(agent, idempotency_key)`` for runs still ``running`` since
+        longer than ``older_than`` relative to ``now``.
+
+        A run in this state is one whose agent died between reserving it and
+        finishing it: nothing was recorded, nothing was said in the chat, and
+        the idempotency key names the message a human has to re-run.
+        """
+        cutoff = now - older_than
+        with self._conn.cursor() as cur:
+            cur.execute(
+                """
+                select agent, idempotency_key from private.agent_runs
+                where status = 'running' and started_at < %s
+                order by id
+                """,
+                (cutoff,),
+            )
+            return [(row[0], row[1]) for row in cur.fetchall()]
 
     def last_started(self, agent: str) -> datetime | None:
         """Return the most recent ``started_at`` for the given agent, if any."""
@@ -110,6 +142,29 @@ class RunRepository:
             )
             row = cur.fetchone()
             return row[0] if row else None
+
+
+class SeasonRepository:
+    def __init__(self, conn: psycopg.Connection) -> None:
+        self._conn = conn
+
+    def current(self) -> int | None:
+        """Return the newest season year on file, or ``None`` when there are none.
+
+        The league's season is a row, not the calendar year: a trade announced
+        in January belongs to the season that started the previous September.
+        """
+        with self._conn.cursor() as cur:
+            cur.execute("select year from public.seasons order by year desc limit 1")
+            row = cur.fetchone()
+            return row[0] if row else None
+
+    def exists(self, year: int) -> bool:
+        """Is this season on file? Everything a trade is recorded against hangs
+        off its season row, so a replay of a season with no row can only fail."""
+        with self._conn.cursor() as cur:
+            cur.execute("select 1 from public.seasons where year = %s", (year,))
+            return cur.fetchone() is not None
 
 
 class TargetRepository:
@@ -305,6 +360,51 @@ class SourceMessageRepository:
             )
             return cur.fetchone() is not None
 
+    def get(self, source_guid: str) -> SourceMessage | None:
+        """Return the recorded message with this GUID, or ``None``.
+
+        The raw chat GUID and sender address were never stored, so a message
+        rebuilt from this row carries hashes and an excerpt only -- enough to
+        re-run an agent over it, and nothing that identifies the chat.
+        """
+        with self._conn.cursor() as cur:
+            cur.execute(
+                """
+                select source_guid, chat_guid_hash, sender_hash, direction, sent_at,
+                       content_fingerprint, excerpt, trigger_name
+                from private.source_messages where source_guid = %s
+                """,
+                (source_guid,),
+            )
+            row = cur.fetchone()
+            return SourceMessage(*row) if row else None
+
+    def find_repost(
+        self,
+        chat_guid_hash: str,
+        fingerprint: str,
+        exclude_guid: str,
+        since: datetime,
+    ) -> bool:
+        """Has this chat already carried this exact text, in another message, since
+        ``since``?
+
+        Only inbound messages count -- the bot's own posts are outbound -- and
+        the message being asked about is excluded by GUID, because the processor
+        records it before any agent runs.
+        """
+        with self._conn.cursor() as cur:
+            cur.execute(
+                """
+                select 1 from private.source_messages
+                where chat_guid_hash = %s and content_fingerprint = %s
+                  and source_guid <> %s and direction = 'inbound' and sent_at >= %s
+                limit 1
+                """,
+                (chat_guid_hash, fingerprint, exclude_guid, since),
+            )
+            return cur.fetchone() is not None
+
     def latest_sent_at(self, chat_guid_hash: str) -> datetime | None:
         """Return the latest ``sent_at`` recorded for a given chat, if any."""
         with self._conn.cursor() as cur:
@@ -375,3 +475,64 @@ class ExpectedRunRepository:
                 "select job_name, agent, max_gap_minutes, schedule from private.expected_runs"
             )
             return [ExpectedRun(*row) for row in cur.fetchall()]
+
+
+class MemberAliasRepository:
+    def __init__(self, conn: psycopg.Connection) -> None:
+        self._conn = conn
+
+    def all_members(self) -> list[MemberRef]:
+        """Return every member with the aliases (if any) resolution matches them by."""
+        with self._conn.cursor() as cur:
+            cur.execute(
+                """
+                select m.id, m.display_name,
+                    coalesce(array_agg(a.alias) filter (where a.alias is not null), '{}')
+                from public.members m left join private.member_aliases a on a.member_id = m.id
+                group by m.id, m.display_name order by m.id
+                """
+            )
+            return [MemberRef(row[0], row[1], tuple(row[2])) for row in cur.fetchall()]
+
+    def replace_aliases(self, member_display_name: str, aliases: list[str]) -> int:
+        """Replace a member's aliases wholesale, returning how many rows were written.
+
+        Aliases that normalize alike (``Big Ben`` and ``big  ben!``) collapse to
+        one row, so the count returned may be smaller than ``len(aliases)``.
+        Raises ``ValueError`` when ``member_display_name`` isn't a known member,
+        or when an alias is already held by a different member.
+
+        The delete and the inserts run in one savepoint: an alias claimed by
+        somebody else would otherwise leave the member with no aliases at all
+        and the caller's transaction unusable.
+        """
+        # First spelling wins for each normalized form; later duplicates drop.
+        wanted: dict[str, str] = {}
+        for alias in aliases:
+            wanted.setdefault(normalize_name(alias), alias)
+
+        with self._conn.transaction(), self._conn.cursor() as cur:
+            cur.execute(
+                "select id from public.members where display_name = %s",
+                (member_display_name,),
+            )
+            row = cur.fetchone()
+            if row is None:
+                raise ValueError(f"unknown member '{member_display_name}'")
+            member_id = row[0]
+
+            cur.execute("delete from private.member_aliases where member_id = %s", (member_id,))
+            for alias_normalized, alias in wanted.items():
+                try:
+                    cur.execute(
+                        """
+                        insert into private.member_aliases (member_id, alias, alias_normalized)
+                        values (%s, %s, %s)
+                        """,
+                        (member_id, alias, alias_normalized),
+                    )
+                except psycopg.errors.UniqueViolation as exc:
+                    raise ValueError(
+                        f"alias '{alias}' already belongs to another member"
+                    ) from exc
+        return len(wanted)

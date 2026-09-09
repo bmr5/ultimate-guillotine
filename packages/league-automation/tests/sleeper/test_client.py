@@ -43,6 +43,18 @@ def test_get_rosters_parses_owner_ids() -> None:
 
 
 @respx.mock
+def test_get_rosters_reads_players_from_a_list_or_null() -> None:
+    """Sleeper sends ``"players": null`` for an empty roster; that is not an error."""
+    respx.get("https://api.sleeper.app/v1/league/1389372259260452864/rosters").mock(
+        return_value=httpx.Response(200, json=json.loads((FIXTURES / "rosters_2026.json").read_text()))
+    )
+    client = SleeperClient(httpx.Client())
+    by_id = {r.roster_id: r for r in client.get_rosters("1389372259260452864")}
+    assert by_id[1].players == ["4034", "6794"]
+    assert by_id[2].players == []
+
+
+@respx.mock
 def test_get_league_raises_on_http_error() -> None:
     respx.get("https://api.sleeper.app/v1/league/bad-id").mock(return_value=httpx.Response(404))
     client = SleeperClient(httpx.Client())

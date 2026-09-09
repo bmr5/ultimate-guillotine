@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 
 class SleeperLeague(BaseModel, frozen=True):
@@ -29,3 +29,10 @@ class SleeperRoster(BaseModel, frozen=True):
 
     roster_id: int
     owner_id: str
+    players: list[str] = []
+
+    @field_validator("players", mode="before")
+    @classmethod
+    def _no_players_is_an_empty_roster(cls, value: object) -> object:
+        """Sleeper sends ``"players": null`` for an empty roster, not ``[]``."""
+        return [] if value is None else value

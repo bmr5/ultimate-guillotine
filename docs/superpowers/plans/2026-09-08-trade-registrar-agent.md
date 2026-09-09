@@ -335,6 +335,7 @@ git commit -m "feat: add OpenRouter structured-output client and trade settings"
 - Consumes: `SleeperClient`, `conn` fixture, cron manifest format from the foundation.
 - Produces:
   - Table `public.players(id identity, created_at, sleeper_player_id text unique, full_name text, first_name text, last_name text, position text, team text, active boolean, synced_at timestamptz)` with RLS, public select policies, and the `Automation writes players` policy; plus the trade columns below.
+  - Table `private.member_aliases(id, created_at, member_id -> public.members, alias, alias_normalized unique)` with select/insert/update/delete for `automation_worker` (installer-managed data, like `expected_runs`); the existing pgTAP no-DELETE assertion in `supabase/tests/private_automation_schema.sql` must exclude it alongside `expected_runs`.
   - Columns `public.trade_revisions.semantic_fingerprint text` (nullable for pre-existing rows, unique partial index where not null) and `public.trades.context_key text` (indexed).
   - `SleeperClient.get_players() -> dict[str, dict[str, Any]]`.
   - `@dataclass(frozen=True) class Player: sleeper_player_id: str; full_name: str; position: str | None; team: str | None; active: bool`.
@@ -426,6 +427,17 @@ create policy "Automation writes players" on public.players
 grant select, insert, update on public.players to automation_worker;
 grant usage, select on all sequences in schema public to automation_worker;
 
+create table private.member_aliases (
+  id bigint generated always as identity primary key,
+  created_at timestamptz not null default now(),
+  member_id bigint not null references public.members (id),
+  alias text not null,
+  alias_normalized text not null unique
+);
+create index member_aliases_member_id_idx on private.member_aliases (member_id);
+revoke all on private.member_aliases from public, anon, authenticated;
+grant select, insert, update, delete on private.member_aliases to automation_worker;
+
 alter table public.trade_revisions add column semantic_fingerprint text;
 create unique index trade_revisions_semantic_fingerprint_key
   on public.trade_revisions (semantic_fingerprint) where semantic_fingerprint is not null;
@@ -433,7 +445,7 @@ alter table public.trades add column context_key text;
 create index trades_context_key_idx on public.trades (context_key);
 ```
 
-Add `supabase/tests/trades.sql` with `plan(6)`: `has_table('public','players','players table exists')`, `has_column('public','trade_revisions','semantic_fingerprint','fingerprint column exists')`, `has_column('public','trades','context_key','context key exists')`, `policies_are('public','players', array['Public players are readable','Automation writes players'])`, an `is_empty` over `role_table_grants` for `automation_worker` with `privilege_type = 'DELETE'` and `table_name = 'players'`, and a `throws_ok` that inserting two `trade_revisions` rows with the same non-null `semantic_fingerprint` violates the unique index (create a season/trade row first inside the transaction). Follow the description-argument style of the existing pgTAP files.
+Add `supabase/tests/trades.sql` with `plan(7)`: `has_table('public','players','players table exists')`, `has_table('private','member_aliases','member aliases table exists')`, `has_column('public','trade_revisions','semantic_fingerprint','fingerprint column exists')`, `has_column('public','trades','context_key','context key exists')`, `policies_are('public','players', array['Public players are readable','Automation writes players'])`, an `is_empty` over `role_table_grants` for `automation_worker` with `privilege_type = 'DELETE'` and `table_name = 'players'`, and a `throws_ok` that inserting two `trade_revisions` rows with the same non-null `semantic_fingerprint` violates the unique index (create a season/trade row first inside the transaction). Follow the description-argument style of the existing pgTAP files.
 
 Run: `supabase db reset && supabase test db`
 
@@ -736,9 +748,11 @@ git commit -m "feat: add trade models, alert detection, and fingerprints"
 - Consumes: `ExtractedTrade`, `Player`, `TradeParty`, `TradeAsset`, `TradeProposal`.
 - Produces:
   - `@dataclass(frozen=True) class MemberRef: member_id: int; display_name: str; aliases: tuple[str, ...]`.
-  - `MemberAliasRepository(conn).all_members() -> list[MemberRef]` reading `public.members` joined with `private.member_contacts.alias` (aliases may be empty).
+  - `MemberAliasRepository(conn).all_members() -> list[MemberRef]` reading `public.members` joined with `private.member_aliases` (aliases may be empty), and `.replace_aliases(member_display_name: str, aliases: list[str]) -> int` which deletes that member's rows and inserts the given aliases with `alias_normalized` computed by the same normalization as resolution (raises `ValueError` when the display name is unknown).
   - `class Unresolved(Exception)` carrying `.reason: str` (a short human sentence such as `Two players named Mike Williams; which team?`).
-  - `resolve_extracted(extracted: ExtractedTrade, members: list[MemberRef], players: list[Player], season: int, source_guid: str, excerpt: str, prompt_version: str, model: str) -> TradeProposal` raising `Unresolved` on any ambiguity or missing requirement.
+  - `@dataclass(frozen=True) class RosterIndex: holdings: dict[int, frozenset[str]]` mapping `member_id` to the Sleeper player ids on that member's current roster, with `RosterIndex.empty()` and `.holds(member_id, player_id) -> bool`.
+  - `build_roster_index(client: SleeperClient, conn, league_id: str) -> RosterIndex` joining `client.get_rosters(league_id)` (each roster's `players` list; add `players: list[str] = []` to `SleeperRoster`) to `public.teams.sleeper_roster_id` for the active season.
+  - `resolve_extracted(extracted: ExtractedTrade, members: list[MemberRef], players: list[Player], rosters: RosterIndex, season: int, source_guid: str, excerpt: str, prompt_version: str, model: str) -> TradeProposal` raising `Unresolved` on any ambiguity or missing requirement. When a party name matches two or three members, roster evidence decides: if exactly one candidate's roster holds every player that party sends, that candidate wins; if the party only receives and exactly one candidate's roster holds none of the players being sent to it while the others hold at least one, that candidate wins; otherwise `Unresolved("Two members go by '<name>'; which one?")`. The model never chooses.
   - `validate(proposal: TradeProposal) -> None` raising `Unresolved` when fewer than two parties, no asset, an amount without a unit, or `kind == "rental"` with no return condition.
 
 - [ ] **Step 1: Write the failing tests**
@@ -749,9 +763,20 @@ import pytest
 
 from ultimate_guillotine.sleeper.players import Player
 from ultimate_guillotine.trades.models import ExtractedAsset, ExtractedParty, ExtractedTrade
-from ultimate_guillotine.trades.resolve import MemberRef, Unresolved, resolve_extracted, validate
+from ultimate_guillotine.trades.resolve import (
+    MemberRef,
+    RosterIndex,
+    Unresolved,
+    resolve_extracted,
+    validate,
+)
 
-MEMBERS = [MemberRef(1, "Member01", ("m1", "memberone")), MemberRef(2, "Member02", ()), MemberRef(3, "Member03", ())]
+MEMBERS = [
+    MemberRef(1, "Member01", ("m1", "memberone", "nick")),
+    MemberRef(2, "Member02", ()),
+    MemberRef(3, "Member03", ("nick",)),
+    MemberRef(4, "Member04", ()),
+]
 PLAYERS = [
     Player("p1", "Player Alpha", "WR", "KC", True),
     Player("p2", "Mike Williams", "WR", "NYJ", True),
@@ -773,8 +798,11 @@ def extracted(**overrides) -> ExtractedTrade:
     return ExtractedTrade(**base)
 
 
-def resolve(e: ExtractedTrade):
-    return resolve_extracted(e, MEMBERS, PLAYERS, 2026, "g1", "🚨 ...", "2026.1", "m")
+ROSTERS = RosterIndex({1: frozenset({"p1"}), 2: frozenset({"p2"}), 3: frozenset({"p3"}), 4: frozenset()})
+
+
+def resolve(e: ExtractedTrade, rosters: RosterIndex = ROSTERS):
+    return resolve_extracted(e, MEMBERS, PLAYERS, rosters, 2026, "g1", "🚨 ...", "2026.1", "m")
 
 
 def test_resolves_members_by_name_or_alias_and_players_by_name() -> None:
@@ -789,6 +817,24 @@ def test_ambiguous_player_name_is_unresolved_with_reason() -> None:
     with pytest.raises(Unresolved) as info:
         resolve(e)
     assert "Mike Williams" in info.value.reason
+
+
+def test_ambiguous_member_name_is_settled_by_roster_evidence() -> None:
+    # "nick" is Member01 and Member03; only Member01's roster holds Player Alpha, the player sent.
+    e = extracted(parties=[ExtractedParty(name="Nick"), ExtractedParty(name="Member02")],
+                  assets=[ExtractedAsset(kind="player", from_party="Nick", to_party="Member02",
+                                         player_name="Player Alpha", amount=None, unit=None,
+                                         description=None)])
+    assert [p.member_id for p in resolve(e).parties] == [1, 2]
+
+
+def test_ambiguous_member_name_without_roster_evidence_is_unresolved() -> None:
+    e = extracted(parties=[ExtractedParty(name="Nick"), ExtractedParty(name="Member02")],
+                  assets=[ExtractedAsset(kind="faab", from_party="Nick", to_party="Member02",
+                                         player_name=None, amount=10, unit="faab", description=None)])
+    with pytest.raises(Unresolved) as info:
+        resolve(e, RosterIndex.empty())
+    assert "which one" in info.value.reason
 
 
 def test_unknown_member_is_unresolved() -> None:
@@ -819,13 +865,13 @@ Run: `uv run --project packages/league-automation pytest packages/league-automat
 
 - [ ] **Step 3: Implement**
 
-Normalization: NFKC, lower-case, strip punctuation except spaces, collapse whitespace. Member lookup: exact normalized match on display name or any alias; zero matches or more than one raises `Unresolved(f"I don't recognize '{name}' as a league member")`. Player lookup: exact normalized `full_name` match first; if none, last-name-only match when unique; two or more matches raise `Unresolved(f"Two players named {name}; which team?")`; zero raise `Unresolved(f"I can't find a player named {name}")`. Defenses match on full name (`Kansas City Chiefs`) or on `team` code plus the word `defense`/`DEF`/`D/ST`. `kind == "unclear"` raises `Unresolved(unclear_reason or "The alert is unclear")`. Duplicate parties collapse to one and then fail validation. `validate` enforces the rules in Interfaces; error sentences are user-facing and end without a period so the formatter can compose them.
+Normalization: NFKC, lower-case, strip punctuation except spaces, collapse whitespace. Member lookup: exact normalized match on display name or any alias; zero matches raise `Unresolved(f"I don't recognize '{name}' as a league member")`; two or three matches go to roster disambiguation as described in Interfaces (resolve every player asset first, then settle ambiguous parties using `rosters.holds`); four or more matches, or no decisive evidence, raise `Unresolved(f"Two members go by '{name}'; which one?")`. Player lookup: exact normalized `full_name` match first; if none, last-name-only match when unique; two or more matches raise `Unresolved(f"Two players named {name}; which team?")`; zero raise `Unresolved(f"I can't find a player named {name}")`. Defenses match on full name (`Kansas City Chiefs`) or on `team` code plus the word `defense`/`DEF`/`D/ST`. `kind == "unclear"` raises `Unresolved(unclear_reason or "The alert is unclear")`. Duplicate parties collapse to one and then fail validation. `validate` enforces the rules in Interfaces; error sentences are user-facing and end without a period so the formatter can compose them.
 
 `MemberAliasRepository.all_members` runs:
 
 ```sql
-select m.id, m.display_name, coalesce(array_agg(c.alias) filter (where c.alias is not null), '{}')
-from public.members m left join private.member_contacts c on c.member_id = m.id
+select m.id, m.display_name, coalesce(array_agg(a.alias) filter (where a.alias is not null), '{}')
+from public.members m left join private.member_aliases a on a.member_id = m.id
 group by m.id, m.display_name order by m.id
 ```
 
@@ -922,7 +968,8 @@ def extract_trade(
 ) -> tuple[ExtractedTrade, AIUsage]:
     user = (
         f"Season: {season}\nWeek hint: {week_hint if week_hint is not None else 'unknown'}\n"
-        f"League members: {', '.join(member_names)}\n\nAnnouncement:\n{text}"
+        f"League members (Sleeper username: names people use): {'; '.join(member_names)}\n\n"
+        f"Announcement:\n{text}"
     )
     return client.parse(load_prompt(), user, ExtractedTrade, "extracted_trade")
 ```
@@ -1107,7 +1154,8 @@ git commit -m "feat: format trade confirmations and clarifications"
 **Files:**
 - Create: `packages/league-automation/src/ultimate_guillotine/trades/registrar.py`
 - Create: `packages/league-automation/src/ultimate_guillotine/cli/trades.py`
-- Modify: `packages/league-automation/src/ultimate_guillotine/cli/main.py` (register the `trades` group)
+- Create: `packages/league-automation/src/ultimate_guillotine/cli/members.py`
+- Modify: `packages/league-automation/src/ultimate_guillotine/cli/main.py` (register the `trades` and `members` groups)
 - Modify: `packages/league-automation/src/ultimate_guillotine/cli/deps.py` (add `build_ai(deps) -> StructuredOutputClient`)
 - Modify: `packages/league-automation/src/ultimate_guillotine/listener/run.py` (register `trade_trigger` in `build_processor`)
 - Modify: `hermes/guillotine/skills/guillotine-ops/SKILL.md` (document `ug trades list` and `ug trades retry`)
@@ -1117,8 +1165,9 @@ git commit -m "feat: format trade confirmations and clarifications"
 **Interfaces:**
 - Consumes: everything above plus `RunRepository`, `DeliveryService`, `HermesNotifier`, `InboundMessage`, `Trigger`.
 - Produces:
-  - `TradeRegistrar(settings, conn, ai, delivery, notifier, members_repo, players_repo, trades_repo, runs_repo, clock=...)` with `handle(msg: InboundMessage) -> str` returning one of `created`, `revised`, `duplicate`, `rescinded`, `clarification`, `not_a_trade`, `failed`, `skipped`.
+  - `TradeRegistrar(settings, conn, ai, delivery, notifier, members_repo, players_repo, trades_repo, runs_repo, sleeper_client=None, clock=...)` (a `None` Sleeper client means `RosterIndex.empty()`) with `handle(msg: InboundMessage) -> str` returning one of `created`, `revised`, `duplicate`, `rescinded`, `clarification`, `not_a_trade`, `failed`, `skipped`.
   - `trade_trigger(registrar: TradeRegistrar) -> Trigger` named `trade-registrar`, matching `is_trade_candidate(msg.text) and not msg.is_from_me` (a 🚨 from Ben's own handle still counts when `msg.is_from_me` is true and the text is not signed; implement `matches` as `is_trade_candidate(text) and not is_signed(text)`).
+  - `ug members aliases load PATH` reading `data/private/member-aliases.json` (`{"members": [{"sleeper_username", "aliases": [...]}]}`), calling `MemberAliasRepository.replace_aliases` per entry, printing `aliases: N members, M aliases` and never printing the aliases themselves; and `ug members list` printing `display_name  alias_count`.
   - `ug trades extract --text "<alert>"` (dry run: prints the resolved proposal as JSON or the clarification reason; no writes, no send), `ug trades list [--limit N]`, `ug trades retry <source_guid>` (re-runs a failed candidate from `private.source_messages.excerpt`), `ug trades replay <xlsx> [--limit N] [--dry-run]` (Task 9).
 
 - [ ] **Step 1: Write the failing handler tests with fakes**
@@ -1319,8 +1368,8 @@ Run: `uv run --project packages/league-automation pytest packages/league-automat
 1. `run_id = runs.reserve("trade-registrar", "webhook", f"trade:{msg.guid}")`; if `None`, return `skipped` (already processed).
 2. Wrap everything after this in `try/except`; on any unexpected exception `runs.finish(run_id, "failed", error=exc.__class__.__name__)`, `notifier.alerts(f"Trade Registrar failed on a candidate: {exc.__class__.__name__}")`, commit if `conn` is not `None`, and return `failed`.
 3. Rescission fast path: if `is_rescission_candidate(msg.text)` and a code matching `T-\d{4}-\d{3}` appears in the text: `trades.rescind(code, msg.guid, msg.sent_at)`; deliver `format_rescinded(code)`; finish `succeeded`; return `rescinded`. If it is a rescission with no code, fall through to extraction and, when `kind == "rescission"`, resolve the target by `trades.find_by_context(trade_context_key(proposal))`; if none, send `format_clarification("Which trade is rescinded? Include its T- code")` and return `clarification`.
-4. `extracted, usage = extract_trade(ai, msg.text, season, week_hint, [m.display_name for m in members])` where `season` is the year of `clock()` and `week_hint` is `None` in this plan (the Adjudicator plan adds the current-week lookup). On `AIUnavailable` or `AIInvalidOutput`: finish `failed`, alert, return `failed`.
-5. If `extracted.kind == "not_a_trade"`: finish `succeeded` with `output_hash=None`, send nothing, return `not_a_trade`. Otherwise `resolve_extracted(...)` then `validate(...)`; on `Unresolved` deliver `format_clarification(reason)`, finish `succeeded` with `output_hash` of the clarification text, return `clarification`.
+4. `extracted, usage = extract_trade(ai, msg.text, season, week_hint, [f"{m.display_name}: {', '.join(m.aliases) or 'no known nicknames'}" for m in members])` where `season` is the year of `clock()` and `week_hint` is `None` in this plan (the Adjudicator plan adds the current-week lookup). On `AIUnavailable` or `AIInvalidOutput`: finish `failed`, alert, return `failed`.
+5. If `extracted.kind == "not_a_trade"`: finish `succeeded` with `output_hash=None`, send nothing, return `not_a_trade`. Otherwise build `rosters = build_roster_index(sleeper_client, conn, settings.sleeper_league_id)` (on any exception fall back to `RosterIndex.empty()` and post one ops note by exception class name), then `resolve_extracted(..., rosters, ...)` then `validate(...)`; on `Unresolved` deliver `format_clarification(reason)`, finish `succeeded` with `output_hash` of the clarification text, return `clarification`.
 6. `acceptance = trades.accept(proposal)`; `duplicate` finishes the run with status `duplicate` and returns without sending; `created` delivers `format_confirmation`; `revised` delivers `format_updated(code, proposal, acceptance.previous_terms)`.
 7. Finish `succeeded`, recording `input_version=f"{PROMPT_VERSION}:{usage.model}"` through `runs.finish` (extend `RunRepository.finish` with an optional `input_version` keyword if it lacks one) and `output_hash = sha256(content)`.
 8. Commit after each database step when `conn` is provided (`conn.commit()`); the fakes pass `None`.

@@ -251,6 +251,19 @@ anywhere else in this file.
 `/cron run <job name>` (for example `/cron run guillotine-health`) to
 trigger an immediate run of that job outside its schedule.
 
+**Re-run a trade the registrar left stuck.** `ug ops health` prints
+`runs stuck running > 15m: N (agent trade-registrar)` when a run was
+reserved and never finished — the agent died between the two, so nothing
+was recorded and nothing was said in the chat. The idempotency key of
+such a run is `trade:<source guid>`; re-run that candidate with:
+
+```bash
+uv run --project packages/league-automation ug trades retry <guid>
+```
+
+It reserves a fresh run under a per-attempt key, so the stuck one does
+not block it. The stuck row stays as the record of the crash.
+
 **Read listener logs.** The listener's stdout and stderr are written to:
 
 ```
@@ -274,3 +287,124 @@ Restart the listener so it picks up the new `.env` value:
 ```bash
 scripts/mac-mini/install_listener.sh
 ```
+
+## 8. Trade Registrar rollout
+
+The Trade Registrar listens for `🚨` alerts in the league chat and logs
+one trade (or asks one question) per announcement. It ships behind its
+own gate, run after Gate 0 and after the listener has been restarted
+with `DELIVERY_MODE=test`. The checklist below is copied verbatim from
+the plan's Task 9, Step 4; check each box off as it is verified on the
+Mac mini, and rename the status heading once every box is checked.
+
+### Gate pending
+
+With `DELIVERY_MODE=test` and the listener restarted. Test mode writes
+trade codes prefixed `TEST-`, counted in their own sequence, so
+rehearsing the gate never consumes a real trade number: the league's
+first real trade is still `T-2026-001`. The gate rows stay in
+`public.trades` and `public.trade_revisions` until Ben deletes them from
+the Supabase dashboard afterwards — the automation worker holds no
+DELETE grant on those tables by design, so nothing in this repository
+can clear them.
+
+- [ ] Send `🚨 Trade Alert 🚨` on one line and `<Ben> sends Player Alpha
+  to <second handle name> for 100 FAAB` on the next, from the second
+  handle, using two real member display names from `public.members` and
+  a real active player name. Expect a signed `🚨 Trade TEST-2026-001
+  logged` reply and a mirror in `#guillotine-feed`.
+- [ ] Send the same text again. Expect no reply; `ug ops audit-runs`
+  prints nothing; `select status from private.agent_runs where agent =
+  'trade-registrar' order by id desc limit 1` is `duplicate`.
+- [ ] Send the same trade with a different FAAB amount. Expect
+  `🚨 Trade TEST-2026-001 updated`.
+- [ ] Send `🚨 Trade TEST-2026-001 is rescinded`. Expect
+  `🚨 Trade TEST-2026-001 rescinded`.
+- [ ] Send `🚨 Player Alpha rented for 10`. Expect a clarification reply
+  and no new trade.
+- [ ] Restart the listener between the send and the run completion once
+  (`launchctl kickstart -k` immediately after step 1's send) and confirm
+  exactly one confirmation exists; re-post the webhook payload with the
+  recorded GUID and confirm `duplicate`.
+- [ ] `ug trades list` shows the trade with status `rescinded` and
+  revision 2.
+
+Once every check above passes, replace the status heading with
+`Gate passed: <date>, delivery mode <test|production>`, leave the checked
+boxes as the record, and add the outcomes as notes below it. Do not
+record GUIDs or handles here or anywhere else in this file. Production
+promotion (`DELIVERY_MODE=production` and a production target) is a
+separate, explicit decision by Ben after this gate.
+
+### Replay history
+
+`ug trades replay` runs a season of past announcements out of the
+contracts spreadsheet through the same pipeline the listener uses. It is
+how a prompt or resolution change is measured against real history
+rather than against invented examples.
+
+Dry run — resolves only, writes nothing, sends nothing, and costs one
+model call per candidate row:
+
+```bash
+uv run --project packages/league-automation ug trades replay \
+  history/contracts/2025-26/all-contracts.xlsx --dry-run --limit 15
+```
+
+Write mode — no `--dry-run` — runs the registrar for real and fills the
+trade tables from history. It never sends, whatever the delivery mode,
+and it exits 2 without writing anything when `DELIVERY_MODE` is
+`production`: replaying a past season into the live league would be
+indistinguishable from a flood of new trades. It also exits 2 with `no
+public.seasons row for 2025; insert it first` when that season has no
+row — every trade hangs off its season, so without it each row would
+cost a model call and fail. Failures are printed as `row N: failed` and
+nothing is posted to Discord: a replay of a past season fails on rows
+nobody is going to fix, and alerting on each one would page for
+history. Run it only with `DELIVERY_MODE` set to `disabled` or `test`:
+
+```bash
+uv run --project packages/league-automation ug trades replay \
+  history/contracts/2025-26/all-contracts.xlsx
+```
+
+Each row prints `row N: <outcome>`, where the outcome is one of:
+
+| Outcome | Meaning |
+| --- | --- |
+| `created` | a new trade was logged |
+| `duplicate` | the same terms were already on file |
+| `revised` | an existing trade was updated with new terms |
+| `rescinded` | an existing trade was rescinded |
+| `clarification: <reason>` | the registrar would have asked the chat this |
+| `duplicate` (write mode) | the same text or terms were already recorded |
+| `not-a-trade` | the model read the row as chatter |
+| `not-a-candidate` | the `🚨` trigger would never have looked at the row |
+| `failed` | the row raised; the run is recorded `failed` |
+| `skipped` | the run key was already reserved, so nothing ran |
+
+Only `--dry-run` can spell the reason out: it has the `Unresolved` in
+hand. Write mode goes through the registrar, which answers with its
+status alone, so those rows print a bare `clarification` — the question
+it would have asked is in the chat message it did not send, not in the
+replay output.
+
+A summary line closes the run. It always names `created`, `duplicate`,
+`clarification`, and `not-a-candidate`, then appends any of the others
+that happened, so the counters always add up to the row count. The shape,
+with an illustrative set of numbers:
+
+```
+replay: 18 rows, created 11, duplicate 0, clarification 6, not-a-candidate 1
+```
+
+Clarifications are expected wherever 2025 member or player names differ
+from the 2026 `public.members` and `public.players` tables — the
+registrar is asking about a name that no longer exists, which is correct
+behaviour, not a bug to fix here.
+
+Running a write-mode replay a second time reports `skipped` for every
+row and changes nothing: the run key is `trade:replay:<hash of the row
+text>`, so the first replay already reserved it. That is the intended
+guard, not a failure — to replay the same workbook again for real, the
+earlier runs have to be cleared first.

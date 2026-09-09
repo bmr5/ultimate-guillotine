@@ -1,0 +1,93 @@
+[
+  {
+    "id": "permanent",
+    "category": "permanent",
+    "text": "🚨 Trade Alert 🚨\nMember01 sends Player Alpha to Member02 for 20 FAAB",
+    "expect_candidate": true,
+    "expect_rescission": false
+  },
+  {
+    "id": "faab_only",
+    "category": "faab_only",
+    "text": "🚨 Member01 sends Player Alpha to Member02 for 20 FAAB",
+    "expect_candidate": true,
+    "expect_rescission": false
+  },
+  {
+    "id": "rental",
+    "category": "rental",
+    "text": "🚨 Trade Alert 🚨\nMember02 is renting Player Beta from Member03 for 15 FAAB, returns after week 10",
+    "expect_candidate": true,
+    "expect_rescission": false
+  },
+  {
+    "id": "multi_party",
+    "category": "multi_party",
+    "text": "🚨 Trade Alert 🚨\nMember01 sends Player Alpha to Member02, Member02 sends Player Beta to Member03, Member03 sends Player Gamma to Member01",
+    "expect_candidate": true,
+    "expect_rescission": false
+  },
+  {
+    "id": "option",
+    "category": "option",
+    "text": "🚨 Trade Alert 🚨\nMember03 sends Player Gamma to Member04 with a buyback option for 10 FAAB",
+    "expect_candidate": true,
+    "expect_rescission": false
+  },
+  {
+    "id": "payment_no_trade",
+    "category": "payment_no_trade",
+    "text": "🚨 Trade Alert 🚨\nMember04 pays Member01 20 FAAB, no players involved",
+    "expect_candidate": true,
+    "expect_rescission": false
+  },
+  {
+    "id": "duplicate_repost",
+    "category": "duplicate_repost",
+    "text": "🚨  Trade Alert 🚨\n\nMember01   sends Player Alpha  to Member02 for 20 FAAB",
+    "expect_candidate": true,
+    "expect_rescission": false
+  },
+  {
+    "id": "amended",
+    "category": "amended",
+    "text": "🚨 Trade Alert 🚨\nMember01 sends Player Alpha to Member02 for 35 FAAB",
+    "expect_candidate": true,
+    "expect_rescission": false
+  },
+  {
+    "id": "rescission",
+    "category": "rescission",
+    "text": "🚨 Trade Alert 🚨\nMember01 and Member02 rescind the trade of Player Alpha for Player Beta",
+    "expect_candidate": true,
+    "expect_rescission": true
+  },
+  {
+    "id": "ambiguous",
+    "category": "ambiguous",
+    "text": "🚨 Trade Alert 🚨\nMember03 rented for 10",
+    "expect_candidate": true,
+    "expect_rescission": false
+  },
+  {
+    "id": "unusual_wording",
+    "category": "unusual_wording",
+    "text": "🚨 Trade Alert 🚨\nMember01 gives Member02 Player Gamma, done deal",
+    "expect_candidate": true,
+    "expect_rescission": false
+  },
+  {
+    "id": "negative_siren_no_terms",
+    "category": "negative",
+    "text": "🚨 huge game tonight",
+    "expect_candidate": false,
+    "expect_rescission": false
+  },
+  {
+    "id": "negative_no_alert",
+    "category": "negative",
+    "text": "Member01 sends Player Alpha to Member02",
+    "expect_candidate": false,
+    "expect_rescission": false
+  }
+]

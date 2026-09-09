@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 
 LISTENER_STALE_AFTER = timedelta(minutes=10)
 STUCK_SENDING_AFTER = timedelta(minutes=10)
+STUCK_RUNNING_AFTER = timedelta(minutes=15)
 
 
 def check_health(now: datetime, heartbeats, runs, expected, client, outbound) -> list[str]:
@@ -27,6 +28,16 @@ def check_health(now: datetime, heartbeats, runs, expected, client, outbound) ->
     # Messages boundary without a recorded outcome: it needs a human to look.
     for outbound_id in outbound.stuck_sending(STUCK_SENDING_AFTER, now):
         problems.append(f"Outbound message #{outbound_id} stuck in sending")
+    # A run still `running` this long after it started means an agent died
+    # between reserving the run and finishing it: nothing was recorded and
+    # nothing was said. `ug trades retry <guid>` re-runs a trade candidate.
+    stuck_runs = runs.stale_running(STUCK_RUNNING_AFTER, now)
+    if stuck_runs:
+        agents = sorted({agent for agent, _key in stuck_runs})
+        minutes = int(STUCK_RUNNING_AFTER.total_seconds() // 60)
+        problems.append(
+            f"runs stuck running > {minutes}m: {len(stuck_runs)} (agent {', '.join(agents)})"
+        )
     if not client.ping():
         problems.append("BlueBubbles server is not responding to ping")
     return problems

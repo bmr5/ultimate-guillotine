@@ -29,6 +29,20 @@ class Settings(BaseSettings):
     discord_feed_channel: str = "#guillotine-feed"
     discord_drafts_channel: str = "#guillotine-drafts"
     discord_alerts_channel: str = "#guillotine-alerts"
+    openrouter_api_key: SecretStr | None = None
+    trade_extraction_model: str = "openai/gpt-5-mini"
+
+    def openrouter_key(self) -> str | None:
+        """The OpenRouter key, or `None` when it is unset, blank, or whitespace.
+
+        `OPENROUTER_API_KEY=` in a `.env` is not a configured key, but pydantic
+        turns it into `SecretStr("")`, which an `is None` check waves through --
+        and the first request then leaves the machine unauthenticated. Blank
+        means absent, and every caller asks this one question instead.
+        """
+        if self.openrouter_api_key is None:
+            return None
+        return self.openrouter_api_key.get_secret_value().strip() or None
 
     @model_validator(mode="after")
     def validate_delivery_target(self) -> "Settings":

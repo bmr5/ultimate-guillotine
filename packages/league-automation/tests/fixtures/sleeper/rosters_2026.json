@@ -2,6 +2,7 @@
   {
     "roster_id": 1,
     "owner_id": "user-01",
+    "players": ["4034", "6794"],
     "settings": {
       "wins": 0,
       "losses": 0,
@@ -11,6 +12,7 @@
   {
     "roster_id": 2,
     "owner_id": "user-02",
+    "players": null,
     "settings": {
       "wins": 0,
       "losses": 0,

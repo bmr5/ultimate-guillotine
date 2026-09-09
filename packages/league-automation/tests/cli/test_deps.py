@@ -5,7 +5,8 @@ from datetime import UTC, datetime
 import pytest
 
 from ultimate_guillotine.cli import deps as deps_module
-from ultimate_guillotine.cli.deps import build_deps, run_scheduled
+from ultimate_guillotine.cli.deps import Deps, build_ai, build_deps, run_scheduled
+from ultimate_guillotine.config import Settings
 
 NOW = datetime(2026, 9, 8, 12, 0, tzinfo=UTC)
 
@@ -132,3 +133,19 @@ def test_run_scheduled_forwards_an_explicit_trigger_and_key() -> None:
     assert conn.reserve_args == [
         ("self-test", "cli", "self-test:20260908T120000123456")
     ]
+
+
+def _deps(**overrides) -> Deps:
+    settings = Settings(
+        database_url="postgresql://x:y@example.invalid/db", _env_file=None, **overrides
+    )
+    return Deps(settings=settings, conn=None, client=None, notifier=None)
+
+
+def test_build_ai_exits_on_a_blank_or_missing_key() -> None:
+    """A blank key is a missing key. Letting `SecretStr("")` through sent one
+    unauthenticated request to OpenRouter instead of failing here."""
+    for settings_kwargs in ({}, {"openrouter_api_key": ""}, {"openrouter_api_key": "   "}):
+        with pytest.raises(SystemExit) as exc_info:
+            build_ai(_deps(**settings_kwargs))
+        assert "OPENROUTER_API_KEY is not set" in str(exc_info.value)

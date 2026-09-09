@@ -13,12 +13,15 @@ import httpx
 import psycopg
 import uvicorn
 
+from ultimate_guillotine.ai.openrouter import StructuredOutputClient
 from ultimate_guillotine.config import DeliveryMode, Settings, load_settings
 from ultimate_guillotine.data.database import connect
 from ultimate_guillotine.data.repositories import (
     HeartbeatRepository,
+    MemberAliasRepository,
     OutboundRepository,
     ReceiptRepository,
+    RunRepository,
     SourceMessageRepository,
     TargetRepository,
 )
@@ -32,6 +35,10 @@ from ultimate_guillotine.listener.processing import (
 from ultimate_guillotine.messages.bluebubbles import BlueBubblesClient
 from ultimate_guillotine.messages.delivery import DeliveryService
 from ultimate_guillotine.ops.notify import HermesNotifier
+from ultimate_guillotine.sleeper.client import SleeperClient
+from ultimate_guillotine.sleeper.players import PlayerRepository
+from ultimate_guillotine.trades.registrar import TradeRegistrar, trade_trigger
+from ultimate_guillotine.trades.repository import TradeRepository, code_prefix_for
 
 log = logging.getLogger(__name__)
 
@@ -103,6 +110,67 @@ def _check_db(connection_factory: Callable[[], psycopg.Connection]) -> bool:
     return True
 
 
+def trade_chat_guid(settings: Settings, production_target) -> str | None:
+    """The one chat the registrar answers trades in, or ``None`` if there isn't one.
+
+    Test mode answers in the configured test chat; production answers in the
+    production delivery target's chat, which is where the target's identity has
+    already been checked. `disabled` has no chat to answer in at all, so the
+    registrar does not run.
+    """
+    if settings.delivery_mode is DeliveryMode.TEST:
+        return settings.test_chat_guid
+    if settings.delivery_mode is DeliveryMode.PRODUCTION:
+        return production_target.chat_guid if production_target else None
+    return None
+
+
+def _register_trade_registrar(
+    settings: Settings, conn, delivery, notifier, registry, chat_guid: str | None
+) -> None:
+    """Register the Trade Registrar, or say once why it is not running.
+
+    Without a chat to answer in, or without an OpenRouter key -- unset or blank,
+    which `openrouter_key` treats alike -- the registrar cannot do its job, so
+    the listener starts without it rather than failing every alert one at a
+    time. That is a configuration problem someone has to fix, so it is announced
+    in ops at startup -- once, here, and never again per message.
+
+    The repositories are handed the listener's own connection: the registrar
+    commits after each step itself, so the trade, its revision, and the run all
+    land together rather than one commit per repository call. Only the run
+    repository is wrapped, so a reservation is durable before the model is
+    called and a redelivered webhook cannot start a second extraction.
+
+    Test mode writes `TEST-` trade codes: a gate rehearsal must not consume the
+    season's real trade numbers.
+    """
+    if chat_guid is None:
+        log.warning("trade registrar disabled: no target chat for %s", settings.delivery_mode)
+        notifier.ops(f"Trade Registrar disabled: no target chat for {settings.delivery_mode}")
+        return
+    key = settings.openrouter_key()
+    if key is None:
+        log.warning("trade registrar disabled: no OpenRouter key configured")
+        notifier.ops("Trade Registrar disabled: OPENROUTER_API_KEY not set")
+        return
+    ai = StructuredOutputClient(key, settings.trade_extraction_model, httpx.Client())
+    registrar = TradeRegistrar(
+        settings,
+        conn,
+        ai,
+        delivery,
+        notifier,
+        MemberAliasRepository(conn),
+        PlayerRepository(conn),
+        TradeRepository(conn, code_prefix_for(settings.delivery_mode)),
+        CommittingRepo(RunRepository(conn), conn),
+        sources_repo=SourceMessageRepository(conn),
+        sleeper_client=SleeperClient(httpx.Client()),
+    )
+    registry.register(trade_trigger(registrar, chat_guid))
+
+
 def build_processor(
     settings: Settings, conn, client, delivery, notifier
 ) -> tuple[InboundProcessor, set[str]]:
@@ -115,15 +183,17 @@ def build_processor(
     commits on its own.
     """
     targets = TargetRepository(conn)
-    allowed = {
-        t.chat_guid
-        for t in (targets.get(DeliveryMode.TEST), targets.get(DeliveryMode.PRODUCTION))
-        if t
-    }
+    test_target = targets.get(DeliveryMode.TEST)
+    production_target = targets.get(DeliveryMode.PRODUCTION)
+    allowed = {t.chat_guid for t in (test_target, production_target) if t}
     registry = TriggerRegistry()
     # Agents from later plans register their triggers here, next to ping_trigger.
     if settings.delivery_mode is DeliveryMode.TEST and settings.test_chat_guid:
         registry.register(ping_trigger(delivery, settings.test_chat_guid))
+    _register_trade_registrar(
+        settings, conn, delivery, notifier, registry,
+        trade_chat_guid(settings, production_target),
+    )
     processor = InboundProcessor(
         allowed,
         registry,
