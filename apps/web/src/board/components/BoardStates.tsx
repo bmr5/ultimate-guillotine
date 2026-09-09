@@ -1,0 +1,113 @@
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+
+import { MS_PER_SECOND } from "../derive/time";
+import { REALTIME_POLL_MS } from "../realtime";
+import type { BoardQueryError } from "../useBoardData";
+
+/** Placeholder cards shown before the first board payload resolves. */
+const SKELETON_CARD_COUNT = 6;
+
+/**
+ * The banner's wording quotes the poll it is describing, so the sentence cannot drift away from
+ * the interval the page actually asks `useBoardData` for.
+ */
+const POLL_SECONDS = REALTIME_POLL_MS / MS_PER_SECOND;
+
+export const REALTIME_PAUSED_TEXT = `Live updates are paused. Polling every ${POLL_SECONDS} seconds.`;
+
+export function BoardSkeleton() {
+  return (
+    <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      {Array.from({ length: SKELETON_CARD_COUNT }, (_, index) => index).map(
+        (index) => (
+          <li key={index}>
+            <Card>
+              <CardContent className="space-y-2 p-4">
+                <Skeleton className="h-4 w-1/2" />
+                <Skeleton className="h-3 w-2/3" />
+                <Skeleton className="h-3 w-1/3" />
+              </CardContent>
+            </Card>
+          </li>
+        ),
+      )}
+    </ul>
+  );
+}
+
+/**
+ * Reached whenever the board has no teams and nothing failed — which includes the case where
+ * `nfl_state` is empty, so the season never resolves and every query below it stays disabled.
+ * That is genuinely "nothing has been synced yet", not an error, and it must not spin forever.
+ */
+export function BoardEmpty() {
+  return (
+    <Card>
+      <CardContent className="p-6">
+        <p className="font-medium">Waiting for the first sync</p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          No teams have been written to Supabase yet. The board fills in as soon
+          as the sync job runs.
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * One alert per failed section, named so a reader can tell a dead projection run from a dead
+ * roster fetch. The rest of the board keeps rendering behind them.
+ */
+export function BoardErrors({
+  errors,
+  onRetry,
+}: {
+  errors: BoardQueryError[];
+  onRetry: () => void;
+}) {
+  if (errors.length === 0) {
+    return null;
+  }
+  return (
+    <div className="space-y-2">
+      {errors.map((error) => (
+        <Alert key={error.section} variant="destructive">
+          <AlertTitle>{error.section} could not load</AlertTitle>
+          <AlertDescription className="flex flex-wrap items-center gap-3">
+            <span>{error.message}</span>
+            <Button size="sm" variant="outline" onClick={onRetry}>
+              Retry
+            </Button>
+          </AlertDescription>
+        </Alert>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Shown while the Realtime socket is down. `onRefresh` is the realtime hook's `refreshNow`, not
+ * a plain refetch: the point of the button is to skip a pending backoff timer that may be most
+ * of half a minute away, which only rebuilding the channel does.
+ */
+export function RealtimeBanner({ onRefresh }: { onRefresh: () => void }) {
+  return (
+    <div className="flex flex-wrap items-center gap-3 rounded-md border bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
+      <span>{REALTIME_PAUSED_TEXT}</span>
+      <Button size="sm" variant="outline" onClick={onRefresh}>
+        Refresh now
+      </Button>
+    </div>
+  );
+}
+
+export function EliminatedDivider({ count }: { count: number }) {
+  return (
+    <h2 className="mt-6 border-t pt-4 text-sm font-semibold text-muted-foreground">
+      Eliminated ({count})
+    </h2>
+  );
+}
