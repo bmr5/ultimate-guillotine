@@ -33,6 +33,10 @@ def test_bot_tag_matches_both_spellings_case_insensitively() -> None:
         # Rental language without the word "rent" (design doc, gate 2).
         "@bot can I get a WR for the next 3 weeks",
         "@bot anyone up for a one-week WR swap",
+        # "allowed"/"legal" on their own are not rules questions: both of these
+        # want proposals, and a bare-word lookup rule would swallow them.
+        "@bot am I allowed to shop my WR",
+        "@bot who should I trade with if that's allowed",
     ],
 )
 def test_advice_language_routes_to_the_advisor(text: str) -> None:
@@ -46,6 +50,14 @@ def test_advice_language_routes_to_the_advisor(text: str) -> None:
         # The design doc's lookup example.
         "@bot what did Member02 trade for Chase",
         "@bot who has Ja'Marr Chase",
+        # A contraction, not a possessive: the stripper must leave it alone or
+        # this matches nothing at all.
+        "@bot who's got Ja'Marr Chase",
+        "@bot whos got Ja'Marr Chase",
+        # Whole rules questions, which is how "allowed"/"legal" earn a lookup.
+        "@bot is a rental even allowed?",
+        "@bot is that legal",
+        "@bot is a two-for-one against the rules",
     ],
 )
 def test_lookup_language_wins_over_advice_language(text: str) -> None:
@@ -58,9 +70,8 @@ def test_lookup_language_wins_over_advice_language(text: str) -> None:
     [
         "who should I trade with",
         "@bot what does the rule say about rentals",
-        # Word boundaries: "workshop" is not "shop", "allowed" is a rules question.
+        # Word boundaries: "workshop" is not a request to shop a player.
         "@bot what's the workshop schedule",
-        "@bot is a rental even allowed?",
     ],
 )
 def test_untagged_or_unrelated_messages_are_not_advice(text: str) -> None:
@@ -91,6 +102,20 @@ def test_parse_ask_reads_a_possessive_counterparty_through_emoji() -> None:
     assert ask.named_counterparties == ("Joel",)
     assert ask.positions == ("TE",)
     assert ask.direction == "acquire"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "@bot what would it take to get Joel's tight end",
+        # Lower-cased, so the member list rather than the capital carries it.
+        "@bot what would it take to get joel's tight end",
+        # A curly apostrophe is the one an iPhone types.
+        "@bot what would it take to get Joel’s tight end",
+    ],
+)
+def test_a_possessive_member_name_still_names_the_member(text: str) -> None:
+    assert parse_ask(text, MEMBERS).named_counterparties == ("Joel",), text
 
 
 @pytest.mark.parametrize("position", POSITIONS)

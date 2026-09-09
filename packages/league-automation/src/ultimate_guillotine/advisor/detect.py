@@ -9,7 +9,11 @@ asked what a trade was does not want three new ones proposed at them.
 Phrase rules match on **word boundaries**, never as bare substrings: "workshop"
 is not a request to shop a player, and "rent" inside "different" is not a
 rental. Every phrase list is compiled into a single alternation by
-:func:`_phrase_re` so the rule and its escaping live in one place.
+:func:`_phrase_re` so the rule and its escaping live in one place. Rules
+questions are matched as whole questions ("is it allowed", "against the
+rules") rather than as the bare words "allowed" and "legal", which turn up
+inside genuine advice asks -- "am I allowed to shop my WR" wants three
+proposals, not a rules citation.
 
 ``INJECTION`` is the fourth deterministic check, and it is deliberately narrow:
 it fires only on an explicit rule override or an imperative instruction to carry
@@ -38,10 +42,26 @@ POSITIONS = ("QB", "RB", "WR", "TE")
 
 BOT_TAG = re.compile(r"@\s*(?:bot|guillotinebot)\b", re.IGNORECASE)
 
-#: Possessive endings, dropped before matching. ``normalize_name`` strips the
-#: apostrophe rather than the ending, so "Joel's" would tokenize to "joels" and
-#: match no member; "Ja'Marr" keeps its apostrophe and is unaffected.
-_POSSESSIVE = re.compile(r"[’']s\b")
+#: Curly apostrophes, folded to the ASCII one first so every rule below can be
+#: written with a single quote character.
+_APOSTROPHE = re.compile(r"[’‘´`]")
+
+#: Words that take ``'s`` as a contraction and never as a possessive. A stripper
+#: that ate these would turn "who's got Ja'Marr Chase" into "who got ...", which
+#: matches no rule at all, and would do it precisely when the sentence starts
+#: with one and capitalizes it.
+_CONTRACTIONS = frozenset(
+    {
+        "who", "what", "that", "there", "here", "it", "he", "she", "one",
+        "let", "everyone", "someone", "anyone", "nobody", "everybody",
+    }
+)
+
+#: A possessive ending, dropped only after a **name-like** token -- one that is
+#: capitalized, or that a caller told us is a member name. ``normalize_name``
+#: strips the apostrophe rather than the ending, so an untouched "Joel's" would
+#: tokenize to "joels" and match no member. "Ja'Marr" has no ``'s`` to lose.
+_POSSESSIVE = re.compile(r"\b([\w']+?)'s\b")
 
 #: Whitespace inside a phrase. Rental phrases also accept a hyphen, so
 #: "one-week" and "one week" are the same ask.
@@ -71,11 +91,16 @@ _ADVICE = (
 )
 #: A factual question, plus the rules questions that read like one. Checked
 #: first: a lookup is never an advice request, so "is a rental even allowed"
-#: asks what the rules permit rather than for three proposals.
+#: asks what the rules permit rather than for three proposals. The rules
+#: entries are whole questions, never the bare words "allowed" or "legal" --
+#: those appear inside real advice asks ("am I allowed to shop my WR", "who
+#: should I trade with if that's allowed") and would swallow them.
 _LOOKUP = (
     "what did", "who did", "when did", "how much did", "what was", "who has",
-    "who won", "what does the rule", "what do the rules", "how many",
-    "how much faab does", "show me the trade", "look up", "allowed", "legal",
+    "who won", "who's got", "whos got", "what does the rule",
+    "what do the rules", "how many", "how much faab does", "show me the trade",
+    "look up", "is it allowed", "even allowed", "is that legal",
+    "against the rules",
 )
 _MOVE = (
     "move a", "move one", "opportunities to move", "shop", "shopping",
@@ -152,9 +177,25 @@ class Ask:
     wants_numbers: bool
 
 
-def _normalized(text: str) -> str:
-    stripped = _POSSESSIVE.sub("", BOT_TAG.sub(" ", text))
-    return re.sub(r"\s+", " ", stripped.lower()).strip()
+def _strip_possessives(text: str, member_tokens: frozenset[str]) -> str:
+    """Drop ``'s`` after name-like tokens only, leaving contractions intact."""
+
+    def _stem(match: re.Match[str]) -> str:
+        word = match.group(1)
+        token = normalize_name(word)
+        if token in member_tokens:
+            return word
+        if word[:1].isupper() and token not in _CONTRACTIONS:
+            return word
+        return match.group(0)
+
+    return _POSSESSIVE.sub(_stem, text)
+
+
+def _normalized(text: str, member_tokens: frozenset[str] = frozenset()) -> str:
+    body = _APOSTROPHE.sub("'", BOT_TAG.sub(" ", text))
+    body = _strip_possessives(body, member_tokens)
+    return re.sub(r"\s+", " ", body.lower()).strip()
 
 
 def _week_count(token: str) -> int:
@@ -187,7 +228,10 @@ def is_injection_attempt(text: str) -> bool:
 
 def parse_ask(text: str, member_names: Sequence[str]) -> Ask:
     """Read the ask deterministically. Nothing here guesses beyond the words."""
-    body = _normalized(text)
+    member_tokens = frozenset(
+        token for name in member_names for token in normalize_name(name).split()
+    )
+    body = _normalized(text, member_tokens)
     positions = tuple(
         dict.fromkeys(match.group(1).upper() for match in _POSITION.finditer(body))
     )
