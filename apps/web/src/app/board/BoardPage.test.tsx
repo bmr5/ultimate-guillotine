@@ -51,6 +51,7 @@ const team = (over: Partial<BoardTeam> & { teamId: number }): BoardTeam => ({
   isEliminated: false,
   eliminatedWeek: null,
   eliminationSource: null,
+  emptySlots: null,
   roster: [],
   ...over,
 });
@@ -74,6 +75,8 @@ const result = (over: Partial<BoardDataResult> = {}): BoardDataResult => ({
   isSeasonFallback: false,
   isOffRegularSeason: false,
   seasonId: 1,
+  // No lineup unless a case is about one: every starter renders and no slot reads empty.
+  rosterPositions: [],
   teams: [],
   isPending: false,
   isEmpty: false,

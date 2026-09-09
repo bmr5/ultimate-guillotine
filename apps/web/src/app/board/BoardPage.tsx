@@ -181,6 +181,7 @@ export function BoardPage() {
                   isOpen={isOpen(team.teamId)}
                   onToggle={handleToggle}
                   highlightedPlayerIds={filtered.matchedPlayerIds}
+                  rosterPositions={board.rosterPositions}
                 />
               ))}
             </ul>
@@ -197,6 +198,7 @@ export function BoardPage() {
                       isOpen={isOpen(team.teamId)}
                       onToggle={handleToggle}
                       highlightedPlayerIds={filtered.matchedPlayerIds}
+                      rosterPositions={board.rosterPositions}
                     />
                   ))}
                 </ul>

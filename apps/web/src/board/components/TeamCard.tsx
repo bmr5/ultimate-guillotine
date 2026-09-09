@@ -1,4 +1,4 @@
-import { memo, useId } from "react";
+import { memo, useId, useMemo } from "react";
 import { ChevronDown } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -7,6 +7,7 @@ import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 
 import { resolveProjectionDisplay } from "../derive/projection";
+import { layoutStarters, resolveEmptySlotCount } from "../derive/roster";
 import { formatComputedTitle } from "../derive/time";
 import type { BoardTeam } from "../types";
 import { RosterPanel } from "./RosterPanel";
@@ -46,12 +47,17 @@ const PROVISIONAL_ELIMINATION_TITLE =
 /** Said once above a frozen roster, so the reader knows why it never changes again. */
 export const FROZEN_ROSTER_LABEL = "Final roster, frozen at elimination";
 
+/** What the empty-slot count is called for a reader who cannot see it sitting under `proj`. */
+const EMPTY_SLOTS_DESCRIPTION = "empty starter slots";
+
 interface TeamCardProps {
   team: BoardTeam;
   rank: number;
   isOpen: boolean;
   onToggle: (teamId: number) => void;
   highlightedPlayerIds: ReadonlySet<string>;
+  /** The league's lineup — `seasons.roster_positions` — which the empty slots are counted against. */
+  rosterPositions: string[];
 }
 
 /**
@@ -68,8 +74,17 @@ export const TeamCard = memo(function TeamCard({
   isOpen,
   onToggle,
   highlightedPlayerIds,
+  rosterPositions,
 }: TeamCardProps) {
   const panelId = useId();
+  // Laid out once per card rather than once per open card: the count below the projection is
+  // on the collapsed card too, which is the point — Ben should not have to expand nine cards to
+  // find the one missing a flex.
+  const starterSlots = useMemo(
+    () => layoutStarters(rosterPositions, team.roster),
+    [rosterPositions, team.roster],
+  );
+  const emptySlots = resolveEmptySlotCount(team.emptySlots, starterSlots);
   const projection = resolveProjectionDisplay(team);
   const record = `${team.wins}-${team.losses}${
     team.ties > 0 ? `-${team.ties}` : ""
@@ -142,6 +157,17 @@ export const TeamCard = memo(function TeamCard({
                 {projection.text}
               </span>
               <span className="block text-xs text-muted-foreground">proj</span>
+              {/*
+                Inside the summary button, not in the badge row below it: a lineup with a hole
+                in it has to be visible without expanding the card. A plain span rather than a
+                `Badge`, which renders a <div> and would be invalid HTML inside a <button>.
+              */}
+              {emptySlots > 0 ? (
+                <span className="mt-1 block text-xs font-medium text-destructive">
+                  {`${emptySlots} empty`}
+                  <span className="sr-only">{` ${EMPTY_SLOTS_DESCRIPTION}`}</span>
+                </span>
+              ) : null}
             </span>
             <ChevronDown
               aria-hidden="true"
@@ -202,6 +228,7 @@ export const TeamCard = memo(function TeamCard({
                 ) : null}
                 <RosterPanel
                   players={team.roster}
+                  starterSlots={starterSlots}
                   highlightedPlayerIds={highlightedPlayerIds}
                 />
               </CardContent>

@@ -4,6 +4,9 @@ import { describe, expect, it, vi } from "vitest";
 import type { BoardTeam, RosterPlayer } from "../types";
 import { TEAM_CARD_CLASS, TeamCard } from "./TeamCard";
 
+/** The league's own lineup, as `seasons.roster_positions` spells it. */
+const LEAGUE_SLOTS = ["QB", "RB", "RB", "WR", "WR", "TE", "FLEX", "K", "DEF"];
+
 const player = (
   over: Partial<RosterPlayer> & { sleeperPlayerId: string },
 ): RosterPlayer => ({
@@ -35,9 +38,22 @@ const team = (over: Partial<BoardTeam> = {}): BoardTeam => ({
   isEliminated: false,
   eliminatedWeek: null,
   eliminationSource: null,
+  emptySlots: null,
   roster: [player({ sleeperPlayerId: "4046" })],
   ...over,
 });
+
+/** A full lineup for `LEAGUE_SLOTS`: one starter per slot, in slot order. */
+const fullLineup = (): RosterPlayer[] =>
+  LEAGUE_SLOTS.map((position, index) =>
+    player({
+      sleeperPlayerId: `s${index}`,
+      fullName: `Starter ${index}`,
+      slotIndex: index,
+      lineupPosition: position,
+      position,
+    }),
+  );
 
 const noop = () => undefined;
 const noHighlights = new Set<string>();
@@ -47,6 +63,12 @@ interface RenderOptions {
   open?: boolean;
   highlightedPlayerIds?: ReadonlySet<string>;
   onToggle?: (teamId: number) => void;
+  /**
+   * The league's lineup. Empty by default — the shape before `seasons` has resolved, in which
+   * every starter still renders and no slot can be called empty — so the cases about empty
+   * slots name the lineup they are about.
+   */
+  rosterPositions?: string[];
 }
 
 /**
@@ -59,6 +81,7 @@ const renderCard = (
     open = false,
     highlightedPlayerIds = noHighlights,
     onToggle = noop,
+    rosterPositions = [],
   }: RenderOptions = {},
 ) =>
   render(
@@ -69,6 +92,7 @@ const renderCard = (
         isOpen={open}
         onToggle={onToggle}
         highlightedPlayerIds={highlightedPlayerIds}
+        rosterPositions={rosterPositions}
       />
     </ul>,
   );
@@ -344,5 +368,74 @@ describe("TeamCard", () => {
     expect(screen.getByText("Projection unavailable")).not.toHaveAttribute(
       "title",
     );
+  });
+});
+
+/**
+ * Ben's addendum 1: "sometimes teams don't have every roster spot filled. Nick R right now is
+ * missing a flex — that's very important information." So every slot renders, empty or not, and
+ * the count is on the collapsed card.
+ */
+describe("TeamCard empty starter slots", () => {
+  const oneStarter = () => ({
+    roster: [
+      player({ sleeperPlayerId: "4046", slotIndex: 0, lineupPosition: "QB" }),
+    ],
+  });
+
+  it("renders a row for every lineup slot and names the empty ones", () => {
+    renderCard(oneStarter(), { open: true, rosterPositions: LEAGUE_SLOTS });
+    expect(screen.getByText("Patrick Mahomes")).toBeInTheDocument();
+    expect(screen.getByText("FLEX — Empty")).toBeInTheDocument();
+    expect(screen.getAllByText(/ — Empty$/)).toHaveLength(8);
+    // The starters section carries all nine lineup rows, not just the filled one.
+    expect(
+      screen.getByRole("list", { name: "Starters" }).querySelectorAll("li"),
+    ).toHaveLength(9);
+  });
+
+  it("marks an empty row in the warning token rather than the muted one", () => {
+    renderCard(oneStarter(), { open: true, rosterPositions: LEAGUE_SLOTS });
+    const row = screen.getByText("FLEX — Empty").closest("li");
+    expect(row).not.toBeNull();
+    expect(row).toHaveAttribute("data-empty-slot");
+    expect(row?.className).toContain("text-destructive");
+  });
+
+  it("badges the empty count on the collapsed card, beside the projection", () => {
+    renderCard(oneStarter(), { rosterPositions: LEAGUE_SLOTS });
+    expect(screen.getByText("8 empty")).toBeInTheDocument();
+    // Visible without expanding: the badge is inside the summary button.
+    expect(screen.getByText("8 empty").closest("button")).not.toBeNull();
+  });
+
+  it("prefers the data layer's own empty_slots count when the week has a projection", () => {
+    renderCard(
+      { ...oneStarter(), emptySlots: 3 },
+      { rosterPositions: LEAGUE_SLOTS },
+    );
+    expect(screen.getByText("3 empty")).toBeInTheDocument();
+    expect(screen.queryByText("8 empty")).toBeNull();
+  });
+
+  it("says nothing about empty slots when the lineup is full", () => {
+    renderCard(
+      { roster: fullLineup(), emptySlots: 0 },
+      { open: true, rosterPositions: LEAGUE_SLOTS },
+    );
+    expect(screen.queryByText(/ empty$/)).toBeNull();
+    expect(screen.queryByText(/ — Empty$/)).toBeNull();
+    expect(
+      screen.getByRole("list", { name: "Starters" }).querySelectorAll("li"),
+    ).toHaveLength(9);
+  });
+
+  it("still renders every starter when the lineup is not known yet", () => {
+    renderCard({ roster: fullLineup() }, { open: true });
+    expect(
+      screen.getByRole("list", { name: "Starters" }).querySelectorAll("li"),
+    ).toHaveLength(9);
+    expect(screen.queryByText(/ — Empty$/)).toBeNull();
+    expect(screen.queryByText(/ empty$/)).toBeNull();
   });
 });

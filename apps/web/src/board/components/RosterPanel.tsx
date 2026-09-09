@@ -1,8 +1,13 @@
 import { memo, useId } from "react";
+import { AlertTriangle } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
-import { groupRosterBySlot } from "../derive/roster";
+import {
+  groupRosterBySlot,
+  SLOT_LABELS,
+  type StarterSlotRow,
+} from "../derive/roster";
 import type { RosterPlayer } from "../types";
 
 /** The board's stand-in for "this player has no projection"; never a zero. */
@@ -61,17 +66,60 @@ const PlayerRow = memo(function PlayerRow({
   );
 });
 
+/** What an unfilled lineup slot reads as, after its slot name: `FLEX — Empty`. */
+const EMPTY_SLOT_SUFFIX = "Empty";
+
+/** The one spelling of an empty row's text, so the panel and its tests cannot drift apart. */
+function emptySlotText(position: string): string {
+  return `${position} — ${EMPTY_SLOT_SUFFIX}`;
+}
+
+/**
+ * A lineup slot nobody is starting in. Rendered in the warning token rather than the muted one
+ * because this is not an absence to skim past: an unfilled FLEX is points the team is not
+ * scoring, and Ben asked for it to be visible on the roster.
+ */
+const EmptySlotRow = memo(function EmptySlotRow({
+  position,
+}: {
+  position: string;
+}) {
+  return (
+    <li
+      // The state's stable handle, so restyling the warning does not mean rewriting the test.
+      data-empty-slot="true"
+      className="flex items-baseline justify-between gap-2 py-0.5 text-sm text-destructive"
+    >
+      <span className="flex min-w-0 items-baseline gap-1.5 truncate font-medium">
+        <AlertTriangle
+          aria-hidden="true"
+          className="h-3.5 w-3.5 shrink-0 self-center"
+        />
+        <span className="truncate">{emptySlotText(position)}</span>
+      </span>
+    </li>
+  );
+});
+
 interface RosterPanelProps {
   players: RosterPlayer[];
+  /**
+   * The lineup, one row per slot in `seasons.roster_positions` order, empties included. The
+   * starters section renders from this rather than from `players`, which is the whole point:
+   * a slot with nobody in it has no player row to render and has to come from the layout.
+   */
+  starterSlots: StarterSlotRow[];
   highlightedPlayerIds: ReadonlySet<string>;
 }
 
 /**
- * The expanded card's roster, cut into the slot sections `groupRosterBySlot` defines. Ordering
- * and grouping live in the derivation, so this component only decides how a row looks.
+ * The expanded card's roster: the lineup `layoutStarters` laid out, then the slot sections
+ * `groupRosterBySlot` defines for everyone who is not starting. Ordering, grouping and the
+ * lineup layout all live in the derivations, so this component only decides how a row looks.
  */
 export function RosterPanel({
   players,
+  starterSlots,
   highlightedPlayerIds,
 }: RosterPanelProps) {
   // The slot labels are section names inside a card, not document structure, so they are plain
@@ -87,25 +135,65 @@ export function RosterPanel({
 
   return (
     <div className="space-y-3">
-      {groupRosterBySlot(players).map((group) => (
-        <div key={group.slot}>
+      {/*
+        The lineup, from the layout rather than from the roster rows. Every starter reaches it —
+        `layoutStarters` appends the ones it cannot place — so the groups below drop their own
+        starter section rather than rendering those players a second time.
+      */}
+      {starterSlots.length === 0 ? null : (
+        <div>
           <p
-            id={`${labelId}${group.slot}`}
+            id={`${labelId}starter`}
             className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
           >
-            {group.label}
+            {SLOT_LABELS.starter}
           </p>
-          <ul aria-labelledby={`${labelId}${group.slot}`}>
-            {group.players.map((player) => (
-              <PlayerRow
-                key={player.sleeperPlayerId}
-                player={player}
-                isHighlighted={highlightedPlayerIds.has(player.sleeperPlayerId)}
-              />
-            ))}
+          <ul aria-labelledby={`${labelId}starter`}>
+            {starterSlots.map((row, index) =>
+              row.kind === "filled" ? (
+                <PlayerRow
+                  key={row.player.sleeperPlayerId}
+                  player={row.player}
+                  isHighlighted={highlightedPlayerIds.has(
+                    row.player.sleeperPlayerId,
+                  )}
+                />
+              ) : (
+                // Two empty slots can carry the same name (`RB`, `RB`), so the index is part
+                // of the key: the position alone is not unique within one lineup.
+                <EmptySlotRow
+                  key={`${row.position}-${index}`}
+                  position={row.position}
+                />
+              ),
+            )}
           </ul>
         </div>
-      ))}
+      )}
+
+      {groupRosterBySlot(players)
+        .filter((group) => group.slot !== "starter")
+        .map((group) => (
+          <div key={group.slot}>
+            <p
+              id={`${labelId}${group.slot}`}
+              className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+            >
+              {group.label}
+            </p>
+            <ul aria-labelledby={`${labelId}${group.slot}`}>
+              {group.players.map((player) => (
+                <PlayerRow
+                  key={player.sleeperPlayerId}
+                  player={player}
+                  isHighlighted={highlightedPlayerIds.has(
+                    player.sleeperPlayerId,
+                  )}
+                />
+              ))}
+            </ul>
+          </div>
+        ))}
     </div>
   );
 }

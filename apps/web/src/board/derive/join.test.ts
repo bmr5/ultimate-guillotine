@@ -172,6 +172,22 @@ describe("joinBoardTeams", () => {
     expect(team.isProvisional).toBe(true);
   });
 
+  it("carries the week's empty_slots count onto the team", () => {
+    const base = raw();
+    const [team] = joinBoardTeams({
+      ...base,
+      teamWeekProjections: [{ ...base.teamWeekProjections[0], empty_slots: 2 }],
+    });
+    expect(team.emptySlots).toBe(2);
+  });
+
+  it("leaves the empty-slot count null when the week has no projection row", () => {
+    // null, never zero: "nobody counted" is a different statement from "the lineup is full",
+    // and the card counts the holes off the roster itself in that case.
+    const [team] = joinBoardTeams(raw({ teamWeekProjections: [] }));
+    expect(team.emptySlots).toBeNull();
+  });
+
   it("carries elimination state through", () => {
     const base = raw();
     const [team] = joinBoardTeams({

@@ -219,6 +219,7 @@ export function joinBoardTeams(raw: BoardRawData): BoardTeam[] {
       eliminatedWeek:
         state?.eliminated_week ?? snapshot?.eliminated_week ?? null,
       eliminationSource: state?.elimination_source ?? null,
+      emptySlots: projection === null ? null : projection.empty_slots,
       isRosterFrozen,
       roster: isRosterFrozen
         ? orderRoster(frozenRoster.map(buildRosterPlayer))

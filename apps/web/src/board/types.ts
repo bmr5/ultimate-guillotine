@@ -204,6 +204,12 @@ export interface BoardTeam {
   isEliminated: boolean;
   eliminatedWeek: number | null;
   eliminationSource: EliminationSource | null;
+  /**
+   * `team_week_projections.empty_slots` for the week: how many lineup slots the data layer
+   * found nobody in when it computed the projection. null when there is no projection row for
+   * the week, in which case the board counts the empty slots off the roster itself.
+   */
+  emptySlots: number | null;
   /** True when `roster` came from the frozen `final_rosters` snapshot, not live holdings. */
   isRosterFrozen: boolean;
   roster: RosterPlayer[];

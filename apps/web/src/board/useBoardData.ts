@@ -8,6 +8,7 @@ import {
 import { boardClient } from "./boardClient";
 import { joinBoardTeams } from "./derive/join";
 import { latestFinalWeek } from "./derive/records";
+import { parseRosterPositions } from "./derive/roster";
 import {
   fetchFinalRosters,
   fetchLatestSeason,
@@ -54,6 +55,12 @@ export interface BoardDataResult {
   /** True when `nfl_state.season_type` is anything but `regular`. */
   isOffRegularSeason: boolean;
   seasonId: number | null;
+  /**
+   * The league's lineup, from `seasons.roster_positions` — `["QB","RB","RB",...]`. Empty until
+   * the season row lands, which reads as "no lineup known": every starter still renders and no
+   * slot is called empty, rather than the board inventing holes it cannot see.
+   */
+  rosterPositions: string[];
   teams: BoardTeam[];
   isPending: boolean;
   isEmpty: boolean;
@@ -126,6 +133,15 @@ export function useBoardData(options: BoardDataOptions): BoardDataResult {
    * showing 2026's rosters would return nothing at all.
    */
   const season = resolvedSeason?.year ?? null;
+  /**
+   * jsonb, so it is `string[]` by declaration only; `parseRosterPositions` is what makes it one.
+   * Memoized on the season row because it is a prop on every memoized card below: a fresh array
+   * identity each render would re-render the whole board on every tick.
+   */
+  const rosterPositions = useMemo(
+    () => parseRosterPositions(resolvedSeason?.roster_positions),
+    [resolvedSeason],
+  );
 
   const teams = useQuery({
     queryKey: boardKeys.teams(seasonId ?? 0),
@@ -361,6 +377,7 @@ export function useBoardData(options: BoardDataOptions): BoardDataResult {
     isSeasonFallback,
     isOffRegularSeason,
     seasonId,
+    rosterPositions,
     teams: boardTeams,
     isPending,
     // No failed query at all, not just no failed teams query. The empty state claims there is

@@ -99,6 +99,28 @@ describe("useBoardData", () => {
     expect(result.current.isEmpty).toBe(false);
   });
 
+  it("hands the board the league's lineup from the season row", async () => {
+    vi.mocked(fetchers.fetchSeasonByYear).mockResolvedValue({
+      ...SEASON,
+      roster_positions: ["QB", "RB", "RB", "FLEX", 7, null],
+    });
+    const { result } = renderBoardData();
+    await waitFor(() => {
+      expect(result.current.teams).toHaveLength(1);
+    });
+    // jsonb, so the non-strings are dropped rather than becoming slots.
+    expect(result.current.rosterPositions).toEqual(["QB", "RB", "RB", "FLEX"]);
+  });
+
+  it("reports no lineup at all until the season row lands", async () => {
+    vi.mocked(fetchers.fetchNflState).mockResolvedValue(null);
+    const { result } = renderBoardData();
+    await waitFor(() => {
+      expect(result.current.isPending).toBe(false);
+    });
+    expect(result.current.rosterPositions).toEqual([]);
+  });
+
   it("reaches the empty state when nfl_state has no row", async () => {
     vi.mocked(fetchers.fetchNflState).mockResolvedValue(null);
     const { result } = renderBoardData();
