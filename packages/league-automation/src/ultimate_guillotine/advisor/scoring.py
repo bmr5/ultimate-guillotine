@@ -19,6 +19,19 @@ Three questions are answered here, all of them per position:
 * **Pressure** -- how close a team is to the guillotine, which in this league is
   simply this week's projected total, lowest first.
 
+The FLEX slot is deliberately *not* part of that depth. It is one slot that any
+of three positions may fill, and which one a team fills it with is a decision
+rather than a fact about any position; counting it at RB, WR and TE alike would
+charge a team that flexed a tight end the whole median for a wide receiver slot
+it never had to field. A slot another team filled somewhere else must never be
+charged as a hole -- that is a need the team does not have and could not fill,
+and it would outrank the real ones. Depth is therefore the base lineup, one QB,
+two RBs, two WRs and one TE, and a flexed player simply turns up as an extra
+body at his own position, where he either beats one of that position's starters
+or he does not. :data:`REPLACEMENT_RANK` does not follow suit, because it
+answers a different question -- how many players the league actually starts at
+a position -- and there the single FLEX is counted once, at WR.
+
 Every number is a :class:`~decimal.Decimal`, matching what the data layer hands
 back for a ``numeric`` column: this module compares and subtracts projections,
 and a float round-trip would round the league's arithmetic without ever
@@ -52,7 +65,9 @@ from ultimate_guillotine.advisor.state import (
 #: trades one, so neither is ever a need worth filling or a surplus worth
 #: offering, however many of them the lineup starts.
 POSITIONS = ("QB", "RB", "WR", "TE")
-#: What may fill the FLEX slot.
+#: What may fill the FLEX slot. Three positions for one slot is precisely why
+#: the FLEX belongs to none of them for the purpose of need depth -- see
+#: :func:`_starter_slots` -- and why :data:`REPLACEMENT_RANK` counts it once.
 FLEX_POSITIONS = ("RB", "WR", "TE")
 #: The lineup slot that any of :data:`FLEX_POSITIONS` may fill.
 FLEX_SLOT = "FLEX"
@@ -80,23 +95,28 @@ NO_POINTS = Decimal(0)
 
 
 def _starter_slots() -> dict[str, int]:
-    """How many starters of each position the league fields, FLEX included.
+    """How many starters of each position the league fields, FLEX excluded.
 
-    The FLEX is one slot but three positions may fill it, and which one a team
-    fills it with is a *choice*, not a fact about the position. So it adds a
-    slot to each of :data:`FLEX_POSITIONS`: a team is measured as though it
-    could flex any of them, and the extra slot costs nothing when the league at
-    large leaves it empty, because a slot the median team does not fill has a
-    median of :data:`NO_POINTS` and therefore no shortfall to make up.
+    The FLEX is one slot that any of :data:`FLEX_POSITIONS` may fill, so it is
+    a slot of no position in particular and is counted at none of them. Adding
+    it to all three instead would charge a phantom need: a team that flexes a
+    tight end has filled the slot, but a WR depth of three would still find its
+    third receiver slot empty and bill it the whole WR median for a hole that
+    is not there. A slot another team filled elsewhere must never be charged.
+
+    The player in the flex is not ignored -- he is a starter at his own
+    position, and :func:`_starters_at` ranks him against that position's other
+    starters like anyone else. What he cannot do is create a slot.
     """
     slots: dict[str, int] = {}
     for position in ROSTER_POSITIONS:
-        for counted in FLEX_POSITIONS if position == FLEX_SLOT else (position,):
-            slots[counted] = slots.get(counted, 0) + 1
+        if position == FLEX_SLOT:
+            continue
+        slots[position] = slots.get(position, 0) + 1
     return slots
 
 
-#: Starting depth per position: QB 1, RB 3, WR 3, TE 2, K 1, DEF 1. Only the
+#: Starting depth per position: QB 1, RB 2, WR 2, TE 1, K 1, DEF 1. Only the
 #: :data:`POSITIONS` entries are ever read; the rest are here because the map is
 #: derived from the whole lineup rather than hand-copied out of part of it.
 STARTER_SLOTS = _starter_slots()
@@ -107,9 +127,11 @@ STARTER_SLOTS = _starter_slots()
 #: (18) and one TE (18) each, two RBs (36), and WR three deep (54) because the
 #: league's single FLEX slot is counted there, at the position that in practice
 #: fills it, and nowhere else. It is counted *once*: adding it to RB and TE as
-#: well -- the way :data:`STARTER_SLOTS` does, where an unfilled slot costs a
-#: team nothing -- would invent two more starters per team than the league
-#: fields and make replacement look cheaper than it is.
+#: well would invent two more starters per team than the league fields and make
+#: replacement look cheaper than it is. That the FLEX is counted here at all,
+#: and not in :data:`STARTER_SLOTS`, is not an inconsistency: this is a count of
+#: bodies the league really starts, which the flex adds one to, while depth is a
+#: count of slots one team must fill, which the flex adds none to.
 REPLACEMENT_RANK = {"QB": 18, "RB": 36, "WR": 54, "TE": 18}
 
 __all__ = [
@@ -216,15 +238,18 @@ def replacement_levels(snapshot: LeagueSnapshot) -> dict[str, Decimal]:
 def league_medians(snapshot: LeagueSnapshot) -> dict[str, tuple[Decimal, ...]]:
     """The median starting lineup at each position: one median per slot, best first.
 
-    A position is as deep as :data:`STARTER_SLOTS` says, so the second running
-    back is measured against the league's second running backs rather than
-    against nobody. A team with no starter in a slot contributes
-    :data:`NO_POINTS` to that slot's median -- an empty slot really does score
-    nothing -- which is what makes the FLEX slot self-correcting: if most of the
-    league does not flex a tight end, the second tight end's median is zero and
-    nobody is charged for lacking one. A team whose starter in that slot is
-    filled but unprojected contributes nothing at all, because that is unknown
-    rather than zero.
+    A position is as deep as :data:`STARTER_SLOTS` says -- the base lineup, with
+    the FLEX left out of it -- so the second running back is measured against
+    the league's second running backs rather than against nobody, and no
+    position is measured a slot deeper than every team has to fill. A team's
+    extra starter at a position, flexed or not, still competes for those slots:
+    it is his *projection* that is ranked, not the slot he was lined up in.
+
+    A team with no starter in a slot contributes :data:`NO_POINTS` to that
+    slot's median -- an empty slot really does score nothing, so a slot much of
+    the league leaves open drags its own median to zero and then costs nobody a
+    need. A team whose starter in that slot is filled but unprojected
+    contributes nothing at all, because that is unknown rather than zero.
 
     Eliminated teams are excluded so a dead roster cannot drag the league's idea
     of normal down and make everybody else look well stocked.

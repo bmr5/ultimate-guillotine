@@ -22,6 +22,8 @@ from tests.advisor.fixture import (
 )
 from ultimate_guillotine.advisor.scoring import (
     FLEX_POSITIONS,
+    FLEX_SLOT,
+    LEAGUE_TEAMS,
     NO_POINTS,
     POSITIONS,
     REPLACEMENT_RANK,
@@ -100,24 +102,94 @@ def test_league_median_is_the_middle_teams_best_starter(position: str, expected:
     assert league_medians(fixture_snapshot())[position][0] == expected
 
 
-def test_starter_slots_count_the_flex_at_every_position_that_can_fill_it() -> None:
-    base = {p: ROSTER_POSITIONS.count(p) for p in set(ROSTER_POSITIONS) if p != "FLEX"}
+def test_starter_slots_leave_the_flex_out_of_need_depth() -> None:
+    """One slot, three positions that may fill it, so it counts at none of them."""
     assert STARTER_SLOTS == {
-        p: count + (1 if p in FLEX_POSITIONS else 0) for p, count in base.items()
+        p: ROSTER_POSITIONS.count(p) for p in set(ROSTER_POSITIONS) if p != FLEX_SLOT
     }
-    assert STARTER_SLOTS["RB"] == 3  # two starting slots plus the flex.
+    assert STARTER_SLOTS["RB"] == 2  # the two starting slots, and not the flex.
+    assert STARTER_SLOTS["WR"] == 2
+    assert STARTER_SLOTS["TE"] == 1
     assert STARTER_SLOTS["QB"] == 1
+    # The flex is still a starter somewhere: it is counted once at WR in the
+    # league-wide body count, which is a different question from depth.
+    assert REPLACEMENT_RANK["WR"] == LEAGUE_TEAMS * (STARTER_SLOTS["WR"] + 1)
+    assert all(REPLACEMENT_RANK[p] == LEAGUE_TEAMS * STARTER_SLOTS[p] for p in ("QB", "RB", "TE"))
+    assert set(FLEX_POSITIONS) == {"RB", "WR", "TE"}
 
 
 def test_a_median_is_as_deep_as_the_position_starts() -> None:
     medians = league_medians(fixture_snapshot())
     assert {p: len(v) for p, v in medians.items()} == {p: STARTER_SLOTS[p] for p in POSITIONS}
-    # Every fixture team starts three wide receivers, so all three slots are real.
-    assert all(value > NO_POINTS for value in medians["WR"])
-    # Only a handful flex a running back or a second tight end, so the median
-    # team has neither -- and a slot the median team leaves empty costs nobody.
-    assert medians["RB"][2] == NO_POINTS
-    assert medians["TE"][1] == NO_POINTS
+    # Every fixture team fills every base slot, so no median is an empty one --
+    # which is exactly why a flexed tight end must not open a third WR slot.
+    assert all(value > NO_POINTS for slots in medians.values() for value in slots)
+    assert len(medians["TE"]) == 1
+    assert len(medians["WR"]) == 2
+
+
+def test_a_slot_the_median_team_leaves_empty_costs_nobody() -> None:
+    """An empty starter slot scores nothing, so a league-wide gap zeroes its median."""
+    snapshot = fixture_snapshot()
+    # Take the second running back off twelve of the seventeen live teams.
+    thin = replace(
+        snapshot,
+        teams=tuple(
+            replace(
+                team,
+                holdings=tuple(
+                    h
+                    for h in team.holdings
+                    if not (h.slot == "starter" and h.position == "RB" and h.slot_index == 2)
+                ),
+            )
+            if team.member_id >= 6
+            else team
+            for team in snapshot.teams
+        ),
+    )
+    medians = league_medians(thin)
+    assert medians["RB"][0] == EXPECTED_MEDIANS["RB"]  # the best back is untouched.
+    assert medians["RB"][1] == NO_POINTS
+    # And with that median at zero the empty slot charges nobody: member 6 is
+    # one back short, and its remaining 16.10 clears the 15.10 first slot.
+    assert team_need(thin.team_for_member(6), "RB", medians) == NO_POINTS
+
+
+@pytest.mark.parametrize(
+    ("member_id", "expected"),
+    [
+        # Two slots at 12.30 and 11.00 against starters that are 1.30 apart, so
+        # both slots charge the same gap: member 2 is above both (15.90, 14.60)
+        # and member 18 is 4.00 under each (8.30, 7.00).
+        (2, Decimal("0.00")),
+        (NEAR_CUT_MEMBER_ID, Decimal("8.00")),
+    ],
+)
+def test_flexing_a_tight_end_never_invents_a_wide_receiver_need(
+    member_id: int, expected: Decimal
+) -> None:
+    """A slot the team filled elsewhere is not a hole to charge it for.
+
+    Every fixture team starts a third wide receiver where the league's real
+    lineup has the FLEX. Swap that player for a tight end -- the same roster,
+    flexed differently -- and the WR need must not move. With the flex counted
+    at WR it would: the vacated third slot would bill the whole third-slot
+    median for a need the team does not have and could not fill.
+    """
+    snapshot = fixture_snapshot()
+    medians = league_medians(snapshot)
+    team = snapshot.team_for_member(member_id)
+    assert team_need(team, "WR", medians) == expected
+    flexed_tight_end = replace(
+        team,
+        holdings=tuple(
+            replace(h, position="TE") if h.slot == "starter" and h.slot_index == 5 else h
+            for h in team.holdings
+        ),
+    )
+    assert len([h for h in flexed_tight_end.starters() if h.position == "WR"]) == 2
+    assert team_need(flexed_tight_end, "WR", medians) == expected
 
 
 @pytest.mark.parametrize(
@@ -264,7 +336,7 @@ def test_a_score_follows_the_roster_and_not_the_member_id() -> None:
 @pytest.mark.parametrize(
     ("member_id", "expected"),
     [
-        (NEAR_CUT_MEMBER_ID, 1),  # the biggest WR gap in the league, 4.00.
+        (NEAR_CUT_MEMBER_ID, 1),  # the biggest WR gap in the league, 8.00 over two slots.
         (16, 2),
         (14, 3),
         (1, 9),  # first of the nine teams at or above the median, tied at zero.
