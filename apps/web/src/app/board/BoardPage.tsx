@@ -9,11 +9,19 @@ import {
   EliminatedDivider,
   RealtimeBanner,
 } from "@/board/components/BoardStates";
+import { PositionView } from "@/board/components/PositionView";
 import { TeamCard } from "@/board/components/TeamCard";
+import { positionView } from "@/board/derive/position";
 import { filterTeams } from "@/board/derive/search";
 import { selectEffectiveSortMode, sortBoardTeams } from "@/board/derive/sort";
 import { REALTIME_POLL_MS } from "@/board/realtime";
-import { parseSortMode, type SortMode } from "@/board/types";
+import {
+  parsePositionFilter,
+  parsePositionSortMode,
+  parseSortMode,
+  type PositionFilter,
+  type SortMode,
+} from "@/board/types";
 import { useBoardData } from "@/board/useBoardData";
 import { useDebouncedValue } from "@/board/useDebouncedValue";
 import { useLeagueBoardRealtime } from "@/board/useLeagueBoardRealtime";
@@ -23,6 +31,9 @@ const GRID = "grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3";
 /** The URL parameter the sort is shared through. */
 const SORT_PARAM = "sort";
 
+/** The URL parameter the position quick view is shared through; absent means the whole board. */
+const POSITION_PARAM = "pos";
+
 /** Long enough that a typed word settles into one derivation, short enough to feel immediate. */
 const SEARCH_DEBOUNCE_MS = 150;
 
@@ -31,7 +42,16 @@ const PROJECTION_SOURCE_LINE = "Projections: Sleeper";
 
 export function BoardPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const requestedSort = parseSortMode(searchParams.get(SORT_PARAM));
+  const positionFilter = parsePositionFilter(searchParams.get(POSITION_PARAM));
+  /**
+   * The position view offers two of the three sorts and defaults to FAAB rather than to the
+   * board's own default, so `?sort=points_for` carried into a position view reads as FAAB and
+   * is still there — untouched in the URL — when the reader goes back to the whole board.
+   */
+  const requestedSort =
+    positionFilter === null
+      ? parseSortMode(searchParams.get(SORT_PARAM))
+      : parsePositionSortMode(searchParams.get(SORT_PARAM));
 
   const [rawSearch, setRawSearch] = useState("");
   const searchTerm = useDebouncedValue(rawSearch, SEARCH_DEBOUNCE_MS);
@@ -92,6 +112,19 @@ export function BoardPage() {
     [filtered.teams, effective.mode],
   );
 
+  const positionRows = useMemo(
+    () =>
+      positionFilter === null
+        ? []
+        : positionView(
+            filtered.teams,
+            positionFilter,
+            board.rosterPositions,
+            requestedSort,
+          ),
+    [filtered.teams, positionFilter, board.rosterPositions, requestedSort],
+  );
+
   const autoExpanded = useMemo(
     () => new Set(filtered.autoExpandTeamIds),
     [filtered.autoExpandTeamIds],
@@ -126,6 +159,20 @@ export function BoardPage() {
     [searchParams, setSearchParams],
   );
 
+  const handlePositionFilterChange = useCallback(
+    (position: PositionFilter | null) => {
+      const next = new URLSearchParams(searchParams);
+      // Absent, never `?pos=all`: the whole board is the parameter's absence, not a value.
+      if (position === null) {
+        next.delete(POSITION_PARAM);
+      } else {
+        next.set(POSITION_PARAM, position);
+      }
+      setSearchParams(next, { replace: true });
+    },
+    [searchParams, setSearchParams],
+  );
+
   const isOpen = (teamId: number) =>
     openOverrides.get(teamId) ?? autoExpanded.has(teamId);
 
@@ -151,7 +198,11 @@ export function BoardPage() {
         isOffRegularSeason={board.isOffRegularSeason}
         sortMode={requestedSort}
         onSortModeChange={handleSortModeChange}
-        sortFellBack={effective.fellBack}
+        positionFilter={positionFilter}
+        onPositionFilterChange={handlePositionFilterChange}
+        // The fallback is about the board's own projection sort; a position view never asks
+        // for points for, so the sentence would be answering a question nobody asked.
+        sortFellBack={positionFilter === null && effective.fellBack}
         searchTerm={rawSearch}
         onSearchTermChange={setRawSearch}
         projectionsUpdatedAt={board.projectionsUpdatedAt}
@@ -170,7 +221,18 @@ export function BoardPage() {
         {board.isPending ? <BoardSkeleton /> : null}
         {!board.isPending && board.isEmpty ? <BoardEmpty /> : null}
 
-        {showList ? (
+        {showList && positionFilter !== null ? (
+          <PositionView
+            position={positionFilter}
+            rows={positionRows}
+            isOpen={isOpen}
+            onToggle={handleToggle}
+            highlightedPlayerIds={filtered.matchedPlayerIds}
+            rosterPositions={board.rosterPositions}
+          />
+        ) : null}
+
+        {showList && positionFilter === null ? (
           <>
             <ul className={GRID}>
               {sorted.active.map((team, index) => (

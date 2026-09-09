@@ -230,3 +230,50 @@ export function parseSortMode(raw: string | null | undefined): SortMode {
     ? (raw as SortMode)
     : DEFAULT_SORT_MODE;
 }
+
+/**
+ * The positions the quick view can be narrowed to, in lineup order. These are Sleeper's own
+ * position codes, which is what `players.position` carries, so a filter compares to a roster
+ * row without a translation table in between.
+ */
+export const POSITION_FILTERS = ["QB", "RB", "WR", "TE", "K", "DEF"] as const;
+export type PositionFilter = (typeof POSITION_FILTERS)[number];
+
+/** The segmented control's value for "no position filter"; `?pos` is absent in that state. */
+export const ALL_POSITIONS_VALUE = "all";
+
+/** The label the "no filter" segment carries. */
+export const ALL_POSITIONS_LABEL = "All";
+
+/**
+ * `?pos=TE`, or null for the whole board. Case-insensitive because the parameter is shared by
+ * hand as often as it is clicked, and `?pos=te` means the same thing to a reader.
+ */
+export function parsePositionFilter(
+  raw: string | null | undefined,
+): PositionFilter | null {
+  const value = (raw ?? "").trim().toUpperCase();
+  return POSITION_FILTERS.includes(value as PositionFilter)
+    ? (value as PositionFilter)
+    : null;
+}
+
+/**
+ * The two sorts a position view offers. Points for is not among them: the question the view
+ * answers is who can bid and who needs the position, and a season total answers neither.
+ */
+export const POSITION_SORT_MODES = ["faab", "projection"] as const;
+
+/** FAAB leads, because the view exists to find who can outbid whom. */
+export const DEFAULT_POSITION_SORT_MODE: SortMode = "faab";
+
+/** The sort a position view is in, defaulting to FAAB rather than the board's own default. */
+export function parsePositionSortMode(
+  raw: string | null | undefined,
+): SortMode {
+  return POSITION_SORT_MODES.includes(
+    raw as (typeof POSITION_SORT_MODES)[number],
+  )
+    ? (raw as SortMode)
+    : DEFAULT_POSITION_SORT_MODE;
+}

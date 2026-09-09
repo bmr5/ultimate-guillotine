@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  DEFAULT_POSITION_SORT_MODE,
   DEFAULT_SORT_MODE,
+  parsePositionFilter,
+  parsePositionSortMode,
   parseSortMode,
+  POSITION_FILTERS,
   SORT_MODE_LABELS,
   SORT_MODES,
   type TableRow,
@@ -133,5 +137,40 @@ describe("parseSortMode", () => {
       "FAAB",
       "Points for",
     ]);
+  });
+});
+
+describe("parsePositionFilter", () => {
+  it("accepts every position the quick view offers", () => {
+    for (const position of POSITION_FILTERS) {
+      expect(parsePositionFilter(position)).toBe(position);
+    }
+  });
+
+  it("reads a shared link's lower-case spelling as the same position", () => {
+    expect(parsePositionFilter("te")).toBe("TE");
+    expect(parsePositionFilter(" def ")).toBe("DEF");
+  });
+
+  it("reads anything else as the whole board", () => {
+    expect(parsePositionFilter(null)).toBeNull();
+    expect(parsePositionFilter(undefined)).toBeNull();
+    expect(parsePositionFilter("")).toBeNull();
+    expect(parsePositionFilter("all")).toBeNull();
+    expect(parsePositionFilter("LB")).toBeNull();
+  });
+});
+
+describe("parsePositionSortMode", () => {
+  it("keeps the two sorts a position view offers", () => {
+    expect(parsePositionSortMode("faab")).toBe("faab");
+    expect(parsePositionSortMode("projection")).toBe("projection");
+  });
+
+  it("falls back to FAAB for the board sorts a position view does not offer", () => {
+    expect(parsePositionSortMode("points_for")).toBe(
+      DEFAULT_POSITION_SORT_MODE,
+    );
+    expect(parsePositionSortMode(null)).toBe("faab");
   });
 });

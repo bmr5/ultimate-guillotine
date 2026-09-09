@@ -94,7 +94,7 @@ function LocationProbe() {
   );
 }
 
-function renderPage() {
+function renderPage(initialEntry = "/") {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -102,7 +102,7 @@ function renderPage() {
   // re-render handed the identical element it already holds.
   const ui = () => (
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={["/"]}>
+      <MemoryRouter initialEntries={[initialEntry]}>
         <BoardPage />
         <LocationProbe />
       </MemoryRouter>
@@ -423,5 +423,136 @@ describe("BoardPage", () => {
     expect(screen.getByRole("heading", { name: "Week 3" })).toBeInTheDocument();
     expect(screen.queryByText(/\(final\)/)).toBeNull();
     expect(screen.queryByText(/last week with final results/)).toBeNull();
+  });
+});
+
+/**
+ * Ben's addendum 2: "make it possible so I can filter and see every team's TE or all their RBs
+ * in a quick view — my TE just got injured and I need to figure out who would bid on his
+ * replacement."
+ */
+describe("BoardPage position quick view", () => {
+  const LEAGUE_SLOTS = ["QB", "RB", "RB", "WR", "WR", "TE", "FLEX", "K", "DEF"];
+
+  const positionBoard = () =>
+    result({
+      rosterPositions: LEAGUE_SLOTS,
+      teams: [
+        team({
+          teamId: 1,
+          faabRemaining: 715,
+          roster: [
+            player({
+              sleeperPlayerId: "kelce",
+              fullName: "Travis Kelce",
+              position: "TE",
+              slotIndex: 5,
+              lineupPosition: "TE",
+              projectedPoints: 14.1,
+            }),
+          ],
+        }),
+        team({ teamId: 2, faabRemaining: 40, roster: [] }),
+      ],
+    });
+
+  beforeEach(() => {
+    boardData.current = positionBoard();
+  });
+
+  it("renders the position view for ?pos=TE, not the team grid", () => {
+    renderPage("/?pos=TE");
+    expect(screen.getByText("FAAB 715")).toBeInTheDocument();
+    expect(screen.getByText("Travis Kelce")).toBeInTheDocument();
+    // The team card's own projection line is not on screen: this is the other view.
+    expect(screen.getByText("no TE")).toBeInTheDocument();
+    expect(screen.queryByText("proj")).toBeNull();
+  });
+
+  it("reads a lower-case parameter as the same position", () => {
+    renderPage("/?pos=te");
+    expect(screen.getByText("FAAB 715")).toBeInTheDocument();
+  });
+
+  it("round-trips the segmented control through the URL", async () => {
+    renderPage();
+    expect(screen.queryByText("FAAB 715")).toBeNull();
+
+    fireEvent.click(screen.getByRole("radio", { name: "TE" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("location")).toHaveTextContent("/?pos=TE");
+    });
+    expect(screen.getByText("FAAB 715")).toBeInTheDocument();
+
+    // Back to All: the parameter goes away rather than becoming `?pos=all`.
+    fireEvent.click(screen.getByRole("radio", { name: "All positions" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("location")).toHaveTextContent("/");
+    });
+    expect(screen.getByTestId("location")).not.toHaveTextContent("pos=");
+    expect(screen.queryByText("FAAB 715")).toBeNull();
+  });
+
+  it("offers FAAB and projection only while a position is selected", () => {
+    renderPage("/?pos=TE");
+    expect(screen.getByRole("radio", { name: "FAAB" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("radio", { name: "Projection" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: "Points for" })).toBeNull();
+  });
+
+  it("defaults the position view to FAAB and re-sorts on the projection toggle", async () => {
+    boardData.current = result({
+      rosterPositions: LEAGUE_SLOTS,
+      teams: [
+        team({ teamId: 1, faabRemaining: 10, projectedPoints: 200 }),
+        team({ teamId: 2, faabRemaining: 90, projectedPoints: 10 }),
+      ],
+    });
+    renderPage("/?pos=TE");
+    expect(screen.getAllByRole("listitem")[0]).toHaveTextContent("owner2");
+
+    fireEvent.click(screen.getByRole("radio", { name: "Projection" }));
+    await waitFor(() => {
+      expect(screen.getAllByRole("listitem")[0]).toHaveTextContent("owner1");
+    });
+    expect(screen.getByTestId("location")).toHaveTextContent("pos=TE");
+    expect(screen.getByTestId("location")).toHaveTextContent("sort=projection");
+  });
+
+  it("keeps the search working inside the position view", async () => {
+    renderPage("/?pos=TE");
+    fireEvent.change(screen.getByLabelText(SEARCH_LABEL), {
+      target: { value: "kelce" },
+    });
+    await waitFor(() => {
+      expect(screen.queryByText("owner2")).not.toBeInTheDocument();
+    });
+    expect(screen.getByText("owner1")).toBeInTheDocument();
+    // A player search auto-expands the row it matched here too, so the name appears both
+    // inline on the row and in the roster panel below it.
+    expect(screen.getAllByText("Travis Kelce").length).toBeGreaterThan(1);
+    expect(screen.getByRole("button", { expanded: true })).toBeInTheDocument();
+  });
+
+  it("says nothing about a sort fallback in the position view", () => {
+    boardData.current = result({
+      rosterPositions: LEAGUE_SLOTS,
+      teams: [
+        team({
+          teamId: 1,
+          projectedPoints: null,
+          coveragePct: null,
+          isProvisional: true,
+        }),
+      ],
+    });
+    renderPage("/?pos=TE");
+    expect(
+      screen.queryByText(
+        "No projections available, so teams are sorted by points for.",
+      ),
+    ).toBeNull();
   });
 });

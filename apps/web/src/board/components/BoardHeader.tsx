@@ -14,7 +14,16 @@ import {
   isStale,
   TICK_INTERVAL_MS,
 } from "../derive/time";
-import { SORT_MODE_LABELS, SORT_MODES, type SortMode } from "../types";
+import {
+  ALL_POSITIONS_LABEL,
+  ALL_POSITIONS_VALUE,
+  POSITION_FILTERS,
+  POSITION_SORT_MODES,
+  SORT_MODE_LABELS,
+  SORT_MODES,
+  type PositionFilter,
+  type SortMode,
+} from "../types";
 
 interface BoardHeaderProps {
   /** The week this header names — `display_week` once the regular season is over. */
@@ -29,6 +38,9 @@ interface BoardHeaderProps {
   isOffRegularSeason: boolean;
   sortMode: SortMode;
   onSortModeChange: (mode: SortMode) => void;
+  /** The position the board is narrowed to, or null for every team's whole roster. */
+  positionFilter: PositionFilter | null;
+  onPositionFilterChange: (position: PositionFilter | null) => void;
   sortFellBack: boolean;
   searchTerm: string;
   onSearchTermChange: (term: string) => void;
@@ -55,6 +67,12 @@ function seasonFallbackLabel(season: number | null): string {
 
 /** The header's own label for a dropped socket, beside the week. */
 const RECONNECTING_LABEL = "reconnecting";
+
+/** What the position segments are for, said once for a reader who cannot see the row. */
+const POSITION_FILTER_LABEL = "Show one position across the league";
+
+/** The "no filter" segment's own label; the visible text is just `All`. */
+const ALL_POSITIONS_ARIA_LABEL = "All positions";
 
 /** One label for the search box and its clear button, so the two cannot drift apart. */
 const SEARCH_LABEL = "Search owner, team, or player";
@@ -83,6 +101,8 @@ export function BoardHeader({
   isOffRegularSeason,
   sortMode,
   onSortModeChange,
+  positionFilter,
+  onPositionFilterChange,
   sortFellBack,
   searchTerm,
   onSearchTermChange,
@@ -168,6 +188,47 @@ export function BoardHeader({
         {announced}
       </p>
 
+      {/*
+        Ben's addendum 2: one position across the whole league, in one tap. Wrapping rather than
+        scrolling, because seven 44px segments do not fit across a phone in one line and a row
+        that scrolls sideways hides its own last segment.
+      */}
+      <ToggleGroup
+        type="single"
+        value={positionFilter ?? ALL_POSITIONS_VALUE}
+        onValueChange={(value) => {
+          // Radix hands back "" when the active item is clicked again; the board is always in
+          // exactly one of these states, so that is a no-op rather than an eighth one.
+          if (value !== "") {
+            onPositionFilterChange(
+              value === ALL_POSITIONS_VALUE ? null : (value as PositionFilter),
+            );
+          }
+        }}
+        aria-label={POSITION_FILTER_LABEL}
+        variant="outline"
+        size="sm"
+        className="flex-wrap justify-start"
+      >
+        <ToggleGroupItem
+          value={ALL_POSITIONS_VALUE}
+          aria-label={ALL_POSITIONS_ARIA_LABEL}
+          className={TOUCH_TARGET_CLASS}
+        >
+          {ALL_POSITIONS_LABEL}
+        </ToggleGroupItem>
+        {POSITION_FILTERS.map((position) => (
+          <ToggleGroupItem
+            key={position}
+            value={position}
+            aria-label={position}
+            className={TOUCH_TARGET_CLASS}
+          >
+            {position}
+          </ToggleGroupItem>
+        ))}
+      </ToggleGroup>
+
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <ToggleGroup
           type="single"
@@ -183,16 +244,22 @@ export function BoardHeader({
           variant="outline"
           size="sm"
         >
-          {SORT_MODES.map((mode) => (
-            <ToggleGroupItem
-              key={mode}
-              value={mode}
-              aria-label={SORT_MODE_LABELS[mode]}
-              className={TOUCH_TARGET_CLASS}
-            >
-              {SORT_MODE_LABELS[mode]}
-            </ToggleGroupItem>
-          ))}
+          {/*
+            A position view answers "who can bid and who needs one", so it offers the two sorts
+            that speak to that and drops points for, which speaks to neither.
+          */}
+          {(positionFilter === null ? SORT_MODES : POSITION_SORT_MODES).map(
+            (mode) => (
+              <ToggleGroupItem
+                key={mode}
+                value={mode}
+                aria-label={SORT_MODE_LABELS[mode]}
+                className={TOUCH_TARGET_CLASS}
+              >
+                {SORT_MODE_LABELS[mode]}
+              </ToggleGroupItem>
+            ),
+          )}
         </ToggleGroup>
 
         <div className="flex items-center gap-2 sm:w-auto">
