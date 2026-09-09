@@ -76,3 +76,18 @@
     @apply bg-background text-foreground;
   }
 }
+
+/*
+ * Reduced motion, scoped to the board's team cards. A global `[data-state]` rule would reach
+ * every Radix component on the page — dialogs, toasts, tooltips — so the collapse animation is
+ * stilled only where this task introduced it.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .board-team-card,
+  .board-team-card [data-radix-collapsible-content],
+  .board-team-card [data-state="open"],
+  .board-team-card [data-state="closed"] {
+    animation: none !important;
+    transition: none !important;
+  }
+}
