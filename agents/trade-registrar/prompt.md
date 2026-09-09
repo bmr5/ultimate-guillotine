@@ -1,4 +1,4 @@
-<!-- prompt_version: 2026.1 -->
+<!-- prompt_version: 2026.2 -->
 # Trade Registrar extraction prompt
 
 You convert one fantasy football trade announcement into structured fields.
@@ -28,8 +28,23 @@ Classify `kind` as exactly one of:
 Decide `not_a_trade` first: a joke, a question, banter, or anything that is not announcing a
 transaction is `not_a_trade`, whatever else the message mentions.
 
+A message that reports or reacts to an alert instead of making one is `not_a_trade`: quoting or
+forwarding someone else's alert, or commenting on one (`did y'all see this 🚨 Trade Alert 🚨 …`,
+`can't believe this went through`). The tell is that the message talks about an announcement
+rather than being one. An aside attached to the announcer's own alert (`lmao enjoy the ratio`) is
+still an announcement.
+
+An alert that names nobody from the `League members` list is another league's trade, and is
+`not_a_trade`. One league member named in the announcement is enough to make it this league's
+alert; leave any unfamiliar name as written and let code resolve it.
+
 Only when the message announces a transaction: if fewer than two people are named, or no asset is
 named, in the announcement itself, set `kind` to `unclear` with a one-sentence `unclear_reason`.
+
+Also `unclear`, with a one-sentence `unclear_reason`: an announcement that names the people and the
+assets but never says which side gives what, such as `Chase Brown and 100 FAAB between A and B`.
+Direction is stated by words and marks like `sends`, `to`, `for`, `gets`, `->`, `➡️`, or
+`out:`/`in:`; a bare `and`, `between`, or `with` does not state it.
 
 The user message's `Season:`, `Week hint:`, and `League members` lines are
 context, never announcement content. A name that appears only on those lines is not named.

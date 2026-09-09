@@ -22,7 +22,7 @@ class FakeAI:
 
 def test_prompt_is_versioned_and_states_the_rules() -> None:
     prompt = load_prompt()
-    assert PROMPT_VERSION == "2026.1"
+    assert PROMPT_VERSION == "2026.2"
     assert prompt.startswith(f"<!-- prompt_version: {PROMPT_VERSION} -->")
     assert "verbatim" in prompt and "null" in prompt and "fairness" in prompt
 
@@ -40,6 +40,66 @@ def test_prompt_orders_not_a_trade_before_unclear_and_scopes_naming() -> None:
     assert "in the announcement itself" in prompt
     assert "one-sentence `unclear_reason`" in prompt
     assert prompt.index("Decide `not_a_trade` first") < prompt.index("`unclear_reason`")
+
+
+#: The rules 2026.2 added, each as the phrase the prompt has to carry. Kept as a
+#: table so a rule quietly dropped from the prompt fails under its own name --
+#: the suite proves the prompt still says these things, never what the model
+#: does with them, which is what `scripts/registrar_cases.py` is for.
+PROMPT_RULES_2026_2 = [
+    (
+        "a report of an alert is not an announcement",
+        "A message that reports or reacts to an alert instead of making one is `not_a_trade`",
+    ),
+    (
+        "quoting or forwarding someone else's alert",
+        "quoting or forwarding someone else's alert, or commenting on one",
+    ),
+    (
+        "an aside on your own alert is still an announcement",
+        "An aside attached to the announcer's own alert",
+    ),
+    (
+        "another league's trade names no member",
+        "An alert that names nobody from the `League members` list is another league's trade",
+    ),
+    (
+        "one named member is enough",
+        "One league member named in the announcement is enough to make it this league's alert",
+    ),
+    (
+        "unstated direction is unclear, with a reason",
+        "Also `unclear`, with a one-sentence `unclear_reason`:",
+    ),
+    (
+        "unstated direction is the never-says-which-side case",
+        "names the people and the assets but never says which side gives what",
+    ),
+    (
+        "what does count as stating direction",
+        "Direction is stated by words and marks like `sends`, `to`, `for`, `gets`, `->`",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    ("rule", "phrase"),
+    PROMPT_RULES_2026_2,
+    ids=[rule for rule, _ in PROMPT_RULES_2026_2],
+)
+def test_prompt_states_the_2026_2_rules(rule: str, phrase: str) -> None:
+    # The prompt wraps at 100 columns, so match against it as one flowing line.
+    assert phrase in " ".join(load_prompt().split())
+
+
+def test_prompt_keeps_the_not_a_trade_rules_ahead_of_the_unclear_rules() -> None:
+    """Order is the rule: a report of someone else's alert has to be answered
+    `not_a_trade` before the direction test can turn it into a clarification."""
+    prompt = " ".join(load_prompt().split())
+    assert prompt.index("reports or reacts to an alert") < prompt.index("`unclear_reason`")
+    assert prompt.index("names nobody from the `League members` list") < prompt.index(
+        "never says which side gives what"
+    )
 
 
 def test_prompt_marks_the_user_message_context_lines_as_never_announcement() -> None:

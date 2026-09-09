@@ -499,10 +499,10 @@
       "id": 56,
       "category": "not_a_trade",
       "text": "🚨 Trade Alert 🚨 Over in the dynasty league, Barnaby sends CMC to Quill for 300 FAAB",
-      "expected_kind": "permanent",
-      "expected_status": "clarification",
+      "expected_kind": "not_a_trade",
+      "expected_status": "not_a_trade",
       "prereq": null,
-      "notes": "Known false positive: an alert about another league. Neither name is a member, so the bot asks the chat a pointless question instead of staying quiet."
+      "notes": "An alert about another league. No name in it is on the member list, which is what 2026.2 reads as another league's trade, so the bot stays quiet instead of asking the chat a pointless question."
     },
     {
       "id": 57,
