@@ -130,7 +130,11 @@ class FakeConn:
 
 
 class SeasonCursor:
-    """A cursor whose only query is the current-season lookup."""
+    """A cursor that answers the current-season lookup, and nothing else.
+
+    ``fetchall`` is deliberately empty: the roster-holdings read finds no rows
+    for the season, which is the case that still reaches Sleeper.
+    """
 
     def __init__(self, row):
         self._row = row
@@ -146,6 +150,9 @@ class SeasonCursor:
 
     def fetchone(self):
         return self._row
+
+    def fetchall(self):
+        return []
 
 
 class SeasonConn(FakeConn):

@@ -68,12 +68,47 @@ class RosterIndex:
 def build_roster_index(
     client: SleeperClient, conn: psycopg.Connection, league_id: str, season: int
 ) -> RosterIndex:
-    """Join Sleeper's roster holdings to ``season``'s teams, by ``sleeper_roster_id``.
+    """Map each member to the Sleeper player ids they currently hold.
+
+    Reads ``public.roster_holdings``, which the ten-minute sync keeps current: a
+    🚨 alert arriving during a Sleeper outage still resolves against the last
+    good rows, and no alert costs a Sleeper call. Every slot counts -- starter,
+    bench, ir, taxi -- because a traded player is as likely to be on IR.
+
+    The ``client`` remains for one guard: a season with no holdings rows at all
+    (a brand-new season the sync has not reached yet) falls back to one live
+    fetch. A season with *some* rows is trusted as it stands, however old the
+    last sync is; resolving a duplicate name against the last good rows beats
+    resolving it against nothing, and a stalled sync is an ops problem.
 
     The season is passed in rather than read off the clock: the caller has
     already settled which season it is recording under, and a January trade
     belongs to the season that started the previous September.
     """
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            select t.member_id, h.sleeper_player_id
+            from public.roster_holdings h
+            join public.teams t on t.id = h.team_id
+            join public.seasons s on s.id = h.season_id
+            where s.year = %s
+            """,
+            (season,),
+        )
+        rows = cur.fetchall()
+    if not rows:
+        return _index_from_sleeper(client, conn, league_id, season)
+    holdings: dict[int, set[str]] = {}
+    for member_id, player_id in rows:
+        holdings.setdefault(member_id, set()).add(player_id)
+    return RosterIndex({m: frozenset(ids) for m, ids in holdings.items()})
+
+
+def _index_from_sleeper(
+    client: SleeperClient, conn: psycopg.Connection, league_id: str, season: int
+) -> RosterIndex:
+    """The pre-holdings path: one live fetch joined to teams by ``sleeper_roster_id``."""
     rosters = client.get_rosters(league_id)
     with conn.cursor() as cur:
         cur.execute(
