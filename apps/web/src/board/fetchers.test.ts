@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import type { BoardClient } from "./fetchers";
 import {
+  IN_CHUNK_SIZE,
   fetchFinalRosters,
   fetchMembers,
   fetchNflState,
@@ -24,8 +25,11 @@ interface Call {
   filters: [string, unknown][];
 }
 
+/** A fixed row set, or one derived from the filters that call asked for. */
+type FakeResponse = unknown[] | ((call: Call) => unknown[]);
+
 function createFakeClient(
-  responses: Record<string, unknown[]>,
+  responses: Record<string, FakeResponse>,
   errors: Record<string, string> = {},
 ): { client: BoardClient; calls: Call[] } {
   const calls: Call[] = [];
@@ -48,9 +52,12 @@ function createFakeClient(
         },
         then(resolve: (value: unknown) => unknown) {
           const message = errors[table];
+          const response = responses[table];
+          const data =
+            typeof response === "function" ? response(call) : (response ?? []);
           return Promise.resolve(
             message === undefined
-              ? { data: responses[table] ?? [], error: null }
+              ? { data, error: null }
               : { data: null, error: { message } },
           ).then(resolve);
         },
@@ -198,6 +205,52 @@ describe("bulk player fetchers", () => {
       ["week", 3],
       ["sleeper_player_id", ["4046"]],
     ]);
+  });
+
+  it("chunks a large id list and merges the batches in id order", async () => {
+    const ids = Array.from({ length: 400 }, (_, index) => `p${index}`);
+    const { client, calls } = createFakeClient({
+      players: (call) =>
+        (call.filters[0][1] as string[]).map((id) => ({
+          sleeper_player_id: id,
+          full_name: `Player ${id}`,
+          position: "QB",
+          team: "BUF",
+        })),
+    });
+    const rows = await fetchPlayers(client, ids);
+    // 400 ids in a single `.in()` is a query string long enough to be refused; three batches
+    // are not.
+    expect(calls).toHaveLength(3);
+    expect(calls.map((call) => (call.filters[0][1] as string[]).length)).toEqual([
+      IN_CHUNK_SIZE,
+      IN_CHUNK_SIZE,
+      400 - 2 * IN_CHUNK_SIZE,
+    ]);
+    expect(rows.map((row) => row.sleeper_player_id)).toEqual(ids);
+  });
+
+  it("chunks the projection id list too, keeping season and week on every batch", async () => {
+    const ids = Array.from({ length: 400 }, (_, index) => `p${index}`);
+    const { client, calls } = createFakeClient({
+      player_projections: (call) =>
+        (call.filters[2][1] as string[]).map((id) => ({
+          sleeper_player_id: id,
+          league_points: 1,
+        })),
+    });
+    const rows = await fetchPlayerProjections(client, 2026, 3, ids);
+    expect(calls).toHaveLength(3);
+    for (const call of calls) {
+      expect(call.filters[0]).toEqual(["season", 2026]);
+      expect(call.filters[1]).toEqual(["week", 3]);
+    }
+    expect(calls.map((call) => (call.filters[2][1] as string[]).length)).toEqual([
+      IN_CHUNK_SIZE,
+      IN_CHUNK_SIZE,
+      400 - 2 * IN_CHUNK_SIZE,
+    ]);
+    expect(rows.map((row) => row.sleeper_player_id)).toEqual(ids);
   });
 
   it("skips the request entirely when nothing is held", async () => {

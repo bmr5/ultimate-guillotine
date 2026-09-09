@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo } from "react";
 
 import { boardClient } from "./boardClient";
@@ -151,6 +151,14 @@ export function useBoardData(options: BoardDataOptions): BoardDataResult {
     queryFn: () => fetchPlayers(boardClient, heldPlayerIds),
     enabled: hasSeason && heldPlayerIds.length > 0,
     ...shared,
+    // A fingerprint change is a brand-new cache entry with no data, so without this every
+    // already-known name blinks to "Unknown player …" for a paint while the new key loads.
+    placeholderData: keepPreviousData,
+    // The player directory is a static lookup — a name, a position, an NFL team. Nothing about
+    // it goes stale on a timer, and the only thing that should refetch it is a new id set,
+    // which is already a new key. So no poll, and no staleness clock.
+    staleTime: Number.POSITIVE_INFINITY,
+    refetchInterval: false as const,
   });
 
   const playerProjections = useQuery({
@@ -164,6 +172,9 @@ export function useBoardData(options: BoardDataOptions): BoardDataResult {
       ),
     enabled: season !== null && week !== null && heldPlayerIds.length > 0,
     ...shared,
+    // Projections do move, so this branch keeps the poll; it only keeps the previous numbers
+    // on screen while the new id set loads.
+    placeholderData: keepPreviousData,
   });
 
   const boardTeams = useMemo(
@@ -239,9 +250,11 @@ export function useBoardData(options: BoardDataOptions): BoardDataResult {
     seasonId,
     teams: boardTeams,
     isPending,
-    // A failed teams query is not an empty league: the empty state claims there is nothing to
-    // show, which is a different statement from "this request did not come back".
-    isEmpty: !isPending && teams.error === null && boardTeams.length === 0,
+    // No failed query at all, not just no failed teams query. The empty state claims there is
+    // nothing to show, which is a different statement from "a request did not come back" — and
+    // a failure upstream of teams (nfl_state, or the season lookup) leaves teams merely
+    // disabled with a null error, so guarding on teams alone would call a broken board empty.
+    isEmpty: !isPending && errors.length === 0 && boardTeams.length === 0,
     errors,
     projectionsUpdatedAt,
     refetchAll: () => {

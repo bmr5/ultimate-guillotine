@@ -45,6 +45,26 @@ interface SupabaseResult<T> {
   error: { message: string } | null;
 }
 
+/**
+ * How many ids one `.in(...)` filter may carry.
+ *
+ * PostgREST renders `.in()` into the query string, so the whole id list travels in the URL. The
+ * live set is already ~360 ids and every frozen `final_rosters` snapshot only adds to it, so an
+ * unchunked list grows past the proxy's URL limit somewhere mid-season and the request starts
+ * failing with a 414 rather than degrading. 150 six-character ids is roughly a kilobyte of
+ * query string — comfortably inside every limit in the path, and few enough batches that the
+ * round trips stay parallel.
+ */
+export const IN_CHUNK_SIZE = 150;
+
+function chunkIds(ids: readonly string[]): string[][] {
+  const batches: string[][] = [];
+  for (let start = 0; start < ids.length; start += IN_CHUNK_SIZE) {
+    batches.push(ids.slice(start, start + IN_CHUNK_SIZE));
+  }
+  return batches;
+}
+
 async function unwrap<T>(
   query: PromiseLike<SupabaseResult<T>>,
   label: string,
@@ -185,45 +205,58 @@ export function fetchFinalRosters(
 }
 
 /**
- * One request for every player the board can show — roughly 360 live ids plus whatever the
- * frozen snapshots still name, not one request per team.
+ * The directory for every player the board can show — roughly 360 live ids plus whatever the
+ * frozen snapshots still name. One request per `IN_CHUNK_SIZE` ids, issued in parallel and
+ * merged in id order; never one request per team.
  */
-export function fetchPlayers(
+export async function fetchPlayers(
   client: BoardClient,
   sleeperPlayerIds: string[],
 ): Promise<PlayerRow[]> {
   if (sleeperPlayerIds.length === 0) {
-    return Promise.resolve([]);
+    return [];
   }
-  return unwrap<PlayerRow>(
-    client
-      .from("players")
-      .select("sleeper_player_id, full_name, position, team")
-      .in("sleeper_player_id", sleeperPlayerIds),
-    "players",
+  const batches = await Promise.all(
+    chunkIds(sleeperPlayerIds).map((ids) =>
+      unwrap<PlayerRow>(
+        client
+          .from("players")
+          .select("sleeper_player_id, full_name, position, team")
+          .in("sleeper_player_id", ids),
+        "players",
+      ),
+    ),
   );
+  // Promise.all resolves in argument order, so flattening keeps the caller's id order rather
+  // than whichever batch came back first.
+  return batches.flat();
 }
 
 /**
  * player_projections is keyed by the plain season year, not season_id, and is deliberately
  * not in the realtime publication — a run touches thousands of rows.
  */
-export function fetchPlayerProjections(
+export async function fetchPlayerProjections(
   client: BoardClient,
   season: number,
   week: number,
   sleeperPlayerIds: string[],
 ): Promise<PlayerProjectionRow[]> {
   if (sleeperPlayerIds.length === 0) {
-    return Promise.resolve([]);
+    return [];
   }
-  return unwrap<PlayerProjectionRow>(
-    client
-      .from("player_projections")
-      .select("sleeper_player_id, league_points")
-      .eq("season", season)
-      .eq("week", week)
-      .in("sleeper_player_id", sleeperPlayerIds),
-    "player_projections",
+  const batches = await Promise.all(
+    chunkIds(sleeperPlayerIds).map((ids) =>
+      unwrap<PlayerProjectionRow>(
+        client
+          .from("player_projections")
+          .select("sleeper_player_id, league_points")
+          .eq("season", season)
+          .eq("week", week)
+          .in("sleeper_player_id", ids),
+        "player_projections",
+      ),
+    ),
   );
+  return batches.flat();
 }

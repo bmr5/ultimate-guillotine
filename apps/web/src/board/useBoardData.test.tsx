@@ -191,14 +191,94 @@ describe("useBoardData", () => {
     );
   });
 
-  it("has no projection pull time before any projection row arrives", async () => {
+  it("has no projection pull time when the week's projections come back empty", async () => {
     const { result } = renderBoardData();
+    // Wait for the projections query to actually run and return its (empty) rows — asserting
+    // on projectionsUpdatedAt before then would only be reading the initial null.
+    await waitFor(() => {
+      expect(vi.mocked(fetchers.fetchTeamWeekProjections)).toHaveBeenCalled();
+    });
     await waitFor(() => {
       expect(result.current.isPending).toBe(false);
     });
     expect(result.current.projectionsUpdatedAt).toBeNull();
   });
+
+  it("is not empty when nfl_state fails, and says which section broke", async () => {
+    vi.mocked(fetchers.fetchNflState).mockRejectedValue(
+      new Error("nfl_state: boom"),
+    );
+    const { result } = renderBoardData();
+    await waitFor(() => {
+      expect(result.current.errors).toHaveLength(1);
+    });
+    expect(result.current.errors[0]).toEqual({
+      section: "NFL week",
+      message: "nfl_state: boom",
+    });
+    // teams never ran — it is disabled, not failed — so a teams-only guard would call this
+    // broken board empty.
+    expect(vi.mocked(fetchers.fetchTeams)).not.toHaveBeenCalled();
+    expect(result.current.teams).toEqual([]);
+    expect(result.current.isEmpty).toBe(false);
+  });
+
+  it("keeps the previous player names on screen while a new held-id set loads", async () => {
+    vi.mocked(fetchers.fetchRosterHoldings).mockResolvedValue([
+      holding(11, "4046", 0),
+    ]);
+    vi.mocked(fetchers.fetchPlayers).mockResolvedValue([
+      { sleeper_player_id: "4046", full_name: "Josh Allen", position: "QB", team: "BUF" },
+    ]);
+    const { result, queryClient } = renderBoardData();
+    await waitFor(() => {
+      expect(result.current.teams[0]?.roster[0]?.fullName).toBe("Josh Allen");
+    });
+
+    // A waiver claim lands: the id set grows, so the players key changes and the new entry has
+    // no data of its own. Hold that second request open to observe the paint in between.
+    let release: (rows: fetchers.PlayerRow[]) => void = () => {};
+    vi.mocked(fetchers.fetchPlayers).mockImplementationOnce(
+      () =>
+        new Promise<fetchers.PlayerRow[]>((resolve) => {
+          release = resolve;
+        }),
+    );
+    vi.mocked(fetchers.fetchRosterHoldings).mockResolvedValue([
+      holding(11, "4046", 0),
+      holding(11, "9999", 1),
+    ]);
+    await queryClient.invalidateQueries({ queryKey: boardKeys.rosterHoldings(7) });
+    await waitFor(() => {
+      expect(vi.mocked(fetchers.fetchPlayers).mock.calls).toHaveLength(2);
+    });
+
+    // placeholderData: keepPreviousData. Without it players.data is undefined here and the
+    // already-known name flips to "Unknown player 4046" for a frame.
+    await waitFor(() => {
+      expect(result.current.teams[0].roster).toHaveLength(2);
+    });
+    expect(result.current.teams[0].roster[0].fullName).toBe("Josh Allen");
+
+    release([
+      { sleeper_player_id: "4046", full_name: "Josh Allen", position: "QB", team: "BUF" },
+      { sleeper_player_id: "9999", full_name: "Puka Nacua", position: "WR", team: "LAR" },
+    ]);
+    await waitFor(() => {
+      expect(result.current.teams[0].roster[1].fullName).toBe("Puka Nacua");
+    });
+  });
 });
+
+function holding(teamId: number, sleeperPlayerId: string, slotIndex: number) {
+  return {
+    team_id: teamId,
+    sleeper_player_id: sleeperPlayerId,
+    slot: "starter" as const,
+    slot_index: slotIndex,
+    lineup_position: "FLEX",
+  };
+}
 
 function makeProjection(teamId: number, computedAt: string) {
   return {
