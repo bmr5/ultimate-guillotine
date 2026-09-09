@@ -73,3 +73,15 @@ def test_members_list_prints_the_nickname_and_no_other_alias(
     assert "Member01  2  Benny" in out
     assert "Member02  0  -" in out
     assert "Hammer" not in out
+
+
+def test_members_help_lists_handles() -> None:
+    """The handle loader is the only way a sender ever becomes a member, so it
+    has to be discoverable from `ug members --help` alongside `aliases`."""
+    result = subprocess.run(
+        [sys.executable, "-m", "ultimate_guillotine.cli.main", "members", "--help"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0 and "handles" in result.stdout
