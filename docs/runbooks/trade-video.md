@@ -82,13 +82,18 @@ spending anything. `render --voiced` writes the read the same way, puts it into 
 prompt as quoted dialogue with `generate_audio` on, and mixes the music at -12 dB under the
 voice. The read is printed before the generation starts.
 
-- Seedance holds about 2.6 spoken words a second: 12 s is 31 words, 8 s is 20. Hermes gets
-  the limit and is sent back once if it runs long; a read that still runs long desyncs the lips.
+- The read decides the length. Hermes is asked for the shortest read the trade allows (a
+  two-side swap in about 20 words, a bigger deal condensed), and the clip is sized to it at
+  2.6 words a second plus a second of air, between 4 and 15 s, which is what Seedance renders.
+  A really long trade is condensed into 39 words, not stretched past 15 s. `--generate-seconds`
+  overrides the length; a read that runs long for its clip desyncs the lips.
 - Waiver money is spoken as dollars ("twenty dollars"), never FAAB: the voice model handles it
   better. The lower third on screen still says FAAB.
 - `--script "…"` uses your own words verbatim; `--no-ai` uses the template read
   ("Breaking news. Sources tell ESPN: … The whole league is shaking.") with no model call.
-- A 12 s 720p voiced clip is 78 credits; check with `video cost --voiced --duration 12`.
+- An 8 s 720p voiced clip is 52 credits and generated in about four minutes on 2026-09-10; a 12 s
+  one is 78 credits and took over twenty minutes. Keep reads to 8 s (20 words) unless a trade
+  really needs more. Check with `video cost --voiced --duration 8`.
 - The voice is whatever Seedance gives the character. Nothing here clones Adam Schefter's
   actual voice from the ESPN audio; that would be a different, deliberate step.
 
@@ -122,15 +127,15 @@ path uses the real segment the reference used.
 Reply to a trade alert (or to the bot's "🚨 Trade T-2026-003 logged" line, or say the code)
 with **`@bot create trade video`**. The listener answers within a second:
 
-> 🎬 Making the video for T-2026-003 — about 20 minutes.
+> 🎬 On it — the video for T-2026-003 usually takes 5 to 10 minutes.
 
 and queues a row in `private.video_jobs`. The `guillotine-video-jobs` cron job (every 2 min)
 runs `ug video jobs run`, which claims the oldest queued job, writes the read, generates the
-voiced clip, composites it, and delivers the mp4 through the delivery service — so in test mode
+voiced clip (as long as the read needs), composites it, and delivers the mp4 through the delivery service — so in test mode
 it lands in the self-test chat, and in the league chat only once the mode is promoted. One
 open job per trade: asking twice gets "already in the works". A rescinded trade gets no video.
 Failures are recorded on the job and posted to `#guillotine-ops`; nothing retries by itself
-because every attempt is 78 credits.
+because every attempt costs credits (52 for 8 s).
 
 ```bash
 uv run --project packages/league-automation python -m ultimate_guillotine.cli.main video jobs list

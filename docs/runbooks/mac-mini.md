@@ -297,7 +297,16 @@ with `DELIVERY_MODE=test`. The checklist below is copied verbatim from
 the plan's Task 9, Step 4; check each box off as it is verified on the
 Mac mini, and rename the status heading once every box is checked.
 
-### Gate pending
+### Gate passed: 2026-09-10, delivery mode production
+
+Ben promoted the Registrar on 2026-09-10 after a week of shadow mode and the
+backfill of the league chat (two real trades, both logged correctly). The league
+chat is the production target; the self-test chat stays registered and an alert
+posted there is still answered there, so the bot can keep being tried out
+without the league seeing it. The two test-mode codes were renamed to
+`T-2026-001` and `T-2026-002` so the production sequence continues from them.
+
+### Gate checklist (as run)
 
 With `DELIVERY_MODE=test` and the listener restarted. Test mode writes
 trade codes prefixed `TEST-`, counted in their own sequence, so

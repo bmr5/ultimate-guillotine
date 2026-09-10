@@ -61,7 +61,9 @@ class Worker:
     script_ai: Callable[[], StructuredOutputClient]
     ffmpeg: str
     ffprobe: str
-    seconds: int = 12
+    #: Length of the clip; ``None`` sizes it to the read (4 to 15 s). 8 s of voiced
+    #: footage generated in about four minutes on 2026-09-10; 12 s took over twenty.
+    seconds: int | None = None
     render: Callable[..., pipeline.Job] = pipeline.render
     write_script: Callable[..., object] = generate_script
     now: Callable[[], datetime] = lambda: datetime.now(UTC)

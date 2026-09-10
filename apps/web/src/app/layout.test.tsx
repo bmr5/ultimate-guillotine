@@ -169,10 +169,7 @@ describe("App layout", () => {
     render(<RouterProvider router={router} />);
     const links = screen.getAllByRole("link");
     expect(links.map((link) => link.textContent)).toEqual([
-      "Board",
-      "Draft",
-      "Trades",
-      "History",
+      "Board", "Trades", "Draft", "History",
     ]);
     expect(screen.getByRole("link", { name: "History" })).toHaveAttribute(
       "aria-current",

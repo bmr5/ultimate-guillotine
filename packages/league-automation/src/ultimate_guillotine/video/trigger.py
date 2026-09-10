@@ -20,8 +20,9 @@ from ultimate_guillotine.trades.repository import TradeRepository
 from ultimate_guillotine.video.jobs import VideoJobRepository
 
 AGENT = "trade-video"
-#: How long Ben is told to expect; a 12 s voiced clip has taken 20 to 25 minutes.
-MINUTES = 20
+#: What Ben is told to expect: an 8 s voiced clip took about four minutes on
+#: 2026-09-10, and Higgsfield's queue adds what it adds.
+ETA = "usually takes 5 to 10 minutes"
 
 _TAG = re.compile(r"@bot\b", re.IGNORECASE)
 _VIDEO = re.compile(r"\bvideo\b", re.IGNORECASE)
@@ -59,14 +60,14 @@ class VideoRequests:
         delivery: DeliveryService,
         conn: psycopg.Connection,
         code_for_outbound_guid: Callable[[str], str | None] = lambda _guid: None,
-        minutes: int = MINUTES,
+        eta: str = ETA,
     ) -> None:
         self._trades = trades
         self._jobs = jobs
         self._delivery = delivery
         self._conn = conn
         self._code_for_outbound_guid = code_for_outbound_guid
-        self._minutes = minutes
+        self._eta = eta
 
     def resolve(self, msg: InboundMessage) -> dict | None:
         """The trade a request is about: the alert it replies to, a code in the
@@ -99,7 +100,7 @@ class VideoRequests:
         _job_id, created = self._jobs.enqueue(trade["trade_id"], code, msg.guid)
         self._conn.commit()
         if created:
-            text = f"🎬 Making the video for {code} — about {self._minutes} minutes."
+            text = f"🎬 On it — the video for {code} {self._eta}."
         else:
             text = f"🎬 The video for {code} is already in the works."
         self._delivery.deliver(None, AGENT, text)

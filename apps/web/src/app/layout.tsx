@@ -19,8 +19,8 @@ import { MusicToggle } from "@/music/MusicToggle";
  */
 const LINKS: [to: string, label: string, end: boolean][] = [
   ["/", "Board", true],
-  ["/draft", "Draft", false],
   ["/trades", "Trades", false],
+  ["/draft", "Draft", false],
   ["/history", "History", false],
 ];
 
@@ -80,7 +80,7 @@ function App() {
   }, []);
 
   return (
-    <div className="min-h-screen w-full">
+    <div className="relative z-10 min-h-screen w-full">
       <div className="mx-auto w-full max-w-6xl px-4 py-5">
         <header
           className={cn("flex items-start justify-between gap-4", REVEAL_CLASS)}

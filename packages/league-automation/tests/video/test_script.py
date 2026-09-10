@@ -9,6 +9,8 @@ from ultimate_guillotine.video.script import (
     generate_script,
     normalize,
     script_from_text,
+    script_seconds,
+    seconds_for,
     spoken,
     template_script,
     word_budget,
@@ -101,3 +103,39 @@ def test_the_read_says_dollars_never_faab() -> None:
     )
     assert spoken("30 draft dollars") == "30 draft dollars"
     assert "never say FAAB" in SYSTEM
+
+
+def test_the_clip_is_sized_to_the_read_between_4_and_15_seconds() -> None:
+    def script_of(words: int) -> Script:
+        return Script(beats=[Beat(start=0, end=1, direction="d", text=" ".join(["w"] * words))])
+
+    assert seconds_for(script_of(14)) == 7  # ceil(14 / 2.6) = 6, plus a second of air
+    assert seconds_for(script_of(20)) == 9
+    assert seconds_for(script_of(3)) == 4
+    assert seconds_for(script_of(60)) == 15
+
+
+def test_template_and_typed_reads_size_themselves_when_no_length_is_given() -> None:
+    script = template_script(COPY)
+    assert script_seconds(script) == seconds_for(script)
+    assert script.beats[-1].end == seconds_for(script)
+    typed = script_from_text("Breaking news. Josh Jacobs is on the move.", None)
+    assert script_seconds(typed) == 5  # 8 words: ceil(8 / 2.6) + 1
+
+
+class ShortAnswer:
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    def parse(self, system, user, schema, schema_name):
+        self.calls.append(user)
+        text = "Breaking news. Sources tell ESPN Josh Jacobs is headed to Charlie for four hundred fifty dollars."
+        return Script(beats=[Beat(start=0, end=6, direction="urgent", text=text)]), USAGE
+
+
+def test_generate_script_with_no_length_asks_for_the_shortest_read_and_sizes_the_clip() -> None:
+    client = ShortAnswer()
+    script = generate_script(client, COPY)
+    assert "as short as the facts allow, up to 15 seconds" in client.calls[0]
+    assert "Word limit: 39 words" in client.calls[0]
+    assert script.words == 16 and script_seconds(script) == seconds_for(script) == 8

@@ -261,3 +261,16 @@ def test_deliver_attachment_reconciles_a_crashed_send_by_filename() -> None:
     assert result.status == "reconciled" and result.outbound_id == 3
     assert result.message_guid == "p:0/BOT-3"
     assert client.sent == []
+
+
+def test_production_answers_the_self_test_chat_in_the_self_test_chat() -> None:
+    """Ben (2026-09-10): the league chat is live, and the self-test chat keeps
+    working for trying the bot out. A message from the self-test chat is answered
+    there; anything else goes to the league chat."""
+    service, client, _, _ = make(DeliveryMode.PRODUCTION)
+    service.deliver(None, "trade-registrar", "hello", reply_to=TEST_GUID)
+    assert client.sent == [(TEST_GUID, sign("hello"))]
+    service.deliver(None, "trade-registrar", "league", reply_to=PROD_GUID)
+    assert client.sent[-1] == (PROD_GUID, sign("league"))
+    service.deliver(None, "trade-registrar", "elsewhere", reply_to="iMessage;+;chat-unknown")
+    assert client.sent[-1] == (PROD_GUID, sign("elsewhere"))
