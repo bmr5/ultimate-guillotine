@@ -741,6 +741,15 @@
       "expected_status": "clarification",
       "prereq": null,
       "notes": "Two players on the giver's roster answer to the name. The model can see both of them in the context pack and asks; without the pack it would pass the fragment through and resolution would ask, in the same words, for the same reason. Either way the chat gets a question and nothing is logged, which is what this case is for -- the code path itself is pinned by `test_resolve.py`, where no model is involved."
+    },
+    {
+      "id": 83,
+      "category": "unclear",
+      "text": "🚨 Trade Alert 🚨\nchobes sends 950 FAAB to kpbowe for Michael Pittman",
+      "expected_kind": "unclear",
+      "expected_status": "clarification",
+      "prereq": null,
+      "notes": "More FAAB than the payer has. The `FAAB remaining` section of the context pack is the one part of it that is a check rather than a spelling aid: an amount a team cannot cover is answered with a question, never quietly lowered to what they can afford. Everybody in the runner's synthetic league holds 900, and this asks for 950."
     }
   ]
 }

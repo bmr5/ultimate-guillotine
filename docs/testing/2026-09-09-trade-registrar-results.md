@@ -1,6 +1,6 @@
 # Trade Registrar case results
 
-Run 2026-09-10 02:06 UTC against the live extraction model.
+Run 2026-09-10 02:28 UTC against the live extraction model.
 Cases come from `packages/league-automation/tests/fixtures/registrar_cases.json`;
 case text is deliberately not repeated here.
 
@@ -72,7 +72,7 @@ score an answer nothing depends on.
 | 71 | scale | `permanent` | `created` | `unclear` | `clarification` | FAIL | kind unclear, outcome clarification |
 | 72 | scale | `permanent` | `created` | `permanent` | `created` | pass | — |
 | 73 | unclear | `unclear` | `clarification` | `unclear` | `clarification` | pass | — |
-| 74 | happy | `permanent` | `created` | `permanent` | `created` | pass | — |
+| 74 | happy | `permanent` | `created` | `unclear` | `clarification` | FAIL | kind unclear, outcome clarification |
 | 75 | unclear | `unclear` | `clarification` | `unclear` | `clarification` | pass | — |
 | 76 | sloppy | `permanent` | `created` | `unclear` | `clarification` | FAIL | kind unclear, outcome clarification |
 | 77 | unclear | `unclear` | `clarification` | `unclear` | `clarification` | pass | — |
@@ -80,16 +80,16 @@ score an answer nothing depends on.
 | 79 | happy | `permanent` | `created` | `permanent` | `created` | pass | — |
 | 80 | sloppy | `permanent` | `created` | `permanent` | `created` | pass | — |
 | 81 | sloppy | `permanent` | `created` | `permanent` | `created` | pass | — |
-| 82 | unclear | `permanent` | `clarification` | `unclear` | `clarification` | FAIL | kind unclear |
+| 82 | unclear | `unclear` | `clarification` | `unclear` | `clarification` | pass | — |
 
 ## Totals by category
 
 | category | run | passed | failed |
 | --- | --- | --- | --- |
-| happy | 18 | 18 | 0 |
+| happy | 18 | 17 | 1 |
 | sloppy | 23 | 21 | 2 |
 | not_a_trade | 7 | 7 | 0 |
-| unclear | 9 | 8 | 1 |
+| unclear | 9 | 9 | 0 |
 | privacy | 5 | 4 | 1 |
 | scale | 4 | 3 | 1 |
 | rescission | 1 | 1 | 0 |

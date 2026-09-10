@@ -115,7 +115,13 @@ SYNTHETIC_ROSTERS: dict[str, tuple[str, ...]] = {
     "mdurgin": ("Quentin Johnston", "Khalil Shakir"),
     "chobes": ("Zay Flowers", "Courtland Sutton"),
 }
-SYNTHETIC_FAAB = {"kpbowe": 480, "mdurgin": 260, "chobes": 55}
+#: Budgets big enough that no case trips the prompt's FAAB check by accident.
+#: The cases were written years of chat before there was a FAAB line to check
+#: them against, and the largest amount any of these three pays is 450 -- a
+#: team given less than that would answer `unclear` on a perfectly good alert
+#: and the failure would read as a prompt regression. Case 83 is the one case
+#: that means to trip it, and it asks for more than anybody has.
+SYNTHETIC_FAAB = {"kpbowe": 900, "mdurgin": 900, "chobes": 900}
 #: Two trades in `TradeRepository.list_recent` shape, so the pack's
 #: `Trades this season` section is rendered the way production renders it. The
 #: terms agree with the rosters above: kpbowe holds Michael Pittman because

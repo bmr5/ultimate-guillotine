@@ -1,6 +1,6 @@
 # Trade Registrar case suite (2026-09-09)
 
-82 end-to-end cases for the Trade Registrar, written to be run overnight against the real
+83 end-to-end cases for the Trade Registrar, written to be run overnight against the real
 extraction model without sending anything. Nothing here writes to the league chat: the
 runner calls `extract_trade` + `resolve_extracted` + `validate` directly, the same path
 `ug trades extract --text "<alert>"` takes.
@@ -44,6 +44,11 @@ two trades on file -- and uses it for both halves of the roster work: it is rend
 context pack the model reads, and it is the `RosterIndex` deterministic resolution consults. The
 two can therefore never disagree. `SYNTHETIC_ROSTERS` in `scripts/registrar_cases.py` is the
 definition.
+
+Every team in it holds 900 FAAB. The cases were written long before there was a FAAB line to
+check them against, and the largest amount any of these three teams pays is 450 -- a team given
+less than that would answer `unclear` on a perfectly good alert and the failure would read as a
+prompt regression. Case 83 is the one case that means to trip the check.
 
 Its players are deliberately ones no other case names. The prompt's rule for a name that matches
 nobody's roster is to leave it exactly as the announcement wrote it, so the cases that predate the
@@ -160,7 +165,7 @@ Results land in `docs/testing/2026-09-09-trade-registrar-results.md`.
 | 57 | `Trade alert: chobes sends DJ Moore to jrayay for 125 FAAB` | `not_a_trade` | `not_a_trade` | none | — | No siren, so is_trade_candidate is false and no model call happens. The runner reports this as not-a-candidate, which satisfies not_a_trade. |
 | 58 | `🚨🚨🚨 FAAB 🚨🚨🚨` | `not_a_trade` | `not_a_trade` | none | — | Siren plus a bare trade word and nothing else; detection passes, the model must not. |
 
-## Unclear (9)
+## Unclear (10)
 
 | # | Input | Kind | Status | Reply | Prereq | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -173,6 +178,7 @@ Results land in `docs/testing/2026-09-09-trade-registrar-results.md`.
 | 75 | `🚨 Trade Alert 🚨 ⏎ I sent Ja'Marr Chase to mdurgin for 450 FAAB` | `unclear` | `clarification` | `🚨 Trade not logged yet:` | — | No announcer: a sender whose handle was never loaded leaves `Announcer: unknown`, `I` names nobody, and one named party is not a trade. Case 74's text exactly, so the pair proves the announcer and not the wording is what changed the answer. |
 | 77 | `🚨 Trade Alert 🚨 ⏎ I'm sending you Ja'Marr Chase for 450 FAAB` | `unclear` | `clarification` | `🚨 Trade not logged yet:` | — | From kpbowe. A known announcer is only ever one party. The alert names no other member for `you` to mean, so the bot asks who the other side is rather than guessing at whoever was being addressed in the chat. |
 | 82 | `🚨 Trade Alert 🚨 ⏎ kpbowe sends Michael to mdurgin for 300 FAAB` | `unclear` | `clarification` | `🚨 Trade not logged yet:` | — | Two players on the giver's roster answer to the name. The model can see both in the context pack and asks; without the pack it would pass the fragment through and resolution would ask, in the same words. Either way the chat gets a question and nothing is logged. The code path itself is pinned by `test_resolve.py`, with no model involved. |
+| 83 | `🚨 Trade Alert 🚨 ⏎ chobes sends 950 FAAB to kpbowe for Michael Pittman` | `unclear` | `clarification` | `🚨 Trade not logged yet:` | — | More FAAB than the payer has. `FAAB remaining` is the one part of the context pack that is a check rather than a spelling aid: an amount a team cannot cover is a question, never quietly lowered to what they can afford. Everybody in the synthetic league holds 900. |
 
 ## Privacy and injection (5)
 
