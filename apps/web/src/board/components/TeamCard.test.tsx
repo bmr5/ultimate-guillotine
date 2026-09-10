@@ -787,9 +787,11 @@ describe("TeamCard summary chips", () => {
   it("explains the partial chip on a tap, and to a screen reader without one", async () => {
     renderCard(partialTeam());
     const chip = partialChip();
-    // The sentence reaches a screen reader whether or not the tooltip is open.
+    // The sentence reaches a screen reader whether or not the tooltip is open, and the
+    // computed-at line follows it after the sentence's own full stop — one stop, never two:
+    // `ExplainedBadge` adds a stop only when the sentence ends without one.
     expect(chipDescription(chip)).toMatch(
-      new RegExp(`^${escapeRegExp(COVERAGE_SENTENCE)}(\\. Computed .*)?$`),
+      new RegExp(`^${escapeRegExp(COVERAGE_SENTENCE)}( Computed .*)?$`),
     );
     expect(screen.queryByRole("tooltip")).toBeNull();
 

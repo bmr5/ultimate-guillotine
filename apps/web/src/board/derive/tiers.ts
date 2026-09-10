@@ -122,3 +122,31 @@ export function faabTiers(teams: readonly BoardTeam[]): FaabTiers {
     method: TIER_METHOD,
   };
 }
+
+/**
+ * A line that makes each tier memorable (Ben, 2026-09-10: "so brandon can brag about being the
+ * richest"). Names the richest and the poorest so the bragging rights are explicit.
+ */
+export function tierBlurb(tier: FaabTier): string {
+  const top = tier.teams[0];
+  const bottom = tier.teams[tier.teams.length - 1];
+  if (!top || !bottom) return "Nobody here. Yet.";
+  const n = tier.teams.length;
+  switch (tier.key) {
+    case "rich":
+      return n === 1
+        ? `${top.ownerName} alone at the top with $${top.faabRemaining}. The league's bank.`
+        : `Old money. ${top.ownerName} leads the league at $${top.faabRemaining}; the other ${n - 1 === 1 ? "one" : n - 1} could still buy a starter on a whim.`;
+    case "medium":
+      return `Comfortable. Enough to win a bid, not enough to scare anyone. ${top.ownerName} is one good week from the top tier.`;
+    default:
+      return n === 1
+        ? `${bottom.ownerName} has $${bottom.faabRemaining} and a prayer.`
+        : `Scraping by. ${bottom.ownerName} brings up the rear at $${bottom.faabRemaining}; every waiver claim here is a decision.`;
+  }
+}
+
+/** The single richest team in the league, for the crown. */
+export function richestTeam(tiers: FaabTiers): BoardTeam | null {
+  return tiers.tiers[0].teams[0] ?? null;
+}

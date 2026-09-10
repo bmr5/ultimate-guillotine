@@ -123,7 +123,7 @@ const CLEAR_SEARCH_LABEL = "Clear search";
  */
 const TOUCH_TARGET_CLASS = "min-h-[44px]";
 const TIERS_VALUE = "tiers";
-const TIERS_LABEL = "Tiers";
+const TIERS_LABEL = "$ Tiers";
 const TIERS_ARIA_LABEL = "FAAB tiers: rich, medium and poor";
 
 /**
@@ -309,10 +309,11 @@ export function BoardHeader({
         onValueChange={(value) => {
           // Radix hands back "" when the active item is clicked again; the board is always in
           // exactly one of these states, so that is a no-op rather than an eighth one.
+          // One state change per click: the page clears the tiers view itself when a
+          // position (or All) is chosen, so two updates never race over the same URL.
           if (value === TIERS_VALUE) {
             onTiersChange(true);
           } else if (value !== "") {
-            onTiersChange(false);
             onPositionFilterChange(
               value === ALL_POSITIONS_VALUE ? null : (value as PositionFilter),
             );
