@@ -26,7 +26,18 @@ TERMS = {
 
 def job(job_id: int = 1, attempts: int = 1) -> VideoJob:
     return VideoJob(
-        job_id, 5, "TEST-2026-002", "running", "reply-1", NOW, NOW, None, attempts, None, None
+        job_id,
+        5,
+        "TEST-2026-002",
+        "running",
+        "reply-1",
+        NOW,
+        NOW,
+        None,
+        attempts,
+        None,
+        None,
+        "iMessage;+;chat-test",
     )
 
 
@@ -84,8 +95,8 @@ class FakeDelivery:
     def __init__(self) -> None:
         self.attachments: list[tuple] = []
 
-    def deliver_attachment(self, run_id, agent, filename, data):
-        self.attachments.append((run_id, agent, filename, data))
+    def deliver_attachment(self, run_id, agent, filename, data, reply_to=None):
+        self.attachments.append((run_id, agent, filename, data, reply_to))
 
 
 class FakeConn:
@@ -161,7 +172,9 @@ def test_a_queued_job_is_rendered_delivered_and_finished(tmp_path: Path) -> None
     outcome = w.run_once()
     assert outcome.status == "done" and outcome.job_id == 1
     assert parts["runs"].reserved == [(AGENT, "video-job", "video:1:1")]
-    assert parts["delivery"].attachments == [(11, AGENT, "TEST-2026-002-x.mp4", b"mp4")]
+    assert parts["delivery"].attachments == [
+        (11, AGENT, "TEST-2026-002-x.mp4", b"mp4", "iMessage;+;chat-test")
+    ]
     assert parts["jobs"].finished == [(1, str(tmp_path / "TEST-2026-002-x.mp4"))]
     assert parts["runs"].finished == [(11, "succeeded", None)]
     assert parts["notes"] == ["TEST-2026-002: higgsfield job j1 queued"]

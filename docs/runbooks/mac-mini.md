@@ -528,7 +528,7 @@ null. Rerunning the same name updates that one row. `ug members former list` cou
 
 | Job | Schedule (mini local time) | Delivers to |
 | --- | --- | --- |
-| `guillotine-sleeper-sync` | every 10m | `#guillotine-ops` |
+| `guillotine-sleeper-sync` | every 2m | `#guillotine-ops` |
 | `guillotine-nfl-state` | every 10m | `#guillotine-ops` |
 | `guillotine-players-sync` | `0 */4 * * *` | `#guillotine-ops` |
 | `guillotine-sleeper-projections` | `*/30 * * * *` | `#guillotine-ops` |

@@ -341,9 +341,13 @@ def build_processor(
         registry,
         advisor_chat_guid(settings, test_target),
     )
-    _register_trade_video(
-        conn, delivery, registry, trade_chat_guids(settings, production_target, listen_guids)
-    )
+    # Requests are heard wherever alerts are, and in the self-test chat in every mode:
+    # in production a request there is answered there (`DeliveryService.reply_to`), so
+    # Ben can keep trying the bot out without the league seeing a thing.
+    video_chats = trade_chat_guids(settings, production_target, listen_guids)
+    if test_target is not None:
+        video_chats = video_chats | {test_target.chat_guid}
+    _register_trade_video(conn, delivery, registry, video_chats)
     processor = InboundProcessor(
         allowed,
         registry,

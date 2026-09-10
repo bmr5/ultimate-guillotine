@@ -79,7 +79,9 @@ class Worker:
         self.conn.commit()
         try:
             output = self._render(job.trade_id, job.trade_code)
-            self.delivery.deliver_attachment(run_id, AGENT, output.name, output.read_bytes())
+            self.delivery.deliver_attachment(
+                run_id, AGENT, output.name, output.read_bytes(), reply_to=job.chat_guid
+            )
             self.jobs.finish(job.id, str(output))
             if run_id is not None:
                 self.runs.finish(run_id, "succeeded")
