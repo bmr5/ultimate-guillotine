@@ -523,13 +523,13 @@ null. Rerunning the same name updates that one row. `ug members former list` cou
 | `guillotine-nfl-state` | every 10m | `#guillotine-ops` |
 | `guillotine-players-sync` | `0 */4 * * *` | `#guillotine-ops` |
 | `guillotine-sleeper-projections` | `*/30 * * * *` | `#guillotine-ops` |
-| `guillotine-sleeper-projections-thursday` | `*/5 20-23 * * 4` | local only |
-| `guillotine-sleeper-projections-sunday` | `*/5 13-23 * * 0` | local only |
-| `guillotine-sleeper-projections-monday` | `*/5 20-23 * * 1` | local only |
+| `guillotine-sleeper-projections-thursday` | `*/5 19-23 * * 4` | local only |
+| `guillotine-sleeper-projections-sunday` | `*/5 12-23 * * 0` | local only |
+| `guillotine-sleeper-projections-monday` | `*/5 19-23 * * 1` | local only |
 | `guillotine-sleeper-scores` | `*/5 * * * *` | local only |
-| `guillotine-sleeper-scores-thursday` | `* 20-23 * * 4` | local only |
-| `guillotine-sleeper-scores-sunday` | `* 13-23 * * 0` | local only |
-| `guillotine-sleeper-scores-monday` | `* 20-23 * * 1` | local only |
+| `guillotine-sleeper-scores-thursday` | `* 19-23 * * 4` | local only |
+| `guillotine-sleeper-scores-sunday` | `* 12-23 * * 0` | local only |
+| `guillotine-sleeper-scores-monday` | `* 19-23 * * 1` | local only |
 
 `guillotine-players-sync` runs every four hours rather than nightly because
 `public.players.injury_status` is the one column on it that changes mid-week: an `Out`
