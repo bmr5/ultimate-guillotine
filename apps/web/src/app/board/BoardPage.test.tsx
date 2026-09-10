@@ -237,6 +237,9 @@ describe("BoardPage", () => {
       const second = container.querySelector("[data-projection-stamp]");
       expect(second).not.toBeNull();
       expect(second).toHaveTextContent(/^Projections pulled /);
+      // Hidden from assistive tech like the two stamps above it: the live region is the one
+      // thing that should speak about freshness, and it speaks on minute boundaries.
+      expect(second).toHaveAttribute("aria-hidden", "true");
     });
 
     it("falls back to the one plain stamp before the first score sync", () => {

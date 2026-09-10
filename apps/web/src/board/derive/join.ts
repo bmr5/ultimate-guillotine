@@ -212,8 +212,9 @@ export function joinBoardTeams(raw: BoardRawData): BoardTeam[] {
       slotIndex: holding.slot_index,
       lineupPosition: holding.lineup_position,
       projectedPoints: pointsByPlayerId.get(holding.sleeper_player_id) ?? null,
-      // The map covers the whole roster, bench included, so a starter and a bench player are
-      // built the same way here; only the roster panel decides which rows show the number.
+      // The map covers the starters only, so a bench player has no entry and lands on `null`
+      // by the same path as a starter Sleeper has not scored yet. Every row is built the same
+      // way regardless; only the roster panel decides which of them show the number.
       livePoints: livePoints ?? null,
       // A holding with no directory row carries no status either: `null` is "nothing is
       // known", which is exactly what an unmatched id means, and the card reads it as

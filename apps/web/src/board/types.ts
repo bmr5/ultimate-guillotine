@@ -176,11 +176,12 @@ export interface Database {
         week: number;
         points: number;
         /**
-         * jsonb: `sleeper_player_id` -> points, over the whole roster, bench included. Typed
-         * as a number map because the sync writes one, exactly as `final_rosters.holdings` is
-         * typed by its producer — and narrowed on the way in by `derive/join` for the same
-         * reason, since a stored row is data some earlier build wrote and no `tsc` run here
-         * can vouch for it.
+         * jsonb: `sleeper_player_id` -> points, over the starters only — nine entries for nine
+         * starters, the bench absent, because that is all the live payload carries. Typed as a
+         * number map because the sync writes one, exactly as `final_rosters.holdings` is typed
+         * by its producer — and narrowed on the way in by `derive/join` for the same reason,
+         * since a stored row is data some earlier build wrote and no `tsc` run here can vouch
+         * for it.
          */
         players_points: Record<string, number>;
         /** The lineup in Sleeper's own order, blanks (`"0"`) included, so a slot is a position. */

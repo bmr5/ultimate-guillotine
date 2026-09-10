@@ -92,8 +92,8 @@ interface RenderOptions {
    */
   rosterPositions?: string[];
   /**
-   * Which figure the card emphasises. The board decides it once for the whole grid; the card's
-   * own default is the projection, which is where the week starts.
+   * Which figure the card emphasises. The card requires it — the board decides it once for the
+   * whole grid — so this helper supplies the projection, which is where the week starts.
    */
   emphasis?: CardEmphasis;
 }

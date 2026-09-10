@@ -9,7 +9,7 @@ import {
   REALTIME_BACKOFF_JITTER_MAX,
   REALTIME_BACKOFF_JITTER_MIN,
   REALTIME_DEBOUNCE_MS,
-  REALTIME_MAX_EVENTS_PER_BURST,
+  REALTIME_MAX_EVENTS_PER_TABLE,
   REALTIME_MAX_WAIT_MS,
   REALTIME_POLL_MS,
 } from "./realtime";
@@ -27,9 +27,15 @@ describe("realtime constants", () => {
 
   it("uses the spec's timings", () => {
     expect(REALTIME_DEBOUNCE_MS).toBe(750);
-    expect(REALTIME_MAX_EVENTS_PER_BURST).toBe(18);
+    expect(REALTIME_MAX_EVENTS_PER_TABLE).toBe(24);
     expect(REALTIME_POLL_MS).toBe(60_000);
     expect(REALTIME_BACKOFF_CAP_MS).toBe(30_000);
+  });
+
+  it("leaves a run of eighteen rows room under the per-table ceiling", () => {
+    // Two jobs write eighteen rows each on the same minute boundary through a game window, so
+    // the ceiling has to be per table and has to sit clear of a single run rather than on it.
+    expect(REALTIME_MAX_EVENTS_PER_TABLE).toBeGreaterThan(18);
   });
 
   it("forces a flush before a sustained burst can starve the refetch", () => {

@@ -342,10 +342,11 @@ interface TeamCardProps {
   /**
    * Which of the two figures is the large one, decided once for the whole board by
    * `resolveCardEmphasis` and handed down so every card in the grid agrees — that is what keeps
-   * the two figure columns the same width down the page. Defaults to the projection, which is
-   * the state the board is in until somebody scores.
+   * the two figure columns the same width down the page. Required rather than defaulted: a card
+   * that quietly fell back to the projection would be the one card in the grid disagreeing with
+   * its neighbours, and the misalignment is the whole thing this prop exists to prevent.
    */
-  emphasis?: CardEmphasis;
+  emphasis: CardEmphasis;
 }
 
 /**
@@ -363,7 +364,7 @@ export const TeamCard = memo(function TeamCard({
   onToggle,
   highlightedPlayerIds,
   rosterPositions,
-  emphasis = "projection",
+  emphasis,
 }: TeamCardProps) {
   const panelId = useId();
   // Laid out once per card rather than once per open card: the count below the projection and

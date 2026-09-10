@@ -219,11 +219,16 @@ export function BoardHeader({
         every minute in a game window, the projections every five — so one stamp cannot
         truthfully describe both. Dropped entirely when there is no score row: the line above
         is then already the projections stamp, and repeating it would say the same thing twice.
+
+        `aria-hidden` for the same reason as the two spans above: the live region below is the
+        one thing a screen reader should hear about freshness, and it speaks on minute
+        boundaries. A second unhidden timestamp would be read out on every render instead.
       */}
       {hasScoreStamp ? (
         <p
           data-projection-stamp
           className="text-xs text-muted-foreground/80"
+          aria-hidden="true"
           title={formatUpdatedTitle(
             projectionsUpdatedAt,
             {},
