@@ -9,6 +9,7 @@ import { boardClient } from "./boardClient";
 import { joinBoardTeams } from "./derive/join";
 import { latestFinalWeek } from "./derive/records";
 import { parseRosterPositions } from "./derive/roster";
+import { newestScoreSyncedAt } from "./derive/score";
 import {
   fetchFinalRosters,
   fetchLatestSeason,
@@ -21,6 +22,7 @@ import {
   fetchTeams,
   fetchTeamSeasonState,
   fetchTeamWeekProjections,
+  fetchTeamWeekScores,
   fetchWeeklyResults,
 } from "./fetchers";
 import { boardKeys, fingerprintIds } from "./queryKeys";
@@ -66,10 +68,22 @@ export interface BoardDataResult {
   isEmpty: boolean;
   errors: BoardQueryError[];
   /**
-   * When the projections were last pulled: the newest `team_week_projections.computed_at`
-   * for the week. This is what the header shows — not when the browser last refetched.
+   * When the projections were last computed: the newest `team_week_projections.computed_at`
+   * for the week. Not when the browser last refetched — a refetch that returns identical rows
+   * must not look fresher.
+   *
+   * This used to be the header's only stamp, and it is the "why does it show that it updated
+   * at 9:30PM" half of Ben's complaint: `computed_at` only moves when a projection is actually
+   * recomputed. It is still shown, as the smaller second line, because it is the honest answer
+   * for the projection figure beside the score.
    */
   projectionsUpdatedAt: number | null;
+  /**
+   * When the scores were last pulled: the newest `team_week_scores.synced_at` for the week,
+   * or null when no team has a score row. The sync moves this on every run, score or no score,
+   * so this is the stamp the header leads with whenever it exists.
+   */
+  scoresUpdatedAt: number | null;
   refetchAll: () => void;
 }
 
@@ -212,6 +226,14 @@ export function useBoardData(options: BoardDataOptions): BoardDataResult {
     ...shared,
   });
 
+  const teamScores = useQuery({
+    queryKey: boardKeys.teamWeekScores(seasonId ?? 0, week ?? 0),
+    queryFn: () =>
+      fetchTeamWeekScores(boardClient, seasonId as number, week as number),
+    enabled: hasSeason && week !== null && hasWeekScope,
+    ...shared,
+  });
+
   const finalRosters = useQuery({
     queryKey: boardKeys.finalRosters(seasonId ?? 0),
     queryFn: () => fetchFinalRosters(boardClient, seasonId as number),
@@ -305,6 +327,7 @@ export function useBoardData(options: BoardDataOptions): BoardDataResult {
         members: members.data ?? [],
         teamSeasonState: state.data ?? [],
         teamWeekProjections: teamProjections.data ?? [],
+        teamWeekScores: teamScores.data ?? [],
         rosterHoldings: holdings.data ?? [],
         players: players.data ?? [],
         playerProjections: playerProjections.data ?? [],
@@ -316,6 +339,7 @@ export function useBoardData(options: BoardDataOptions): BoardDataResult {
       members.data,
       state.data,
       teamProjections.data,
+      teamScores.data,
       holdings.data,
       players.data,
       playerProjections.data,
@@ -338,6 +362,13 @@ export function useBoardData(options: BoardDataOptions): BoardDataResult {
     return newest;
   }, [teamProjections.data]);
 
+  // The stamp the header leads with. Folded off the joined teams rather than off the raw rows,
+  // so it can only ever name a time that belongs to a team actually on screen.
+  const scoresUpdatedAt = useMemo(
+    () => newestScoreSyncedAt(boardTeams),
+    [boardTeams],
+  );
+
   const sections: [string, { error: Error | null }][] = [
     ["NFL week", nflState],
     ["Season", seasonRow],
@@ -346,6 +377,7 @@ export function useBoardData(options: BoardDataOptions): BoardDataResult {
     ["Owners", members],
     ["Team state", state],
     ["Projections", teamProjections],
+    ["Scores", teamScores],
     ["Rosters", holdings],
     ["Players", players],
     ["Player projections", playerProjections],
@@ -387,6 +419,7 @@ export function useBoardData(options: BoardDataOptions): BoardDataResult {
     isEmpty: !isPending && errors.length === 0 && boardTeams.length === 0,
     errors,
     projectionsUpdatedAt,
+    scoresUpdatedAt,
     refetchAll: () => {
       void queryClient.invalidateQueries({ queryKey: boardKeys.all });
     },

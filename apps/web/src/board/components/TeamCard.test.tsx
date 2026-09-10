@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+import type { CardEmphasis } from "../derive/score";
 import type { BoardTeam, RosterPlayer } from "../types";
 import {
   CHIP_ROW_HEIGHT_CLASS,
@@ -36,6 +37,7 @@ const player = (
   lineupPosition: "QB",
   projectedPoints: 22.6,
   injuryStatus: null,
+  livePoints: null,
   ...over,
 });
 
@@ -45,6 +47,8 @@ const team = (over: Partial<BoardTeam> = {}): BoardTeam => ({
   teamName: "The Choppers",
   ownerName: "benray",
   sleeperRosterId: 1,
+  score: null,
+  scoreSyncedAt: null,
   projectedPoints: 112.4,
   coveragePct: 100,
   isProvisional: false,
@@ -87,6 +91,11 @@ interface RenderOptions {
    * slots name the lineup they are about.
    */
   rosterPositions?: string[];
+  /**
+   * Which figure the card emphasises. The card requires it — the board decides it once for the
+   * whole grid — so this helper supplies the projection, which is where the week starts.
+   */
+  emphasis?: CardEmphasis;
 }
 
 /**
@@ -100,6 +109,7 @@ const renderCard = (
     highlightedPlayerIds = noHighlights,
     onToggle = noop,
     rosterPositions = [],
+    emphasis = "projection",
   }: RenderOptions = {},
 ) =>
   render(
@@ -111,6 +121,7 @@ const renderCard = (
         onToggle={onToggle}
         highlightedPlayerIds={highlightedPlayerIds}
         rosterPositions={rosterPositions}
+        emphasis={emphasis}
       />
     </ul>,
   );
@@ -131,6 +142,16 @@ const chipRow = (container: HTMLElement) =>
 /** The owner's name, which keeps its whole line now that nothing is overlaid on it. */
 const ownerName = (container: HTMLElement) =>
   container.querySelector("[data-owner-name]");
+
+/** One of the two figures beside the owner block, named by what it is rather than by its size. */
+const figure = (container: HTMLElement, name: "score" | "projection") =>
+  container.querySelector(`[data-figure="${name}"]`);
+
+/** Which figure is the large one; `data-emphasized` is the state's styling-independent handle. */
+const emphasized = (container: HTMLElement) =>
+  container
+    .querySelector("[data-figure][data-emphasized]")
+    ?.getAttribute("data-figure") ?? null;
 
 /** What is in a chip row, named by state rather than by wording. */
 const chipKinds = (row: Element | null) =>
@@ -282,7 +303,11 @@ const STATE_CASES: StateCase[] = [
     name: "no projection row: an em dash and a caveat, never a zero",
     team: { projectedPoints: null, coveragePct: null, isProvisional: true },
     present: ["—", "Projection unavailable"],
-    absent: ["0.0", "112.4"],
+    // `0.0` is no longer absent from the card — the score figure beside the projection reads
+    // `0.0` for a team that has not scored, which is the one number on the card that is a real
+    // zero. That the *projection* is an em dash and not a zero is asserted on the figure itself,
+    // in "renders the projection as an em dash, never as a zero" below.
+    absent: ["112.4"],
   },
   {
     name: "below the gate: the number stays, with a partial chip by the owner",
@@ -347,7 +372,9 @@ const STATE_CASES: StateCase[] = [
     },
     open: true,
     present: ["Nobody", "—"],
-    absent: ["0.0"],
+    // Same as above: the card's score figure is a genuine `0.0`, so the absence this case is
+    // about is asserted on the roster row itself, in "leaves a player with no projection an em
+    // dash on his row" below.
   },
 ];
 
@@ -1137,5 +1164,166 @@ describe("TeamCard chip crowding", () => {
     expect(screen.getByRole("tooltip")).toHaveTextContent(
       "Out starters: Broken Tightend (Out)",
     );
+  });
+});
+
+/**
+ * Ben's ruling: "the team cards on the board should show their current score right next to
+ * their projected. Also why does it show that it updated at 9:30PM it should always be
+ * realtime!" The card half is these two figures; the stamp half is `BoardHeader`.
+ */
+describe("TeamCard score and projection", () => {
+  it("shows the live score beside the projection", () => {
+    const { container } = renderCard({ score: 84.2 });
+    expect(figure(container, "score")).toHaveTextContent("84.2");
+    expect(figure(container, "projection")).toHaveTextContent("112.4");
+  });
+
+  it("renders a team with no score row as 0.0, never as an em dash", () => {
+    // A score of nothing is a real answer and the whole week starts there. The em dash stays
+    // reserved for the projection, where a missing number genuinely is unknowable.
+    const { container } = renderCard({ score: null });
+    expect(figure(container, "score")).toHaveTextContent("0.0");
+    expect(figure(container, "score")).not.toHaveTextContent("—");
+  });
+
+  it("renders a scoreless team as 0.0 too", () => {
+    const { container } = renderCard({ score: 0 });
+    expect(figure(container, "score")).toHaveTextContent("0.0");
+  });
+
+  it("renders the projection as an em dash, never as a zero", () => {
+    const { container } = renderCard({
+      projectedPoints: null,
+      coveragePct: null,
+      isProvisional: true,
+    });
+    expect(figure(container, "projection")).toHaveTextContent("—");
+    expect(figure(container, "projection")).not.toHaveTextContent("0.0");
+  });
+
+  it("emphasises the projection before anybody has scored", () => {
+    // The board's default and the state it is in all week: eighteen zeroes are not the number
+    // people are reading on a Saturday.
+    const { container } = renderCard({ score: 0 });
+    expect(emphasized(container)).toBe("projection");
+  });
+
+  it("emphasises the score once the board says the week is live", () => {
+    const { container } = renderCard({ score: 84.2 }, { emphasis: "score" });
+    expect(emphasized(container)).toBe("score");
+  });
+
+  it("keeps the score on the left and the projection on the right whichever is emphasised", () => {
+    // Only the size swaps. A reader looking for the projection finds it in the same place on
+    // Saturday morning and on Sunday afternoon.
+    for (const emphasis of ["projection", "score"] as const) {
+      const view = renderCard({ score: 84.2 }, { emphasis });
+      const figures = [...view.container.querySelectorAll("[data-figure]")].map(
+        (node) => node.getAttribute("data-figure"),
+      );
+      expect(figures).toEqual(["score", "projection"]);
+      view.unmount();
+    }
+  });
+
+  it("keeps both figures inside the toggle, so the whole block is one tap target", () => {
+    const { container } = renderCard({ score: 84.2 });
+    expect(toggleButton().contains(figure(container, "score"))).toBe(true);
+    expect(toggleButton().contains(figure(container, "projection"))).toBe(true);
+  });
+
+  it("names each figure for a reader who cannot see the captions", () => {
+    // `Score 84.2` read out on its own could be a score of anything, and `Proj` is not a word.
+    renderCard({ score: 84.2 });
+    expect(screen.getByText("Current score 84.2")).toBeInTheDocument();
+    expect(screen.getByText("Projected points 112.4")).toBeInTheDocument();
+  });
+
+  it("gives a starter his live points beside the projection on the roster", () => {
+    renderCard(
+      {
+        score: 84.2,
+        roster: [
+          player({
+            sleeperPlayerId: "4046",
+            livePoints: 12.4,
+            projectedPoints: 14.1,
+            slotIndex: 0,
+            lineupPosition: "QB",
+          }),
+        ],
+      },
+      { open: true, rosterPositions: LEAGUE_SLOTS },
+    );
+    expect(screen.getByText("12.4")).toBeInTheDocument();
+    expect(screen.getByText("14.1 proj")).toBeInTheDocument();
+  });
+
+  it("mutes a starter who has not scored rather than hiding his zero", () => {
+    // Before kickoff that is every starter, and `0.0 / 14.1 proj` is the honest reading.
+    const { container } = renderCard(
+      {
+        score: 0,
+        roster: [
+          player({
+            sleeperPlayerId: "4046",
+            livePoints: 0,
+            projectedPoints: 14.1,
+            slotIndex: 0,
+            lineupPosition: "QB",
+          }),
+        ],
+      },
+      { open: true, rosterPositions: LEAGUE_SLOTS },
+    );
+    const live = container.querySelector("[data-live-points]");
+    expect(live).toHaveTextContent("0.0");
+    expect(live?.className).toContain("text-muted-foreground");
+  });
+
+  it("leaves a bench player his projection alone, with no live figure", () => {
+    // A bench player's live points are real but they are not part of this week's total, and a
+    // second number on every row would bury the nine that are.
+    const { container } = renderCard(
+      {
+        score: 84.2,
+        roster: [
+          player({
+            sleeperPlayerId: "b1",
+            fullName: "Backup Body",
+            slot: "bench",
+            slotIndex: null,
+            lineupPosition: null,
+            livePoints: 9.9,
+            projectedPoints: 4.2,
+          }),
+        ],
+      },
+      { open: true },
+    );
+    expect(container.querySelector("[data-live-points]")).toBeNull();
+    expect(screen.getByText("4.2")).toBeInTheDocument();
+  });
+
+  it("leaves a player with no projection an em dash on his row", () => {
+    // The case the state table used to cover with a board-wide `absent: ["0.0"]`, which the
+    // card's own genuine `0.0` score figure now makes impossible to assert that way.
+    const { container } = renderCard(
+      {
+        roster: [
+          player({
+            sleeperPlayerId: "9",
+            fullName: "Nobody",
+            projectedPoints: null,
+          }),
+        ],
+      },
+      { open: true },
+    );
+    const row = screen.getByText("Nobody").closest("li");
+    expect(row).toHaveTextContent("—");
+    expect(row).not.toHaveTextContent("0.0");
+    expect(container.querySelector("[data-live-points]")).toBeNull();
   });
 });

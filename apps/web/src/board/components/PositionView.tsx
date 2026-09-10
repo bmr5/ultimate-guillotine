@@ -21,6 +21,18 @@ const PLAYER_PROJECTION_DECIMALS = 1;
 /** The board's stand-in for "there is no number here"; never a zero. */
 const NO_PROJECTION_TEXT = "—";
 
+/**
+ * A starter's live figure, ahead of his projection: `12.4 / 14.1`. Same pairing the roster
+ * panel uses, minus the `proj` word — this view lists several players on one line and the
+ * column has no room for it, so the wording rides along for a screen reader instead.
+ *
+ * Starters only, for the same reason: a bench player's live points are real but they are not
+ * part of this week's total, and every row carrying two numbers would bury the ones that are.
+ */
+const LIVE_POINTS_SEPARATOR = "/";
+const LIVE_POINTS_LABEL = "scored";
+const PROJECTED_LABEL = "projected";
+
 /** Shown in place of the FAAB figure when the team has no `team_season_state` row. */
 const FAAB_UNKNOWN_TEXT = "FAAB —";
 
@@ -140,7 +152,38 @@ const PositionTeamRow = memo(function PositionTeamRow({
                     >
                       <span className="font-medium">{player.fullName}</span>{" "}
                       <span className="tabular-nums text-muted-foreground">
-                        {projectionText(player.projectedPoints)}
+                        {player.isStarter && player.livePoints !== null ? (
+                          <>
+                            <span
+                              data-live-points
+                              className={
+                                player.livePoints === 0
+                                  ? undefined
+                                  : "text-foreground"
+                              }
+                            >
+                              <span aria-hidden="true">
+                                {player.livePoints.toFixed(
+                                  PLAYER_PROJECTION_DECIMALS,
+                                )}
+                              </span>
+                              <span className="sr-only">{`${LIVE_POINTS_LABEL} ${player.livePoints.toFixed(
+                                PLAYER_PROJECTION_DECIMALS,
+                              )}, `}</span>
+                            </span>
+                            <span aria-hidden="true">
+                              {LIVE_POINTS_SEPARATOR}
+                            </span>
+                            <span aria-hidden="true">
+                              {projectionText(player.projectedPoints)}
+                            </span>
+                            <span className="sr-only">{`${PROJECTED_LABEL} ${projectionText(
+                              player.projectedPoints,
+                            )}`}</span>
+                          </>
+                        ) : (
+                          projectionText(player.projectedPoints)
+                        )}
                       </span>
                       {/* The same tag the roster panel shows, so the quick view answers
                           "who is hurt at this position" without expanding a row. */}

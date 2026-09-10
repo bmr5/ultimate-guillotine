@@ -16,6 +16,7 @@ from ultimate_guillotine.cli.deps import (
 from ultimate_guillotine.sleeper.client import SleeperClient
 from ultimate_guillotine.sleeper.players import sync_players
 from ultimate_guillotine.sleeper.projections import ProjectionRepository, fetch_projection_rows
+from ultimate_guillotine.sleeper.scores import sync_scores
 from ultimate_guillotine.sleeper.scoring import DRIFT_POINTS, scoring_version
 from ultimate_guillotine.sleeper.state import current_week, sync_nfl_state
 from ultimate_guillotine.sleeper.sync import sync_season
@@ -67,6 +68,15 @@ def register(subparsers) -> None:
         help="print nothing on success so a scheduled run delivers only failures",
     )
     proj_parser.set_defaults(handler=cmd_projections)
+
+    scores_parser = sleeper_sub.add_parser("scores", help="sync live team scores")
+    scores_parser.add_argument("--week", type=int, default=None, help="week to sync")
+    scores_parser.add_argument(
+        "--quiet",
+        action="store_true",
+        help="print nothing on success so a scheduled run delivers only failures",
+    )
+    scores_parser.set_defaults(handler=cmd_scores)
 
 
 def cmd_sync(args: argparse.Namespace) -> int:
@@ -153,6 +163,84 @@ def _season_row(conn: psycopg.Connection, year: int) -> tuple[int, dict]:
     if not scoring_settings:
         raise ValueError("seasons.scoring_settings is empty; run ug sleeper sync first")
     return season_id, scoring_settings
+
+
+def _season_id(conn: psycopg.Connection, year: int) -> int:
+    """The season row's id for the NFL year being synced.
+
+    Deliberately not `_season_row`: that one also refuses a season whose
+    `scoring_settings` are empty, because it is about to score raw stat lines with
+    them. A matchup row arrives with Sleeper's own points already on it, so the
+    league's settings are not a precondition for reading a score, and inheriting
+    that refusal would take the live scores off the board over a column they do
+    not touch.
+    """
+    with conn.cursor() as cur:
+        cur.execute("select id from public.seasons where year = %s", (year,))
+        row = cur.fetchone()
+    if row is None:
+        raise ValueError(f"no season row for year {year}")
+    return int(row[0])
+
+
+def cmd_scores(args: argparse.Namespace) -> int:
+    """Sync the live score of every team for one week.
+
+    Ben's ruling: the card shows the current score beside the projection, and the
+    board's stamp says when the *scores* were pulled. `team_week_scores.synced_at`
+    moves on every run of this command, which is what makes that stamp honest.
+
+    Shaped like `cmd_projections` and deliberately simpler than it. The fetch is
+    small (one row per roster), the write is one upsert, and there is nothing
+    derived from the payload afterwards -- so there is no second write to keep in
+    the same transaction, and no coverage or drift verdict to compare against the
+    last run. The one thing shared is the off-season refusal: outside the regular
+    season `week` restarts inside `season_type`, so a preseason week 2 written as
+    week 2 would sit under the live board's own week and read as this week's score.
+
+    Recorded as the `scores-sync` agent through `run_scheduled_with_notes`, so a
+    failing run posts one ops note on the edge and `ug ops health` carries the
+    standing answer between edges. That matters more here than for projections:
+    every cron row for this job delivers `local` (it fires once a minute in a game
+    window, and routing that to Discord would post the same outage sixty times an
+    hour), so the transition note is the only thing that speaks in the channel.
+    """
+    deps = build_deps()
+    conn = deps.conn
+    now = datetime.now(UTC)
+    client = SleeperClient(httpx.Client())
+
+    def action(run_id: int) -> int:
+        state = current_week(client, conn, now)
+        if state.season_type != "regular":
+            if not args.quiet:
+                print(f"scores: skipped, season_type={state.season_type}")
+            return 0
+        week = args.week if args.week is not None else state.week
+        report = sync_scores(
+            client,
+            conn,
+            deps.settings.sleeper_league_id,
+            _season_id(conn, state.season),
+            week,
+            now,
+        )
+        if not args.quiet:
+            print(f"scores: {report.teams} teams, week {report.week}")
+        if report.unmatched_rosters:
+            # `public.teams` is behind the league -- a roster exists that no team row
+            # names. The other teams still got their scores, so this is a note rather
+            # than a failure, and `ug sleeper sync` is what fixes it.
+            note = (
+                f"scores week {report.week}: {report.unmatched_rosters} Sleeper "
+                f"roster(s) match no team row; run `ug sleeper sync`"
+            )
+            if not args.quiet:
+                print(note)
+            post_ops(deps.notifier, note)
+        return 0
+
+    return run_scheduled_with_notes(deps, "scores-sync", now, action)
 
 
 def cmd_projections(args: argparse.Namespace) -> int:

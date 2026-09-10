@@ -35,6 +35,9 @@ export const boardKeys = {
     ["board", "team_season_state", seasonId] as const,
   teamWeekProjections: (seasonId: number, week: number) =>
     ["board", "team_week_projections", seasonId, week] as const,
+  /** Same scope as the projections key: one season, one week, one row per team. */
+  teamWeekScores: (seasonId: number, week: number) =>
+    ["board", "team_week_scores", seasonId, week] as const,
   rosterHoldings: (seasonId: number) =>
     ["board", "roster_holdings", seasonId] as const,
   finalRosters: (seasonId: number) =>

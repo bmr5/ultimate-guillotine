@@ -163,6 +163,31 @@ export interface Database {
         is_provisional: boolean;
         computed_at: string;
       }>;
+      /**
+       * The live score, written every minute of a game window by `ug sleeper scores`. Ben:
+       * "the team cards on the board should show their current score right next to their
+       * projected. Also why does it show that it updated at 9:30PM it should always be
+       * realtime!" — `synced_at` moves on every run, which is what the header's stamp reads
+       * instead of `team_week_projections.computed_at`.
+       */
+      team_week_scores: ReadOnlyTable<{
+        season_id: number;
+        team_id: number;
+        week: number;
+        points: number;
+        /**
+         * jsonb: `sleeper_player_id` -> points, over the starters only — nine entries for nine
+         * starters, the bench absent, because that is all the live payload carries. Typed as a
+         * number map because the sync writes one, exactly as `final_rosters.holdings` is typed
+         * by its producer — and narrowed on the way in by `derive/join` for the same reason,
+         * since a stored row is data some earlier build wrote and no `tsc` run here can vouch
+         * for it.
+         */
+        players_points: Record<string, number>;
+        /** The lineup in Sleeper's own order, blanks (`"0"`) included, so a slot is a position. */
+        starters: string[];
+        synced_at: string;
+      }>;
       /** Keyed by the plain NFL season year, not `seasons.id`: a projection is not league-scoped. */
       player_projections: ReadOnlyTable<{
         season: number;
@@ -272,6 +297,15 @@ export interface RosterPlayer {
   /** null means "no projection", never zero. */
   projectedPoints: number | null;
   /**
+   * What this player has actually scored so far this week, from `team_week_scores.players_points`.
+   *
+   * null and zero mean different things here, and unlike `projectedPoints` both are ordinary.
+   * null is "the week has no score row yet, or Sleeper's map does not name him" — nothing is
+   * known. Zero is "he has not scored", which before kickoff is true of everybody and is a
+   * fact rather than a gap, so the roster shows it rather than an em dash.
+   */
+  livePoints: number | null;
+  /**
    * `players.injury_status`, or null when Sleeper has no flag on the player. The board reads
    * it through `derive/availability`, never by comparing strings at a call site.
    */
@@ -283,6 +317,15 @@ export interface BoardTeam {
   teamName: string;
   ownerName: string;
   sleeperRosterId: number;
+  /**
+   * `team_week_scores.points` for the week: what the team has actually scored so far. null
+   * only when there is no score row at all — a team that has not scored carries `0`, which the
+   * card renders as `0.0`. The card never shows an em dash here (Ben's ruling); an em dash is
+   * reserved for the projection, where a missing number really is unknowable.
+   */
+  score: number | null;
+  /** `team_week_scores.synced_at` for this team's row; the header folds these to the newest. */
+  scoreSyncedAt: string | null;
   projectedPoints: number | null;
   coveragePct: number | null;
   isProvisional: boolean;
@@ -321,12 +364,18 @@ export interface BoardTeam {
  * that way: the label changed to `Total` (Ben's card change 1), but a link someone already sent
  * to the league carries the old spelling and must keep resolving to the same sort.
  */
-export const SORT_MODES = ["projection", "faab", "points_for"] as const;
+export const SORT_MODES = [
+  "projection",
+  "score",
+  "faab",
+  "points_for",
+] as const;
 export type SortMode = (typeof SORT_MODES)[number];
 export const DEFAULT_SORT_MODE: SortMode = "projection";
 
 export const SORT_MODE_LABELS: Record<SortMode, string> = {
   projection: "Projection",
+  score: "Score",
   faab: "FAAB",
   points_for: "Total",
 };

@@ -26,6 +26,19 @@ export const MINUTES_BEFORE_HOURS = 90;
 export const NEVER_UPDATED_LABEL = "Not updated yet";
 
 /**
+ * The word the absolute formatters lead with, and the two the score header replaces it with.
+ *
+ * The stamp used to be one line about one thing, so `Updated` was enough. It is now two: the
+ * scores, which move every run of the every-minute sync, and the projections, which only move
+ * when a projection is recomputed. Ben's complaint — "why does it show that it updated at
+ * 9:30PM it should always be realtime!" — was exactly that ambiguity, so neither line is
+ * allowed to say a bare `Updated` any more once both exist.
+ */
+export const UPDATED_LABEL = "Updated";
+export const SCORES_UPDATED_LABEL = "Scores updated";
+export const PROJECTIONS_PULLED_LABEL = "Projections pulled";
+
+/**
  * The projection counterpart to `NEVER_UPDATED_LABEL`: a projection row whose `computed_at` is
  * missing or unparseable still needs a tooltip that reads like English, not `Invalid Date`.
  */
@@ -68,9 +81,13 @@ function dayKey(value: Date, options: TimeFormatOptions): string {
 }
 
 /**
- * The primary last-pull text: the absolute time the projections were pulled, localized to the
- * viewer. A pull made today is just the clock time; anything older carries its date, because
+ * The primary last-pull text: the absolute time something was pulled, localized to the viewer.
+ * A pull made today is just the clock time; anything older carries its date, because
  * `Updated 12:41 PM` on a three-day-old pull would read as fresh.
+ *
+ * `label` is the leading word. It defaults to `Updated`, which is what every caller said when
+ * the header had one stamp; the score header passes `SCORES_UPDATED_LABEL` and
+ * `PROJECTIONS_PULLED_LABEL` so its two lines name what each of them is about.
  *
  * "Today" is the calendar day in `options.timeZone` — never UTC's — so a pull made at 10 PM in
  * New York still reads as today for a New York viewer even though UTC has already rolled over.
@@ -79,6 +96,7 @@ export function formatUpdatedAt(
   updatedAt: number | null | undefined,
   now: number,
   options: TimeFormatOptions = {},
+  label: string = UPDATED_LABEL,
 ): string {
   if (!isRealInstant(updatedAt)) {
     return NEVER_UPDATED_LABEL;
@@ -90,14 +108,14 @@ export function formatUpdatedAt(
     timeZone: options.timeZone,
   }).format(then);
   if (dayKey(then, options) === dayKey(new Date(now), options)) {
-    return `Updated ${time}`;
+    return `${label} ${time}`;
   }
   const date = new Intl.DateTimeFormat(options.locales, {
     month: "short",
     day: "numeric",
     timeZone: options.timeZone,
   }).format(then);
-  return `Updated ${date}, ${time}`;
+  return `${label} ${date}, ${time}`;
 }
 
 /**
@@ -119,11 +137,12 @@ function formatFullInstant(at: number, options: TimeFormatOptions): string {
 export function formatUpdatedTitle(
   updatedAt: number | null | undefined,
   options: TimeFormatOptions = {},
+  label: string = UPDATED_LABEL,
 ): string {
   if (!isRealInstant(updatedAt)) {
     return NEVER_UPDATED_LABEL;
   }
-  return `Updated ${formatFullInstant(updatedAt, options)}`;
+  return `${label} ${formatFullInstant(updatedAt, options)}`;
 }
 
 /**

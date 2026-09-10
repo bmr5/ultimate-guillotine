@@ -1,7 +1,7 @@
 import { boardKeys } from "./queryKeys";
 
 /**
- * The published tables the board subscribes to. The data layer also publishes
+ * The five published tables the board subscribes to. The data layer also publishes
  * `final_rosters`, which the board deliberately leaves off this list (Spec issue 11): a
  * snapshot lands in the same transaction as the `team_season_state` change that flips
  * `is_eliminated`, and `keysForTable` already invalidates the snapshot query from there.
@@ -12,6 +12,7 @@ export const BOARD_REALTIME_TABLES = [
   "roster_holdings",
   "team_season_state",
   "team_week_projections",
+  "team_week_scores",
   "nfl_state",
 ] as const;
 
@@ -24,8 +25,22 @@ export const REALTIME_DEBOUNCE_MS = 750;
  * first event of a burst is this old, the queue flushes whether or not events are still landing.
  */
 export const REALTIME_MAX_WAIT_MS = 3_000;
-/** Beyond this many events in one window, collapse into a single whole-board refetch. */
-export const REALTIME_MAX_EVENTS_PER_BURST = 18;
+/**
+ * Beyond this many events **on one table** in one window, collapse into a single whole-board
+ * refetch.
+ *
+ * Counted per table, not across the burst, because two jobs landing on the same minute boundary
+ * is the normal Sunday and not a storm: `ug sleeper scores` writes eighteen rows a minute and the
+ * five-minute projections job writes eighteen more, so a pooled count clears any sane ceiling on
+ * every shared boundary and refetches the entire board — player directory included — when two
+ * targeted invalidations were the right answer. A burst is only "too big" when a *single* table
+ * floods, which is the case a whole-board refetch is actually cheaper than.
+ *
+ * 24 rather than 18: eighteen teams is the ceiling a run is *supposed* to write, and pinning the
+ * limit to it leaves no room for the redelivery, the mid-run roster add or the second write on
+ * one row that would otherwise tip an ordinary run over. Six rows of slack is a third of a run.
+ */
+export const REALTIME_MAX_EVENTS_PER_TABLE = 24;
 export const REALTIME_BACKOFF_CAP_MS = 30_000;
 export const REALTIME_POLL_MS = 60_000;
 /**
@@ -91,6 +106,14 @@ export function keysForTable(
   }
   if (table === "team_week_projections") {
     return [boardKeys.teamWeekProjections(seasonId, week)];
+  }
+  if (table === "team_week_scores") {
+    // The reason this table is published at all: Ben asked for the score to be realtime, and
+    // a run writes one row per team a minute through a game window. Eighteen rows sits under
+    // `REALTIME_MAX_EVENTS_PER_TABLE`, and that ceiling is counted per table, so a scores run
+    // sharing a minute boundary with the projections job still debounces into two targeted
+    // invalidations rather than a whole-board refetch.
+    return [boardKeys.teamWeekScores(seasonId, week)];
   }
   // A roster change also changes which player projections the board needs. The static player
   // directory is deliberately not invalidated: it is keyed on a fingerprint of the held ids, so

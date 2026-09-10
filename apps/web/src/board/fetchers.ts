@@ -19,6 +19,7 @@ export type MemberRow = Pick<
 >;
 export type TeamSeasonStateRow = TableRow<"team_season_state">;
 export type TeamWeekProjectionRow = TableRow<"team_week_projections">;
+export type TeamWeekScoreRow = TableRow<"team_week_scores">;
 export type RosterHoldingRow = Pick<
   TableRow<"roster_holdings">,
   "team_id" | "sleeper_player_id" | "slot" | "slot_index" | "lineup_position"
@@ -188,6 +189,30 @@ export function fetchTeamWeekProjections(
       .eq("season_id", seasonId)
       .eq("week", week),
     "team_week_projections",
+  );
+}
+
+/**
+ * The week's live scores, one row per team.
+ *
+ * Deliberately not chunked. The chunking rule above is about `.in(...)` id lists, which travel
+ * in the query string and grow past the proxy's URL limit; this is two equality filters over a
+ * table that holds one row per team per week, exactly like `fetchTeamWeekProjections` beside it.
+ */
+export function fetchTeamWeekScores(
+  client: BoardClient,
+  seasonId: number,
+  week: number,
+): Promise<TeamWeekScoreRow[]> {
+  return unwrap<TeamWeekScoreRow>(
+    client
+      .from("team_week_scores")
+      .select(
+        "season_id, team_id, week, points, players_points, starters, synced_at",
+      )
+      .eq("season_id", seasonId)
+      .eq("week", week),
+    "team_week_scores",
   );
 }
 

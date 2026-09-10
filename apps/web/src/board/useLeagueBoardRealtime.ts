@@ -9,7 +9,7 @@ import {
   BOARD_REALTIME_TABLES,
   keysForTable,
   REALTIME_DEBOUNCE_MS,
-  REALTIME_MAX_EVENTS_PER_BURST,
+  REALTIME_MAX_EVENTS_PER_TABLE,
   REALTIME_MAX_WAIT_MS,
   type BoardRealtimeTable,
 } from "./realtime";
@@ -121,8 +121,13 @@ export function useLeagueBoardRealtime(
     onConnectionChangeRef.current = onConnectionChange;
   }, [onConnectionChange]);
 
-  const pendingTablesRef = useRef(new Set<BoardRealtimeTable>());
-  const burstEventCountRef = useRef(0);
+  /**
+   * The tables a burst has touched, each with how many events landed on it. Keyed per table
+   * because the burst ceiling is per table: the scores job and the projections job share a
+   * minute boundary through a game window, and a count pooled across both would call an
+   * ordinary Sunday a storm and refetch the whole board every five minutes.
+   */
+  const pendingTablesRef = useRef(new Map<BoardRealtimeTable, number>());
   const flushTimerRef = useRef<number | null>(null);
   const maxWaitTimerRef = useRef<number | null>(null);
 
@@ -153,22 +158,25 @@ export function useLeagueBoardRealtime(
 
   const flush = useCallback(() => {
     clearTimers();
-    const tables = [...pendingTablesRef.current];
-    const eventCount = burstEventCountRef.current;
-    pendingTablesRef.current = new Set();
-    burstEventCountRef.current = 0;
+    const counts = pendingTablesRef.current;
+    pendingTablesRef.current = new Map();
 
-    if (tables.length === 0) {
+    if (counts.size === 0) {
       return;
     }
-    // Past the ceiling, one whole-board refetch is cheaper than a key-by-key storm.
-    if (eventCount > REALTIME_MAX_EVENTS_PER_BURST) {
+    // Past the ceiling, one whole-board refetch is cheaper than a key-by-key storm — but only
+    // when a single table is the one flooding. Several tables each writing a normal run's worth
+    // of rows on the same boundary is the every-five-minutes case, not a storm.
+    const flooded = [...counts.values()].some(
+      (count) => count > REALTIME_MAX_EVENTS_PER_TABLE,
+    );
+    if (flooded) {
       invalidateAll();
       return;
     }
 
     const seen = new Set<string>();
-    for (const table of tables) {
+    for (const table of counts.keys()) {
       for (const queryKey of keysForTable(table, contextRef.current)) {
         const fingerprint = JSON.stringify(queryKey);
         if (seen.has(fingerprint)) {
@@ -182,8 +190,8 @@ export function useLeagueBoardRealtime(
 
   const enqueue = useCallback(
     (table: BoardRealtimeTable) => {
-      pendingTablesRef.current.add(table);
-      burstEventCountRef.current += 1;
+      const counts = pendingTablesRef.current;
+      counts.set(table, (counts.get(table) ?? 0) + 1);
       if (flushTimerRef.current !== null) {
         window.clearTimeout(flushTimerRef.current);
       }
@@ -268,8 +276,7 @@ export function useLeagueBoardRealtime(
       // A rebuilt channel re-subscribes and refetches the whole board, so a queue held over
       // from the dead one would only duplicate that work.
       clearTimers();
-      pendingTablesRef.current = new Set();
-      burstEventCountRef.current = 0;
+      pendingTablesRef.current = new Map();
       active.removeChannel(channel);
     };
   }, [clearTimers, enqueue, invalidateAll, mountId, reconnectNonce, transport]);
