@@ -226,6 +226,19 @@ the section, with a retry, and never touches the board behind it. Motion follows
 primitive's reduced-motion handling. The name button announces that it opens a dialog; the dialog
 is labelled by the player's name; the journey is a real list.
 
+## The Draft Page
+
+Ben (2026-09-10): "make a draft tab on the site just to show the full draft." A fourth page,
+`/draft`, in its own chunk like the trades and history pages, reading `public.draft_picks`,
+`public.teams`, `public.members`, `public.players` and `public.seasons` — the same tables the
+board reads and nothing new. It shows the season's auction as one list, sortable three ways
+through `?sort=`: pick order (the default), price descending with ties by pick, or grouped by
+team in spend order with each team's spend and what its unspent dollars became in FAAB under
+the league's five-to-one rule, the auction budget being `seasons.waiver_budget` over five. A
+strip above the list counts the picks, the dollars spent, and the average price. Every name
+links to the board's `?player=` so the card is one tap away. Before the auction the page reads
+"No draft yet". Season-scoped like everything else here.
+
 ## Privacy and Safety
 
 Everything on the mark and the card is public Sleeper data — draft results, the executed
@@ -300,3 +313,5 @@ Each is a clean follow-up because every table is season-keyed:
    degrades everything the same way.
 5. **Season points derive from the weekly scores already synced**, captioned by rostered weeks;
    no stats sync now.
+6. **A draft tab shows the whole auction.** "make a draft tab on the site just to show the full
+   draft." Sortable by pick, price, or team; names link into the card.
