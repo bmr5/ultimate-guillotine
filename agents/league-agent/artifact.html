@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__TITLE__</title>
+<style>
+  :root { color-scheme: light dark; --ink: #1c1c1e; --paper: #ffffff; --muted: #6e6e73;
+          --line: #e5e5ea; --card: #f5f5f7; --pro: #1f7a3a; --con: #b3261e; --tag: #e8eefc; }
+  @media (prefers-color-scheme: dark) {
+    :root { --ink: #f2f2f7; --paper: #000000; --muted: #98989d; --line: #2c2c2e;
+            --card: #1c1c1e; --pro: #5ad27a; --con: #ff6b61; --tag: #1e2a44; }
+  }
+  body { margin: 0; background: var(--paper); color: var(--ink);
+         font: 17px/1.5 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif; }
+  main { max-width: 680px; margin: 0 auto; padding: 20px 18px 48px; }
+  header h1 { font-size: 26px; line-height: 1.2; margin: 0 0 6px; }
+  header .meta { color: var(--muted); font-size: 14px; margin: 0 0 4px; }
+  header .question { border-left: 3px solid var(--line); padding-left: 12px; margin: 14px 0 22px;
+                     color: var(--muted); font-style: italic; }
+  h2 { font-size: 21px; margin: 28px 0 10px; }
+  h3 { font-size: 18px; margin: 20px 0 8px; }
+  p, ul, ol { margin: 0 0 12px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+          padding: 14px 16px; margin: 0 0 14px; }
+  .pro { color: var(--pro); font-weight: 600; }
+  .con { color: var(--con); font-weight: 600; }
+  .num { font-variant-numeric: tabular-nums; font-weight: 600; }
+  .tag { display: inline-block; background: var(--tag); border-radius: 999px; padding: 1px 10px;
+         font-size: 13px; font-weight: 600; margin-right: 6px; }
+  .muted { color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; margin: 0 0 16px; font-size: 15px; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line);
+           vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 13px; text-transform: uppercase;
+       letter-spacing: 0.02em; }
+  details { border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; margin: 0 0 12px; }
+  summary { cursor: pointer; font-weight: 600; }
+  blockquote { margin: 0 0 12px; padding-left: 12px; border-left: 3px solid var(--line);
+               color: var(--muted); }
+  code, pre { font-family: ui-monospace, Menlo, monospace; font-size: 14px; }
+  a { color: inherit; text-decoration: underline; }
+  footer { margin-top: 32px; border-top: 1px solid var(--line); padding-top: 12px;
+           color: var(--muted); font-size: 14px; }
+  footer ol { padding-left: 20px; }
+</style>
+</head>
+<body>
+<main>
+<header>
+  <h1>__TITLE__</h1>
+  <p class="meta">__META__</p>
+  <p class="question">__QUESTION__</p>
+</header>
+<article>
+__BODY__
+</article>
+<footer>
+  <p>__SOURCE_LINE__</p>
+  <h2>Sources</h2>
+  __SOURCES__
+  <p>Generated __GENERATED__ by Guillotine Bot. A suggestion, not a trade: announce a deal with a 🚨 alert.</p>
+</footer>
+</main>
+</body>
+</html>
