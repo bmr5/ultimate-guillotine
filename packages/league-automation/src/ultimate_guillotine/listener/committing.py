@@ -1,4 +1,5 @@
 """Wrap a repository so every call commits on success and rolls back on failure."""
+
 import contextlib
 
 

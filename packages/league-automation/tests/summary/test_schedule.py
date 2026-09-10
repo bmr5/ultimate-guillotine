@@ -18,14 +18,38 @@ from ultimate_guillotine.summary.schedule import (
 )
 
 PAYLOAD = [
-    {"status": "complete", "date": "2026-09-10", "home": "PHI", "week": 1, "game_id": "a",
-     "away": "DAL"},
-    {"status": "pre_game", "date": "2026-09-13", "home": "CAR", "week": 1, "game_id": "b",
-     "away": "CHI"},
-    {"status": "in_game", "date": "2026-09-13", "home": "KC", "week": 1, "game_id": "c",
-     "away": "DEN"},
-    {"status": "pre_game", "date": "2026-09-20", "home": "KC", "week": 2, "game_id": "d",
-     "away": "LAC"},
+    {
+        "status": "complete",
+        "date": "2026-09-10",
+        "home": "PHI",
+        "week": 1,
+        "game_id": "a",
+        "away": "DAL",
+    },
+    {
+        "status": "pre_game",
+        "date": "2026-09-13",
+        "home": "CAR",
+        "week": 1,
+        "game_id": "b",
+        "away": "CHI",
+    },
+    {
+        "status": "in_game",
+        "date": "2026-09-13",
+        "home": "KC",
+        "week": 1,
+        "game_id": "c",
+        "away": "DEN",
+    },
+    {
+        "status": "pre_game",
+        "date": "2026-09-20",
+        "home": "KC",
+        "week": 2,
+        "game_id": "d",
+        "away": "LAC",
+    },
     {"junk": True},
     {"status": "pre_game", "week": "x", "home": "NE", "away": "NYJ", "game_id": "e"},
     "not even an object",
@@ -33,8 +57,9 @@ PAYLOAD = [
 
 
 def _game(game_id: str, status: str, week: int = 1) -> Game:
-    return Game(game_id=game_id, week=week, date=None, home="H" + game_id, away="A" + game_id,
-                status=status)
+    return Game(
+        game_id=game_id, week=week, date=None, home="H" + game_id, away="A" + game_id, status=status
+    )
 
 
 def test_parse_keeps_well_formed_games_and_drops_the_rest() -> None:
@@ -46,8 +71,16 @@ def test_parse_keeps_well_formed_games_and_drops_the_rest() -> None:
 
 def test_a_missing_or_unreadable_date_is_none_not_fatal() -> None:
     games = parse_schedule(
-        [{"status": "pre_game", "date": "soon", "home": "NE", "week": 1, "game_id": "z",
-          "away": "NYJ"}]
+        [
+            {
+                "status": "pre_game",
+                "date": "soon",
+                "home": "NE",
+                "week": 1,
+                "game_id": "z",
+                "away": "NYJ",
+            }
+        ]
     )
     assert games[0].date is None
 

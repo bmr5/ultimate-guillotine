@@ -182,9 +182,7 @@ def test_heartbeat_loop_exits_when_the_connection_cannot_be_opened(
         raise ExitCalled(code)
 
     def factory():
-        raise psycopg.OperationalError(
-            "connection to server was lost"
-        )
+        raise psycopg.OperationalError("connection to server was lost")
 
     monkeypatch.setattr(os, "_exit", fake_exit)
     _patched_sleep(monkeypatch, stop_after=5)  # must never reach sleep
@@ -392,8 +390,12 @@ def test_build_processor_announces_the_registrar_is_disabled_exactly_once(
 
 def _alert(chat_guid: str) -> InboundMessage:
     return InboundMessage(
-        guid="g1", chat_guid=chat_guid, sender_address="+15555550100",
-        text="🚨 Member01 sends Player Alpha to Member02", is_from_me=False, is_group=True,
+        guid="g1",
+        chat_guid=chat_guid,
+        sender_address="+15555550100",
+        text="🚨 Member01 sends Player Alpha to Member02",
+        is_from_me=False,
+        is_group=True,
         sent_at=datetime.now(UTC),
     )
 
@@ -401,7 +403,11 @@ def _alert(chat_guid: str) -> InboundMessage:
 def test_the_registrar_trigger_is_gated_on_the_delivery_chat(hermes_installed: None) -> None:
     """A listener that can see more than one chat must answer trades in one."""
     processor, _allowed = run_module.build_processor(
-        _settings(), ConfiguredConnection(), None, None, RecordingNotifier(),
+        _settings(),
+        ConfiguredConnection(),
+        None,
+        None,
+        RecordingNotifier(),
     )
 
     trigger = _trigger_named(processor, "trade-registrar")
@@ -420,7 +426,10 @@ def test_a_listen_only_chat_is_heard_but_never_delivered_to(hermes_installed: No
     row.
     """
     processor, allowed = run_module.build_processor(
-        _settings(), ConfiguredConnection(listen=(LEAGUE_CHAT,)), None, None,
+        _settings(),
+        ConfiguredConnection(listen=(LEAGUE_CHAT,)),
+        None,
+        None,
         RecordingNotifier(),
     )
 
@@ -438,7 +447,10 @@ def test_the_advisor_does_not_answer_in_a_listen_only_chat(hermes_installed: Non
     answers a member who asked it a question, and a chat we are only shadowing is
     exactly the chat where an answer would be a surprise."""
     processor, _allowed = run_module.build_processor(
-        _settings(), ConfiguredConnection(listen=(LEAGUE_CHAT,)), None, None,
+        _settings(),
+        ConfiguredConnection(listen=(LEAGUE_CHAT,)),
+        None,
+        None,
         RecordingNotifier(),
     )
 
@@ -464,7 +476,10 @@ def test_build_processor_skips_the_registrar_when_no_chat_is_configured(
 
     processor, _allowed = run_module.build_processor(
         _settings(delivery_mode="disabled", test_chat_guid=None),
-        EmptyConnection(), None, None, notifier,
+        EmptyConnection(),
+        None,
+        None,
+        notifier,
     )
 
     assert _trigger_named(processor, "trade-registrar") is None
@@ -509,8 +524,10 @@ def test_the_advisor_never_registers_in_production(
     it is the expected state of every production start rather than a fault."""
     caplog.set_level("INFO")
     settings = _settings(
-        delivery_mode="production", production_chat_guid="prod",
-        production_participant_fingerprint="fp", test_chat_guid=None,
+        delivery_mode="production",
+        production_chat_guid="prod",
+        production_participant_fingerprint="fp",
+        test_chat_guid=None,
     )
     notifier = RecordingNotifier()
 
@@ -526,15 +543,23 @@ def test_the_advisor_never_registers_in_production(
 
 def _advice_request(chat_guid: str) -> InboundMessage:
     return InboundMessage(
-        guid="g2", chat_guid=chat_guid, sender_address="+15555550100",
-        text="@bot who should I trade with for a RB", is_from_me=False, is_group=True,
+        guid="g2",
+        chat_guid=chat_guid,
+        sender_address="+15555550100",
+        text="@bot who should I trade with for a RB",
+        is_from_me=False,
+        is_group=True,
         sent_at=datetime.now(UTC),
     )
 
 
 def test_the_advisor_trigger_is_gated_on_the_delivery_chat(hermes_installed: None) -> None:
     processor, _allowed = run_module.build_processor(
-        _settings(), ConfiguredConnection(), None, None, RecordingNotifier(),
+        _settings(),
+        ConfiguredConnection(),
+        None,
+        None,
+        RecordingNotifier(),
     )
 
     trigger = _trigger_named(processor, "trade-advisor")

@@ -125,7 +125,10 @@ def _allowed(token: str, facts_numbers: Sequence[str]) -> bool:
             number = Decimal(known)
         except InvalidOperation:
             continue
-        if int(number) == value or int(number.quantize(Decimal(1), rounding=ROUND_HALF_UP)) == value:
+        if (
+            int(number) == value
+            or int(number.quantize(Decimal(1), rounding=ROUND_HALF_UP)) == value
+        ):
             return True
     return False
 

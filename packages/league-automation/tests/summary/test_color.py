@@ -28,11 +28,19 @@ LABELS = ("Member01", "Member02", "Member03", "Member04")
 
 
 def _facts() -> str:
-    snap = snapshot((done_team(1, "100"), done_team(2, "90.5"), done_team(3, "80"),
-                     done_team(4, "70.5")), week=1, day_state="final", games_final=16,
-                    games_total=16)
-    packet = EodPacket(snapshot=snap, result=simulate(snap, simulations=50),
-                       coverage_pct=Decimal(100), no_odds_reason=None)
+    snap = snapshot(
+        (done_team(1, "100"), done_team(2, "90.5"), done_team(3, "80"), done_team(4, "70.5")),
+        week=1,
+        day_state="final",
+        games_final=16,
+        games_total=16,
+    )
+    packet = EodPacket(
+        snapshot=snap,
+        result=simulate(snap, simulations=50),
+        coverage_pct=Decimal(100),
+        no_odds_reason=None,
+    )
     return facts_text(packet)
 
 
@@ -54,7 +62,7 @@ def test_a_number_not_in_the_facts_is_rejected() -> None:
 
 
 def test_a_rounded_score_and_a_small_count_are_allowed() -> None:
-    """"Member04 at 70" is 70.5 rounded down; "two teams" is a count. Neither is an
+    """ "Member04 at 70" is 70.5 rounded down; "two teams" is a count. Neither is an
     invention, and refusing them would refuse most sentences a person writes."""
     color = _color(blurb="Member04 is stuck at 70 and 2 teams are heading down.")
     assert verify_color(color, _facts(), LABELS) == color

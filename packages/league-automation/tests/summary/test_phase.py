@@ -29,8 +29,17 @@ def _scores(**weeks: dict[int, str]) -> dict[int, dict[int, Decimal]]:
 
 @pytest.mark.parametrize(
     ("week", "kind"),
-    [(1, "entry"), (2, "gulag"), (11, "gulag"), (12, "double"), (13, "cut"), (16, "cut"),
-     (17, "final"), (18, "over"), (25, "over")],
+    [
+        (1, "entry"),
+        (2, "gulag"),
+        (11, "gulag"),
+        (12, "double"),
+        (13, "cut"),
+        (16, "cut"),
+        (17, "final"),
+        (18, "over"),
+        (25, "over"),
+    ],
 )
 def test_the_week_table_matches_the_rules_document(week: int, kind: str) -> None:
     assert phase_kind(week) == kind
@@ -55,8 +64,12 @@ def test_a_single_event_is_not_a_pairing() -> None:
 def test_an_event_with_no_usable_team_id_is_ignored() -> None:
     """A payload with no id, or a string where the id should be, names nobody; the
     two well-formed rows still make the pair."""
-    events = [(2, "gulag_entry", {}), (2, "gulag_entry", {"team_id": "9"}),
-              (2, "gulag_entry", {"team_id": 7}), (2, "gulag_entry", {"team_id": 5})]
+    events = [
+        (2, "gulag_entry", {}),
+        (2, "gulag_entry", {"team_id": "9"}),
+        (2, "gulag_entry", {"team_id": 7}),
+        (2, "gulag_entry", {"team_id": 5}),
+    ]
     assert gulag_from_events(events, 2) == (5, 7)
     assert gulag_from_events(events[:3], 2) is None
 

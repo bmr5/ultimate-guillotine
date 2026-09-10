@@ -172,9 +172,7 @@ class ScoreRepository:
         """``sleeper_roster_id`` -> ``teams.id`` for one season; see ``sleeper/teams.py``."""
         return teams_by_roster_id(self._conn, season_id)
 
-    def upsert_many(
-        self, season_id: int, week: int, rows: list[TeamScore], now: datetime
-    ) -> int:
+    def upsert_many(self, season_id: int, week: int, rows: list[TeamScore], now: datetime) -> int:
         """Write one row per team for the week, replacing the last run's numbers.
 
         Idempotent by the ``(season_id, team_id, week)`` unique key: this fires once a
@@ -228,9 +226,7 @@ def sync_scores(
     ``players.py`` refusing an empty directory.
     """
     payload = client.get_matchups(league_id, week)
-    rows, unmatched = load_team_scores(
-        payload, ScoreRepository(conn).teams_by_roster_id(season_id)
-    )
+    rows, unmatched = load_team_scores(payload, ScoreRepository(conn).teams_by_roster_id(season_id))
     if not rows:
         raise RuntimeError(f"sleeper returned no matchup rows for week {week}")
     ScoreRepository(conn).upsert_many(season_id, week, rows, now)

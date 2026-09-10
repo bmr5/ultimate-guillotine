@@ -175,9 +175,7 @@ def _season_row(conn: psycopg.Connection, year: int) -> tuple[int, dict]:
     January run cannot score one season's stat lines with another's settings.
     """
     with conn.cursor() as cur:
-        cur.execute(
-            "select id, scoring_settings from public.seasons where year = %s", (year,)
-        )
+        cur.execute("select id, scoring_settings from public.seasons where year = %s", (year,))
         row = cur.fetchone()
     if row is None:
         raise ValueError(f"no season row for year {year}")
@@ -485,8 +483,7 @@ def cmd_projections(args: argparse.Namespace) -> int:
             )
             if not is_live_week:
                 print(
-                    f"team totals for week {week} left unchanged "
-                    f"(rosters are current-state only)"
+                    f"team totals for week {week} left unchanged (rosters are current-state only)"
                 )
         return 0
 

@@ -138,8 +138,9 @@ def _event_for(team_id: int, kind: str, gulag: Sequence[int]) -> AdverseEvent:
     return "cut"
 
 
-def _bottom(totals: Mapping[int, float], ids: Sequence[int], count: int, rng: random.Random
-            ) -> list[int]:
+def _bottom(
+    totals: Mapping[int, float], ids: Sequence[int], count: int, rng: random.Random
+) -> list[int]:
     """The lowest ``count`` of ``ids`` by total, ties broken at random."""
     if len(ids) < count:
         return []

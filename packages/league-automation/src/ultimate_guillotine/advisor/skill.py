@@ -339,9 +339,7 @@ class TradeAdvisor:
             # hears the reason, the league hears the fallback line.
             self._notifier.ops(f"Trade Advisor has no snapshot: {exc.reason}")
             return self._respond(run_id, "insufficient_data", format_rejected())
-        return self._respond(
-            run_id, answer.outcome, answer.text, _input_version(answer.model)
-        )
+        return self._respond(run_id, answer.outcome, answer.text, _input_version(answer.model))
 
     def _render(
         self,
@@ -350,9 +348,7 @@ class TradeAdvisor:
         candidates: Sequence[Candidate],
         known: bool,
     ) -> str:
-        return format_advice(
-            response, snapshot, projections_known=known, candidates=candidates
-        )
+        return format_advice(response, snapshot, projections_known=known, candidates=candidates)
 
     def _ask_names(self, snapshot: LeagueSnapshot) -> list[str]:
         """Every name a counterparty may be named by in one question.
@@ -363,9 +359,7 @@ class TradeAdvisor:
         besides, so a manager with no team row this season is still read as a
         name rather than as an ordinary word in the sentence.
         """
-        names = [
-            name for team in snapshot.teams for name in (team.member_label, team.display_name)
-        ]
+        names = [name for team in snapshot.teams for name in (team.member_label, team.display_name)]
         names.extend(member.display_name for member in self._members.all_members())
         return list(dict.fromkeys(names))
 
@@ -434,8 +428,10 @@ def _insufficient(note: str) -> TradeAdviceResponse:
 def _stand_pat() -> TradeAdviceResponse:
     """The answer to a board with no trade on it, built here for the same reason."""
     return TradeAdviceResponse(
-        status="no_good_trades", headline="No trade worth making",
-        proposals=[], note=STAND_PAT,
+        status="no_good_trades",
+        headline="No trade worth making",
+        proposals=[],
+        note=STAND_PAT,
     )
 
 
@@ -479,9 +475,7 @@ def advisor_trigger(advisor: TradeAdvisor, chat_guid: str) -> Trigger:
 
     def matches(msg: InboundMessage) -> bool:
         return (
-            msg.chat_guid == chat_guid
-            and is_advice_request(msg.text)
-            and not is_signed(msg.text)
+            msg.chat_guid == chat_guid and is_advice_request(msg.text) and not is_signed(msg.text)
         )
 
     def handle(msg: InboundMessage) -> None:

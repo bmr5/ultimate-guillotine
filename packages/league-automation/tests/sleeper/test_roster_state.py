@@ -205,6 +205,7 @@ def test_state_version_bumps_only_on_an_actual_elimination_change() -> None:
     stored = Elimination(False, None, None)
     assert not bumps_state_version(stored, Elimination(False, None, "sleeper_inferred"))
     assert bumps_state_version(stored, Elimination(True, 3, "sleeper_inferred"))
-    assert bumps_state_version(Elimination(True, 3, "adjudicator"),
-                               Elimination(True, 4, "adjudicator"))
+    assert bumps_state_version(
+        Elimination(True, 3, "adjudicator"), Elimination(True, 4, "adjudicator")
+    )
     assert not bumps_state_version(None, Elimination(True, 3, "adjudicator"))

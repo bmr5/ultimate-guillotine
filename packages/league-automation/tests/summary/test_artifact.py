@@ -25,13 +25,21 @@ from ultimate_guillotine.summary.survival import simulate
 
 def _packet(snap, *, odds: bool = True, reason: str | None = None) -> EodPacket:
     result = simulate(snap, simulations=200) if odds else None
-    return EodPacket(snapshot=snap, result=result, coverage_pct=Decimal(100),
-                     no_odds_reason=None if odds else (reason or "no schedule"))
+    return EodPacket(
+        snapshot=snap,
+        result=result,
+        coverage_pct=Decimal(100),
+        no_odds_reason=None if odds else (reason or "no schedule"),
+    )
 
 
 def _fixture_packet() -> EodPacket:
-    return EodPacket(snapshot=fixture_eod(), result=simulate(fixture_eod(), simulations=300),
-                     coverage_pct=Decimal(100), no_odds_reason=None)
+    return EodPacket(
+        snapshot=fixture_eod(),
+        result=simulate(fixture_eod(), simulations=300),
+        coverage_pct=Decimal(100),
+        no_odds_reason=None,
+    )
 
 
 # -- the file -------------------------------------------------------------
@@ -56,8 +64,14 @@ def test_the_page_carries_every_section_and_every_live_team() -> None:
     html = render_html(packet, None, FIXTURE_NOW)
     for live in packet.snapshot.live_teams():
         assert live.label in html
-    for heading in ("The gulag", "On the block", "Sweating", "The board", "Roster watch",
-                    "Moves since Sat 11:50 PM"):
+    for heading in (
+        "The gulag",
+        "On the block",
+        "Sweating",
+        "The board",
+        "Roster watch",
+        "Moves since Sat 11:50 PM",
+    ):
         assert heading in html
     assert "Week 6" in html
     assert "Member17" in html and "wk 5" in html
@@ -66,8 +80,14 @@ def test_the_page_carries_every_section_and_every_live_team() -> None:
 
 def test_model_and_member_text_is_escaped() -> None:
     color = EodColor(headline="<b>Knives</b> & forks", blurb="Member04 <script>alert(1)</script>")
-    snap = snapshot((done_team(1, "100"), done_team(2, "90"), done_team(3, "80"),
-                     done_team(4, "70", label="Tom & <Jerry>")))
+    snap = snapshot(
+        (
+            done_team(1, "100"),
+            done_team(2, "90"),
+            done_team(3, "80"),
+            done_team(4, "70", label="Tom & <Jerry>"),
+        )
+    )
     html = render_html(_packet(snap), color, NOW)
     assert "<b>Knives</b>" not in html
     assert "&lt;b&gt;Knives&lt;/b&gt; &amp; forks" in html
@@ -77,15 +97,26 @@ def test_model_and_member_text_is_escaped() -> None:
 
 def test_the_colour_leads_the_page_when_there_is_one() -> None:
     color = EodColor(headline="Two graves dug", blurb="Member04 is toast.")
-    html = render_html(_packet(snapshot((done_team(1, "100"), done_team(2, "90"),
-                                         done_team(3, "80"), done_team(4, "70")))), color, NOW)
+    html = render_html(
+        _packet(
+            snapshot(
+                (done_team(1, "100"), done_team(2, "90"), done_team(3, "80"), done_team(4, "70"))
+            )
+        ),
+        color,
+        NOW,
+    )
     assert html.index("Two graves dug") < html.index("On the block")
     assert "Member04 is toast." in html
 
 
 def test_factual_mode_shows_no_percentages_and_says_why() -> None:
-    teams = (done_team(1, "100"), done_team(2, "52"), done_team(3, "50"),
-             team(4, points="45", starters=(starter("remaining", projected=None),)))
+    teams = (
+        done_team(1, "100"),
+        done_team(2, "52"),
+        done_team(3, "50"),
+        team(4, points="45", starters=(starter("remaining", projected=None),)),
+    )
     html = render_html(_packet(snapshot(teams), odds=False, reason="no schedule"), None, NOW)
     body = html.split("</style>", 1)[1]
     assert "%" not in body
@@ -93,10 +124,15 @@ def test_factual_mode_shows_no_percentages_and_says_why() -> None:
 
 
 def test_the_outlook_page_shows_projections_not_zero_scores() -> None:
-    snap = snapshot((team(1, starters=(starter("remaining", projected="100"),)),
-                     team(2, starters=(starter("remaining", projected="90"),)),
-                     team(3, starters=(starter("remaining", projected="80"),))),
-                    day_state="outlook", games_final=0)
+    snap = snapshot(
+        (
+            team(1, starters=(starter("remaining", projected="100"),)),
+            team(2, starters=(starter("remaining", projected="90"),)),
+            team(3, starters=(starter("remaining", projected="80"),)),
+        ),
+        day_state="outlook",
+        games_final=0,
+    )
     html = render_html(_packet(snap), None, NOW)
     body = html.split("</style>", 1)[1]
     assert "Nothing has kicked off yet" in body
@@ -115,8 +151,7 @@ def test_the_gulag_pair_are_marked_on_the_board() -> None:
 # -- the chat text that travels with the file -----------------------------
 
 
-def test_the_short_text_is_the_header_the_gulag_the_block_the_sweating_and_the_footer(
-) -> None:
+def test_the_short_text_is_the_header_the_gulag_the_block_the_sweating_and_the_footer() -> None:
     """Ben (2026-09-10): no commentary in the iMessage -- the colour stays in the
     file -- and the sweating teams as their own list."""
     packet = _fixture_packet()

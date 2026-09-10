@@ -24,14 +24,30 @@ from ultimate_guillotine.trades.models import MemberRef
 #: Every word the loader is allowed to print. A member name, a player name or a line of
 #: chat would all fail this, which is the point.
 ALLOWED_WORDS = {
-    "catalog", "rows", "updated", "unresolved", "parties", "unmapped", "conditions",
-    "results", "seasons", "names", "weeks", "with", "no", "count",
-    "result", "season", "created",
+    "catalog",
+    "rows",
+    "updated",
+    "unresolved",
+    "parties",
+    "unmapped",
+    "conditions",
+    "results",
+    "seasons",
+    "names",
+    "weeks",
+    "with",
+    "no",
+    "count",
+    "result",
+    "season",
+    "created",
 }
 
 #: The records workbook, read by `load-results`. It is also the dues ledger, which is why
 #: the counts-only assertion below matters more here than anywhere else.
-WORKBOOK = str(Path(__file__).resolve().parents[4] / "history/league/ultimate-guillotine-records.xlsx")
+WORKBOOK = str(
+    Path(__file__).resolve().parents[4] / "history/league/ultimate-guillotine-records.xlsx"
+)
 
 
 def _assert_counts_only(text: str) -> None:
@@ -48,7 +64,9 @@ def _record(**overrides) -> dict:
         "structure": "flat_fee_rental",
         "parties": ["Nobody"],
         "assets": {
-            "players": [], "positions": [], "faab": [],
+            "players": [],
+            "positions": [],
+            "faab": [],
             "return_conditions": ["SENTINEL owes a week"],
         },
         "faab_total": 0,
@@ -132,7 +150,9 @@ def _write(tmp_path: Path, *records: dict) -> str:
 def test_history_help_lists_load_catalog() -> None:
     result = subprocess.run(
         [sys.executable, "-m", "ultimate_guillotine.cli.main", "history", "--help"],
-        capture_output=True, text=True, check=False,
+        capture_output=True,
+        text=True,
+        check=False,
     )
     assert result.returncode == 0
     assert "load-catalog" in result.stdout
@@ -376,7 +396,9 @@ def _set_args(**overrides) -> argparse.Namespace:
 def test_set_result_is_in_the_help() -> None:
     result = subprocess.run(
         [sys.executable, "-m", "ultimate_guillotine.cli.main", "history", "--help"],
-        capture_output=True, text=True, check=False,
+        capture_output=True,
+        text=True,
+        check=False,
     )
     assert result.returncode == 0
     assert "set-result" in result.stdout
@@ -548,9 +570,7 @@ def test_load_results_leaves_a_hand_set_season_alone(
     _assert_counts_only(capsys.readouterr().out)
 
 
-def test_set_result_writes_the_row_the_pages_read(
-    conn, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_set_result_writes_the_row_the_pages_read(conn, monkeypatch: pytest.MonkeyPatch) -> None:
     """The real path against the real table, including the eliminations it must preserve."""
     monkeypatch.setattr(history_cli, "build_deps", lambda: SimpleNamespace(conn=conn))
     member_id = _seed_member(conn)

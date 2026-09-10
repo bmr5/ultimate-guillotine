@@ -50,7 +50,8 @@ def _deps(monkeypatch: pytest.MonkeyPatch, repo: FakeTargets, **overrides):
         _env_file=None,
     )
     monkeypatch.setattr(
-        targets_cli, "build_deps",
+        targets_cli,
+        "build_deps",
         lambda: SimpleNamespace(settings=settings, conn=FakeConn(), client=None, notifier=None),
     )
     monkeypatch.setattr(targets_cli, "TargetRepository", lambda conn: repo)
@@ -59,7 +60,9 @@ def _deps(monkeypatch: pytest.MonkeyPatch, repo: FakeTargets, **overrides):
 def test_targets_help_lists_the_listen_command() -> None:
     result = subprocess.run(
         [sys.executable, "-m", "ultimate_guillotine.cli.main", "targets", "--help"],
-        capture_output=True, text=True, check=False,
+        capture_output=True,
+        text=True,
+        check=False,
     )
     assert result.returncode == 0
     for name in ("set", "listen", "counts"):

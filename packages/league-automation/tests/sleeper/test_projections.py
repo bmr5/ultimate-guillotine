@@ -29,6 +29,7 @@ SETTINGS = json.loads(
 )["scoring_settings"]
 VERSION = scoring_version(SETTINGS)
 
+
 def payload() -> list[dict]:
     return json.loads(FIXTURE.read_text())
 
@@ -175,9 +176,7 @@ def test_rescore_recomputes_from_stored_stat_lines_without_refetching(conn) -> N
     sync(conn, client)
     client.calls = 0
     doubled = {**SETTINGS, "rec": 2.0}
-    report = ProjectionRepository(conn).rescore(
-        2026, 1, doubled, scoring_version(doubled), NOW
-    )
+    report = ProjectionRepository(conn).rescore(2026, 1, doubled, scoring_version(doubled), NOW)
     assert client.calls == 0 and report.scoring_version == scoring_version(doubled)
     with conn.cursor() as cur:
         cur.execute(

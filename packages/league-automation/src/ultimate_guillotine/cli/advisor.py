@@ -103,8 +103,7 @@ class FixtureLeague:
 
     def __init__(self) -> None:
         self._members = [
-            MemberRef(team.member_id, team.member_label, ())
-            for team in fixture_snapshot().teams
+            MemberRef(team.member_id, team.member_label, ()) for team in fixture_snapshot().teams
         ]
 
     def load(self, horizon_weeks: int = 1):
@@ -218,9 +217,7 @@ class LazyClient:
             if find_hermes_binary() is None:
                 raise SystemExit("hermes CLI not found")
             settings = self._settings or load_settings()
-            self._client = advisor_client(
-                settings.hermes_profile_home, model=settings.hermes_model
-            )
+            self._client = advisor_client(settings.hermes_profile_home, model=settings.hermes_model)
         return self._client.parse(system, user, schema, schema_name)
 
 

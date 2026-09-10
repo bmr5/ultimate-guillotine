@@ -97,9 +97,7 @@ def _wire(
 
     def fake_sync(client, target, league_id, season_id, requested_week, now):
         calls.append(Call(league_id, season_id, requested_week))
-        return SimpleNamespace(
-            teams=18, week=requested_week, unmatched_rosters=unmatched
-        )
+        return SimpleNamespace(teams=18, week=requested_week, unmatched_rosters=unmatched)
 
     monkeypatch.setattr(sleeper_cli, "sync_scores", fake_sync)
 

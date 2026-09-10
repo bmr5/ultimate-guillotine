@@ -24,8 +24,9 @@ def _season_id(conn) -> int:
 
 
 def _result():
-    return simulate(snapshot((done_team(1, "100"), done_team(2, "90"), done_team(3, "80"))),
-                    simulations=20)
+    return simulate(
+        snapshot((done_team(1, "100"), done_team(2, "90"), done_team(3, "80"))), simulations=20
+    )
 
 
 def test_results_payload_carries_each_team_s_label_and_numbers_as_json_numbers() -> None:

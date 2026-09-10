@@ -75,8 +75,9 @@ def done_team(team_id: int, points: str, **overrides) -> TeamLine:
     return team(team_id, points=points, starters=(starter("done", points=points),), **overrides)
 
 
-def phase(week: int = 1, kind: str = "entry", gulag: tuple[int, ...] = (),
-          source: str = "none") -> Phase:
+def phase(
+    week: int = 1, kind: str = "entry", gulag: tuple[int, ...] = (), source: str = "none"
+) -> Phase:
     return Phase(week=week, kind=kind, gulag_team_ids=gulag, gulag_source=source)
 
 
@@ -106,7 +107,8 @@ def snapshot(
         moves=moves,
         data_synced_at=NOW,
         scores_synced_at=NOW,
-        starter_slots=starter_slots if starter_slots is not None
+        starter_slots=starter_slots
+        if starter_slots is not None
         else max((len(t.starters) for t in teams), default=0),
         moves_since=moves_since,
     )

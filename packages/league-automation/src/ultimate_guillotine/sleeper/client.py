@@ -169,8 +169,7 @@ class SleeperClient:
         dropped = len(payload) - len(rows)
         if dropped > 1 and dropped * 100 > len(payload) * MAX_DROPPED_PCT:
             raise ValueError(
-                f"sleeper projections payload dropped {dropped} malformed rows "
-                f"of {len(payload)}"
+                f"sleeper projections payload dropped {dropped} malformed rows of {len(payload)}"
             )
         return rows
 

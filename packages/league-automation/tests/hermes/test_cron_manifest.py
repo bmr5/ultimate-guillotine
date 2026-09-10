@@ -58,8 +58,15 @@ def test_only_the_projections_baseline_delivers_to_the_ops_channel() -> None:
 
 def test_the_scheduled_agents_are_the_ones_the_cli_records() -> None:
     assert {job["agent"] for job in JOBS} == {
-        "health", "gap-fill", "sleeper-sync", "run-audit", "players-sync",
-        "nfl-state", "projections-sync", "scores-sync", "transactions-sync",
+        "health",
+        "gap-fill",
+        "sleeper-sync",
+        "run-audit",
+        "players-sync",
+        "nfl-state",
+        "projections-sync",
+        "scores-sync",
+        "transactions-sync",
         "eod-summary",
     }
 
@@ -100,9 +107,9 @@ def test_every_scores_job_stays_off_the_ops_channel() -> None:
     post the same line sixty times an hour. The baseline is local too — at */15 it is still
     four an hour — and `run_scheduled_with_notes` posts the one note that matters, on the
     edge, while `ug ops health` is the standing answer in between."""
-    assert {
-        job["deliver"] for job in JOBS if job["script"] == "guillotine_sleeper_scores.sh"
-    } == {"local"}
+    assert {job["deliver"] for job in JOBS if job["script"] == "guillotine_sleeper_scores.sh"} == {
+        "local"
+    }
 
 
 def test_every_script_template_is_used_by_a_job() -> None:
@@ -129,7 +136,9 @@ def test_the_transactions_job_is_pinned_and_the_draft_has_none() -> None:
     assert not any(j["agent"] == "draft-sync" for j in JOBS)
     transactions = next(j for j in JOBS if j["name"] == "guillotine-sleeper-transactions")
     assert (transactions["agent"], transactions["schedule"], transactions["deliver"]) == (
-        "transactions-sync", "every 10m", "discord:#guillotine-ops",
+        "transactions-sync",
+        "every 10m",
+        "discord:#guillotine-ops",
     )
     assert int(transactions["max_gap_minutes"]) >= 30
 

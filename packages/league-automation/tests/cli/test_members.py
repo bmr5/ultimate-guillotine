@@ -18,7 +18,12 @@ from ultimate_guillotine.trades.models import MemberRef
 
 
 def test_members_help_lists_commands() -> None:
-    result = subprocess.run([sys.executable, "-m", "ultimate_guillotine.cli.main", "members", "--help"], capture_output=True, text=True, check=False)
+    result = subprocess.run(
+        [sys.executable, "-m", "ultimate_guillotine.cli.main", "members", "--help"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
     assert result.returncode == 0
     for name in ("list", "aliases"):
         assert name in result.stdout
@@ -344,8 +349,7 @@ def _former_deps(conn) -> SimpleNamespace:
 def _former_row(conn, display_name: str):
     with conn.cursor() as cur:
         cur.execute(
-            "select id, nickname, sleeper_display_name from public.members"
-            " where display_name = %s",
+            "select id, nickname, sleeper_display_name from public.members where display_name = %s",
             (display_name,),
         )
         return cur.fetchone()
@@ -419,9 +423,7 @@ def test_former_add_is_idempotent_and_updates_the_aliases(
 
     assert "former member: 1 updated, 2 aliases" in capsys.readouterr().out
     with conn.cursor() as cur:
-        cur.execute(
-            "select count(*) from public.members where display_name like 'former:%'"
-        )
+        cur.execute("select count(*) from public.members where display_name like 'former:%'")
         assert cur.fetchone()[0] == 1
     row = _former_row(conn, FORMER_KEY)
     assert row is not None
@@ -453,9 +455,7 @@ def test_former_add_leaves_no_member_behind_when_an_alias_is_taken(
     MemberAliasRepository(conn).replace_aliases("Member01", ["Sentinel Nick"])
 
     with pytest.raises(ValueError, match="another member"):
-        members_cli.cmd_former_add(
-            argparse.Namespace(name=FORMER_NAME, alias=["Sentinel Nick"])
-        )
+        members_cli.cmd_former_add(argparse.Namespace(name=FORMER_NAME, alias=["Sentinel Nick"]))
 
     assert _former_row(conn, FORMER_KEY) is None
 

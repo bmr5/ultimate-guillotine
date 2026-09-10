@@ -69,16 +69,18 @@ class InboundProcessor:
         if not triggers:
             return "no_trigger"
         names = ",".join(t.name for t in triggers)
-        self._sources.upsert(SourceMessage(
-            source_guid=msg.guid,
-            chat_guid_hash=chat_guid_hash(msg.chat_guid),
-            sender_hash=_sender_hash(msg.sender_address),
-            direction="outbound" if msg.is_from_me else "inbound",
-            sent_at=msg.sent_at,
-            content_fingerprint=_fingerprint(msg.text),
-            excerpt=msg.text[:2000],
-            trigger_name=names,
-        ))
+        self._sources.upsert(
+            SourceMessage(
+                source_guid=msg.guid,
+                chat_guid_hash=chat_guid_hash(msg.chat_guid),
+                sender_hash=_sender_hash(msg.sender_address),
+                direction="outbound" if msg.is_from_me else "inbound",
+                sent_at=msg.sent_at,
+                content_fingerprint=_fingerprint(msg.text),
+                excerpt=msg.text[:2000],
+                trigger_name=names,
+            )
+        )
         for trigger in triggers:
             try:
                 trigger.handle(msg)

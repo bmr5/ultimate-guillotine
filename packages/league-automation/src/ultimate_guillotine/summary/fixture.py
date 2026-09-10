@@ -30,9 +30,38 @@ FIXTURE_WEEK = 6
 FIXTURE_NOW = datetime(2026, 10, 12, 4, 50, tzinfo=UTC)
 
 NFL_TEAMS = (
-    "ARI", "ATL", "BAL", "BUF", "CAR", "CHI", "CIN", "CLE", "DAL", "DEN", "DET", "GB", "HOU",
-    "IND", "JAX", "KC", "LAC", "LAR", "LV", "MIA", "MIN", "NE", "NO", "NYG", "NYJ", "PHI",
-    "PIT", "SEA", "SF", "TB", "TEN", "WAS",
+    "ARI",
+    "ATL",
+    "BAL",
+    "BUF",
+    "CAR",
+    "CHI",
+    "CIN",
+    "CLE",
+    "DAL",
+    "DEN",
+    "DET",
+    "GB",
+    "HOU",
+    "IND",
+    "JAX",
+    "KC",
+    "LAC",
+    "LAR",
+    "LV",
+    "MIA",
+    "MIN",
+    "NE",
+    "NO",
+    "NYG",
+    "NYJ",
+    "PHI",
+    "PIT",
+    "SEA",
+    "SF",
+    "TB",
+    "TEN",
+    "WAS",
 )
 #: Sixteen games, consecutive pairs of :data:`NFL_TEAMS`; the last three are Monday's.
 GAMES = 16
@@ -120,8 +149,9 @@ def _players(league: LeagueSnapshot) -> dict[str, PlayerInfo]:
     return directory
 
 
-def _scores(league: LeagueSnapshot, games: dict[str, Game],
-            players: dict[str, PlayerInfo]) -> list[ScoreRow]:
+def _scores(
+    league: LeagueSnapshot, games: dict[str, Game], players: dict[str, PlayerInfo]
+) -> list[ScoreRow]:
     rows: list[ScoreRow] = []
     for team in league.teams:
         points: dict[str, float] = {}
@@ -134,9 +164,7 @@ def _scores(league: LeagueSnapshot, games: dict[str, Game],
                 continue
             if info.injury_status == "Out":
                 continue
-            scored = (projected * _factor(team.member_id, holding.slot_index or 0)).quantize(
-                _CENTS
-            )
+            scored = (projected * _factor(team.member_id, holding.slot_index or 0)).quantize(_CENTS)
             points[holding.sleeper_player_id] = float(scored)
             total += scored
         rows.append(
@@ -173,23 +201,26 @@ def _moves(league: LeagueSnapshot) -> list[MoveRow]:
     trade_at = FIXTURE_NOW - timedelta(hours=5)
     three, eight, eleven = by_number[3], by_number[8], by_number[11]
     return [
-        MoveRow(1, "waiver", waiver_at, three.team_id, three.bench()[1].sleeper_player_id,
-                "add", 12),
+        MoveRow(
+            1, "waiver", waiver_at, three.team_id, three.bench()[1].sleeper_player_id, "add", 12
+        ),
         MoveRow(1, "waiver", waiver_at, three.team_id, "p-cut", "drop", 12),
-        MoveRow(2, "trade", trade_at, eight.team_id, eleven.bench()[0].sleeper_player_id,
-                "add", None),
-        MoveRow(2, "trade", trade_at, eleven.team_id, eleven.bench()[0].sleeper_player_id,
-                "drop", None),
-        MoveRow(2, "trade", trade_at, eleven.team_id, eight.bench()[2].sleeper_player_id,
-                "add", None),
-        MoveRow(2, "trade", trade_at, eight.team_id, eight.bench()[2].sleeper_player_id,
-                "drop", None),
+        MoveRow(
+            2, "trade", trade_at, eight.team_id, eleven.bench()[0].sleeper_player_id, "add", None
+        ),
+        MoveRow(
+            2, "trade", trade_at, eleven.team_id, eleven.bench()[0].sleeper_player_id, "drop", None
+        ),
+        MoveRow(
+            2, "trade", trade_at, eleven.team_id, eight.bench()[2].sleeper_player_id, "add", None
+        ),
+        MoveRow(
+            2, "trade", trade_at, eight.team_id, eight.bench()[2].sleeper_player_id, "drop", None
+        ),
     ]
 
 
-def fixture_eod(
-    *, day_state: DayState = "midweek", schedule_available: bool = True
-) -> EodSnapshot:
+def fixture_eod(*, day_state: DayState = "midweek", schedule_available: bool = True) -> EodSnapshot:
     """The league tonight, assembled through the same function production uses."""
     league = _tweaked(fixture_snapshot(week=FIXTURE_WEEK))
     games = {team: game for game in _games(day_state) for team in (game.home, game.away)}

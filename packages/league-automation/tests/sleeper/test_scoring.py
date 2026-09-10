@@ -30,16 +30,40 @@ SETTINGS = {
 # whatever the league prices is what the recorded projections are scored against.
 FIXTURE = Path(__file__).parent.parent / "fixtures" / "sleeper" / "projections_2026_w1.json"
 LEAGUE_SETTINGS = {
-    "pass_yd": 0.04, "pass_td": 4.0, "pass_int": -1.0, "pass_2pt": 2.0,
-    "rush_yd": 0.1, "rush_td": 6.0, "rush_2pt": 2.0,
-    "rec": 1.0, "rec_yd": 0.1, "rec_td": 6.0, "rec_2pt": 2.0,
-    "bonus_rec_te": 0.0, "bonus_rec_wr": 0.0, "bonus_rec_rb": 0.0,
-    "fum_lost": -2.0, "fum_rec": 2.0, "def_td": 6.0, "int": 2.0, "sack": 1.0,
-    "safe": 2.0, "ff": 1.0, "blk_kick": 2.0,
-    "fgm_0_19": 3.0, "fgm_20_29": 3.0, "fgm_30_39": 3.0, "fgm_40_49": 4.0,
-    "fgm_50p": 5.0, "xpm": 1.0,
-    "pts_allow_0": 10.0, "pts_allow_1_6": 7.0, "pts_allow_7_13": 4.0,
-    "pts_allow_14_20": 1.0, "pts_allow_21_27": 0.0, "pts_allow_28_34": -1.0,
+    "pass_yd": 0.04,
+    "pass_td": 4.0,
+    "pass_int": -1.0,
+    "pass_2pt": 2.0,
+    "rush_yd": 0.1,
+    "rush_td": 6.0,
+    "rush_2pt": 2.0,
+    "rec": 1.0,
+    "rec_yd": 0.1,
+    "rec_td": 6.0,
+    "rec_2pt": 2.0,
+    "bonus_rec_te": 0.0,
+    "bonus_rec_wr": 0.0,
+    "bonus_rec_rb": 0.0,
+    "fum_lost": -2.0,
+    "fum_rec": 2.0,
+    "def_td": 6.0,
+    "int": 2.0,
+    "sack": 1.0,
+    "safe": 2.0,
+    "ff": 1.0,
+    "blk_kick": 2.0,
+    "fgm_0_19": 3.0,
+    "fgm_20_29": 3.0,
+    "fgm_30_39": 3.0,
+    "fgm_40_49": 4.0,
+    "fgm_50p": 5.0,
+    "xpm": 1.0,
+    "pts_allow_0": 10.0,
+    "pts_allow_1_6": 7.0,
+    "pts_allow_7_13": 4.0,
+    "pts_allow_14_20": 1.0,
+    "pts_allow_21_27": 0.0,
+    "pts_allow_28_34": -1.0,
     "pts_allow_35p": -4.0,
 }
 
@@ -47,8 +71,14 @@ LEAGUE_SETTINGS = {
 def test_dot_product_matches_a_hand_computed_line() -> None:
     # 243.94 * 0.04 = 9.7576; 1.71 * 4 = 6.84; 0.9 * -1 = -0.9; 0.19 * -2 = -0.38
     # total 15.3176 -> 15.32
-    line = {"pass_yd": 243.94, "pass_td": 1.71, "pass_int": 0.9, "fum_lost": 0.19,
-            "gp": 1.0, "pts_ppr": 17.11}
+    line = {
+        "pass_yd": 243.94,
+        "pass_td": 1.71,
+        "pass_int": 0.9,
+        "fum_lost": 0.19,
+        "gp": 1.0,
+        "pts_ppr": 17.11,
+    }
     assert score_stat_line(line, SETTINGS) == Decimal("15.32")
 
 

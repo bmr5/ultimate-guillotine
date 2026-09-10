@@ -103,9 +103,7 @@ class View:
         self.outlook = self.snap.day_state == "outlook"
         self.live = self.snap.live_teams()
         self.settled = not any(t.pending() for t in self.live)
-        pair = tuple(
-            t.team_id for t in self.live if t.team_id in self.snap.phase.gulag_team_ids
-        )
+        pair = tuple(t.team_id for t in self.live if t.team_id in self.snap.phase.gulag_team_ids)
         self.gulag = pair if len(pair) == 2 and self.snap.phase.kind in ("gulag", "double") else ()
         self.pool = [t for t in self.live if t.team_id not in self.gulag]
         kind = self.snap.phase.kind
@@ -196,9 +194,7 @@ class View:
         top = ranked[: self.block_count]
         if self.result is None:
             return top, []
-        sweating = [
-            t for t in ranked[self.block_count:] if self.probability(t) >= SWEATING_FLOOR
-        ]
+        sweating = [t for t in ranked[self.block_count :] if self.probability(t) >= SWEATING_FLOOR]
         return top, sweating
 
     def ranked_board(self) -> list[TeamLine]:
@@ -237,7 +233,10 @@ class View:
             for starter in team.out_starters():
                 if starter.injury_status in UNAVAILABLE_STATUSES:
                     notes.append(
-                        (team.label, f"{starter.name} ({starter.injury_status}) still in the lineup")
+                        (
+                            team.label,
+                            f"{starter.name} ({starter.injury_status}) still in the lineup",
+                        )
                     )
                 else:
                     notes.append(
@@ -283,7 +282,9 @@ class View:
         there is no projected finish, so the actual and the players left stand.
         """
         if self.result is None:
-            return self.left(team) if self.outlook else f"actual {team.points:.1f} · {self.left(team)}"
+            return (
+                self.left(team) if self.outlook else f"actual {team.points:.1f} · {self.left(team)}"
+            )
         if self.outlook:
             return f"proj {self.projected(team)}"
         return f"proj {self.projected(team)} · actual {team.points:.1f}"
@@ -368,7 +369,9 @@ def _sweating_section(view: View) -> str | None:
 def _board_section(view: View) -> str:
     outlook = view.outlook
     if view.result is not None:
-        header = "📊 THE BOARD · proj · risk" if outlook else "📊 THE BOARD · score · proj · left · risk"
+        header = (
+            "📊 THE BOARD · proj · risk" if outlook else "📊 THE BOARD · score · proj · left · risk"
+        )
     else:
         header = "📊 THE BOARD · proj" if outlook else "📊 THE BOARD · score · left"
     lines = [header]
@@ -406,7 +409,9 @@ def _moves_section(view: View) -> str | None:
     lines = [f"🔁 {moves_heading(view.snap)}"]
     for move in moves[:MOVES_LINES]:
         legs = [f"+{name}" for name in move.adds] + [f"−{name}" for name in move.drops]
-        lines.append(f"{move.team_label}: {' '.join(legs)}{move_suffix(move.kind, move.waiver_bid)}")
+        lines.append(
+            f"{move.team_label}: {' '.join(legs)}{move_suffix(move.kind, move.waiver_bid)}"
+        )
     if len(moves) > MOVES_LINES:
         lines.append(f"+{len(moves) - MOVES_LINES} more")
     return "\n".join(lines)

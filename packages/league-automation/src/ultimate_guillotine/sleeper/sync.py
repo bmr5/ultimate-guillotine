@@ -169,6 +169,4 @@ def sync_season(
         if teams_synced != expected_rosters:
             raise ValueError(f"expected {expected_rosters} teams, synced {teams_synced}")
 
-    return SyncReport(
-        len(member_ids), teams_synced, holdings_written, states_written, frozen_count
-    )
+    return SyncReport(len(member_ids), teams_synced, holdings_written, states_written, frozen_count)

@@ -158,9 +158,7 @@ class RunRepository:
                 (status, output_hash, error, input_version, run_id),
             )
 
-    def stale_running(
-        self, older_than: timedelta, now: datetime
-    ) -> list[tuple[str, str]]:
+    def stale_running(self, older_than: timedelta, now: datetime) -> list[tuple[str, str]]:
         """Return ``(agent, idempotency_key)`` for runs still ``running`` since
         longer than ``older_than`` relative to ``now``.
 
@@ -388,6 +386,18 @@ class OutboundRepository:
                 """,
                 (state, bluebubbles_guid, error, state, outbound_id),
             )
+
+    def content_for_guid(self, bluebubbles_guid: str) -> str | None:
+        """What the bot said in one of its own messages, by the GUID iMessage
+        gave it -- how a reply to a confirmation is read back to its trade."""
+        with self._conn.cursor() as cur:
+            cur.execute(
+                "select content from private.outbound_messages where bluebubbles_guid = %s"
+                " order by id desc limit 1",
+                (bluebubbles_guid,),
+            )
+            row = cur.fetchone()
+            return row[0] if row else None
 
     def stuck_sending(self, older_than: timedelta, now: datetime) -> list[int]:
         """Return the ids of outbound messages still in ``sending`` whose reservation
@@ -639,8 +649,7 @@ class MemberAliasRepository:
                 """
             )
             return [
-                MemberRef(row[0], row[1], tuple(row[2]), row[3], row[4])
-                for row in cur.fetchall()
+                MemberRef(row[0], row[1], tuple(row[2]), row[3], row[4]) for row in cur.fetchall()
             ]
 
     def replace_aliases(self, member_display_name: str, aliases: list[str]) -> int:
@@ -695,9 +704,7 @@ class MemberAliasRepository:
                         (member_id, alias, alias_normalized),
                     )
                 except psycopg.errors.UniqueViolation as exc:
-                    raise ValueError(
-                        f"alias '{alias}' already belongs to another member"
-                    ) from exc
+                    raise ValueError(f"alias '{alias}' already belongs to another member") from exc
 
             # The first alias in the file's order is the public label. `wanted` is
             # keyed by normalized form but preserves first-appearance order, so this
@@ -736,9 +743,7 @@ class MemberAliasRepository:
         name = " ".join(name.split())
         display_name = former_display_name(name)
         with self._conn.transaction(), self._conn.cursor() as cur:
-            cur.execute(
-                "select id from public.members where display_name = %s", (display_name,)
-            )
+            cur.execute("select id from public.members where display_name = %s", (display_name,))
             row = cur.fetchone()
             created = row is None
             if row is None:
@@ -833,9 +838,7 @@ class MemberContactRepository:
             )
             if cur.fetchone() is not None:
                 raise ValueError("handle already belongs to another member")
-            cur.execute(
-                "delete from private.member_contacts where member_id = %s", (member_id,)
-            )
+            cur.execute("delete from private.member_contacts where member_id = %s", (member_id,))
             cur.executemany(
                 "insert into private.member_contacts (member_id, handle_hash, alias)"
                 " values (%s, %s, null)",

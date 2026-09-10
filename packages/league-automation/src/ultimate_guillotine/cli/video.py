@@ -14,10 +14,10 @@ from pathlib import Path
 
 from ultimate_guillotine.ai.hermes import HermesStructuredClient
 from ultimate_guillotine.ai.structured import StructuredOutputClient
-from ultimate_guillotine.cli.deps import build_deps
+from ultimate_guillotine.cli.deps import build_delivery, build_deps
 from ultimate_guillotine.config import load_settings
 from ultimate_guillotine.core.hermes_cli import find_hermes_binary
-from ultimate_guillotine.data.repositories import MemberAliasRepository
+from ultimate_guillotine.data.repositories import MemberAliasRepository, RunRepository
 from ultimate_guillotine.trades.format import party_labels
 from ultimate_guillotine.trades.models import TradeProposal
 from ultimate_guillotine.trades.repository import TradeRepository
@@ -30,6 +30,7 @@ from ultimate_guillotine.video.assets import (
 )
 from ultimate_guillotine.video.card import CANVAS, Layout, render_card
 from ultimate_guillotine.video.copy import TradeCopy, default_caption, trade_copy
+from ultimate_guillotine.video.jobs import VideoJobRepository
 from ultimate_guillotine.video.pipeline import RenderError, RenderRequest, prepare, render
 from ultimate_guillotine.video.prompt import footage_prompt, voiced_prompt
 from ultimate_guillotine.video.script import (
@@ -39,6 +40,7 @@ from ultimate_guillotine.video.script import (
     script_from_text,
     template_script,
 )
+from ultimate_guillotine.video.worker import Worker
 
 TOOLS = ("ffmpeg", "ffprobe", "higgsfield")
 #: The ESPN source clip's frame; a card for manual copy is laid out for it.
@@ -107,6 +109,25 @@ def register(subparsers) -> None:
         help="print the ffmpeg command; encode and generate nothing",
     )
     rend.set_defaults(handler=cmd_render, parser=rend)
+
+    jobs = video_sub.add_parser("jobs", help="the queue of requested trade videos")
+    jobs_sub = jobs.add_subparsers(dest="jobs_command", required=True)
+    listing = jobs_sub.add_parser("list", help="the most recent jobs")
+    listing.add_argument("--limit", type=int, default=10)
+    listing.set_defaults(handler=cmd_jobs_list)
+    run_one = jobs_sub.add_parser("run", help="render the next queued video and deliver it")
+    run_one.add_argument("--seconds", type=int, default=12, help="length of the voiced clip")
+    run_one.add_argument(
+        "--verbose", action="store_true", help="say so when there is nothing to do"
+    )
+    run_one.set_defaults(handler=cmd_jobs_run)
+    watch = jobs_sub.add_parser("watch", help="keep rendering queued videos until stopped")
+    watch.add_argument("--seconds", type=int, default=12)
+    watch.add_argument("--interval", type=int, default=30, help="seconds between looks")
+    watch.set_defaults(handler=cmd_jobs_watch)
+    add = jobs_sub.add_parser("add", help="queue a video for a trade code by hand")
+    add.add_argument("trade_code")
+    add.set_defaults(handler=cmd_jobs_add)
 
 
 def add_script_args(parser: argparse.ArgumentParser) -> None:
@@ -255,4 +276,83 @@ def cmd_render(args: argparse.Namespace) -> int:
         print(f"ug video render: {exc}", file=sys.stderr)
         return 1
     print(job.composite.output)
+    return 0
+
+
+def build_worker(args: argparse.Namespace) -> Worker:
+    deps = build_deps()
+    return Worker(
+        conn=deps.conn,
+        jobs=VideoJobRepository(deps.conn),
+        trades=TradeRepository(deps.conn),
+        members=MemberAliasRepository(deps.conn),
+        runs=RunRepository(deps.conn),
+        delivery=build_delivery(deps),
+        notify=deps.notifier.ops,
+        assets=load_assets(),
+        script_ai=build_script_ai,
+        ffmpeg=find_tool("ffmpeg"),
+        ffprobe=find_tool("ffprobe"),
+        seconds=args.seconds,
+    )
+
+
+def cmd_jobs_list(args: argparse.Namespace) -> int:
+    deps = build_deps()
+    jobs = VideoJobRepository(deps.conn).list_recent(args.limit)
+    if not jobs:
+        print("no video jobs")
+        return 0
+    print("id  status  trade  attempts  created  finished  output/error")
+    for job in jobs:
+        tail = job.output_path or job.error or ""
+        finished = job.finished_at.strftime("%m-%d %H:%M") if job.finished_at else "-"
+        print(
+            f"{job.id}  {job.status}  {job.trade_code}  {job.attempts}  "
+            f"{job.created_at.strftime('%m-%d %H:%M')}  {finished}  {tail}"
+        )
+    return 0
+
+
+def cmd_jobs_run(args: argparse.Namespace) -> int:
+    """One pass, quiet when idle: under cron, empty output means nothing to report."""
+    try:
+        outcome = build_worker(args).run_once()
+    except ToolMissing as exc:
+        print(f"ug video jobs run: {exc}", file=sys.stderr)
+        return 1
+    if outcome.status != "idle" or args.verbose:
+        print(outcome)
+    return 1 if outcome.status == "failed" else 0
+
+
+def cmd_jobs_watch(args: argparse.Namespace) -> int:
+    import time
+
+    try:
+        worker = build_worker(args)
+    except ToolMissing as exc:
+        print(f"ug video jobs watch: {exc}", file=sys.stderr)
+        return 1
+    try:
+        while True:
+            outcome = worker.run_once()
+            if outcome.status != "idle":
+                print(outcome, flush=True)
+            time.sleep(args.interval)
+    except KeyboardInterrupt:
+        return 0
+
+
+def cmd_jobs_add(args: argparse.Namespace) -> int:
+    deps = build_deps()
+    trade = TradeRepository(deps.conn).find_by_code(args.trade_code)
+    if trade is None:
+        print(f"no trade {args.trade_code} on file")
+        return 1
+    job_id, created = VideoJobRepository(deps.conn).enqueue(
+        trade["trade_id"], trade["trade_code"], None
+    )
+    deps.conn.commit()
+    print(f"job {job_id} {'queued' if created else 'already open'} for {trade['trade_code']}")
     return 0

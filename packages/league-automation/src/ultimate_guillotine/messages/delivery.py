@@ -77,9 +77,7 @@ class DeliveryService:
         if target.chat_guid != expected_guid:
             raise TargetMismatch("stored target does not match configured chat")
         if mode is DeliveryMode.PRODUCTION:
-            observed = participant_fingerprint(
-                self._client.chat_participants(target.chat_guid)
-            )
+            observed = participant_fingerprint(self._client.chat_participants(target.chat_guid))
             if (
                 observed != self._settings.production_participant_fingerprint
                 or observed != target.participant_fingerprint
@@ -87,9 +85,7 @@ class DeliveryService:
                 raise TargetMismatch("participant fingerprint changed")
         return target
 
-    def deliver(
-        self, run_id: int | None, agent: str, content: str
-    ) -> DeliveryResult:
+    def deliver(self, run_id: int | None, agent: str, content: str) -> DeliveryResult:
         """Deliver signed content to the configured chat, effectively once.
 
         When a `commit` hook was supplied, the reservation is durable before the
@@ -105,17 +101,13 @@ class DeliveryService:
             since = pending.reserved_at - timedelta(minutes=1)
             for msg in self._client.messages_after(target.chat_guid, since):
                 if msg.is_from_me and _normalized(msg.text) == _normalized(signed):
-                    self._outbound.set_state(
-                        pending.id, "reconciled", bluebubbles_guid=msg.guid
-                    )
+                    self._outbound.set_state(pending.id, "reconciled", bluebubbles_guid=msg.guid)
                     self._notifier.feed(
                         f"[{agent}] [{self._settings.delivery_mode}] "
                         f"outbound #{pending.id} (reconciled after crash)\n{signed}"
                     )
                     return DeliveryResult("reconciled", pending.id, msg.guid)
-            self._outbound.set_state(
-                pending.id, "failed", error="unreconciled send; retrying"
-            )
+            self._outbound.set_state(pending.id, "failed", error="unreconciled send; retrying")
         outbound_id = self._outbound.reserve(run_id, target.id, signed, digest)
         self._persist()
         self._outbound.set_state(outbound_id, "sending")
@@ -125,8 +117,7 @@ class DeliveryService:
             raise RuntimeError("simulated crash after send")
         self._outbound.set_state(outbound_id, "sent", bluebubbles_guid=guid)
         self._notifier.feed(
-            f"[{agent}] [{self._settings.delivery_mode}] "
-            f"outbound #{outbound_id}\n{signed}"
+            f"[{agent}] [{self._settings.delivery_mode}] outbound #{outbound_id}\n{signed}"
         )
         return DeliveryResult("sent", outbound_id, guid)
 

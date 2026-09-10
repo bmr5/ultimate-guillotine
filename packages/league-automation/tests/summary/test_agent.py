@@ -27,8 +27,14 @@ from ultimate_guillotine.summary.survival import MODEL_VERSION
 
 
 def _league():
-    return snapshot((done_team(1, "100"), done_team(2, "90"), done_team(3, "80"),
-                     team(4, points="60", starters=(starter("remaining", projected="10"),))))
+    return snapshot(
+        (
+            done_team(1, "100"),
+            done_team(2, "90"),
+            done_team(3, "80"),
+            team(4, points="60", starters=(starter("remaining", projected="10"),)),
+        )
+    )
 
 
 @dataclass
@@ -117,8 +123,7 @@ class FakeConn:
         self.commits += 1
 
 
-def _agent(*, mode=DeliveryMode.TEST, ai=None, repo=None, delivery=None, notifier=None,
-           conn=None):
+def _agent(*, mode=DeliveryMode.TEST, ai=None, repo=None, delivery=None, notifier=None, conn=None):
     return EodSummaryAgent(
         SimpleNamespace(delivery_mode=mode),
         conn if conn is not None else FakeConn(),
@@ -140,8 +145,9 @@ def test_the_packet_carries_odds_when_the_schedule_and_the_coverage_allow() -> N
 
 
 def test_no_schedule_means_no_odds_and_says_so() -> None:
-    packet = build_packet(snapshot(_league().teams, schedule_available=False,
-                                   day_state="unknown"), simulations=50)
+    packet = build_packet(
+        snapshot(_league().teams, schedule_available=False, day_state="unknown"), simulations=50
+    )
     assert packet.result is None
     assert packet.no_odds_reason == "game status unavailable"
 
@@ -205,9 +211,7 @@ def test_a_model_outage_is_no_colour_and_no_failure(failure: Exception) -> None:
         _league(), NOW, simulations=50
     )
     assert "🔥" not in composed.text
-    assert notifier.ops_notes == [
-        f"EOD summary colour unavailable: {failure.__class__.__name__}"
-    ]
+    assert notifier.ops_notes == [f"EOD summary colour unavailable: {failure.__class__.__name__}"]
 
 
 def test_use_ai_false_never_calls_the_model() -> None:
@@ -256,16 +260,18 @@ def test_a_night_already_posted_is_left_alone() -> None:
 
 def test_force_posts_again_the_same_night() -> None:
     repo, delivery = FakeRepo(already_sent=True), FakeDelivery()
-    outcome = _agent(repo=repo, delivery=delivery).run(_league(), NOW, run_id=7, force=True,
-                                                       simulations=50)
+    outcome = _agent(repo=repo, delivery=delivery).run(
+        _league(), NOW, run_id=7, force=True, simulations=50
+    )
     assert outcome.status == "sent"
     assert len(delivery.calls) == 1
 
 
 def test_a_disabled_run_keeps_the_draft_and_the_preview_and_sends_nothing() -> None:
     repo, delivery, notifier = FakeRepo(), FakeDelivery(), FakeNotifier()
-    outcome = _agent(mode=DeliveryMode.DISABLED, repo=repo, delivery=delivery,
-                     notifier=notifier).run(_league(), NOW, run_id=7, simulations=50)
+    outcome = _agent(
+        mode=DeliveryMode.DISABLED, repo=repo, delivery=delivery, notifier=notifier
+    ).run(_league(), NOW, run_id=7, simulations=50)
     assert outcome.status == "draft"
     assert delivery.calls == [] and delivery.attachments == []
     assert repo.sent == []
@@ -292,9 +298,7 @@ def test_a_delivery_that_cannot_find_its_chat_alerts_and_fails_the_run() -> None
         )
     assert repo.sent == []
     assert delivery.attachments == []
-    assert notifier.alerts_notes == [
-        "EOD summary could not deliver: stored target does not match"
-    ]
+    assert notifier.alerts_notes == ["EOD summary could not deliver: stored target does not match"]
 
 
 def test_a_failed_attachment_after_the_text_is_said_in_ops_and_the_run_still_succeeds() -> None:
@@ -316,8 +320,10 @@ def test_a_failed_attachment_after_the_text_is_said_in_ops_and_the_run_still_suc
 def test_a_factual_run_records_no_survival_snapshot() -> None:
     repo = FakeRepo()
     outcome = _agent(repo=repo).run(
-        snapshot(_league().teams, schedule_available=False, day_state="unknown"), NOW,
-        run_id=7, simulations=50,
+        snapshot(_league().teams, schedule_available=False, day_state="unknown"),
+        NOW,
+        run_id=7,
+        simulations=50,
     )
     assert outcome.status == "sent"
     assert outcome.odds is False

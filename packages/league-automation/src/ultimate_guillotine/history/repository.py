@@ -112,10 +112,22 @@ class HistoryRepository:
                     returning (xmax = 0)
                     """,
                     (
-                        row.catalog_id, row.season, row.season_id, row.week, row.occurred_on,
-                        row.trade_type, row.structure, row.party_member_ids, row.party_count,
-                        Jsonb(row.assets), row.faab_total, row.confidence, row.source,
-                        row.announcement, row.unresolved_parties, row.loaded_at,
+                        row.catalog_id,
+                        row.season,
+                        row.season_id,
+                        row.week,
+                        row.occurred_on,
+                        row.trade_type,
+                        row.structure,
+                        row.party_member_ids,
+                        row.party_count,
+                        Jsonb(row.assets),
+                        row.faab_total,
+                        row.confidence,
+                        row.source,
+                        row.announcement,
+                        row.unresolved_parties,
+                        row.loaded_at,
                     ),
                 )
                 inserted = cur.fetchone()[0]
@@ -149,10 +161,17 @@ class HistoryRepository:
                     returning (xmax = 0)
                     """,
                     (
-                        row.season, row.season_id, row.champion_member_id,
-                        row.co_champion_member_id, row.runner_up_member_id, row.third_member_id,
-                        row.team_count, Jsonb(row.eliminations), row.notes,
-                        row.unresolved_names, row.loaded_at,
+                        row.season,
+                        row.season_id,
+                        row.champion_member_id,
+                        row.co_champion_member_id,
+                        row.runner_up_member_id,
+                        row.third_member_id,
+                        row.team_count,
+                        Jsonb(row.eliminations),
+                        row.notes,
+                        row.unresolved_names,
+                        row.loaded_at,
                     ),
                 )
                 inserted = cur.fetchone()[0]

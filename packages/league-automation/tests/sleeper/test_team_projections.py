@@ -28,15 +28,14 @@ def test_run_coverage_ignores_eliminated_teams() -> None:
     ]
     assert run_coverage(tallies) == Decimal("94.44")
     healthy = [t for t in tallies if not t.is_eliminated]
-    assert run_coverage(healthy + [StarterTally(4, 9, 9, Decimal(90), False)]) == (
-        Decimal("96.30")
-    )
+    assert run_coverage(healthy + [StarterTally(4, 9, 9, Decimal(90), False)]) == (Decimal("96.30"))
 
 
 def test_empty_slots_contribute_zero_and_leave_coverage_alone() -> None:
     # 7 of 9 slots filled, all 7 projected: coverage is 100, empty_slots is 2.
     rows = build_team_week(
-        [StarterTally(1, 7, 7, Decimal("98.40"), False)], starter_slots=9,
+        [StarterTally(1, 7, 7, Decimal("98.40"), False)],
+        starter_slots=9,
         run_pct=Decimal("100.00"),
     )
     row = rows[0]
@@ -47,7 +46,8 @@ def test_empty_slots_contribute_zero_and_leave_coverage_alone() -> None:
 
 def test_a_missing_projection_lowers_coverage_and_flags_provisional() -> None:
     rows = build_team_week(
-        [StarterTally(1, 9, 8, Decimal("101.00"), False)], starter_slots=9,
+        [StarterTally(1, 9, 8, Decimal("101.00"), False)],
+        starter_slots=9,
         run_pct=Decimal("99.00"),
     )
     row = rows[0]
@@ -57,7 +57,8 @@ def test_a_missing_projection_lowers_coverage_and_flags_provisional() -> None:
 
 def test_a_failing_run_gate_makes_every_team_provisional() -> None:
     rows = build_team_week(
-        [StarterTally(1, 9, 9, Decimal("120.00"), False)], starter_slots=9,
+        [StarterTally(1, 9, 9, Decimal("120.00"), False)],
+        starter_slots=9,
         run_pct=Decimal("81.25"),
     )
     assert rows[0].coverage_pct == Decimal("100.00") and rows[0].is_provisional
@@ -98,13 +99,12 @@ def _seed(conn) -> tuple[int, int]:
     with conn.cursor() as cur:
         cur.execute(
             "update public.seasons set roster_positions = "
-            "'[\"QB\",\"RB\",\"RB\",\"WR\",\"WR\",\"TE\",\"FLEX\",\"K\",\"DEF\"]' "
+            '\'["QB","RB","RB","WR","WR","TE","FLEX","K","DEF"]\' '
             "where year = 2026 returning id"
         )
         season_id = cur.fetchone()[0]
         cur.execute(
-            "insert into public.members (display_name) values ('Coverage Member') "
-            "returning id"
+            "insert into public.members (display_name) values ('Coverage Member') returning id"
         )
         member_id = cur.fetchone()[0]
         cur.execute(
@@ -164,9 +164,7 @@ def test_an_eliminated_team_is_off_the_run_gate_but_still_gets_a_row(conn) -> No
 def _eliminated_team(conn, season_id: int) -> int:
     """A second team, out of the league, holding one starter nobody projected."""
     with conn.cursor() as cur:
-        cur.execute(
-            "insert into public.members (display_name) values ('Dead Member') returning id"
-        )
+        cur.execute("insert into public.members (display_name) values ('Dead Member') returning id")
         member_id = cur.fetchone()[0]
         cur.execute(
             "insert into public.teams (season_id, member_id, sleeper_user_id, "

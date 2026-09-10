@@ -102,17 +102,14 @@ def load_draft_picks(
             or not isinstance(player_id, str)
             or not player_id
         ):
-            raise ValueError(
-                f"draft {draft.draft_id}: pick {record.get('pick_no')} is malformed"
-            )
+            raise ValueError(f"draft {draft.draft_id}: pick {record.get('pick_no')} is malformed")
         amount = _amount(record)
         if amount is None:
             raise ValueError(f"draft {draft.draft_id}: pick {pick_no} has no auction amount")
         team_id = team_by_roster_id.get(roster_id)
         if team_id is None:
             raise ValueError(
-                f"draft {draft.draft_id}: roster {roster_id} has no team row; "
-                f"run ug sleeper sync"
+                f"draft {draft.draft_id}: roster {roster_id} has no team row; run ug sleeper sync"
             )
         metadata = record.get("metadata")
         position = metadata.get("position") if isinstance(metadata, dict) else None

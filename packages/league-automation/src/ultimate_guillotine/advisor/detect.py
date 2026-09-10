@@ -52,8 +52,21 @@ _APOSTROPHE = re.compile(r"[’‘´`]")
 #: with one and capitalizes it.
 _CONTRACTIONS = frozenset(
     {
-        "who", "what", "that", "there", "here", "it", "he", "she", "one",
-        "let", "everyone", "someone", "anyone", "nobody", "everybody",
+        "who",
+        "what",
+        "that",
+        "there",
+        "here",
+        "it",
+        "he",
+        "she",
+        "one",
+        "let",
+        "everyone",
+        "someone",
+        "anyone",
+        "nobody",
+        "everybody",
     }
 )
 
@@ -82,12 +95,33 @@ def _phrase_re(phrases: Sequence[str], separator: str = _SPACE) -> re.Pattern[st
 
 
 _ADVICE = (
-    "who should i trade", "should i trade", "who wants", "trade ideas",
-    "any trade ideas", "trade advice", "help me trade", "make me a trade",
-    "find me a trade", "what can i get for", "what would it take to get",
-    "who would give me", "who needs", "opportunities to move", "move a",
-    "move one", "shop", "shopping", "sell high", "buy low", "dump", "offload",
-    "upgrade my", "i have too many", "i need a", "trade advisor", "advisor",
+    "who should i trade",
+    "should i trade",
+    "who wants",
+    "trade ideas",
+    "any trade ideas",
+    "trade advice",
+    "help me trade",
+    "make me a trade",
+    "find me a trade",
+    "what can i get for",
+    "what would it take to get",
+    "who would give me",
+    "who needs",
+    "opportunities to move",
+    "move a",
+    "move one",
+    "shop",
+    "shopping",
+    "sell high",
+    "buy low",
+    "dump",
+    "offload",
+    "upgrade my",
+    "i have too many",
+    "i need a",
+    "trade advisor",
+    "advisor",
 )
 #: A factual question, plus the rules questions that read like one. Checked
 #: first: a lookup is never an advice request, so "is a rental even allowed"
@@ -96,20 +130,49 @@ _ADVICE = (
 #: those appear inside real advice asks ("am I allowed to shop my WR", "who
 #: should I trade with if that's allowed") and would swallow them.
 _LOOKUP = (
-    "what did", "who did", "when did", "how much did", "what was", "who has",
-    "who won", "who's got", "whos got", "what does the rule",
-    "what do the rules", "how many", "how much faab does", "show me the trade",
-    "look up", "is it allowed", "even allowed", "is that legal",
+    "what did",
+    "who did",
+    "when did",
+    "how much did",
+    "what was",
+    "who has",
+    "who won",
+    "who's got",
+    "whos got",
+    "what does the rule",
+    "what do the rules",
+    "how many",
+    "how much faab does",
+    "show me the trade",
+    "look up",
+    "is it allowed",
+    "even allowed",
+    "is that legal",
     "against the rules",
 )
 _MOVE = (
-    "move a", "move one", "opportunities to move", "shop", "shopping",
-    "sell high", "dump", "offload", "i have too many", "rent one out",
-    "who wants", "what can i get for",
+    "move a",
+    "move one",
+    "opportunities to move",
+    "shop",
+    "shopping",
+    "sell high",
+    "dump",
+    "offload",
+    "i have too many",
+    "rent one out",
+    "who wants",
+    "what can i get for",
 )
 _RENTAL = (
-    "rental", "rent a", "rent me", "rent one", "rent out", "borrow",
-    "one week", "for this week only",
+    "rental",
+    "rent a",
+    "rent me",
+    "rent one",
+    "rent out",
+    "borrow",
+    "one week",
+    "for this week only",
 )
 #: Words that make an answer depend on a projected number, which the Advisor
 #: cannot give when the coverage gate failed. Matched as substrings on purpose:
@@ -118,8 +181,18 @@ _NUMBERS = ("project", "points", "delta", "outscore", "better than my")
 
 #: Week counts the league writes out as words as often as digits.
 _NUMBER_WORDS = {
-    "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
-    "seven": 7, "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12,
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
+    "eleven": 11,
+    "twelve": 12,
 }
 _COUNT = rf"\d{{1,2}}|{'|'.join(_NUMBER_WORDS)}"
 
@@ -232,9 +305,7 @@ def parse_ask(text: str, member_names: Sequence[str]) -> Ask:
         token for name in member_names for token in normalize_name(name).split()
     )
     body = _normalized(text, member_tokens)
-    positions = tuple(
-        dict.fromkeys(match.group(1).upper() for match in _POSITION.finditer(body))
-    )
+    positions = tuple(dict.fromkeys(match.group(1).upper() for match in _POSITION.finditer(body)))
     rental = _RENTAL_RE.search(body) is not None
     direction: Literal["acquire", "move", "either"] = "either"
     if _MOVE_RE.search(body):
@@ -249,9 +320,7 @@ def parse_ask(text: str, member_names: Sequence[str]) -> Ask:
     else:
         horizon = DEFAULT_RENTAL_WEEKS if rental else None
     tokens = set(normalize_name(body).split(" "))
-    named = tuple(
-        name for name in member_names if normalize_name(name) in tokens
-    )
+    named = tuple(name for name in member_names if normalize_name(name) in tokens)
     return Ask(
         positions=positions,
         direction=direction,

@@ -9,4 +9,6 @@ def test_fingerprint_is_order_and_format_insensitive() -> None:
 
 
 def test_fingerprint_changes_with_membership() -> None:
-    assert participant_fingerprint(["+15555550100"]) != participant_fingerprint(["+15555550100", "+15555550101"])
+    assert participant_fingerprint(["+15555550100"]) != participant_fingerprint(
+        ["+15555550100", "+15555550101"]
+    )

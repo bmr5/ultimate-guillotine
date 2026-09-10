@@ -33,8 +33,12 @@ BARE_ENV = {
 
 def run(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        [*UG, *args], capture_output=True, text=True, check=False,
-        env=BARE_ENV if env is None else env, timeout=120,
+        [*UG, *args],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=BARE_ENV if env is None else env,
+        timeout=120,
     )
 
 
@@ -61,8 +65,17 @@ def test_summary_help_lists_eod() -> None:
 def test_eod_help_documents_the_flags() -> None:
     result = run("summary", "eod", "--help")
     assert result.returncode == 0
-    for flag in ("--dry-run", "--json", "--fixture", "--no-ai", "--seed", "--simulations",
-                 "--force", "--quiet", "--out"):
+    for flag in (
+        "--dry-run",
+        "--json",
+        "--fixture",
+        "--no-ai",
+        "--seed",
+        "--simulations",
+        "--force",
+        "--quiet",
+        "--out",
+    ):
         assert flag in result.stdout
 
 
@@ -71,8 +84,17 @@ def test_a_fixture_run_prints_the_chat_text_writes_the_artifact_and_touches_noth
 ) -> None:
     """What the chat gets: the short text, then the file. No model line up top --
     Ben: "Remove the Model line up top"."""
-    result = run("summary", "eod", "--fixture", "--no-ai", "--simulations", "300",
-                 "--out", str(tmp_path), env=no_hermes(tmp_path))
+    result = run(
+        "summary",
+        "eod",
+        "--fixture",
+        "--no-ai",
+        "--simulations",
+        "300",
+        "--out",
+        str(tmp_path),
+        env=no_hermes(tmp_path),
+    )
 
     assert result.returncode == 0, result.stderr
     lines = result.stdout.splitlines()
@@ -96,16 +118,25 @@ def test_a_fixture_run_without_hermes_still_prints_when_the_colour_was_asked_for
 ) -> None:
     """No `--no-ai`, no Hermes: the colour is unavailable, said on stderr, and the
     message goes out anyway -- the same thing the cron job does on a bad night."""
-    result = run("summary", "eod", "--fixture", "--simulations", "100", "--out", str(tmp_path),
-                 env=no_hermes(tmp_path))
+    result = run(
+        "summary",
+        "eod",
+        "--fixture",
+        "--simulations",
+        "100",
+        "--out",
+        str(tmp_path),
+        env=no_hermes(tmp_path),
+    )
     assert result.returncode == 0, result.stderr
     assert "EOD summary colour unavailable" in result.stderr
     assert "🗡️ GUILLOTINE DAILY" in result.stdout
 
 
 def test_a_fixture_json_run_prints_the_packet_and_makes_no_model_call(tmp_path) -> None:
-    result = run("summary", "eod", "--fixture", "--json", "--simulations", "100",
-                 env=no_hermes(tmp_path))
+    result = run(
+        "summary", "eod", "--fixture", "--json", "--simulations", "100", env=no_hermes(tmp_path)
+    )
 
     assert result.returncode == 0, result.stderr
     packet = json.loads(result.stdout)
@@ -120,19 +151,49 @@ def test_a_fixture_json_run_prints_the_packet_and_makes_no_model_call(tmp_path) 
 
 
 def test_the_fixture_output_carries_nothing_private(tmp_path) -> None:
-    result = run("summary", "eod", "--fixture", "--json", "--simulations", "50",
-                 env=no_hermes(tmp_path))
+    result = run(
+        "summary", "eod", "--fixture", "--json", "--simulations", "50", env=no_hermes(tmp_path)
+    )
     body = result.stdout.lower()
-    for forbidden in ("chat_guid", "sender_hash", "handle", "dues", "imessage;", "+1555",
-                      "display_name"):
+    for forbidden in (
+        "chat_guid",
+        "sender_hash",
+        "handle",
+        "dues",
+        "imessage;",
+        "+1555",
+        "display_name",
+    ):
         assert forbidden not in body
 
 
 def test_a_seed_makes_two_fixture_runs_identical(tmp_path) -> None:
-    first = run("summary", "eod", "--fixture", "--no-ai", "--seed", "3", "--simulations",
-                "100", "--out", str(tmp_path), env=no_hermes(tmp_path))
-    second = run("summary", "eod", "--fixture", "--no-ai", "--seed", "3", "--simulations",
-                 "100", "--out", str(tmp_path), env=no_hermes(tmp_path))
+    first = run(
+        "summary",
+        "eod",
+        "--fixture",
+        "--no-ai",
+        "--seed",
+        "3",
+        "--simulations",
+        "100",
+        "--out",
+        str(tmp_path),
+        env=no_hermes(tmp_path),
+    )
+    second = run(
+        "summary",
+        "eod",
+        "--fixture",
+        "--no-ai",
+        "--seed",
+        "3",
+        "--simulations",
+        "100",
+        "--out",
+        str(tmp_path),
+        env=no_hermes(tmp_path),
+    )
     assert first.stdout == second.stdout
 
 
@@ -167,7 +228,9 @@ def _wire(
         conn=conn,
         notifier=SimpleNamespace(ops=lambda text: True),
         settings=SimpleNamespace(
-            sleeper_league_id="league-1", hermes_profile_home="/nowhere", hermes_model=None,
+            sleeper_league_id="league-1",
+            hermes_profile_home="/nowhere",
+            hermes_model=None,
             delivery_mode="test",
         ),
     )
@@ -176,12 +239,11 @@ def _wire(
     monkeypatch.setattr(summary_cli.httpx, "Client", lambda: object())
     monkeypatch.setattr(summary_cli, "SleeperClient", lambda http: object())
     monkeypatch.setattr(
-        summary_cli, "current_week",
-        lambda client, conn, now: SimpleNamespace(season=2026, season_type=season_type,
-                                                 week=week),
+        summary_cli,
+        "current_week",
+        lambda client, conn, now: SimpleNamespace(season=2026, season_type=season_type, week=week),
     )
-    monkeypatch.setattr(summary_cli, "find_hermes_binary", lambda: "/x/hermes" if hermes
-                        else None)
+    monkeypatch.setattr(summary_cli, "find_hermes_binary", lambda: "/x/hermes" if hermes else None)
     monkeypatch.setattr(summary_cli, "SummaryRepository", lambda conn: "repo")
 
     def fake_load(conn, client, now):
@@ -212,7 +274,10 @@ def test_the_scheduled_run_is_recorded_under_the_agent_the_cron_manifest_names(
     run_call = FakeAgent.instances[0].runs[0]
     assert run_call["run_id"] == 1
     assert (run_call["use_ai"], run_call["force"], run_call["simulations"], run_call["seed"]) == (
-        True, False, 50, 4,
+        True,
+        False,
+        50,
+        4,
     )
     assert capsys.readouterr().out == "eod: sent, week 6, odds yes, model none\n"
 
@@ -289,9 +354,12 @@ def test_a_dry_run_against_the_league_composes_and_records_no_run(
     agents: list[str] = []
     _wire(monkeypatch, agents=agents)
 
-    assert summary_cli.cmd_eod(
-        parse("--dry-run", "--no-ai", "--simulations", "50", "--out", str(tmp_path))
-    ) == 0
+    assert (
+        summary_cli.cmd_eod(
+            parse("--dry-run", "--no-ai", "--simulations", "50", "--out", str(tmp_path))
+        )
+        == 0
+    )
     assert agents == []
     out = capsys.readouterr().out
     assert out.startswith("🗡️ GUILLOTINE DAILY")

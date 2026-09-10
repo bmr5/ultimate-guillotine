@@ -14,7 +14,9 @@ FIXTURES = Path(__file__).parent.parent / "fixtures" / "sleeper"
 @respx.mock
 def test_get_league_parses_roster_count() -> None:
     respx.get("https://api.sleeper.app/v1/league/1389372259260452864").mock(
-        return_value=httpx.Response(200, json=json.loads((FIXTURES / "league_2026.json").read_text()))
+        return_value=httpx.Response(
+            200, json=json.loads((FIXTURES / "league_2026.json").read_text())
+        )
     )
     client = SleeperClient(httpx.Client())
     league = client.get_league("1389372259260452864")
@@ -26,7 +28,9 @@ def test_get_league_parses_roster_count() -> None:
 @respx.mock
 def test_get_users_parses_display_names() -> None:
     respx.get("https://api.sleeper.app/v1/league/1389372259260452864/users").mock(
-        return_value=httpx.Response(200, json=json.loads((FIXTURES / "users_2026.json").read_text()))
+        return_value=httpx.Response(
+            200, json=json.loads((FIXTURES / "users_2026.json").read_text())
+        )
     )
     client = SleeperClient(httpx.Client())
     users = client.get_users("1389372259260452864")
@@ -37,7 +41,9 @@ def test_get_users_parses_display_names() -> None:
 @respx.mock
 def test_get_rosters_parses_owner_ids() -> None:
     respx.get("https://api.sleeper.app/v1/league/1389372259260452864/rosters").mock(
-        return_value=httpx.Response(200, json=json.loads((FIXTURES / "rosters_2026.json").read_text()))
+        return_value=httpx.Response(
+            200, json=json.loads((FIXTURES / "rosters_2026.json").read_text())
+        )
     )
     client = SleeperClient(httpx.Client())
     rosters = client.get_rosters("1389372259260452864")
@@ -49,7 +55,9 @@ def test_get_rosters_parses_owner_ids() -> None:
 def test_get_rosters_reads_players_from_a_list_or_null() -> None:
     """Sleeper sends ``"players": null`` for an empty roster; that is not an error."""
     respx.get("https://api.sleeper.app/v1/league/1389372259260452864/rosters").mock(
-        return_value=httpx.Response(200, json=json.loads((FIXTURES / "rosters_2026.json").read_text()))
+        return_value=httpx.Response(
+            200, json=json.loads((FIXTURES / "rosters_2026.json").read_text())
+        )
     )
     client = SleeperClient(httpx.Client())
     by_id = {r.roster_id: r for r in client.get_rosters("1389372259260452864")}
@@ -109,9 +117,7 @@ def test_get_draft_picks_returns_the_raw_list() -> None:
 
 @respx.mock
 def test_get_transactions_asks_for_the_week() -> None:
-    route = respx.get(
-        "https://api.sleeper.app/v1/league/1389372259260452864/transactions/1"
-    ).mock(
+    route = respx.get("https://api.sleeper.app/v1/league/1389372259260452864/transactions/1").mock(
         return_value=httpx.Response(
             200, json=json.loads((FIXTURES / "transactions_2026_w1.json").read_text())
         )
@@ -123,9 +129,7 @@ def test_get_transactions_asks_for_the_week() -> None:
 
 
 def test_the_league_fixture_names_its_draft() -> None:
-    league = SleeperLeague.model_validate(
-        json.loads((FIXTURES / "league_2026.json").read_text())
-    )
+    league = SleeperLeague.model_validate(json.loads((FIXTURES / "league_2026.json").read_text()))
     assert league.draft_id == "1389372259260452865"
 
 
@@ -136,8 +140,16 @@ def test_get_schedule_reads_the_public_schedule_feed_off_the_versioned_api() -> 
     route = respx.get("https://api.sleeper.app/schedule/nfl/regular/2026").mock(
         return_value=httpx.Response(
             200,
-            json=[{"status": "pre_game", "date": "2026-09-13", "home": "CAR", "week": 1,
-                   "game_id": "202610105", "away": "CHI"}],
+            json=[
+                {
+                    "status": "pre_game",
+                    "date": "2026-09-13",
+                    "home": "CAR",
+                    "week": 1,
+                    "game_id": "202610105",
+                    "away": "CHI",
+                }
+            ],
         )
     )
     client = SleeperClient(httpx.Client())

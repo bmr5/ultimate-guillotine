@@ -288,7 +288,9 @@ def cmd_eod(args: argparse.Namespace) -> int:
             if find_hermes_binary() is None:
                 post_ops(deps.notifier, f"EOD summary colour disabled: {NO_HERMES}")
             else:
-                ai = color_client(deps.settings.hermes_profile_home, model=deps.settings.hermes_model)
+                ai = color_client(
+                    deps.settings.hermes_profile_home, model=deps.settings.hermes_model
+                )
         agent = EodSummaryAgent(
             deps.settings,
             conn,
