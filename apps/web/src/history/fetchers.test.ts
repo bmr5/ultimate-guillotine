@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import type { HistoryClient } from "./fetchers";
 import {
+  fetchRegisteredRevisions,
   fetchRegisteredTrades,
   fetchSeasonResults,
   fetchTradeCatalog,
@@ -16,7 +17,10 @@ interface Call {
   order?: [string, boolean];
 }
 
-function createFakeClient(responses: Record<string, unknown[]>): {
+function createFakeClient(
+  responses: Record<string, unknown[]>,
+  error: { message: string } | null = null,
+): {
   client: HistoryClient;
   calls: Call[];
 } {
@@ -34,9 +38,16 @@ function createFakeClient(responses: Record<string, unknown[]>): {
           call.order = [column, options.ascending];
           return builder;
         },
-        then(resolve: (value: { data: unknown[]; error: null }) => unknown) {
+        then(
+          resolve: (value: {
+            data: unknown[] | null;
+            error: { message: string } | null;
+          }) => unknown,
+        ) {
           return Promise.resolve(
-            resolve({ data: responses[table] ?? [], error: null }),
+            error === null
+              ? resolve({ data: responses[table] ?? [], error: null })
+              : resolve({ data: null, error }),
           );
         },
       };
@@ -64,6 +75,32 @@ describe("fetchRegisteredTrades", () => {
     expect(calls[0].columns).not.toMatch(/(^|,)\s*terms\s*(,|$)/);
     expect(calls[0].columns).not.toContain("evidence_excerpt");
     expect(calls[0].columns).toContain("seasons ( year )");
+  });
+});
+
+describe("fetchRegisteredRevisions", () => {
+  it("reads three JSON paths out of terms and never the document itself", async () => {
+    const { client, calls } = createFakeClient({ trade_revisions: [] });
+    await fetchRegisteredRevisions(client);
+    expect(calls[0].table).toBe("trade_revisions");
+    expect(calls[0].columns).not.toMatch(/(^|,)\s*terms\s*(,|$)/);
+    expect(calls[0].columns).not.toContain("evidence_excerpt");
+    const paths = calls[0].columns
+      .split(",")
+      .map((column) => column.trim())
+      .filter((column) => column.includes("terms"));
+    expect(paths).toEqual([
+      "kind:terms->>kind",
+      "parties:terms->parties",
+      "assets:terms->assets",
+    ]);
+  });
+
+  it("surfaces a query error as the table name and message only", async () => {
+    const { client } = createFakeClient({}, { message: "boom" });
+    await expect(fetchRegisteredRevisions(client)).rejects.toThrow(
+      "trade_revisions: boom",
+    );
   });
 });
 

@@ -24,7 +24,10 @@ export interface RegisteredTradeRow {
  * One current revision, read as JSON paths rather than as the whole `terms` document.
  * `terms.evidence_excerpt` is verbatim league chat and `terms.parties[].display_name` is the
  * bare Sleeper username; both are anon-readable today, and selecting them here would put them
- * on a public page. Only these three paths are ever requested.
+ * on a public page. Only these three paths are ever requested. PostgREST cannot project keys
+ * out of a JSON array, so `terms->parties` still carries `display_name` in the payload:
+ * `normalizeRegisteredTrade` (src/history/derive/merge.ts) drops it before anything renders,
+ * and nothing may hand a raw parties object to a component.
  */
 export interface RegisteredRevisionRow {
   id: number;
