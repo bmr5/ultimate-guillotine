@@ -11,6 +11,18 @@ export type HistoryMemberRow = Pick<
   "id" | "sleeper_display_name" | "nickname"
 >;
 
+/**
+ * The player directory row `/trades` needs, and no more.
+ *
+ * A `Pick` of its own rather than the board's `PlayerRow`, which also carries `team`: the type
+ * has to name exactly the columns the select asks for, and `team` — the player's *current* NFL
+ * club — answers nothing about a trade made three seasons ago.
+ */
+export type HistoryPlayerRow = Pick<
+  TableRow<"players">,
+  "sleeper_player_id" | "full_name" | "position"
+>;
+
 /** A registered trade with its season year embedded; `public.trades` has no year column. */
 export interface RegisteredTradeRow {
   id: number;
@@ -112,6 +124,25 @@ export function fetchSeasonResults(
       .select(SEASON_RESULT_COLUMNS)
       .order("season", { ascending: false }),
     "season_results",
+  );
+}
+
+/**
+ * The player directory, for putting a name on a registered trade's player asset.
+ *
+ * A registered asset carries a resolved `player_id` and nothing else the page may render —
+ * `terms.assets[].player_name` is the name as it was typed into the league chat and is
+ * deliberately dropped by `normalizeRegisteredTrade` — so the name and the position have to come
+ * from `public.players`, which is Sleeper's own directory. `active` is not filtered on: a trade
+ * from 2022 names players who have since retired, and Sleeper's dump drops them, so the sync
+ * keeps their rows with `active = false` precisely so history can still be read.
+ */
+export function fetchHistoryPlayers(
+  client: HistoryClient,
+): Promise<HistoryPlayerRow[]> {
+  return unwrap<HistoryPlayerRow>(
+    client.from("players").select("sleeper_player_id, full_name, position"),
+    "players",
   );
 }
 

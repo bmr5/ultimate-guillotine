@@ -6,4 +6,5 @@ export const historyKeys = {
   revisions: () => ["history", "trade_revisions"] as const,
   seasonResults: () => ["history", "season_results"] as const,
   members: () => ["history", "members"] as const,
+  players: () => ["history", "players"] as const,
 };

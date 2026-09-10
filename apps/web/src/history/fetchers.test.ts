@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import type { HistoryClient } from "./fetchers";
 import {
+  fetchHistoryPlayers,
   fetchRegisteredRevisions,
   fetchRegisteredTrades,
   fetchSeasonResults,
@@ -101,6 +102,19 @@ describe("fetchRegisteredRevisions", () => {
     await expect(fetchRegisteredRevisions(client)).rejects.toThrow(
       "trade_revisions: boom",
     );
+  });
+});
+
+describe("fetchHistoryPlayers", () => {
+  it("selects the id, the display name and the position, and nothing else", async () => {
+    const { client, calls } = createFakeClient({ players: [] });
+    await fetchHistoryPlayers(client);
+    expect(calls[0].table).toBe("players");
+    expect(calls[0].columns.split(",").map((column) => column.trim())).toEqual([
+      "sleeper_player_id",
+      "full_name",
+      "position",
+    ]);
   });
 });
 
