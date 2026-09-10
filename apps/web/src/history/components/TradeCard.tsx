@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 
+import { formerManagerPhrase } from "../derive/ownerLabel";
 import type { CatalogTrade } from "../types";
 
 /**
@@ -82,9 +83,13 @@ export function TradeCard({ trade }: { trade: CatalogTrade }) {
                   {party.label}
                 </Badge>
               ))}
+              {/* Ben's ruling: the old nicknames in the catalog are not going to be mapped
+                  one by one, and a party nothing maps is a manager who has left. "and a
+                  former manager" says that; "1 unidentified owner" said the loader had
+                  failed at something. The count is untouched — only the wording is. */}
               {missing > 0 && (
                 <span className="text-xs text-muted-foreground">
-                  and {missing} unidentified owner{missing === 1 ? "" : "s"}
+                  and {formerManagerPhrase(missing)}
                 </span>
               )}
               {trade.faabTotal !== null && (

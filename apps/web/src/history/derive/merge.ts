@@ -1,5 +1,3 @@
-import { UNKNOWN_OWNER } from "@/board/derive/join";
-
 import type {
   HistoryMemberRow,
   RegisteredRevisionRow,
@@ -8,7 +6,7 @@ import type {
 } from "../fetchers";
 import type { CatalogTrade, TradeAsset, TradeParty } from "../types";
 import { isRecord } from "./json";
-import { ownerLabelFor } from "./ownerLabel";
+import { FORMER_MANAGER, ownerLabelFor } from "./ownerLabel";
 
 export const CATALOG_SOURCE_LABEL = "catalog";
 
@@ -27,13 +25,13 @@ function optionalIndex(value: unknown): number | null {
 
 /**
  * A trade party, named. A member id the directory does not carry is still a party to the deal,
- * so it keeps its place on the card under `UNKNOWN_OWNER` rather than being dropped — the row
+ * so it keeps its place on the card under `FORMER_MANAGER` rather than being dropped — the row
  * would otherwise read as a smaller trade than it was.
  */
 function tradeParty(memberId: number, members: HistoryMemberRow[]): TradeParty {
   return {
     memberId,
-    label: ownerLabelFor(memberId, members) ?? UNKNOWN_OWNER,
+    label: ownerLabelFor(memberId, members) ?? FORMER_MANAGER,
   };
 }
 

@@ -102,6 +102,23 @@ describe("mergeTradeSources", () => {
       "Bravo Display",
     ]);
   });
+
+  // Ben's ruling: the catalog's old nicknames are not going to be mapped one by one, and a
+  // party the directory does not carry is a manager who has left. The party keeps its place —
+  // dropping it would make the row read as a smaller trade than it was.
+  it("labels a party the directory does not carry as a former manager", () => {
+    const { trades } = mergeTradeSources(
+      [{ ...CATALOG_2024, party_member_ids: [1, 99] }],
+      [],
+      [],
+      MEMBERS,
+    );
+    expect(trades[0].parties.map((party) => party.label)).toEqual([
+      "Alpha",
+      "Former manager",
+    ]);
+    expect(trades[0].partyCount).toBe(2);
+  });
 });
 
 describe("normalizeRegisteredTrade", () => {

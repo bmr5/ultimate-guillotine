@@ -175,6 +175,27 @@ describe("TradesPage", () => {
     ).toEqual(["Any owner", "Alpha", "Zulu"]);
   });
 
+  // Ben's ruling: the filter never lists a former manager. One "Former manager" option would
+  // stand for every unmapped party in the catalog at once, so picking it would gather
+  // strangers into a single owner's view.
+  it("leaves an owner it cannot name out of the filter", () => {
+    const base = trades.value[0] as Record<string, unknown>;
+    trades.value = [
+      ...trades.value,
+      {
+        ...base,
+        key: "k3",
+        parties: [{ memberId: 3, label: "Former manager" }],
+      },
+    ];
+    renderPage();
+    expect(
+      [...screen.getByLabelText("Owner").querySelectorAll("option")].map(
+        (option) => option.textContent,
+      ),
+    ).toEqual(["Any owner", "Alpha", "Zulu"]);
+  });
+
   it("shows a URL filter the loaded trades do not offer", () => {
     renderPage("/trades?pos=TE");
     // No trade on screen has a TE, so "TE" is not one of the derived options; without a

@@ -1,5 +1,5 @@
+import { FORMER_MANAGER } from "../derive/ownerLabel";
 import type { SeasonResult } from "../types";
-import { UNLISTED_OWNER } from "./SeasonCard";
 
 /** Every season's champion in one scannable column — the answer most people open `/history` for. */
 export function WinnersStrip({ seasons }: { seasons: SeasonResult[] }) {
@@ -12,7 +12,7 @@ export function WinnersStrip({ seasons }: { seasons: SeasonResult[] }) {
         <li key={season.season} className="flex justify-between px-3 py-1.5">
           <span className="text-muted-foreground">{season.season}</span>
           <span className="font-medium">
-            {season.championLabel ?? UNLISTED_OWNER}
+            {season.championLabel ?? FORMER_MANAGER}
           </span>
         </li>
       ))}

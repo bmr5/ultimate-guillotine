@@ -54,14 +54,31 @@ describe("SeasonCard", () => {
     expect(screen.getByText(/Bravo/)).toBeInTheDocument();
   });
 
-  it("says when a champion could not be resolved", () => {
+  // Ben's ruling: a champion the directory cannot name is a manager who has left, which is
+  // what "Former manager" says. "Unlisted" read as a hole in the data.
+  it("calls a champion it could not resolve a former manager", () => {
     render(
       <SeasonCard
         season={{ ...SEASON, championLabel: null }}
         labelForMember={() => "Bravo"}
       />,
     );
-    expect(screen.getByText("Unlisted")).toBeInTheDocument();
+    expect(screen.getByText("Former manager")).toBeInTheDocument();
+    expect(screen.queryByText("Unlisted")).not.toBeInTheDocument();
+  });
+
+  it("says a week the sheet named was a former manager, not a week of counts", () => {
+    // The sheet recorded a person that week, so the line is about a person either way; falling
+    // back to the counts would report a different kind of week, and this one has no counts.
+    const line = renderOneLine({
+      week: 4,
+      order: 1,
+      memberId: 7,
+      gulagOut: null,
+      poolOut: null,
+    });
+    expect(line).toHaveTextContent("Week 4 · Former manager eliminated");
+    expect(line.textContent).not.toContain("not recorded");
   });
 
   // Ben's ruling: a line is built from the figures the sheet actually wrote. Never a `0` where

@@ -34,10 +34,20 @@ const TRADE: CatalogTrade = {
 };
 
 describe("TradeCard", () => {
-  it("names the resolved owner and counts the one it could not", () => {
+  // Ben's ruling: the old nicknames in the catalog are not going to be mapped one by one, so
+  // a party nothing maps reads as a manager who has left, not as a failure to identify one.
+  it("names the resolved owner and calls the one it could not a former manager", () => {
     render(<TradeCard trade={TRADE} />);
     expect(screen.getByText("Alpha")).toBeInTheDocument();
-    expect(screen.getByText(/and 1 unidentified owner/i)).toBeInTheDocument();
+    expect(screen.getByText(/and a former manager/i)).toBeInTheDocument();
+    expect(screen.queryByText(/unidentified/i)).not.toBeInTheDocument();
+  });
+
+  it("counts two or more of them", () => {
+    render(
+      <TradeCard trade={{ ...TRADE, partyCount: 4, unresolvedParties: 3 }} />,
+    );
+    expect(screen.getByText(/and 3 former managers/i)).toBeInTheDocument();
   });
 
   it("badges a low-confidence catalog row", () => {

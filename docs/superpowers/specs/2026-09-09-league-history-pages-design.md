@@ -135,7 +135,7 @@ Queries use a five-minute `staleTime` plus `refetchOnWindowFocus` and no channel
 footer shows `Loaded <date>` from `max(loaded_at)` through the board's `formatUpdatedAt`. An empty
 table renders "No trades loaded yet", a filter matching nothing shows a clear-filters button, and a
 failed query shows the board's `Alert` pattern without blanking the rest. When a trade's
-`party_count` is one owner short, the card says "and 1 unidentified owner" — never a raw name.
+`party_count` is one owner short, the card says "and a former manager" — never a raw name.
 
 ## Privacy and Safety
 
@@ -180,3 +180,7 @@ table, and Ben has reviewed the Vercel preview at 375 px in light and dark.
 4. **Position filter.** QB/RB/WR/TE, matching the board, or K and DEF too?
 5. **How far back should `/trades` go?** The catalog may reach 2020; cap the page at 2023 instead?
 6. **Elimination detail for 2023 and 2024.** Worth a later pass to name who went out each week?
+
+## Decisions from Ben (2026-09-09)
+
+- Answering question 2: a champion who has left the league gets a member profile that is not tied to Sleeper (`ug members former add`, keyed `former:<slug>` with the name as the nickname), and because the rest of the catalog's old nicknames will not be mapped one by one, every party these pages still cannot name reads as "a former manager" — on the trade cards, on the champion line and on a named elimination line — rather than as "unidentified owner" or "Unlisted"; the owner filter leaves them out entirely, since one such option would stand for every unmapped party at once.
