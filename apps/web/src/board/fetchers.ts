@@ -57,7 +57,11 @@ interface SupabaseResult<T> {
  */
 export const IN_CHUNK_SIZE = 150;
 
-function chunkIds(ids: readonly string[]): string[][] {
+/**
+ * Split an id list into `.in(...)`-sized batches. Exported because `/trades` reads the same
+ * `public.players` table through the same URL-length limit — one chunking rule for both pages.
+ */
+export function chunkIds(ids: readonly string[]): string[][] {
   const batches: string[][] = [];
   for (let start = 0; start < ids.length; start += IN_CHUNK_SIZE) {
     batches.push(ids.slice(start, start + IN_CHUNK_SIZE));

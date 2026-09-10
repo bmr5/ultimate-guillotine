@@ -32,6 +32,8 @@ what does this league do, and who has won. The spec follows the page conventions
    - `2023`: the week grid at rows 3–7 (`Week`, `Safe`, `Gulag`, `Gladiator`, `Cut`, `Winner!`) and
      rows 16–24 (`Week`, `Total Teams`, `Teams in Gulag`, `Teams sent to Gulag`, `Teams cut at EOW`,
      `Teams going into next week`).
+   - `2023` row 9, the upper grid's `Total` row: a team count only, read solely to check it against
+     the summary grid's `Total Teams`; the season publishes a count only if the two agree.
    - **Never loaded, from any sheet:** the `paid` column — dues are private and stay private, the
      hard rule here — the 2025 roster block (seat number, first name, last name, `paid`, the
      replacement / `removed` columns), the 2023 signup block at rows 28–48 (names, three dated
@@ -88,7 +90,7 @@ ug history load-results history/league/ultimate-guillotine-records.xlsx
 Both follow `cli/members.py`: build deps, read the file, upsert, commit, print **counts only**, exit
 non-zero only when nothing loaded. Neither ever prints a member name, a player name, a nickname, or a
 line of source text — output is `catalog: 214 rows, 3 updated, 5 unresolved parties` and `results: 6
-seasons, 2 unresolved names`. Both are idempotent, upserting on `catalog_id` and `season`.
+seasons, 6 updated, 2 unresolved names, 0 weeks with no count`. Both are idempotent, upserting on `catalog_id` and `season`.
 
 `load-catalog` copies fields through an explicit **allowlist** — `id`, `season`, `week_or_date`,
 `type`, `structure`, `parties`, `assets`, `faab_total`, `confidence` — not by deleting private fields
