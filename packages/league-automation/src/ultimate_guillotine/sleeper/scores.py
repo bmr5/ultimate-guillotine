@@ -8,11 +8,12 @@ recomputed. This module is what writes ``public.team_week_scores``, and its
 ``synced_at`` is the stamp the board reads instead.
 
 The feed is ``/league/{id}/matchups/{week}``: one object per roster, carrying
-``points`` (the league's scoring already applied by Sleeper), ``players_points``
-(a map over the whole roster, bench included) and ``starters`` (the lineup, in
-slot order). All three are kept -- the map is unordered and says nothing about
-who started, and the lineup carries no points -- so neither column can be derived
-from the other.
+``points`` (the league's scoring already applied by Sleeper), ``custom_points``
+(a commissioner override, null on every ordinary row), ``players_points`` (a map
+over the *starters* -- nine entries for nine starters, the bench absent) and
+``starters`` (the lineup, in slot order). The map and the lineup are both kept --
+the map is unordered and says nothing about who started, and the lineup carries no
+points -- so neither column can be derived from the other.
 
 **Nothing here re-scores anything.** ``sleeper/scoring.py`` exists to score a
 projection's raw stat line under the league's settings, because a projection feed
@@ -45,9 +46,9 @@ class TeamScore:
 
     team_id: int
     points: Decimal
-    #: sleeper_player_id -> points, over the whole roster. Floats, not Decimals: this goes
-    #: into jsonb, and `json.dumps` cannot serialise a Decimal. Quantized to cents first, so
-    #: the map and the total round the same way.
+    #: sleeper_player_id -> points, as the feed reports it: the starters only, not the bench.
+    #: Floats, not Decimals: this goes into jsonb, and `json.dumps` cannot serialise a Decimal.
+    #: Quantized to cents first, so the map and the total round the same way.
     players_points: dict[str, float]
     #: The lineup in the order Sleeper reports it. Empty-slot markers (`"0"`) are kept
     #: verbatim -- the position of a player in this list is his slot, so dropping the blanks
@@ -79,8 +80,32 @@ def _points(value: object) -> Decimal:
     return Decimal(str(value)).quantize(CENTS, rounding=ROUND_HALF_UP)
 
 
+def _matchup_points(record: dict[str, Any]) -> Decimal:
+    """A team's total: ``custom_points`` when the commissioner has set one, else ``points``.
+
+    Sleeper leaves ``custom_points`` null on every ordinary row and writes a manual correction
+    into it when a commissioner overrides the auto-scoring -- a stat correction Sleeper never
+    picked up, a keeper adjustment, a ruling. ``points`` keeps the auto-scored total the
+    override replaced, so reading it there would put a number on the board that disagrees with
+    what the league is looking at in the Sleeper app, for exactly the one team somebody had to
+    correct by hand.
+
+    An override that is not a usable number is treated as absent rather than as zero: unlike a
+    missing ``points``, which really is "this team has not scored", a malformed override says
+    nothing about the score, and blanking a real total over it would be the worse reading.
+    """
+    override = record.get("custom_points")
+    if isinstance(override, (int, float)) and not isinstance(override, bool):
+        return _points(override)
+    return _points(record.get("points"))
+
+
 def _players_points(value: object) -> dict[str, float]:
-    """Sleeper's per-player map, keyed by string id, with non-numeric entries dropped."""
+    """Sleeper's per-player map, keyed by string id, with non-numeric entries dropped.
+
+    Whatever the feed puts in it is kept verbatim; in the live payload that is the starters
+    alone, so a bench player has no entry here and the board leaves his live number blank.
+    """
     if not isinstance(value, dict):
         return {}
     points: dict[str, float] = {}
@@ -124,7 +149,7 @@ def load_team_scores(
         rows.append(
             TeamScore(
                 team_id=team_id,
-                points=_points(record.get("points")),
+                points=_matchup_points(record),
                 players_points=_players_points(record.get("players_points")),
                 starters=_starters(record.get("starters")),
             )

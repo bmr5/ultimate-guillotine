@@ -18,8 +18,9 @@ create table public.team_week_scores (
   -- is not re-derived from `players_points` here. numeric(8, 2) matches projected_points, so a
   -- score and a projection sit on the same card without one carrying more precision.
   points numeric(8, 2) not null,
-  -- sleeper_player_id -> points, verbatim from the matchup row. It covers the whole roster, not
-  -- only the lineup, which is what lets the roster panel show a bench player's live number too.
+  -- sleeper_player_id -> points, verbatim from the matchup row. It covers the starters only --
+  -- nine entries for nine starters -- so the roster panel has a live number for a starter and
+  -- nothing for a bench player, which is why it is stored rather than derived from the lineup.
   players_points jsonb not null default '{}',
   -- The lineup as Sleeper reports it, in slot order. Kept as its own column rather than being
   -- read back out of `players_points`: the map is unordered and says nothing about who started.

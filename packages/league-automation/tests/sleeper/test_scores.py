@@ -21,14 +21,15 @@ from ultimate_guillotine.sleeper.scores import (
 
 NOW = datetime(2026, 9, 13, 17, 30, tzinfo=UTC)
 
-#: Two rosters, as Sleeper reports them mid-game: a total, a whole-roster points map
-#: (the bench included), and the lineup in slot order with one slot still empty.
+#: Two rosters, as Sleeper reports them mid-game: a total, a points map over the
+#: *starters* only (the bench is on `players` and absent from `players_points`), and
+#: the lineup in slot order with one slot still empty.
 PAYLOAD = [
     {
         "roster_id": 901,
         "matchup_id": 1,
         "points": 87.32,
-        "players_points": {"p1": 20.4, "p2": 12.0, "bench1": 3.5},
+        "players_points": {"p1": 20.4, "p2": 12.0},
         "starters": ["p1", "p2", "0"],
         "players": ["p1", "p2", "bench1"],
     },
@@ -77,6 +78,40 @@ def test_a_missing_or_unusable_points_field_reads_as_zero() -> None:
     assert [row.points for row in rows] == [Decimal(0), Decimal(0)]
 
 
+def test_a_commissioner_override_wins_over_the_auto_scored_total() -> None:
+    """`custom_points` is the number the league sees in the Sleeper app once somebody has
+    corrected a row by hand; `points` still carries the auto-scored total it replaced."""
+    payload = [{"roster_id": 901, "points": 87.32, "custom_points": 91.5}]
+    rows, _unmatched = load_team_scores(payload, {901: 11})
+    assert rows[0].points == Decimal("91.50")
+
+
+def test_a_null_override_falls_back_to_the_auto_scored_total() -> None:
+    """Which is every ordinary row: Sleeper sends the key with a null on rows nobody has
+    touched, so an override read as "present" would blank the whole board."""
+    payload = [
+        {"roster_id": 901, "points": 87.32, "custom_points": None},
+        {"roster_id": 902, "points": 12.0},
+    ]
+    rows, _unmatched = load_team_scores(payload, {901: 11, 902: 22})
+    assert [row.points for row in rows] == [Decimal("87.32"), Decimal("12.00")]
+
+
+def test_an_override_of_zero_is_an_override_not_an_absence() -> None:
+    """A commissioner zeroing a team is a ruling, and `0` is not null."""
+    payload = [{"roster_id": 901, "points": 87.32, "custom_points": 0}]
+    rows, _unmatched = load_team_scores(payload, {901: 11})
+    assert rows[0].points == Decimal("0.00")
+
+
+def test_an_unusable_override_falls_back_rather_than_zeroing_a_real_total() -> None:
+    """Unlike a missing `points`, a malformed override says nothing about the score, so
+    the auto-scored total stands rather than being blanked over a bad field."""
+    payload = [{"roster_id": 901, "points": 87.32, "custom_points": "91.5"}]
+    rows, _unmatched = load_team_scores(payload, {901: 11})
+    assert rows[0].points == Decimal("87.32")
+
+
 def test_the_lineup_keeps_its_order_and_its_empty_slot_markers() -> None:
     """A player's position in `starters` is his slot, so dropping Sleeper's `"0"` blanks
     would shift everyone after them into somebody else's slot."""
@@ -84,16 +119,18 @@ def test_the_lineup_keeps_its_order_and_its_empty_slot_markers() -> None:
     assert rows[0].starters == ["p1", "p2", "0"]
 
 
-def test_the_points_map_covers_the_bench_and_drops_non_numbers() -> None:
+def test_the_points_map_is_copied_as_given_and_drops_non_numbers() -> None:
+    """Whatever keys the feed puts in the map are kept -- it is never cross-referenced
+    against `starters` -- but an entry that is not a number is no points at all."""
     payload = [
         {
             "roster_id": 901,
             "points": 1,
-            "players_points": {"p1": 20.4, "bench1": 3.5, "junk": None, "flag": True},
+            "players_points": {"p1": 20.4, "p2": 3.5, "junk": None, "flag": True},
         }
     ]
     rows, _unmatched = load_team_scores(payload, {901: 11})
-    assert rows[0].players_points == {"p1": 20.4, "bench1": 3.5}
+    assert rows[0].players_points == {"p1": 20.4, "p2": 3.5}
 
 
 def test_a_roster_with_no_team_row_is_counted_not_fatal() -> None:
@@ -147,7 +184,7 @@ def test_a_sync_writes_one_row_per_team_with_the_payload_verbatim(conn) -> None:
         )
         points, players_points, starters, synced_at = cur.fetchone()
     assert points == Decimal("87.32")
-    assert players_points == {"p1": 20.4, "p2": 12.0, "bench1": 3.5}
+    assert players_points == {"p1": 20.4, "p2": 12.0}
     assert starters == ["p1", "p2", "0"]
     assert synced_at == NOW
 
