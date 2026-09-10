@@ -315,3 +315,22 @@ Each is a clean follow-up because every table is season-keyed:
    no stats sync now.
 6. **A draft tab shows the whole auction.** "make a draft tab on the site just to show the full
    draft." Sortable by pick, price, or team; names link into the card.
+
+## Implementation notes (2026-09-10)
+
+- The position view's player list already sat outside its card's toggle (a 2026-09-10 change
+  for the slot chips), so no restructuring was needed; both rows render the shared `PlayerName`.
+- The injury tag stays as each view draws it — a titled span on the roster panel, an explained
+  badge in the position view — because both are under test and neither is what this feature is
+  about. `PlayerName` unifies the name and the mark, which is where the new behaviour lives.
+- Closing a card opened by a tap pops the history entry that tap pushed, so the back button and
+  the close button do the same thing; a card opened from a shared link replaces the URL in place,
+  since there is no entry of ours to pop. The visible result is the spec's: the card closes and
+  the player leaves the URL.
+- The card fetches the other players a trade names in a second directory read, keyed by their
+  ids, so a trade entry can say "Brock Bowers to Ray Regime" rather than an id.
+- Ben (2026-09-10): "make a draft tab on the site just to show the full draft." `/draft` lists
+  the season's auction in pick order, by price, or grouped by team with each team's spend and
+  what its unspent dollars became in FAAB (the league's five-to-one rule, from
+  `seasons.waiver_budget`). Every name links to the board's `?player=` so the card is one tap
+  away. It reads the same tables the board does and nothing new.
