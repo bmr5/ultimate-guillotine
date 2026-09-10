@@ -112,6 +112,14 @@ function renderView({
   );
 }
 
+function teamRows(): HTMLElement[] {
+  return screen
+    .getAllByRole("listitem")
+    .filter(
+      (li) => li.querySelector(":scope > * button[aria-expanded]") !== null,
+    );
+}
+
 describe("PositionView", () => {
   beforeEach(() => {
     // jsdom lays nothing out, so the width is a statement of the case, not an assertion about
@@ -120,15 +128,25 @@ describe("PositionView", () => {
     window.innerWidth = PHONE_WIDTH;
   });
 
-  it("gives every team a row with its owner, FAAB and players inline", () => {
+  it("gives every team a row with its owner, FAAB and players listed", () => {
     renderView();
-    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+    // Team rows are the list items that carry the toggle; player lines are list items too.
+    expect(teamRows()).toHaveLength(2);
     expect(screen.getByText("Nick R")).toBeInTheDocument();
     expect(screen.getByText("$715")).toBeInTheDocument();
     expect(screen.getByText("Travis Kelce")).toBeInTheDocument();
     expect(screen.getByText("Sam LaPorta")).toBeInTheDocument();
     expect(screen.getByText("14.1")).toBeInTheDocument();
     expect(screen.getByText("9.2")).toBeInTheDocument();
+  });
+
+  it("labels each player with the slot he starts in, and the bench as BN", () => {
+    renderView();
+    const starter = screen.getByText("Travis Kelce").closest("[data-player]");
+    const bench = screen.getByText("Sam LaPorta").closest("[data-player]");
+    expect(starter).toHaveAttribute("data-slot", "TE");
+    expect(bench).toHaveAttribute("data-slot", "BN");
+    expect(screen.queryByText("★")).toBeNull();
   });
 
   it("marks the starter at the position and leaves the bench unmarked", () => {
@@ -256,7 +274,7 @@ describe("PositionView", () => {
         team({ teamId: 3, ownerName: "gone", isEliminated: true }),
       ],
     });
-    const rows = screen.getAllByRole("listitem");
+    const rows = teamRows();
     // Eliminated last, whatever its FAAB.
     expect(rows[1]).toHaveTextContent("gone");
     expect(container.querySelectorAll("[data-eliminated]")).toHaveLength(1);

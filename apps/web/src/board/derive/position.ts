@@ -48,6 +48,12 @@ export interface PositionPlayer {
   livePoints: number | null;
   /** True for a player in the lineup, so the row can mark him. */
   isStarter: boolean;
+  /**
+   * The lineup slot a starter fills as Sleeper spells it (`WR`, `FLEX`, `SUPER_FLEX`), or
+   * `BN` / `IR` / `TAXI` off the lineup. Ben (2026-09-10): the quick view breaks a team's
+   * players down by the slot they start in, so four WRs read `WR WR FLEX BN`.
+   */
+  slotLabel: string;
   /** `players.injury_status`, so the row can tag him and the flag below can read him. */
   injuryStatus: string | null;
 }
@@ -161,6 +167,50 @@ function comparePositionRows(
   return a.teamId - b.teamId;
 }
 
+const OFF_LINEUP_LABELS: Record<string, string> = {
+  bench: "BN",
+  ir: "IR",
+  taxi: "TAXI",
+};
+
+/** The slot chip a player carries in the quick view. */
+export function slotLabelFor(player: RosterPlayer): string {
+  if (player.slot === "starter") {
+    return (
+      (player.lineupPosition ?? player.position ?? "").trim().toUpperCase() ||
+      "STARTER"
+    );
+  }
+  return OFF_LINEUP_LABELS[player.slot] ?? player.slot.toUpperCase();
+}
+
+/** What the slot chip's tooltip says. */
+export function slotDescription(label: string, isStarter: boolean): string {
+  if (!isStarter) {
+    return label === "BN"
+      ? "On the bench this week"
+      : label === "IR"
+        ? "On injured reserve, off the lineup"
+        : "On the taxi squad, off the lineup";
+  }
+  return label in MULTI_POSITION_SLOTS
+    ? `Starting in the ${label.replace("_", " ")} slot`
+    : `Starting at ${label}`;
+}
+
+/**
+ * Starters first in the order the lineup lists the slots -- the position's own slots, then
+ * the flex kinds -- then the bench, then IR and taxi.
+ */
+function slotRankFor(player: RosterPlayer, position: PositionFilter): number {
+  if (player.slot !== "starter") {
+    return { bench: 10, ir: 11, taxi: 12 }[player.slot] ?? 13;
+  }
+  const label = slotLabelFor(player);
+  if (label === position) return 0;
+  return label in MULTI_POSITION_SLOTS ? 1 : 2;
+}
+
 function toPositionPlayer(player: RosterPlayer): PositionPlayer {
   return {
     sleeperPlayerId: player.sleeperPlayerId,
@@ -168,6 +218,7 @@ function toPositionPlayer(player: RosterPlayer): PositionPlayer {
     projectedPoints: player.projectedPoints,
     livePoints: player.livePoints,
     isStarter: player.slot === "starter",
+    slotLabel: slotLabelFor(player),
     injuryStatus: player.injuryStatus,
   };
 }
@@ -212,12 +263,16 @@ export function positionView(
     const atPosition = team.roster.filter(
       (player) => (player.position ?? "").trim().toUpperCase() === position,
     );
-    // Starters lead and are marked; the bench follows in the roster's own order, which is
-    // projection descending. `orderRoster` already ran in the join, so this only partitions.
-    const players = [
-      ...atPosition.filter((player) => player.slot === "starter"),
-      ...atPosition.filter((player) => player.slot !== "starter"),
-    ].map(toPositionPlayer);
+    // Starters lead, in slot order (`WR WR FLEX`), then the bench; within a rank the roster's
+    // own order stands, which is projection descending (`orderRoster` already ran in the join).
+    const players = atPosition
+      .map((player, index) => ({ player, index }))
+      .sort(
+        (a, b) =>
+          slotRankFor(a.player, position) - slotRankFor(b.player, position) ||
+          a.index - b.index,
+      )
+      .map(({ player }) => toPositionPlayer(player));
 
     const emptySlots = layoutStarters(rosterPositions, team.roster).filter(
       (row) =>
@@ -251,10 +306,10 @@ export function positionView(
     row.likelyBidderReason = hasOutStarter(row.players)
       ? "starter out"
       : row.emptySlots > 0
-      ? "empty slot"
-      : best !== null && leagueMedian !== null && best < leagueMedian
-      ? "below median"
-      : null;
+        ? "empty slot"
+        : best !== null && leagueMedian !== null && best < leagueMedian
+          ? "below median"
+          : null;
     row.likelyBidder = row.likelyBidderReason !== null;
   }
 

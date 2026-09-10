@@ -9,7 +9,11 @@ import { cn } from "@/lib/utils";
 
 import { injuryTag } from "../derive/availability";
 import { FAAB_LABEL, formatFaab } from "../derive/faab";
-import { LIKELY_BIDDER_REASONS, type PositionRow } from "../derive/position";
+import {
+  LIKELY_BIDDER_REASONS,
+  slotDescription,
+  type PositionRow,
+} from "../derive/position";
 import { layoutStarters } from "../derive/roster";
 import { BOARD_GRID } from "../layout";
 import type { PositionFilter } from "../types";
@@ -43,10 +47,6 @@ const NO_PROJECTION_TEXT = "—";
 const LIVE_POINTS_SEPARATOR = "/";
 const LIVE_POINTS_LABEL = "scored";
 const PROJECTED_LABEL = "projected";
-
-/** The mark a starter carries inline, and what a screen reader hears in its place. */
-const STARTER_MARK = "★";
-const STARTER_LABEL = "starter";
 
 /** Said once per team that holds nobody at the position: `no TE`. */
 const NO_PLAYER_PREFIX = "no";
@@ -133,94 +133,6 @@ const PositionTeamRow = memo(function PositionTeamRow({
               <span className="block truncate text-sm text-muted-foreground">
                 {row.teamName}
               </span>
-              <span className="mt-1 block text-sm">
-                {row.players.length === 0 ? (
-                  // The most interesting row on the page: nobody at all at this position.
-                  <span className="font-medium text-destructive">
-                    {`${NO_PLAYER_PREFIX} ${position}`}
-                  </span>
-                ) : (
-                  row.players.map((player) => (
-                    <span
-                      key={player.sleeperPlayerId}
-                      data-player={player.sleeperPlayerId}
-                      data-starter={player.isStarter || undefined}
-                      data-highlighted={
-                        highlightedPlayerIds.has(player.sleeperPlayerId) ||
-                        undefined
-                      }
-                      // One player per line (Ben, 2026-09-10): a list, not a run of prose.
-                      className={cn(
-                        "block",
-                        highlightedPlayerIds.has(player.sleeperPlayerId) &&
-                          "rounded bg-accent px-1 text-accent-foreground",
-                      )}
-                    >
-                      <span className="font-medium">{player.fullName}</span>{" "}
-                      <span className="text-muted-foreground tabular-nums">
-                        {player.isStarter && player.livePoints !== null ? (
-                          <>
-                            <span
-                              data-live-points
-                              className={
-                                player.livePoints === 0
-                                  ? undefined
-                                  : "text-foreground"
-                              }
-                            >
-                              <span aria-hidden="true">
-                                {player.livePoints.toFixed(
-                                  PLAYER_PROJECTION_DECIMALS,
-                                )}
-                              </span>
-                              <span className="sr-only">{`${LIVE_POINTS_LABEL} ${player.livePoints.toFixed(
-                                PLAYER_PROJECTION_DECIMALS,
-                              )}, `}</span>
-                            </span>
-                            <span aria-hidden="true">
-                              {LIVE_POINTS_SEPARATOR}
-                            </span>
-                            <span aria-hidden="true">
-                              {projectionText(player.projectedPoints)}
-                            </span>
-                            <span className="sr-only">{`${PROJECTED_LABEL} ${projectionText(
-                              player.projectedPoints,
-                            )}`}</span>
-                          </>
-                        ) : (
-                          projectionText(player.projectedPoints)
-                        )}
-                      </span>
-                      {/* The same tag the roster panel shows, so the quick view answers
-                          "who is hurt at this position" without expanding a row. */}
-                      {(() => {
-                        const tag = injuryTag(player.injuryStatus);
-                        return tag === null ? null : (
-                          <span
-                            data-injury={tag.status}
-                            title={tag.title}
-                            className={cn(
-                              "ml-1 rounded border px-1 text-[0.6875rem] font-medium",
-                              tag.isUnavailable
-                                ? "border-destructive/40 text-destructive"
-                                : "border-border text-muted-foreground",
-                            )}
-                          >
-                            <span aria-hidden="true">{tag.tag}</span>
-                            <span className="sr-only">{tag.title}</span>
-                          </span>
-                        );
-                      })()}
-                      {player.isStarter ? (
-                        <>
-                          <span aria-hidden="true">{` ${STARTER_MARK}`}</span>
-                          <span className="sr-only">{` ${STARTER_LABEL}`}</span>
-                        </>
-                      ) : null}
-                    </span>
-                  ))
-                )}
-              </span>
             </span>
             <span className="shrink-0 text-right">
               <span className="block text-2xl leading-none figures text-foreground">
@@ -245,6 +157,102 @@ const PositionTeamRow = memo(function PositionTeamRow({
               )}
             />
           </button>
+
+          {/* One player per line, outside the toggle: each slot chip and injury tag is a real
+              tooltip trigger (Ben, 2026-09-10: "any little thing should have a tooltip"), and a
+              control inside a <button> is invalid HTML. */}
+          <ul
+            className="space-y-1 px-4 pb-3 text-sm"
+            aria-label={`${row.ownerName}'s ${position} players`}
+          >
+            {row.players.length === 0 ? (
+              <li className="font-medium text-destructive">
+                {`${NO_PLAYER_PREFIX} ${position}`}
+              </li>
+            ) : (
+              row.players.map((player) => {
+                const tag = injuryTag(player.injuryStatus);
+                const highlighted = highlightedPlayerIds.has(
+                  player.sleeperPlayerId,
+                );
+                return (
+                  <li
+                    key={player.sleeperPlayerId}
+                    data-player={player.sleeperPlayerId}
+                    data-starter={player.isStarter || undefined}
+                    data-slot={player.slotLabel}
+                    data-highlighted={highlighted || undefined}
+                    className={cn(
+                      "flex items-center gap-2",
+                      highlighted &&
+                        "rounded bg-accent px-1 text-accent-foreground",
+                    )}
+                  >
+                    <ExplainedBadge
+                      description={slotDescription(
+                        player.slotLabel,
+                        player.isStarter,
+                      )}
+                      className="-my-2 inline-flex min-h-[44px] items-center rounded-md"
+                    >
+                      <span
+                        className={cn(
+                          "inline-block w-14 rounded border px-1 text-center text-[0.6875rem] font-medium",
+                          player.isStarter
+                            ? "border-border text-foreground"
+                            : "border-transparent text-muted-foreground",
+                        )}
+                      >
+                        {player.slotLabel}
+                      </span>
+                    </ExplainedBadge>
+                    <span className="min-w-0 flex-1 truncate">
+                      <span className="font-medium">{player.fullName}</span>{" "}
+                      <span className="text-muted-foreground tabular-nums">
+                        {player.isStarter && player.livePoints !== null ? (
+                          <>
+                            <span aria-hidden="true">
+                              {`${player.livePoints.toFixed(PLAYER_PROJECTION_DECIMALS)}${LIVE_POINTS_SEPARATOR}${projectionText(player.projectedPoints)}`}
+                            </span>
+                            <span className="sr-only">{`${LIVE_POINTS_LABEL} ${player.livePoints.toFixed(
+                              PLAYER_PROJECTION_DECIMALS,
+                            )}, ${PROJECTED_LABEL} ${projectionText(player.projectedPoints)}`}</span>
+                          </>
+                        ) : (
+                          <>
+                            <span aria-hidden="true">
+                              {projectionText(player.projectedPoints)}
+                            </span>
+                            <span className="sr-only">{`${PROJECTED_LABEL} ${projectionText(
+                              player.projectedPoints,
+                            )}`}</span>
+                          </>
+                        )}
+                      </span>
+                    </span>
+                    {tag === null ? null : (
+                      <ExplainedBadge
+                        data-injury={tag.status}
+                        description={tag.title}
+                        className="-my-2 inline-flex min-h-[44px] items-center rounded-md"
+                      >
+                        <span
+                          className={cn(
+                            "rounded border px-1 text-[0.6875rem] font-medium",
+                            tag.isUnavailable
+                              ? "border-destructive/40 text-destructive"
+                              : "border-border text-muted-foreground",
+                          )}
+                        >
+                          {tag.tag}
+                        </span>
+                      </ExplainedBadge>
+                    )}
+                  </li>
+                );
+              })
+            )}
+          </ul>
 
           {/* Ben's ruling of 2026-09-09: "I filtered by TE and a likely bidder showed up but I
               have no idea why". The reason used to be a native `title`, which never opens on a
