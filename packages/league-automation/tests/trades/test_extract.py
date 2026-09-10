@@ -101,8 +101,10 @@ PROMPT_RULES_2026_3 = [
     ),
     (
         "you is the one member named besides the announcer",
-        "unless the announcement names exactly one league member besides the announcer, in which"
-        " case `you` is that member",
+        (
+            "unless the announcement names exactly one league member besides the announcer,"
+            " in which case `you` is that member"
+        ),
     ),
     (
         "you is never the other side of the same transfer",
