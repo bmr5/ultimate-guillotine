@@ -34,6 +34,7 @@ TAG_MIN_WIDTH = 400
 CAPTION_GAP = 24
 HEADLINE_SIZE = 44
 SUBLINE_SIZE = 28
+FOOTER_SIZE = 20
 MARGIN = 24
 PAD = 20
 MIN_FONT = 16
@@ -181,6 +182,9 @@ def render_card(copy, layout: Layout, out: Path, fonts: Fonts = DEFAULT_FONTS) -
     subline_font = _fit(draw, copy.subline, fonts.subline, round(SUBLINE_SIZE * scale), text_width)
     sub_y = headline_top + round(HEADLINE_SIZE * scale * 1.25)
     draw.text((margin + pad, sub_y), copy.subline, font=subline_font, fill=GREY)
+    footer_font = _fit(draw, copy.footer, fonts.subline, round(FOOTER_SIZE * scale), text_width)
+    footer_y = bar_bottom - round(FOOTER_SIZE * scale * 1.3) - round(10 * scale)
+    draw.text((margin + pad, footer_y), copy.footer, font=footer_font, fill=GREY)
 
     out.parent.mkdir(parents=True, exist_ok=True)
     img.save(out)

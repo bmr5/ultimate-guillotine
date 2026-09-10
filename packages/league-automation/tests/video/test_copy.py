@@ -56,6 +56,7 @@ def test_caption_defaults_to_the_pov_line_and_can_be_overridden() -> None:
     copy = trade_copy(proposal(), caption="pov: me reading the trade alert at 2am")
     assert copy.caption == "pov: me reading the trade alert at 2am"
     assert copy.tag == "BREAKING NEWS"
+    assert copy.footer == "THE SOVEREIGN GUILLOTINE LEAGUE · TRADE REGISTRAR"
     assert isinstance(copy, TradeCopy)
 
 

@@ -20,6 +20,8 @@ class TradeCopy:
     headline: str
     subline: str
     tag: str = "BREAKING NEWS"
+    #: The small line at the foot of the bar, where ESPN puts its own strap.
+    footer: str = "THE SOVEREIGN GUILLOTINE LEAGUE · TRADE REGISTRAR"
 
 
 def default_caption(names: list[str]) -> str:
