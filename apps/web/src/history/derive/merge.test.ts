@@ -39,6 +39,7 @@ const CATALOG_2025 = {
 const REGISTERED = {
   id: 5,
   created_at: "2026-09-09T21:12:00Z",
+  announced_at: null,
   trade_code: "T-2025-014",
   status: "accepted" as const,
   current_revision_id: 50,
@@ -348,5 +349,18 @@ describe("normalizeCatalogTrade", () => {
     expect(
       filterTrades([trade], { ...EMPTY_FILTERS, search: "nacua" }),
     ).toEqual([]);
+  });
+});
+
+describe("a registered trade's date", () => {
+  it("is the chat's own time when the log recorded it, else the registration time", () => {
+    const withChatTime = {
+      ...REGISTERED,
+      announced_at: "2026-09-08T00:32:00Z",
+    };
+    const dated = normalizeRegisteredTrade(withChatTime, REVISION, MEMBERS);
+    expect(dated.registeredAt).toBe("2026-09-08T00:32:00Z");
+    const undated = normalizeRegisteredTrade(REGISTERED, REVISION, MEMBERS);
+    expect(undated.registeredAt).toBe("2026-09-09T21:12:00Z");
   });
 });

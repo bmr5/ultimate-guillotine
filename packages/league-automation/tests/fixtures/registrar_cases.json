@@ -535,10 +535,10 @@
       "id": 60,
       "category": "unclear",
       "text": "🚨 Trade Alert 🚨 nickgrod and mdurgin have agreed to a deal",
-      "expected_kind": "unclear",
-      "expected_status": "clarification",
+      "expected_kind": "permanent",
+      "expected_status": "created",
       "prereq": null,
-      "notes": "Two parties, no asset. validate() also refuses this if the model calls it permanent."
+      "notes": "Two parties and no asset still logs (Ben, 2026-09-10): the record is who traded and the announcement's words; an asset is not required."
     },
     {
       "id": 61,

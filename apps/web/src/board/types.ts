@@ -248,8 +248,10 @@ export interface Database {
       trades: ReadOnlyTable<
         {
           id: number;
-          /** When the Registrar recorded the trade; `/trades` dates a registered card by it. */
+          /** When the Registrar recorded the trade — the fallback date for a registered card. */
           created_at: string;
+          /** When the announcement was posted in the chat; the card's date when present. */
+          announced_at: string | null;
           season_id: number;
           trade_code: string;
           current_revision_id: number | null;

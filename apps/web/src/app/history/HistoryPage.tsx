@@ -1,12 +1,11 @@
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
-import { LoadedAtLine } from "@/history/components/LoadedAtLine";
 import { SeasonCard } from "@/history/components/SeasonCard";
 import { WinnersStrip } from "@/history/components/WinnersStrip";
 import { useSeasonResults } from "@/history/useSeasonResults";
 
 export function HistoryPage() {
-  const { seasons, loadedAt, isPending, errors } = useSeasonResults();
+  const { seasons, isPending, errors } = useSeasonResults();
 
   return (
     <section className="space-y-3">
@@ -40,8 +39,6 @@ export function HistoryPage() {
           </ul>
         </>
       )}
-
-      {loadedAt !== null && <LoadedAtLine loadedAt={loadedAt} />}
     </section>
   );
 }

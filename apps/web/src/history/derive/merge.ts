@@ -183,7 +183,9 @@ export function normalizeRegisteredTrade(
     assets,
     confidence: "high",
     announcement: optionalText(revision?.announcement),
-    registeredAt: trade.created_at,
+    // The chat's own time when we have it (Ben, 2026-09-10: the log was dating
+    // cards by the scrape, not the message); the registration time otherwise.
+    registeredAt: trade.announced_at ?? trade.created_at,
     sourceLabel: trade.trade_code,
     registered: true,
     rescinded: trade.status === "rescinded",

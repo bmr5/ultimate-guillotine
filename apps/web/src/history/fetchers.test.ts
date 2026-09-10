@@ -101,6 +101,7 @@ describe("fetchRegisteredTrades", () => {
     const { client, calls } = createFakeClient({ trades: [] });
     await fetchRegisteredTrades(client);
     expect(calls[0].columns).toContain("created_at");
+    expect(calls[0].columns).toContain("announced_at");
   });
 });
 

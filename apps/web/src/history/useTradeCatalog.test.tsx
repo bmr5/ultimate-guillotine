@@ -51,6 +51,7 @@ function catalogRow(
 const REGISTERED = {
   id: 5,
   created_at: "2026-09-09T21:12:00Z",
+  announced_at: null,
   trade_code: "T-5",
   status: "accepted" as const,
   current_revision_id: 50,

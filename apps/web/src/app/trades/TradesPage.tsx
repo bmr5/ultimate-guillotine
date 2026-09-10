@@ -4,7 +4,6 @@ import { useSearchParams } from "react-router";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { LoadedAtLine } from "@/history/components/LoadedAtLine";
 import { StatsStrip } from "@/history/components/StatsStrip";
 import { TradeCard } from "@/history/components/TradeCard";
 import { TradeFilterBar } from "@/history/components/TradeFilterBar";
@@ -40,7 +39,7 @@ function parseSeasonParam(value: string | null): number | null | undefined {
 
 export function TradesPage() {
   const [params, setParams] = useSearchParams();
-  const { trades, replacedByBackfill, loadedAt, members, isPending, errors } =
+  const { trades, replacedByBackfill, members, isPending, errors } =
     useTradeCatalog();
   const currentSeason = useCurrentSeason();
 
@@ -214,8 +213,6 @@ export function TradesPage() {
         {!isSeasonPending &&
           visible.map((trade) => <TradeCard key={trade.key} trade={trade} />)}
       </ul>
-
-      {loadedAt !== null && <LoadedAtLine loadedAt={loadedAt} />}
     </section>
   );
 }
