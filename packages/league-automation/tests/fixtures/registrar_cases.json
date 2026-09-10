@@ -329,36 +329,36 @@
       "category": "revision",
       "text": "🚨 Trade Alert 🚨\nCorrection: nickgrod sends Ja'Marr Chase to blandon for 500 FAAB",
       "expected_kind": "permanent",
-      "expected_status": "revised",
+      "expected_status": "created",
       "prereq": 1,
-      "notes": "Same parties and player, changed amount. Reply must carry a Was: line with 450 FAAB."
+      "notes": "A follow-up alert between the same people is a new trade with its own code (Ben, 2026-09-10): nothing in the chat is a correction; a wrong log is rescinded by hand."
     },
     {
       "id": 38,
       "category": "revision",
       "text": "🚨 Trade Alert 🚨\nUpdate: kpbowe sends Breece Hall to mdurgin for Malik Nabers, not Puka Nacua",
       "expected_kind": "permanent",
-      "expected_status": "revised",
+      "expected_status": "created",
       "prereq": 2,
-      "notes": "Same context, changed player on the return side."
+      "notes": "A follow-up alert between the same people is a new trade with its own code (Ben, 2026-09-10): nothing in the chat is a correction; a wrong log is rescinded by hand."
     },
     {
       "id": 39,
       "category": "revision",
       "text": "🚨 Trade Alert 🚨\nAdding to the earlier one: chobes sends Jahmyr Gibbs and Rome Odunze to davidwiers for Malik Nabers, Tucker Kraft, 100 FAAB and Chase Brown",
       "expected_kind": "permanent",
-      "expected_status": "revised",
+      "expected_status": "created",
       "prereq": 3,
-      "notes": "Sweetener added to a logged multi-player trade."
+      "notes": "A follow-up alert between the same people is a new trade with its own code (Ben, 2026-09-10): nothing in the chat is a correction; a wrong log is rescinded by hand."
     },
     {
       "id": 40,
       "category": "revision",
       "text": "🚨 Trade Alert 🚨\nTeranitup16 rents Bijan Robinson from JRedWins for Weeks 3 and 4, returned after the Week 5 games with 75 FAAB",
       "expected_kind": "rental",
-      "expected_status": "revised",
+      "expected_status": "created",
       "prereq": 4,
-      "notes": "Rental return condition changed from Week 4 to Week 5."
+      "notes": "A follow-up alert between the same people is a new trade with its own code (Ben, 2026-09-10): nothing in the chat is a correction; a wrong log is rescinded by hand."
     },
     {
       "id": 41,

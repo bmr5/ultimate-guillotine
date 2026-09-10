@@ -52,7 +52,7 @@ def make(conn, **overrides) -> TradeProposal:
     return TradeProposal(**base)
 
 
-def test_accept_creates_then_detects_duplicate_and_revision(conn) -> None:
+def test_accept_creates_then_detects_duplicate_and_logs_an_amendment_as_new(conn) -> None:
     repo = TradeRepository(conn)
     first = repo.accept(make(conn))
     assert first.status == "created" and first.trade_code == "T-2026-001" and first.revision == 1
@@ -75,12 +75,13 @@ def test_accept_creates_then_detects_duplicate_and_revision(conn) -> None:
             ),
         ],
     )
-    revised = repo.accept(amended)
-    assert revised.status == "revised" and revised.revision == 2
-    assert revised.trade_id == first.trade_id
-    assert revised.previous_terms["assets"][1]["amount"] == 450
-    current = repo.find_by_code("T-2026-001")
-    assert current["terms"]["assets"][1]["amount"] == 500 and current["status"] == "accepted"
+    # Ben (2026-09-10): nothing in the chat is a correction, so an amended
+    # alert is a second trade with its own code, and the first stands.
+    second = repo.accept(amended)
+    assert second.status == "created" and second.trade_code == "T-2026-002"
+    assert second.trade_id != first.trade_id and second.revision == 1
+    original = repo.find_by_code("T-2026-001")
+    assert original["terms"]["assets"][1]["amount"] == 450 and original["status"] == "accepted"
 
 
 def test_rescind_marks_trade_and_writes_event(conn) -> None:
@@ -218,7 +219,7 @@ def test_a_second_payment_between_the_same_pair_is_a_new_trade(conn) -> None:
     assert second.trade_id != first.trade_id
 
 
-def test_a_correction_after_the_window_is_a_new_trade(conn) -> None:
+def test_every_later_alert_is_a_new_trade(conn) -> None:
     """The same players days later is a new deal, not an amendment of the old one."""
     repo = TradeRepository(conn)
     first = repo.accept(make(conn))
@@ -240,7 +241,7 @@ def test_a_correction_after_the_window_is_a_new_trade(conn) -> None:
         ],
     )
     inside = repo.accept(amended)
-    assert inside.status == "revised" and inside.trade_id == first.trade_id
+    assert inside.status == "created" and inside.trade_id != first.trade_id
 
     with conn.cursor() as cur:
         cur.execute(
@@ -267,7 +268,7 @@ def test_a_correction_after_the_window_is_a_new_trade(conn) -> None:
             ],
         )
     )
-    assert later.status == "created" and later.trade_code == "T-2026-002"
+    assert later.status == "created" and later.trade_code == "T-2026-003"
     assert later.trade_id != first.trade_id
 
 

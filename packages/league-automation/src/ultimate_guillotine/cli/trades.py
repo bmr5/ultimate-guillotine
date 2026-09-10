@@ -34,6 +34,7 @@ from ultimate_guillotine.sleeper.players import PlayerRepository
 from ultimate_guillotine.trades.context import TRADE_LIMIT, context_from_snapshot
 from ultimate_guillotine.trades.detect import ALERT, is_trade_candidate
 from ultimate_guillotine.trades.extract import PROMPT_VERSION, extract_trade
+from ultimate_guillotine.trades.format import format_terms
 from ultimate_guillotine.trades.models import TradeProposal
 from ultimate_guillotine.trades.registrar import TradeRegistrar
 from ultimate_guillotine.trades.repository import TradeRepository, code_prefix_for
@@ -109,6 +110,16 @@ def register(subparsers) -> None:
     listing.add_argument("--limit", type=positive_int, default=10)
     listing.set_defaults(handler=cmd_list)
 
+    show = trades_sub.add_parser("show", help="print a logged trade's stored terms")
+    show.add_argument("trade_code")
+    show.set_defaults(handler=cmd_show)
+
+    rescind = trades_sub.add_parser(
+        "rescind", help="mark a logged trade rescinded after a manual review"
+    )
+    rescind.add_argument("trade_code")
+    rescind.set_defaults(handler=cmd_rescind)
+
     retry = trades_sub.add_parser("retry", help="re-run a recorded candidate through the registrar")
     retry.add_argument("source_guid")
     retry.set_defaults(handler=cmd_retry)
@@ -161,8 +172,13 @@ def dry_run_pipeline(
         f"{m.display_name}: {', '.join(m.aliases) or 'no known nicknames'}" for m in members
     ]
     extracted, usage = extract_trade(
-        ai, text, season, None, member_names,
-        announcer.display_name if announcer else None, context,
+        ai,
+        text,
+        season,
+        None,
+        member_names,
+        announcer.display_name if announcer else None,
+        context,
     )
     if extracted.kind == "not_a_trade":
         return NOT_A_TRADE
@@ -273,6 +289,38 @@ def print_trades(trades: list[dict]) -> None:
 def cmd_list(args: argparse.Namespace) -> int:
     deps = build_deps()
     print_trades(TradeRepository(deps.conn).list_recent(args.limit))
+    return 0
+
+
+def cmd_show(args: argparse.Namespace) -> int:
+    """The full stored terms of one trade -- the operator's view, since the chat
+    only ever sees the one-line confirmation."""
+    deps = build_deps()
+    trade = TradeRepository(deps.conn).find_by_code(args.trade_code)
+    if trade is None:
+        print(f"no trade {args.trade_code} on file")
+        return 1
+    print(f"{trade['trade_code']}  {trade['status']}")
+    terms = trade["terms"]
+    print(format_terms(TradeProposal(**terms)))
+    excerpt = terms.get("evidence_excerpt")
+    if excerpt:
+        print("Announcement:")
+        print(excerpt)
+    return 0
+
+
+def cmd_rescind(args: argparse.Namespace) -> int:
+    """Manual review, by Ben's ruling: a wrong log is rescinded by hand, never
+    rewritten by a later alert."""
+    deps = build_deps()
+    repo = TradeRepository(deps.conn)
+    with deps.conn.transaction():
+        done = repo.rescind(args.trade_code, f"cli:{args.trade_code}", datetime.now(UTC))
+    if not done:
+        print(f"no trade {args.trade_code} on file")
+        return 1
+    print(f"rescinded {args.trade_code}")
     return 0
 
 

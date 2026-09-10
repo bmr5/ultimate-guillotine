@@ -224,32 +224,11 @@ class TradeRepository:
             if duplicate is not None:
                 return duplicate
 
-            # Only a recently revised trade is still open to amendment; an older
-            # one with the same context falls through and gets a code of its own.
-            cur.execute(
-                """
-                select t.id, t.trade_code, t.current_revision_id from public.trades t
-                join public.trade_revisions r on r.id = t.current_revision_id
-                where t.context_key = %s and t.status = 'accepted' and t.season_id = %s
-                  and r.created_at > now() - make_interval(hours => %s)
-                order by t.id desc
-                limit 1
-                """,
-                (context, season_id, REVISE_WINDOW_HOURS),
-            )
-            open_trade = cur.fetchone()
-            if open_trade is not None:
-                trade_id, trade_code, current_revision_id = open_trade
-                cur.execute(
-                    "select terms from public.trade_revisions where id = %s",
-                    (current_revision_id,),
-                )
-                current = cur.fetchone()
-                if current is None:
-                    raise RuntimeError(f"Trade {trade_code} has no current revision")
-                previous_terms = current[0]
-                revision = self._insert_revision(cur, trade_id, terms, fingerprint, proposal)
-                return TradeAcceptance("revised", trade_id, trade_code, revision, previous_terms)
+            # No automatic revision. Ben (2026-09-10): "trades are not updated in
+            # the chat in that way, only new ones announced." Every alert that is
+            # not an exact repost is a new trade with a code of its own; a
+            # correction is a manual review (`ug trades rescind`), never a guess
+            # that two alerts between the same people describe one deal.
 
             # Only this prefix's trades are counted, so gate traffic and real
             # trades each number from 001 without ever colliding.
