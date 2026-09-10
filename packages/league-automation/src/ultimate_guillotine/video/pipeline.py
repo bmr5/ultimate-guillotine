@@ -73,13 +73,18 @@ def prepare(
     probe=None,
     generate=None,
     now=None,
+    report=None,
 ) -> Job:
     """Everything but the encode. ``probe``, ``generate`` and ``now`` are
     resolved here rather than as defaults so a test (or a monkeypatch of the
     modules) takes effect."""
     probe = probe or ff.probe
-    generate = generate or hf.generate_clip
     now = now or datetime.now
+    if generate is None:
+
+        def generate(request, dest):
+            return hf.generate_clip(request, dest, report=report or (lambda _line: None))
+
     missing = assets.missing()
     if missing:
         raise RenderError("reference media missing: " + ", ".join(str(p) for p in missing))
