@@ -19,7 +19,6 @@ const SEASON: SeasonResult = {
       gulagOut: 2,
       poolOut: 0,
       remaining: 17,
-      note: null,
     },
     {
       week: 3,
@@ -28,7 +27,6 @@ const SEASON: SeasonResult = {
       gulagOut: null,
       poolOut: null,
       remaining: null,
-      note: null,
     },
   ],
   notes: "co-champions, tied on points",
@@ -82,7 +80,6 @@ describe("SeasonCard", () => {
               gulagOut: null,
               poolOut: 3,
               remaining: null,
-              note: null,
             },
           ],
         }}
