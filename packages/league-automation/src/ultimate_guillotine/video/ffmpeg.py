@@ -39,6 +39,7 @@ class Probe:
     width: int
     height: int
     duration: float
+    has_audio: bool = False
 
 
 def _even(value: float) -> int:
@@ -104,8 +105,12 @@ def probe(path: Path, ffprobe: str = "ffprobe", run=subprocess.run) -> Probe:
     if result.returncode != 0:
         raise FfmpegError(result.stderr.strip()[-500:] or f"ffprobe failed on {path}")
     doc = json.loads(result.stdout)
-    video = next(s for s in doc["streams"] if s.get("codec_type") == "video")
-    return Probe(int(video["width"]), int(video["height"]), float(doc["format"]["duration"]))
+    streams = doc["streams"]
+    video = next(s for s in streams if s.get("codec_type") == "video")
+    has_audio = any(s.get("codec_type") == "audio" for s in streams)
+    return Probe(
+        int(video["width"]), int(video["height"]), float(doc["format"]["duration"]), has_audio
+    )
 
 
 def run(cmd: list[str], run=subprocess.run) -> None:

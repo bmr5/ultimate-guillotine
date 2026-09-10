@@ -22,7 +22,8 @@ from ultimate_guillotine.video.assets import (
 )
 from ultimate_guillotine.video.card import Layout, render_card
 from ultimate_guillotine.video.copy import TradeCopy
-from ultimate_guillotine.video.prompt import footage_prompt
+from ultimate_guillotine.video.prompt import footage_prompt, voiced_prompt
+from ultimate_guillotine.video.script import Script, template_script
 
 STAMP = "%Y%m%d-%H%M%S"
 
@@ -42,6 +43,11 @@ class RenderRequest:
     name: str = "trade"
     generate_seconds: int = 8
     resolution: str = "720p"
+    #: Generated footage that speaks: the read goes into the prompt as dialogue,
+    #: Seedance generates the voice, and it is kept under the music.
+    voiced: bool = False
+    script: Script | None = None
+    voice_gain_db: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -84,12 +90,18 @@ def prepare(
     if req.base == "source":
         footage, start = assets.source_video, SOURCE_CLIP_START
     elif req.base == "generated":
+        if req.voiced:
+            script = req.script or template_script(req.copy, req.generate_seconds)
+            prompt = voiced_prompt(req.copy, script, req.generate_seconds)
+        else:
+            prompt = footage_prompt(req.copy, req.generate_seconds)
         request = hf.GenerateRequest(
-            prompt=footage_prompt(req.copy, req.generate_seconds),
+            prompt=prompt,
             reference_video=assets.reference_video,
             duration=req.generate_seconds,
             resolution=req.resolution,
             aspect_ratio=req.aspect,
+            generate_audio=req.voiced,
         )
         footage, start = generate(request, assets.generated / f"{stamp}.mp4"), 0.0
     else:
@@ -111,7 +123,8 @@ def prepare(
         duration=duration,
         music_offset=MUSIC_OFFSET,
         music_gain_db=req.music_gain_db,
-        keep_voice=req.keep_voice,
+        keep_voice=(req.keep_voice or req.voiced) and info.has_audio,
+        voice_gain_db=req.voice_gain_db,
     )
     cmd = ff.command(composite, info.width, info.height, ffmpeg)
     return Job(card, footage, start, duration, composite, cmd)

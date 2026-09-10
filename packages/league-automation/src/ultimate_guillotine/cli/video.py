@@ -12,7 +12,11 @@ import shlex
 import sys
 from pathlib import Path
 
+from ultimate_guillotine.ai.hermes import HermesStructuredClient
+from ultimate_guillotine.ai.structured import StructuredOutputClient
 from ultimate_guillotine.cli.deps import build_deps
+from ultimate_guillotine.config import load_settings
+from ultimate_guillotine.core.hermes_cli import find_hermes_binary
 from ultimate_guillotine.data.repositories import MemberAliasRepository
 from ultimate_guillotine.trades.format import party_labels
 from ultimate_guillotine.trades.models import TradeProposal
@@ -27,12 +31,21 @@ from ultimate_guillotine.video.assets import (
 from ultimate_guillotine.video.card import CANVAS, Layout, render_card
 from ultimate_guillotine.video.copy import TradeCopy, default_caption, trade_copy
 from ultimate_guillotine.video.pipeline import RenderError, RenderRequest, prepare, render
-from ultimate_guillotine.video.prompt import footage_prompt
+from ultimate_guillotine.video.prompt import footage_prompt, voiced_prompt
+from ultimate_guillotine.video.script import (
+    Script,
+    format_script,
+    generate_script,
+    script_from_text,
+    template_script,
+)
 
 TOOLS = ("ffmpeg", "ffprobe", "higgsfield")
 #: The ESPN source clip's frame; a card for manual copy is laid out for it.
 SOURCE_FRAME = (1280, 720)
 RESOLUTIONS = ("480p", "720p", "1080p")
+#: Music under a spoken read; the reference has no voice, so its music sits at 0 dB.
+VOICED_MUSIC_GAIN_DB = -12.0
 
 
 def register(subparsers) -> None:
@@ -51,7 +64,13 @@ def register(subparsers) -> None:
     add_copy_args(cost)
     cost.add_argument("--duration", type=int, default=8, help="seconds of generated footage")
     cost.add_argument("--resolution", default="720p", choices=RESOLUTIONS)
+    cost.add_argument("--voiced", action="store_true", help="price a clip that speaks")
     cost.set_defaults(handler=cmd_cost, parser=cost)
+
+    script = video_sub.add_parser("script", help="write the on-air read without rendering")
+    add_copy_args(script)
+    add_script_args(script)
+    script.set_defaults(handler=cmd_script, parser=script)
 
     rend = video_sub.add_parser("render", help="render a trade announcement video")
     add_copy_args(rend)
@@ -69,15 +88,37 @@ def register(subparsers) -> None:
     rend.add_argument(
         "--keep-voice", action="store_true", help="keep the footage's own audio under the music"
     )
-    rend.add_argument("--music-gain", type=float, default=0.0, help="music level in dB, e.g. -3")
-    rend.add_argument("--generate-seconds", type=int, default=8, help="length of a generated clip")
+    rend.add_argument(
+        "--music-gain",
+        type=float,
+        default=None,
+        help="music level in dB; 0 like the reference, -12 under a voiced read",
+    )
     rend.add_argument("--resolution", default="720p", choices=RESOLUTIONS)
+    rend.add_argument(
+        "--voiced",
+        action="store_true",
+        help="generate footage that speaks a breaking-news read (implies --base generated)",
+    )
+    add_script_args(rend)
     rend.add_argument(
         "--dry-run",
         action="store_true",
         help="print the ffmpeg command; encode and generate nothing",
     )
     rend.set_defaults(handler=cmd_render, parser=rend)
+
+
+def add_script_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--script", metavar="TEXT", help="the read, verbatim, instead of writing one"
+    )
+    parser.add_argument(
+        "--no-ai", action="store_true", help="use the template read instead of the model"
+    )
+    parser.add_argument(
+        "--generate-seconds", type=int, default=8, help="length of the generated clip"
+    )
 
 
 def add_copy_args(parser: argparse.ArgumentParser) -> None:
@@ -107,13 +148,37 @@ def resolve_copy(args: argparse.Namespace) -> TradeCopy:
 
 
 def generate_request(copy: TradeCopy, args: argparse.Namespace) -> hf.GenerateRequest:
+    voiced = getattr(args, "voiced", False)
+    if voiced:
+        prompt = voiced_prompt(copy, template_script(copy, args.duration), args.duration)
+    else:
+        prompt = footage_prompt(copy, args.duration)
     return hf.GenerateRequest(
-        prompt=footage_prompt(copy, args.duration),
+        prompt=prompt,
         reference_video=load_assets().reference_video,
         duration=args.duration,
         resolution=args.resolution,
         aspect_ratio=args.aspect,
+        generate_audio=voiced,
     )
+
+
+def build_script_ai() -> StructuredOutputClient:
+    """The model that writes the read: Hermes on the league profile, no database."""
+    if find_hermes_binary() is None:
+        raise SystemExit("hermes CLI not found; pass --no-ai for the template read")
+    settings = load_settings()
+    return HermesStructuredClient(settings.hermes_profile_home, model=settings.hermes_model)
+
+
+def resolve_script(copy: TradeCopy, args: argparse.Namespace) -> Script:
+    """The read: typed by Ben, the template, or written by the model."""
+    seconds = args.generate_seconds
+    if args.script:
+        return script_from_text(args.script, seconds)
+    if args.no_ai:
+        return template_script(copy, seconds)
+    return generate_script(build_script_ai(), copy, seconds)
 
 
 def cmd_assets(args: argparse.Namespace) -> int:
@@ -148,18 +213,34 @@ def cmd_cost(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_script(args: argparse.Namespace) -> int:
+    copy = resolve_copy(args)
+    print(format_script(resolve_script(copy, args), args.generate_seconds))
+    return 0
+
+
 def cmd_render(args: argparse.Namespace) -> int:
     copy = resolve_copy(args)
+    base = "generated" if args.voiced else args.base
+    if args.music_gain is not None:
+        music_gain = args.music_gain
+    else:
+        music_gain = VOICED_MUSIC_GAIN_DB if args.voiced else 0.0
+    script = resolve_script(copy, args) if args.voiced else None
+    if script is not None:
+        print(format_script(script, args.generate_seconds))
     req = RenderRequest(
         copy=copy,
-        base=args.base,
+        base=base,
         aspect=args.aspect,
         duration=args.duration,
         keep_voice=args.keep_voice,
-        music_gain_db=args.music_gain,
+        music_gain_db=music_gain,
         name=args.trade or "manual",
         generate_seconds=args.generate_seconds,
         resolution=args.resolution,
+        voiced=args.voiced,
+        script=script,
     )
     if args.dry_run and req.base == "generated":
         args.parser.error("--dry-run cannot generate footage; use --base source or a path")

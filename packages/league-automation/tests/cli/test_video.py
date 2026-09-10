@@ -124,3 +124,51 @@ def test_render_reports_missing_media_as_a_plain_line(tmp_path, monkeypatch, cap
     args = parse("render", "--headline", "h", "--subline", "s")
     assert args.handler(args) == 1
     assert "reference media missing" in capsys.readouterr().err
+
+
+def test_script_with_no_ai_prints_the_template_read(capsys) -> None:
+    args = parse(
+        "script",
+        "--no-ai",
+        "--generate-seconds",
+        "12",
+        "--headline",
+        "SOURCES: JOSH JACOBS TRADED TO CHARLIE",
+        "--subline",
+        "Derek gets 450 FAAB · Charlie gets Josh Jacobs",
+    )
+    assert args.handler(args) == 0
+    out = capsys.readouterr().out
+    assert "Breaking news." in out and "Josh Jacobs traded to Charlie" in out
+    assert out.strip().endswith("words for 12 s (budget 31)")
+
+
+def test_script_from_typed_text_needs_no_model(capsys) -> None:
+    args = parse(
+        "script", "--script", "Breaking news. Josh is gone.", "--headline", "h", "--subline", "s"
+    )
+    assert args.handler(args) == 0
+    assert "(straight to lens) Breaking news. Josh is gone." in capsys.readouterr().out
+
+
+def test_cost_voiced_asks_for_audio(monkeypatch, capsys) -> None:
+    seen = {}
+    monkeypatch.setattr(video_cli, "find_tool", lambda name: f"/opt/homebrew/bin/{name}")
+
+    def fake_run(cmd):
+        seen["cmd"] = cmd
+        return '{"credits": 78}'
+
+    monkeypatch.setattr(hf, "run", fake_run)
+    args = parse("cost", "--voiced", "--duration", "12", "--headline", "h", "--subline", "s")
+    assert args.handler(args) == 0
+    cmd = seen["cmd"]
+    assert cmd[cmd.index("--generate_audio") + 1] == "true"
+    assert '"Breaking news."' in cmd[cmd.index("--prompt") + 1]
+    assert capsys.readouterr().out.strip() == "78 credits for one 12 s 720p 9:16 clip"
+
+
+def test_render_voiced_dry_run_is_refused_like_any_generated_dry_run() -> None:
+    args = parse("render", "--voiced", "--no-ai", "--headline", "h", "--subline", "s", "--dry-run")
+    with pytest.raises(SystemExit):
+        args.handler(args)
