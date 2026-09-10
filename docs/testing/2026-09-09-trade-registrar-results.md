@@ -1,6 +1,6 @@
 # Trade Registrar case results
 
-Run 2026-09-10 01:47 UTC against the live extraction model.
+Run 2026-09-10 02:06 UTC against the live extraction model.
 Cases come from `packages/league-automation/tests/fixtures/registrar_cases.json`;
 case text is deliberately not repeated here.
 
@@ -10,7 +10,7 @@ one marked `dropped_upstream`, which the listener discards before the agent is
 reached at all. Asking the model about a message it never sees in production would
 score an answer nothing depends on.
 
-**63 run · 63 passed · 0 failed · 14 skipped (prerequisite state) · 1 dropped upstream.**
+**67 run · 62 passed · 5 failed · 14 skipped (prerequisite state) · 1 dropped upstream.**
 
 | # | category | expected kind | expected status | actual kind | outcome | result | mismatch |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -30,7 +30,7 @@ score an answer nothing depends on.
 | 14 | happy | `permanent` | `created` | `permanent` | `created` | pass | — |
 | 15 | happy | `permanent` | `created` | `permanent` | `created` | pass | — |
 | 16 | happy | `permanent` | `created` | `permanent` | `created` | pass | — |
-| 17 | sloppy | `permanent` | `created` | `permanent` | `created` | pass | — |
+| 17 | sloppy | `permanent` | `created` | `unclear` | `clarification` | FAIL | kind unclear, outcome clarification |
 | 18 | sloppy | `permanent` | `created` | `permanent` | `created` | pass | — |
 | 19 | sloppy | `permanent` | `clarification` | `permanent` | `clarification` | pass | — |
 | 20 | sloppy | `permanent` | `clarification` | `permanent` | `clarification` | pass | — |
@@ -63,31 +63,35 @@ score an answer nothing depends on.
 | 62 | unclear | `rental` | `clarification` | `rental` | `clarification` | pass | — |
 | 63 | unclear | `unclear` | `clarification` | `unclear` | `clarification` | pass | — |
 | 64 | privacy | `permanent` | `created` | `permanent` | `created` | pass | — |
-| 65 | privacy | `permanent` | `created` | `permanent` | `created` | pass | — |
+| 65 | privacy | `permanent` | `created` | `unclear` | `clarification` | FAIL | kind unclear, outcome clarification |
 | 66 | privacy | `permanent` | `created` | `permanent` | `created` | pass | — |
 | 67 | privacy | `permanent` | `created` | `permanent` | `created` | pass | — |
 | 68 | privacy | `permanent` | `created` | `permanent` | `created` | pass | — |
 | 69 | scale | `permanent` | `created` | `permanent` | `created` | pass | — |
 | 70 | scale | `permanent` | `created` | `permanent` | `created` | pass | — |
-| 71 | scale | `permanent` | `created` | `permanent` | `created` | pass | — |
+| 71 | scale | `permanent` | `created` | `unclear` | `clarification` | FAIL | kind unclear, outcome clarification |
 | 72 | scale | `permanent` | `created` | `permanent` | `created` | pass | — |
 | 73 | unclear | `unclear` | `clarification` | `unclear` | `clarification` | pass | — |
 | 74 | happy | `permanent` | `created` | `permanent` | `created` | pass | — |
 | 75 | unclear | `unclear` | `clarification` | `unclear` | `clarification` | pass | — |
-| 76 | sloppy | `permanent` | `created` | `permanent` | `created` | pass | — |
+| 76 | sloppy | `permanent` | `created` | `unclear` | `clarification` | FAIL | kind unclear, outcome clarification |
 | 77 | unclear | `unclear` | `clarification` | `unclear` | `clarification` | pass | — |
 | 78 | rescission | `rescission` | `clarification` | `rescission` | `clarification` | pass | — |
+| 79 | happy | `permanent` | `created` | `permanent` | `created` | pass | — |
+| 80 | sloppy | `permanent` | `created` | `permanent` | `created` | pass | — |
+| 81 | sloppy | `permanent` | `created` | `permanent` | `created` | pass | — |
+| 82 | unclear | `permanent` | `clarification` | `unclear` | `clarification` | FAIL | kind unclear |
 
 ## Totals by category
 
 | category | run | passed | failed |
 | --- | --- | --- | --- |
-| happy | 17 | 17 | 0 |
-| sloppy | 21 | 21 | 0 |
+| happy | 18 | 18 | 0 |
+| sloppy | 23 | 21 | 2 |
 | not_a_trade | 7 | 7 | 0 |
-| unclear | 8 | 8 | 0 |
-| privacy | 5 | 5 | 0 |
-| scale | 4 | 4 | 0 |
+| unclear | 9 | 8 | 1 |
+| privacy | 5 | 4 | 1 |
+| scale | 4 | 3 | 1 |
 | rescission | 1 | 1 | 0 |
 
 ## Skipped

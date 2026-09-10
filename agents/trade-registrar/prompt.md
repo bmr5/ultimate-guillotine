@@ -66,6 +66,12 @@ into `player_name`. If the giving party is not known, look across every roster. 
 matches nobody's roster is left exactly as the announcement wrote it -- do not guess at the
 closest spelling, and never move a player to a roster he is not on.
 
+`Rosters` says how a name is spelled. It never says who is allowed to trade whom. An announcement
+where somebody gives away a player the rosters put on another team, or on nobody's team, is still
+that announcement: rosters go stale between syncs, and a trade is the thing that changes them. Take
+the announcement's word for who gives what, and never answer `unclear` because a roster disagrees
+with it.
+
 The `Trades this season:` section lists this season's trades by code. When an announcement
 rescinds, cancels or revises an earlier trade without naming its code, use that list to find the
 one it means and copy that trade's code into `referenced_trade_code`. If two or more fit, or none

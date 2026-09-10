@@ -130,6 +130,14 @@ PROMPT_RULES_2026_3 = [
         "A name that matches nobody's roster is left exactly as the announcement wrote it",
     ),
     (
+        "the rosters are a spelling aid, never an ownership check",
+        "`Rosters` says how a name is spelled. It never says who is allowed to trade whom",
+    ),
+    (
+        "a roster that disagrees with the announcement does not make it unclear",
+        "never answer `unclear` because a roster disagrees with it",
+    ),
+    (
         "an uncoded rescission names its trade from the season's list",
         "use that list to find the one it means and copy that trade's code",
     ),
