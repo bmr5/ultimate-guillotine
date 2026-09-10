@@ -25,7 +25,7 @@ game-window Game Pulse post is a second schedule of the same command, not a seco
 
 Two script-only Hermes cron rows under one agent, in the Mac mini's local time (Central):
 `guillotine-eod-summary` at `15 8 * * 0,1,3` (8:15 AM Wednesday, Sunday, Monday) and
-`guillotine-eod-summary-waivers` at `15 11 * * 4,6` (11:15 AM Thursday and Saturday, after each
+`guillotine-eod-summary-waivers` at `12 10 * * 4,6` (10:12 AM Thursday and Saturday, after each
 waiver round). Ben's cadence (2026-09-10, after the first dry run): "I would take a break on this on Tuesdays. Wed
 it could be useful before auctions close. Thursday auctions clear it could be useful after
 that, Thursday games happen so it's definitely useful Friday morning. Then a lot of FA happens

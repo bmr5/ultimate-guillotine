@@ -138,8 +138,8 @@ jobs:
   # #guillotine-drafts. The mornings are Ben's (2026-09-10): a break on Tuesdays
   # and Fridays; 8:15 AM Central on Wednesday (before the first waiver round
   # closes), Sunday and Monday (after Saturday's free agency and Sunday's games)
-  # -- after the 8 AM players sync; and 11:15 AM on Thursday and Saturday, after
-  # each waiver round. The Saturday round closes 11 AM CST by
+  # -- after the 8 AM players sync; and 10:12 AM on Thursday and Saturday, after
+  # each waiver round (Ben, 2026-09-10: they finished at 10:08). The Saturday round closes 11 AM CST by
   # the rules; Sleeper's daily_waivers_hour is 8 UTC, 3 AM Central, so Thursday's
   # clear is earlier than Ben's 11 -- his call, one line to move. Two rows, one
   # agent, like the projections jobs: the per-agent run key and the health check
@@ -154,7 +154,7 @@ jobs:
     max_gap_minutes: 3000
   - name: guillotine-eod-summary-waivers
     agent: eod-summary
-    schedule: "15 11 * * 4,6"
+    schedule: "12 10 * * 4,6"
     script: guillotine_eod_summary.sh
     deliver: "discord:#guillotine-ops"
     max_gap_minutes: 3000

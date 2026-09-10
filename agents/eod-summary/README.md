@@ -44,7 +44,7 @@ message and nothing else.
 ## Schedule and failure behaviour
 
 `guillotine-eod-summary` at `15 8 * * 0,1,3` and `guillotine-eod-summary-waivers` at
-`15 11 * * 4,6`, Mac mini local time (8:15 AM Wednesday, Sunday and Monday; 11:15 AM Thursday
+`12 10 * * 4,6`, Mac mini local time (8:15 AM Wednesday, Sunday and Monday; 11:15 AM Thursday
 and Saturday after each waiver round; Tuesday and Friday off -- Ben's cadence), both agent `eod-summary`, one
 status line to `#guillotine-ops`, gap budget 3000 minutes. The league sees it as the Guillotine Daily. Off-season and post-final weeks are a
 no-op. A schedule outage or projection coverage under 95 percent of the starters still to
