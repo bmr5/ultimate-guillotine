@@ -1,6 +1,13 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/*
+ * Styles every native form control, which is what the `<select>` filters on the trade page
+ * rely on: they carry no classes of their own beyond layout, and without the plugin the
+ * browser draws them.
+ */
+@plugin "@tailwindcss/forms";
+
 @custom-variant dark (&:is(.dark *));
 
 /*

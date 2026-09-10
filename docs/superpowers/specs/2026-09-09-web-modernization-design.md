@@ -32,21 +32,26 @@ app stays a Vite SPA on Vercel; Next.js buys a read-only league board nothing.
 | TanStack Query | 5.51 | 5 current |
 
 Removed outright (no app code imports them): `react-hook-form`, `@hookform/resolvers`, `zod`,
-`cmdk`, `vaul`, `react-day-picker`, `date-fns`, `@tailwindcss/forms`, `autoprefixer`, `postcss`,
+`cmdk`, `vaul`, `react-day-picker`, `date-fns`, `autoprefixer`, `postcss`,
 and the 38 `components/ui/*` files nothing imports, plus `lib/validations.ts` and
 `lib/type-helpers.ts`. A primitive the redesign later needs is one `shadcn add` away.
 
+`@tailwindcss/forms` stays: it styles every native form control, and the trade page's `<select>`
+filters carry no classes of their own beyond layout.
+
 The 10 primitives that stay — `alert`, `badge`, `button`, `card`, `collapsible`, `dropdown-menu`,
-`input`, `skeleton`, `toggle-group`, `tooltip` — are regenerated from the current registry, then
-re-patched with the app's own adjustments (the `button-variants.ts` / `toggle-variants.ts` split
-that keeps `react-refresh/only-export-components` quiet, and any class the pages' tests assert on).
+`input`, `skeleton`, `toggle-group`, `tooltip` — keep their current source. Today's registry draws
+them with different sizes, radii and focus rings, which is a visual change for the redesign to
+make; here only their Radix imports move to the unified package. The `button-variants.ts` /
+`toggle-variants.ts` split that keeps `react-refresh/only-export-components` quiet stays.
 
 ## Theme tokens
 
 The HSL triplets in `globals.css` (`--background: 0 0% 100%` consumed as `hsl(var(--background))`)
-become Tailwind 4 `@theme` colors. The *values* are converted, not redesigned: each light and dark
-token is the same color it was, expressed as `oklch()`, so the pages look identical before and
-after. The `.dark` class stays the dark-mode switch (`@custom-variant dark (&:is(.dark *))`) so the
+become Tailwind 4 colors: each token holds `hsl(0 0% 100%)` on `:root` / `.dark`, and an
+`@theme inline` block maps `--color-background: var(--background)`. The values are wrapped, not
+converted — the same color to the bit — so the pages look identical before and after; the
+redesign is where the palette moves (to OKLCH, if it likes). The `.dark` class stays the dark-mode switch (`@custom-variant dark (&:is(.dark *))`) so the
 existing `ThemeProvider` and `ModeToggle` keep working. The scoped reduced-motion rule for
 `.board-team-card`, the `Inter var` font stack, the `100dvh` / `100dvw` display sizes and the
 container settings are carried over verbatim into the new CSS.
@@ -62,7 +67,7 @@ goes wrong is reverted alone.
 3. **Tailwind 4** — `@tailwindcss/upgrade` for the mechanical part, then the theme block by hand,
    `@tailwindcss/vite` in place of PostCSS, `tw-animate-css`, `tailwind-merge` 3, and the Prettier
    plugin pointed at `globals.css` (`tailwindStylesheet`) instead of the deleted config.
-4. **shadcn** — `components.json`; regenerate the 10 kept primitives; `migrate radix`; delete the
+4. **shadcn** — `components.json`; the 10 kept primitives onto the `radix-ui` package; delete the
    38 others and the unused dependencies.
 5. **React Router 8** — `react-router-dom` → `react-router`; `createBrowserRouter`,
    `RouterProvider`, loaders, `NavLink`, `useSearchParams` are unchanged in name.
