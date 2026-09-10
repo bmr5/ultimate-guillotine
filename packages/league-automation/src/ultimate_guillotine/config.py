@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     test_chat_guid: str | None = None
     production_chat_guid: str | None = None
     production_participant_fingerprint: str | None = None
+    #: The Sleeper username of the person whose iMessage account the Mac mini
+    #: runs under. BlueBubbles reports no sender handle on that account's own
+    #: messages (``is_from_me``), so without this a first-person alert from the
+    #: commissioner has no announcer.
+    commissioner_sleeper_username: str | None = None
     bluebubbles_server_url: str = "http://127.0.0.1:1234"
     bluebubbles_password: SecretStr | None = None
     webhook_listen_host: str = "127.0.0.1"

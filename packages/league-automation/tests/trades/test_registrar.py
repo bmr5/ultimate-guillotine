@@ -21,16 +21,46 @@ CHAT = "iMessage;+;chat-test"
 
 
 def msg(text: str, guid: str = "g1", from_me: bool = False, chat: str = CHAT) -> InboundMessage:
-    return InboundMessage(guid=guid, chat_guid=chat, sender_address="+15555550100", text=text,
-                          is_from_me=from_me, is_group=True, sent_at=datetime.now(UTC))
+    return InboundMessage(
+        guid=guid,
+        chat_guid=chat,
+        sender_address="+15555550100",
+        text=text,
+        is_from_me=from_me,
+        is_group=True,
+        sent_at=datetime.now(UTC),
+    )
 
 
 def good_extraction() -> ExtractedTrade:
     return ExtractedTrade(
-        kind="permanent", parties=[ExtractedParty(name="Member01"), ExtractedParty(name="Member02")],
-        assets=[ExtractedAsset(kind="player", from_party="Member01", to_party="Member02", player_name="Player Alpha", amount=None, unit=None, description=None),
-                ExtractedAsset(kind="faab", from_party="Member02", to_party="Member01", player_name=None, amount=450, unit="faab", description=None)],
-        effective_week=2, rental_return_condition=None, special_terms=[], referenced_trade_code=None, unclear_reason=None,
+        kind="permanent",
+        parties=[ExtractedParty(name="Member01"), ExtractedParty(name="Member02")],
+        assets=[
+            ExtractedAsset(
+                kind="player",
+                from_party="Member01",
+                to_party="Member02",
+                player_name="Player Alpha",
+                amount=None,
+                unit=None,
+                description=None,
+            ),
+            ExtractedAsset(
+                kind="faab",
+                from_party="Member02",
+                to_party="Member01",
+                player_name=None,
+                amount=450,
+                unit="faab",
+                description=None,
+            ),
+        ],
+        effective_week=2,
+        rental_return_condition=None,
+        special_terms=[],
+        referenced_trade_code=None,
+        unclear_reason=None,
     )
 
 
@@ -75,7 +105,13 @@ class FakeTrades:
 
     def accept(self, proposal):
         self.accepted.append(proposal)
-        return TradeAcceptance(self.status, 7, "T-2026-001", 1 if self.status != "revised" else 2, {"assets": []} if self.status == "revised" else None)
+        return TradeAcceptance(
+            self.status,
+            7,
+            "T-2026-001",
+            1 if self.status != "revised" else 2,
+            {"assets": []} if self.status == "revised" else None,
+        )
 
     def rescind(self, code, source_guid, occurred_at):
         self.rescinded.append(code)
@@ -96,10 +132,12 @@ class FakeNotifier:
         self.alerts_sent, self.ops_sent = [], []
 
     def alerts(self, text):
-        self.alerts_sent.append(text); return True
+        self.alerts_sent.append(text)
+        return True
 
     def ops(self, text):
-        self.ops_sent.append(text); return True
+        self.ops_sent.append(text)
+        return True
 
 
 class FakeMembers:
@@ -237,18 +275,43 @@ class RefusingTrades(FakeTrades):
         return False
 
 
-def build(ai, trades=None, delivery=None, conn=None, members=None, runs=None, sleeper=None,
-          sources=None, season=None, contacts=None):
-    settings = Settings(database_url="postgresql://x:y@example.invalid/db", delivery_mode="test",
-                        test_chat_guid=CHAT, _env_file=None)
+def build(
+    ai,
+    trades=None,
+    delivery=None,
+    conn=None,
+    members=None,
+    runs=None,
+    sleeper=None,
+    sources=None,
+    season=None,
+    contacts=None,
+    commissioner=None,
+):
+    settings = Settings(
+        database_url="postgresql://x:y@example.invalid/db",
+        delivery_mode="test",
+        test_chat_guid=CHAT,
+        commissioner_sleeper_username=commissioner,
+        _env_file=None,
+    )
     runs, notifier = runs or FakeRuns(), FakeNotifier()
-    reg = TradeRegistrar(settings, conn, ai, delivery or FakeDelivery(), notifier,
-                         members or FakeMembers(), FakePlayers(),
-                         trades or FakeTrades(), runs,
-                         contacts_repo=contacts,
-                         sources_repo=sources if sources is not None else FakeSources(),
-                         sleeper_client=sleeper, season=season,
-                         clock=lambda: datetime(2026, 9, 10, tzinfo=UTC))
+    reg = TradeRegistrar(
+        settings,
+        conn,
+        ai,
+        delivery or FakeDelivery(),
+        notifier,
+        members or FakeMembers(),
+        FakePlayers(),
+        trades or FakeTrades(),
+        runs,
+        contacts_repo=contacts,
+        sources_repo=sources if sources is not None else FakeSources(),
+        sleeper_client=sleeper,
+        season=season,
+        clock=lambda: datetime(2026, 9, 10, tzinfo=UTC),
+    )
     return reg, runs, notifier
 
 
@@ -266,8 +329,9 @@ def test_created_trade_sends_confirmation_and_records_run() -> None:
 
 def test_a_redelivered_message_is_skipped_without_calling_the_model() -> None:
     delivery = FakeDelivery()
-    reg, runs, _ = build(FakeAI(error=AssertionError("model must not be called")),
-                         delivery=delivery)
+    reg, runs, _ = build(
+        FakeAI(error=AssertionError("model must not be called")), delivery=delivery
+    )
     runs.reserve = lambda agent, trigger, key, invoked_by=None: None
     assert reg.handle(msg("🚨 Member01 sends Player Alpha to Member02")) == "skipped"
     assert delivery.sent == [] and runs.finished == []
@@ -281,7 +345,9 @@ def test_retry_uses_a_per_attempt_idempotency_key() -> None:
 
 def test_duplicate_sends_nothing_and_marks_run_duplicate() -> None:
     delivery = FakeDelivery()
-    reg, runs, _ = build(FakeAI(good_extraction()), trades=FakeTrades("duplicate"), delivery=delivery)
+    reg, runs, _ = build(
+        FakeAI(good_extraction()), trades=FakeTrades("duplicate"), delivery=delivery
+    )
     assert reg.handle(msg("🚨 Member01 sends Player Alpha to Member02 for 450 FAAB")) == "duplicate"
     assert delivery.sent == [] and runs.finished[0][1] == "duplicate"
 
@@ -295,7 +361,9 @@ def test_revised_sends_updated_message() -> None:
 
 def test_unclear_sends_clarification_and_logs_no_trade() -> None:
     delivery, trades = FakeDelivery(), FakeTrades()
-    unclear = good_extraction().model_copy(update={"kind": "unclear", "unclear_reason": "No counterparty named"})
+    unclear = good_extraction().model_copy(
+        update={"kind": "unclear", "unclear_reason": "No counterparty named"}
+    )
     reg, runs, _ = build(FakeAI(unclear), trades=trades, delivery=delivery)
     assert reg.handle(msg("🚨 Player Alpha rented for 10")) == "clarification"
     assert trades.accepted == [] and "No counterparty named" in delivery.sent[0][1]
@@ -306,7 +374,9 @@ def test_not_a_trade_stays_silent() -> None:
     delivery, trades = FakeDelivery(), FakeTrades()
     joke = good_extraction().model_copy(update={"kind": "not_a_trade", "parties": [], "assets": []})
     reg, runs, _ = build(FakeAI(joke), trades=trades, delivery=delivery)
-    assert reg.handle(msg("🚨 Trade Alert 🚨 jk nobody is trading Member01 anything")) == "not_a_trade"
+    assert (
+        reg.handle(msg("🚨 Trade Alert 🚨 jk nobody is trading Member01 anything")) == "not_a_trade"
+    )
     assert delivery.sent == [] and trades.accepted == [] and runs.finished[0][1] == "succeeded"
 
 
@@ -319,9 +389,14 @@ def test_ai_unavailable_alerts_and_fails_run_without_sending() -> None:
 
 def test_rescission_by_code_rescinds_without_calling_the_model() -> None:
     delivery, trades = FakeDelivery(), FakeTrades()
-    reg, _, _ = build(FakeAI(error=AssertionError("model must not be called")), trades=trades, delivery=delivery)
+    reg, _, _ = build(
+        FakeAI(error=AssertionError("model must not be called")), trades=trades, delivery=delivery
+    )
     assert reg.handle(msg("🚨 Trade T-2026-001 is rescinded")) == "rescinded"
-    assert trades.rescinded == ["T-2026-001"] and delivery.sent[0][1] == "🚨 Trade T-2026-001 rescinded"
+    assert (
+        trades.rescinded == ["T-2026-001"]
+        and delivery.sent[0][1] == "🚨 Trade T-2026-001 rescinded"
+    )
 
 
 def test_trigger_matches_alerts_and_ignores_signed_bot_text() -> None:
@@ -329,7 +404,12 @@ def test_trigger_matches_alerts_and_ignores_signed_bot_text() -> None:
     trigger = trade_trigger(reg, CHAT)
     assert trigger.name == "trade-registrar"
     assert trigger.matches(msg("🚨 Member01 sends Player Alpha to Member02"))
-    assert not trigger.matches(msg("🚨 Trade T-2026-001 logged\nMember02 receives: Player Alpha\n— 🤖 Guillotine Bot", from_me=True))
+    assert not trigger.matches(
+        msg(
+            "🚨 Trade T-2026-001 logged\nMember02 receives: Player Alpha\n— 🤖 Guillotine Bot",
+            from_me=True,
+        )
+    )
     assert not trigger.matches(msg("no alert here"))
 
 
@@ -339,8 +419,13 @@ def test_a_failure_rolls_back_before_finishing_the_run() -> None:
     run is stranded in `running` with nobody alerted."""
     journal, delivery = [], FakeDelivery()
     runs = JournalRuns(journal)
-    reg, _, notifier = build(FakeAI(good_extraction()), delivery=delivery,
-                             conn=FakeConn(journal), members=ExplodingMembers(), runs=runs)
+    reg, _, notifier = build(
+        FakeAI(good_extraction()),
+        delivery=delivery,
+        conn=FakeConn(journal),
+        members=ExplodingMembers(),
+        runs=runs,
+    )
     assert reg.handle(msg("🚨 Member01 sends Player Alpha to Member02")) == "failed"
     assert [f[1] for f in runs.finished] == ["failed"]
     assert notifier.alerts_sent == ["Trade Registrar failed on a candidate: RuntimeError"]
@@ -360,8 +445,9 @@ def test_an_uncoded_rescission_resolves_its_target_by_context() -> None:
 
 def test_rescinding_a_code_with_no_trade_asks_instead_of_claiming_it_happened() -> None:
     delivery, trades = FakeDelivery(), RefusingTrades()
-    reg, runs, _ = build(FakeAI(error=AssertionError("model must not be called")),
-                         trades=trades, delivery=delivery)
+    reg, runs, _ = build(
+        FakeAI(error=AssertionError("model must not be called")), trades=trades, delivery=delivery
+    )
     assert reg.handle(msg("🚨 Trade T-2026-009 is rescinded")) == "clarification"
     assert trades.rescinded == ["T-2026-009"]
     assert "T-2026-009" in delivery.sent[0][1]
@@ -372,8 +458,12 @@ def test_a_sleeper_outage_degrades_to_an_empty_roster_index() -> None:
     """Roster evidence only disambiguates duplicate names: losing it must not stop
     a trade being logged."""
     delivery = FakeDelivery()
-    reg, runs, notifier = build(FakeAI(good_extraction()), delivery=delivery,
-                                conn=SeasonConn([], (2026,)), sleeper=ExplodingSleeper())
+    reg, runs, notifier = build(
+        FakeAI(good_extraction()),
+        delivery=delivery,
+        conn=SeasonConn([], (2026,)),
+        sleeper=ExplodingSleeper(),
+    )
     assert reg.handle(msg("🚨 Member01 sends Player Alpha to Member02 for 450 FAAB")) == "created"
     # The fake connection cannot answer the data layer either, so the context
     # pack degrades alongside the rosters -- two independent notes, one outage.
@@ -394,8 +484,9 @@ def test_trigger_ignores_alerts_from_another_chat() -> None:
 def test_rescission_by_a_test_mode_code_is_recognised() -> None:
     """Gate trades carry `TEST-` codes; rescinding one must work like any other."""
     delivery, trades = FakeDelivery(), FakeTrades()
-    reg, _, _ = build(FakeAI(error=AssertionError("model must not be called")),
-                      trades=trades, delivery=delivery)
+    reg, _, _ = build(
+        FakeAI(error=AssertionError("model must not be called")), trades=trades, delivery=delivery
+    )
     assert reg.handle(msg("🚨 Trade TEST-2026-001 is rescinded")) == "rescinded"
     assert trades.rescinded == ["TEST-2026-001"]
     assert delivery.sent[0][1] == "🚨 Trade TEST-2026-001 rescinded"
@@ -423,8 +514,9 @@ def test_the_season_falls_back_to_the_clock_with_no_seasons_row() -> None:
 def test_an_explicit_season_wins_over_the_table() -> None:
     """`ug trades replay` walks a past season and says so outright."""
     trades = FakeTrades()
-    reg, _, _ = build(FakeAI(good_extraction()), trades=trades,
-                      conn=SeasonConn([], (2026,)), season=2025)
+    reg, _, _ = build(
+        FakeAI(good_extraction()), trades=trades, conn=SeasonConn([], (2026,)), season=2025
+    )
     assert reg.handle(msg(ALERT_TEXT)) == "created"
     assert trades.accepted[0].season == 2025
 
@@ -434,8 +526,12 @@ def test_a_repost_of_a_recent_alert_is_a_duplicate_without_calling_the_model() -
     fingerprint match is enough, and the model never sees the second copy."""
     delivery, trades = FakeDelivery(), FakeTrades()
     sources = FakeSources(repost=True)
-    reg, runs, _ = build(FakeAI(error=AssertionError("model must not be called")),
-                         trades=trades, delivery=delivery, sources=sources)
+    reg, runs, _ = build(
+        FakeAI(error=AssertionError("model must not be called")),
+        trades=trades,
+        delivery=delivery,
+        sources=sources,
+    )
     assert reg.handle(msg(ALERT_TEXT, guid="g2")) == "duplicate"
     assert delivery.sent == [] and trades.accepted == []
     assert runs.finished[0][1] == "duplicate"
@@ -462,8 +558,13 @@ def test_a_commit_failure_after_finishing_leaves_the_run_succeeded() -> None:
     journal = []
     runs = JournalRuns(journal)
     delivery = FakeDelivery()
-    reg, _, notifier = build(FakeAI(good_extraction()), delivery=delivery,
-                             conn=FinishThenFailConn(journal), runs=runs, season=2026)
+    reg, _, notifier = build(
+        FakeAI(good_extraction()),
+        delivery=delivery,
+        conn=FinishThenFailConn(journal),
+        runs=runs,
+        season=2026,
+    )
     assert reg.handle(msg(ALERT_TEXT)) == "failed"
     assert [f[1] for f in runs.finished] == ["succeeded"]
     assert notifier.alerts_sent == ["Trade Registrar failed on a candidate: RuntimeError"]
@@ -473,12 +574,24 @@ def first_person_extraction() -> ExtractedTrade:
     """What the model returns for `I sent Player Alpha to Member02 for 450`
     when it ignored the prompt and copied the pronoun through."""
     return ExtractedTrade(
-        kind="permanent", parties=[ExtractedParty(name="me"), ExtractedParty(name="Member02")],
-        assets=[ExtractedAsset(kind="player", from_party="me", to_party="Member02",
-                               player_name="Player Alpha", amount=None, unit=None,
-                               description=None)],
-        effective_week=None, rental_return_condition=None, special_terms=[],
-        referenced_trade_code=None, unclear_reason=None,
+        kind="permanent",
+        parties=[ExtractedParty(name="me"), ExtractedParty(name="Member02")],
+        assets=[
+            ExtractedAsset(
+                kind="player",
+                from_party="me",
+                to_party="Member02",
+                player_name="Player Alpha",
+                amount=None,
+                unit=None,
+                description=None,
+            )
+        ],
+        effective_week=None,
+        rental_return_condition=None,
+        special_terms=[],
+        referenced_trade_code=None,
+        unclear_reason=None,
     )
 
 
@@ -499,6 +612,40 @@ def test_an_unplaceable_sender_leaves_the_announcer_unknown() -> None:
     ai = FakeAI(good_extraction())
     reg, _runs, _ = build(ai)
     assert reg.handle(msg("🚨 Member01 sends Player Alpha to Member02 for 450 FAAB")) == "created"
+    assert "Announcer: unknown" in ai.users[0].splitlines()
+
+
+def test_the_commissioners_own_alert_names_the_commissioner() -> None:
+    """BlueBubbles carries no sender handle on the Mac's own account, so the
+    setting is the only way `I` can mean Ben on a message he sent himself."""
+    ai = FakeAI(good_extraction())
+    reg, _runs, _ = build(ai, contacts=FakeContacts(None), commissioner="member01")
+    own = InboundMessage(
+        guid="g1",
+        chat_guid=CHAT,
+        sender_address=None,
+        text="🚨 I sent Player Alpha to Member02 for 450 FAAB",
+        is_from_me=True,
+        is_group=True,
+        sent_at=datetime.now(UTC),
+    )
+    assert reg.handle(own) == "created"
+    assert "Announcer: Member01" in ai.users[0].splitlines()
+
+
+def test_the_commissioners_alert_without_the_setting_stays_unknown() -> None:
+    ai = FakeAI(good_extraction())
+    reg, _runs, _ = build(ai, contacts=FakeContacts(None))
+    own = InboundMessage(
+        guid="g1",
+        chat_guid=CHAT,
+        sender_address=None,
+        text="🚨 I sent Player Alpha to Member02 for 450 FAAB",
+        is_from_me=True,
+        is_group=True,
+        sent_at=datetime.now(UTC),
+    )
+    assert reg.handle(own) == "created"
     assert "Announcer: unknown" in ai.users[0].splitlines()
 
 
@@ -526,7 +673,8 @@ def test_a_first_person_party_is_logged_as_the_announcer() -> None:
     trade is still logged, against the member who sent the message."""
     trades = FakeTrades()
     reg, _runs, _ = build(
-        FakeAI(first_person_extraction()), trades=trades,
+        FakeAI(first_person_extraction()),
+        trades=trades,
         contacts=FakeContacts(MemberRef(1, "Member01", ())),
     )
     assert reg.handle(msg("🚨 I sent Player Alpha to Member02 for 450 FAAB")) == "created"
