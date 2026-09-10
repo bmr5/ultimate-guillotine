@@ -23,63 +23,19 @@ const base: CatalogTrade = {
 };
 
 describe("tradeStats", () => {
-  // Three figures, not four. `faabMoved` went with the card's FAAB badge, by Ben's ruling of
-  // 2026-09-09 that the number is not a useful thing to log for these deals; the equality below
-  // is against the whole object rather than field by field so a fourth cannot creep back in
-  // unnoticed.
-  it("counts trades and seasons, and names the most-traded position", () => {
+  // Two figures. `faabMoved` went with the card's FAAB badge (Ben, 2026-09-09) and
+  // `topPosition` the day after (Ben, 2026-09-10: assets are stored as words, not parsed).
+  // The equality is against the whole object so a third figure cannot creep back in unnoticed.
+  it("counts trades and seasons and nothing else", () => {
     const stats = tradeStats([
-      {
-        ...base,
-        assets: [
-          {
-            kind: "player",
-            playerId: "1",
-            name: "P",
-            position: "RB",
-            fromParty: 0,
-            toParty: 1,
-          },
-        ],
-      },
-      {
-        ...base,
-        key: "k2",
-        season: 2024,
-        assets: [
-          {
-            kind: "player",
-            playerId: "2",
-            name: "Q",
-            position: "RB",
-            fromParty: 0,
-            toParty: 1,
-          },
-          {
-            kind: "player",
-            playerId: "3",
-            name: "R",
-            position: "WR",
-            fromParty: 1,
-            toParty: 0,
-          },
-        ],
-      },
+      base,
+      { ...base, key: "k2", season: 2024 },
+      { ...base, key: "k3" },
     ]);
-    expect(stats).toEqual({
-      tradeCount: 2,
-      seasonCount: 2,
-      topPosition: "RB",
-    });
+    expect(stats).toEqual({ tradeCount: 3, seasonCount: 2 });
   });
 
-  it("reports no position when nothing has one", () => {
-    expect(tradeStats([base]).topPosition).toBeNull();
-  });
-
-  // A rescinded trade happened, so it is counted and shown like any other.
-  it("counts a rescinded trade", () => {
-    const stats = tradeStats([base, { ...base, key: "k2", rescinded: true }]);
-    expect(stats.tradeCount).toBe(2);
+  it("is empty for no trades", () => {
+    expect(tradeStats([])).toEqual({ tradeCount: 0, seasonCount: 0 });
   });
 });

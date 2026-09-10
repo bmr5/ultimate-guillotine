@@ -7,18 +7,17 @@ export function StatsStrip({
   stats: TradeStats;
   replacedByBackfill: number;
 }) {
-  // Three cells, not four: "FAAB moved" is gone with the card's FAAB badge, by Ben's ruling of
-  // 2026-09-09 — "because of the dynamic nature of many deals it's most likely not useful to
-  // include the FAAB number here". Its footnote went with it; it existed only to say which of
-  // the two numbers counted a rescinded trade.
+  // Two cells. "FAAB moved" went with the card's FAAB badge (Ben, 2026-09-09: the number is
+  // not useful given how dynamic the deals are) and "Most traded" went the day after, by the
+  // same ruling: the assets are stored as words now, not parsed, so a position count is not
+  // a number the page can stand behind.
   const cells: [string, string][] = [
     ["Trades", String(stats.tradeCount)],
     ["Seasons", String(stats.seasonCount)],
-    ["Most traded", stats.topPosition ?? "—"],
   ];
   return (
     <div>
-      <dl className="grid grid-cols-3 gap-2 rounded-xl border bg-card p-3 text-center">
+      <dl className="grid grid-cols-2 gap-2 rounded-xl border bg-card p-3 text-center">
         {cells.map(([label, value]) => (
           <div key={label}>
             <dt className="text-xs text-muted-foreground">{label}</dt>
