@@ -40,6 +40,18 @@ def code_in(text: str | None) -> str | None:
     return match.group(0) if match else None
 
 
+def code_variants(code: str) -> list[str]:
+    """The code as written, then the same number under the other prefix.
+
+    Going live re-codes ``TEST-2026-002`` to ``T-2026-002``, and the bot's old
+    confirmation in the chat still names the TEST code; a reply to it should
+    still find the trade (Ben hit this on 2026-09-10).
+    """
+    prefix, _, number = code.partition("-")
+    other = "T" if prefix == "TEST" else "TEST"
+    return [code, f"{other}-{number}"]
+
+
 def is_video_request(text: str) -> bool:
     """Tagged and about a video; every other ``@bot`` message is someone else's."""
     return bool(_TAG.search(text) and _VIDEO.search(text))
@@ -79,13 +91,20 @@ class VideoRequests:
                 return trade
         code = code_in(msg.text)
         if code:
-            trade = self._trades.find_by_code(code)
+            trade = self._by_code(code)
             if trade is not None:
                 return trade
         if guid:
             code = self._code_for_outbound_guid(guid)
             if code:
-                return self._trades.find_by_code(code)
+                return self._by_code(code)
+        return None
+
+    def _by_code(self, code: str) -> dict | None:
+        for variant in code_variants(code):
+            trade = self._trades.find_by_code(variant)
+            if trade is not None:
+                return trade
         return None
 
     def handle(self, msg: InboundMessage) -> None:
