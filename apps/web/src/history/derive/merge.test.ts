@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { mergeTradeSources, normalizeRegisteredTrade } from "./merge";
+import { EMPTY_FILTERS } from "../types";
+import { filterTrades } from "./filter";
+import {
+  mergeTradeSources,
+  normalizeCatalogTrade,
+  normalizeRegisteredTrade,
+} from "./merge";
 
 const MEMBERS = [
   { id: 1, nickname: "Alpha", sleeper_display_name: "alpha-user" },
@@ -43,7 +49,13 @@ const REVISION = {
   trade_id: 5,
   effective_week: 4,
   kind: "rental",
-  parties: [{ member_id: 1, display_name: "alpha-user" }, { member_id: 2 }],
+  // Distinct sentinels, so the drop of each field is proved on its own. `display_name` is the
+  // bare Sleeper username the terms document carries; it must never reach the page, and a
+  // sentinel that also happens to be a member's real `sleeper_display_name` would not prove it.
+  parties: [
+    { member_id: 1, display_name: "SENTINEL_PARTY_DISPLAY_NAME" },
+    { member_id: 2 },
+  ],
   assets: [
     {
       kind: "faab",
@@ -53,7 +65,7 @@ const REVISION = {
       player_id: null,
       player_name: null,
       unit: "faab",
-      description: "SENTINEL PROSE",
+      description: "SENTINEL_ASSET_DESCRIPTION",
     },
   ],
 };
@@ -96,8 +108,9 @@ describe("mergeTradeSources", () => {
 describe("normalizeRegisteredTrade", () => {
   it("carries no free text out of the terms document", () => {
     const trade = normalizeRegisteredTrade(REGISTERED, REVISION, MEMBERS);
-    expect(JSON.stringify(trade)).not.toContain("SENTINEL");
-    expect(JSON.stringify(trade)).not.toContain("alpha-user");
+    const serialized = JSON.stringify(trade);
+    expect(serialized).not.toContain("SENTINEL_PARTY_DISPLAY_NAME");
+    expect(serialized).not.toContain("SENTINEL_ASSET_DESCRIPTION");
     expect(trade.faabTotal).toBe(12);
     expect(trade.week).toBe(4);
     expect(trade.sourceLabel).toBe("T-2025-014");
@@ -121,7 +134,7 @@ describe("normalizeRegisteredTrade", () => {
           {
             kind: "player",
             player_id: "4034",
-            player_name: "SENTINEL the guy from week 3",
+            player_name: "SENTINEL_ASSET_PLAYER_NAME from week 3",
             from_member_id: 1,
             to_member_id: 2,
           },
@@ -129,7 +142,7 @@ describe("normalizeRegisteredTrade", () => {
       },
       MEMBERS,
     );
-    expect(JSON.stringify(trade)).not.toContain("SENTINEL");
+    expect(JSON.stringify(trade)).not.toContain("SENTINEL_ASSET_PLAYER_NAME");
     expect(trade.assets).toEqual([
       {
         kind: "player",
@@ -140,5 +153,113 @@ describe("normalizeRegisteredTrade", () => {
         toParty: 1,
       },
     ]);
+  });
+
+  it("skips a null or primitive party and a null or primitive asset", () => {
+    const trade = normalizeRegisteredTrade(
+      REGISTERED,
+      {
+        ...REVISION,
+        parties: [null, { member_id: 1 }, "party two", { member_id: 2 }],
+        assets: [
+          null,
+          "a bare string",
+          { kind: "faab", amount: 4, from_member_id: 1, to_member_id: 2 },
+        ],
+      },
+      MEMBERS,
+    );
+    expect(trade.parties.map((party) => party.memberId)).toEqual([1, 2]);
+    // The two unusable entries are gone, not counted as unresolved parties.
+    expect(trade.partyCount).toBe(2);
+    expect(trade.unresolvedParties).toBe(0);
+    expect(trade.assets).toEqual([
+      { kind: "faab", amount: 4, fromParty: 0, toParty: 1 },
+    ]);
+  });
+
+  it("reports an unresolved counterparty as no side at all, never -1", () => {
+    const trade = normalizeRegisteredTrade(
+      REGISTERED,
+      {
+        ...REVISION,
+        assets: [
+          {
+            kind: "faab",
+            amount: 7,
+            from_member_id: 1,
+            to_member_id: 99,
+          },
+          {
+            kind: "player",
+            player_id: "4034",
+            from_member_id: 99,
+            to_member_id: 2,
+          },
+        ],
+      },
+      MEMBERS,
+    );
+    expect(trade.assets).toEqual([
+      { kind: "faab", amount: 7, fromParty: 0, toParty: null },
+      {
+        kind: "player",
+        playerId: "4034",
+        name: "",
+        position: null,
+        fromParty: null,
+        toParty: 1,
+      },
+    ]);
+  });
+});
+
+describe("normalizeCatalogTrade", () => {
+  it("skips a null or primitive asset instead of throwing", () => {
+    const trade = normalizeCatalogTrade(
+      {
+        ...CATALOG_2024,
+        assets: [null, "a bare string", 7, ...CATALOG_2024.assets],
+      },
+      MEMBERS,
+    );
+    expect(trade.assets).toEqual([
+      { kind: "faab", amount: 5, fromParty: 0, toParty: 1 },
+    ]);
+  });
+
+  it("takes a non-string player name as no name, and stays searchable", () => {
+    const trade = normalizeCatalogTrade(
+      {
+        ...CATALOG_2024,
+        assets: [
+          {
+            kind: "player",
+            sleeper_player_id: 4034,
+            name: 123,
+            position: 7,
+            from_party: "0",
+            to_party: 1.5,
+          },
+        ],
+      },
+      MEMBERS,
+    );
+    expect(trade.assets).toEqual([
+      {
+        kind: "player",
+        playerId: null,
+        name: "",
+        position: null,
+        fromParty: null,
+        toParty: null,
+      },
+    ]);
+    expect(() =>
+      filterTrades([trade], { ...EMPTY_FILTERS, search: "nacua" }),
+    ).not.toThrow();
+    expect(
+      filterTrades([trade], { ...EMPTY_FILTERS, search: "nacua" }),
+    ).toEqual([]);
   });
 });

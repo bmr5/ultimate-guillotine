@@ -1,11 +1,21 @@
+import { normalizeSearchText } from "@/board/derive/search";
+
 import type { CatalogTrade, TradeFilters } from "../types";
 
+/**
+ * The player-name search, folded exactly the way the board folds its own.
+ *
+ * `normalizeSearchText` strips accents and the punctuation nobody types, so `Nacua` reaches
+ * `Puka Nacuá` and `jamarr` reaches `Ja'Marr Chase` here for the same reason it does on the
+ * board — one behaviour to learn, not two.
+ */
 function matchesSearch(trade: CatalogTrade, term: string): boolean {
-  const needle = term.trim().toLowerCase();
+  const needle = normalizeSearchText(term);
   if (needle === "") return true;
   return trade.assets.some(
     (asset) =>
-      asset.kind === "player" && asset.name.toLowerCase().includes(needle),
+      asset.kind === "player" &&
+      normalizeSearchText(asset.name).includes(needle),
   );
 }
 

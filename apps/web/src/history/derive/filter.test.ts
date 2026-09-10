@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { CatalogTrade } from "../types";
+import { EMPTY_FILTERS } from "../types";
 import { filterTrades } from "./filter";
 
 const TRADE: CatalogTrade = {
@@ -88,5 +89,27 @@ describe("filterTrades", () => {
         search: "",
       }),
     ).toEqual([]);
+  });
+
+  it("folds accents and punctuation the way the board search does", () => {
+    const accented: CatalogTrade = {
+      ...TRADE,
+      assets: [
+        {
+          kind: "player",
+          playerId: "2",
+          name: "Puka Nacuá",
+          position: "WR",
+          fromParty: 0,
+          toParty: 1,
+        },
+      ],
+    };
+    expect(
+      filterTrades([accented], { ...EMPTY_FILTERS, search: "Nacua" }),
+    ).toEqual([accented]);
+    expect(
+      filterTrades([accented], { ...EMPTY_FILTERS, search: "  NACUÁ " }),
+    ).toEqual([accented]);
   });
 });

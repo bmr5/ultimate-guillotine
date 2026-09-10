@@ -10,6 +10,31 @@ import type { CatalogTrade, TradeAsset, TradeParty } from "../types";
 
 export const CATALOG_SOURCE_LABEL = "catalog";
 
+/**
+ * Whether a `jsonb` array element is worth reading at all.
+ *
+ * Neither `trade_catalog.assets` nor `trade_revisions.terms` forbids a `null` or a bare string
+ * inside its arrays, and reading `.kind` off either throws. Every loop below narrows through
+ * this first and drops what it cannot use, so a malformed element costs that one asset and not
+ * the whole page.
+ */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+/** A `jsonb` string field, or `null` when it is absent or some other type. */
+function optionalText(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
+/**
+ * A party *index* written into the document — a position in the trade's own `parties` array, so
+ * a finite integer or nothing. `2.5`, `NaN` and `"1"` are all "no index".
+ */
+function optionalIndex(value: unknown): number | null {
+  return Number.isInteger(value) ? (value as number) : null;
+}
+
 function labelFor(memberId: number, members: HistoryMemberRow[]): TradeParty {
   // `resolveOwnerLabel` takes `OwnerLabelSource | undefined` and answers "Unknown owner" for a
   // member it cannot label, so `find` returning undefined is already the right input.
@@ -22,22 +47,25 @@ function labelFor(memberId: number, members: HistoryMemberRow[]): TradeParty {
 function catalogAssets(value: unknown): TradeAsset[] {
   if (!Array.isArray(value)) return [];
   const assets: TradeAsset[] = [];
-  for (const entry of value as Record<string, unknown>[]) {
+  for (const entry of value as unknown[]) {
+    if (!isRecord(entry)) continue;
     if (entry.kind === "player") {
       assets.push({
         kind: "player",
-        playerId: (entry.sleeper_player_id as string) ?? null,
-        name: (entry.name as string) ?? "",
-        position: (entry.position as string) ?? null,
-        fromParty: (entry.from_party as number) ?? null,
-        toParty: (entry.to_party as number) ?? null,
+        playerId: optionalText(entry.sleeper_player_id),
+        // A missing or non-string name is the empty string, never `undefined`: the type says
+        // `string` and `filterTrades` folds it on every keystroke.
+        name: optionalText(entry.name) ?? "",
+        position: optionalText(entry.position),
+        fromParty: optionalIndex(entry.from_party),
+        toParty: optionalIndex(entry.to_party),
       });
     } else if (entry.kind === "faab" && typeof entry.amount === "number") {
       assets.push({
         kind: "faab",
         amount: entry.amount,
-        fromParty: (entry.from_party as number) ?? null,
-        toParty: (entry.to_party as number) ?? null,
+        fromParty: optionalIndex(entry.from_party),
+        toParty: optionalIndex(entry.to_party),
       });
     } else if (entry.kind === "condition" && typeof entry.label === "string") {
       assets.push({ kind: "condition", label: entry.label });
@@ -70,6 +98,19 @@ export function normalizeCatalogTrade(
 }
 
 /**
+ * Where a registered asset's counterparty sits in this trade's own party list.
+ *
+ * `indexOf` answers `-1` for a member id that is not one of the resolved parties — an
+ * unresolved counterparty, or a `member_id` the terms document never listed. `-1` is not a
+ * party index, so it becomes `null`, which is what the type means by "no known side".
+ */
+function partyIndex(memberIds: number[], value: unknown): number | null {
+  if (typeof value !== "number") return null;
+  const index = memberIds.indexOf(value);
+  return index === -1 ? null : index;
+}
+
+/**
  * Turn a registered trade into the same shape, reading only the fields that are safe.
  *
  * The revision's `terms` document also holds `evidence_excerpt` — verbatim league chat — and
@@ -87,15 +128,15 @@ export function normalizeRegisteredTrade(
   // The optional chain is repeated inside the branch on purpose: `Array.isArray` narrows the
   // property it is handed, not the object the chain started from, so `revision` is still
   // `RegisteredRevisionRow | undefined` here as far as `tsc --strict` is concerned.
-  const rawParties = Array.isArray(revision?.parties)
-    ? (revision?.parties as { member_id?: number }[])
-    : [];
+  const rawParties = (
+    Array.isArray(revision?.parties) ? (revision?.parties as unknown[]) : []
+  ).filter(isRecord);
   const memberIds = rawParties
     .map((party) => party.member_id)
     .filter((id): id is number => typeof id === "number");
-  const rawAssets = Array.isArray(revision?.assets)
-    ? (revision?.assets as Record<string, unknown>[])
-    : [];
+  const rawAssets = (
+    Array.isArray(revision?.assets) ? (revision?.assets as unknown[]) : []
+  ).filter(isRecord);
 
   const assets: TradeAsset[] = [];
   let faabTotal: number | null = null;
@@ -105,13 +146,13 @@ export function normalizeRegisteredTrade(
       assets.push({
         kind: "faab",
         amount: asset.amount,
-        fromParty: memberIds.indexOf(asset.from_member_id as number),
-        toParty: memberIds.indexOf(asset.to_member_id as number),
+        fromParty: partyIndex(memberIds, asset.from_member_id),
+        toParty: partyIndex(memberIds, asset.to_member_id),
       });
     } else if (asset.kind === "player") {
       assets.push({
         kind: "player",
-        playerId: (asset.player_id as string) ?? null,
+        playerId: optionalText(asset.player_id),
         // `terms.assets[].player_name` is deliberately not read. The Registrar stores the
         // name exactly as it was written in the league chat message (`resolve.py` keeps
         // `asset.player_name` verbatim and only ever *adds* a resolved `player_id`
@@ -120,8 +161,8 @@ export function normalizeRegisteredTrade(
         // safe handle; the page looks the name up from it.
         name: "",
         position: null,
-        fromParty: memberIds.indexOf(asset.from_member_id as number),
-        toParty: memberIds.indexOf(asset.to_member_id as number),
+        fromParty: partyIndex(memberIds, asset.from_member_id),
+        toParty: partyIndex(memberIds, asset.to_member_id),
       });
     }
   }

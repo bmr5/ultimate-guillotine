@@ -73,4 +73,14 @@ describe("tradeStats", () => {
   it("reports no position when nothing has one", () => {
     expect(tradeStats([base]).topPosition).toBeNull();
   });
+
+  it("leaves a rescinded trade's FAAB out of the total", () => {
+    const stats = tradeStats([
+      base,
+      { ...base, key: "k2", faabTotal: 40, rescinded: true },
+    ]);
+    // Both trades are still counted and still shown; only the money that never moved is out.
+    expect(stats.tradeCount).toBe(2);
+    expect(stats.faabMoved).toBe(10);
+  });
 });
