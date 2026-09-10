@@ -68,6 +68,7 @@ def test_the_scheduled_agents_are_the_ones_the_cli_records() -> None:
         "scores-sync",
         "transactions-sync",
         "eod-summary",
+        "video-jobs",
     }
 
 
@@ -156,3 +157,16 @@ def test_the_summary_posts_on_the_mornings_ben_named() -> None:
         "discord:#guillotine-ops",
     )
     assert int(job["max_gap_minutes"]) > 48 * 60
+
+
+def test_the_video_worker_polls_the_queue_and_speaks_in_the_ops_channel() -> None:
+    """A request from the chat should be picked up within a couple of minutes, and a
+    render that fails (78 credits each) is worth a line in the channel. The gap budget
+    clears a render that is still running when the next fire comes round."""
+    job = next(j for j in JOBS if j["name"] == "guillotine-video-jobs")
+    assert (job["agent"], job["schedule"], job["deliver"]) == (
+        "video-jobs",
+        "every 2m",
+        "discord:#guillotine-ops",
+    )
+    assert int(job["max_gap_minutes"]) >= 30
