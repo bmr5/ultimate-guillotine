@@ -5,7 +5,7 @@ from pathlib import Path
 from ultimate_guillotine.ai.structured import AIUsage, StructuredOutputClient
 from ultimate_guillotine.trades.models import ExtractedTrade
 
-PROMPT_VERSION = "2026.1"
+PROMPT_VERSION = "2026.2"
 _PROMPT_PATH = Path(__file__).resolve().parents[5] / "agents" / "trade-registrar" / "prompt.md"
 
 

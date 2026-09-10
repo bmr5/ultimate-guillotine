@@ -11,10 +11,21 @@ from pathlib import Path
 
 import pytest
 
+from ultimate_guillotine.core.signature import is_signed
+
 FIXTURE = Path(__file__).parent / "fixtures" / "registrar_cases.json"
 KEYS = {"id", "category", "text", "expected_kind", "expected_status", "prereq", "notes"}
 KINDS = {"permanent", "rental", "payment", "rescission", "unclear", "not_a_trade"}
-STATUSES = {"created", "revised", "duplicate", "rescinded", "clarification", "not_a_trade"}
+STATUSES = {
+    "created",
+    "revised",
+    "duplicate",
+    "rescinded",
+    "clarification",
+    "not_a_trade",
+    #: Never reaches the agent at all -- the listener drops it first.
+    "dropped_upstream",
+}
 CATEGORIES = {
     "happy",
     "sloppy",
@@ -69,3 +80,13 @@ def test_states_needing_prior_state_declare_a_prerequisite() -> None:
     for case in CASES:
         if case["expected_status"] in {"revised", "duplicate", "rescinded"}:
             assert case["prereq"] is not None, case["id"]
+
+
+def test_dropped_upstream_cases_are_ones_the_listener_really_drops() -> None:
+    """`dropped_upstream` is a claim about the listener, not a way to excuse a
+    case the model gets wrong: the listener drops a message because the bot
+    signed it, so the text has to carry that signature."""
+    dropped = [case for case in CASES if case["expected_status"] == "dropped_upstream"]
+    assert dropped
+    for case in dropped:
+        assert is_signed(case["text"]), case["id"]

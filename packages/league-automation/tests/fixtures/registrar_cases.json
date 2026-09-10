@@ -203,9 +203,9 @@
       "category": "sloppy",
       "text": "🚨 Trade Alert 🚨 RylandRad sends Marvin Harrison Jr. to SuperKing3 for 310 FAAB",
       "expected_kind": "permanent",
-      "expected_status": "clarification",
+      "expected_status": "created",
       "prereq": null,
-      "notes": "Known gap: the directory row is Marvin Harrison, and a two-token name plus a suffix never reaches the surname fallback, so the suffix spelling fails to resolve."
+      "notes": "The directory row is Marvin Harrison and the chat types Marvin Harrison Jr. Resolution compares the two with their generational suffixes stripped, so either spelling finds the one row."
     },
     {
       "id": 24,
@@ -214,7 +214,7 @@
       "expected_kind": "permanent",
       "expected_status": "created",
       "prereq": null,
-      "notes": "Team defense as TEAM + Defense, the only shape _match_defense accepts. Adding the word the in front of it would break resolution."
+      "notes": "Team defense as TEAM + Defense. _match_defense accepts any spelling now -- city, nickname, both, or the abbreviation, with a leading the and the defense word both optional -- so this is the plain shape rather than the only one that works."
     },
     {
       "id": 25,
@@ -491,18 +491,18 @@
       "category": "not_a_trade",
       "text": "🚨 Trade T-2026-001 logged\nblandon receives: Ja'Marr Chase\nWeek ? · Permanent\n— 🤖 Guillotine Bot",
       "expected_kind": "not_a_trade",
-      "expected_status": "not_a_trade",
+      "expected_status": "dropped_upstream",
       "prereq": null,
-      "notes": "The bot's own confirmation echoed back. The listener drops signed text before the trigger runs, so this must never reach extraction at all."
+      "notes": "The bot's own confirmation echoed back. The listener drops signed text before the trigger runs, so this must never reach extraction at all -- which is why the suite skips it by design instead of asking the model a question production never asks."
     },
     {
       "id": 56,
       "category": "not_a_trade",
       "text": "🚨 Trade Alert 🚨 Over in the dynasty league, Barnaby sends CMC to Quill for 300 FAAB",
-      "expected_kind": "permanent",
-      "expected_status": "clarification",
+      "expected_kind": "not_a_trade",
+      "expected_status": "not_a_trade",
       "prereq": null,
-      "notes": "Known false positive: an alert about another league. Neither name is a member, so the bot asks the chat a pointless question instead of staying quiet."
+      "notes": "An alert about another league. No name in it is on the member list and the text places the trade elsewhere (over in the dynasty league); 2026.2 needs both before it reads an alert as another league's, so the bot stays quiet instead of asking the chat a pointless question."
     },
     {
       "id": 57,
@@ -520,7 +520,7 @@
       "expected_kind": "not_a_trade",
       "expected_status": "not_a_trade",
       "prereq": null,
-      "notes": "Siren plus a bare trade word and nothing else; detection passes, the model must not."
+      "notes": "Siren plus a bare trade word and nothing else; detection passes, the model must not. 2026.2 says a message with no transaction in it at all -- a header, sirens, a bare trade word -- is not_a_trade and never unclear, so the bot stays silent rather than asking about nothing."
     },
     {
       "id": 59,
@@ -547,7 +547,7 @@
       "expected_kind": "unclear",
       "expected_status": "clarification",
       "prereq": null,
-      "notes": "Ambiguous pronoun: me is not resolvable from the text, and the sender address is not part of the extraction contract."
+      "notes": "Ambiguous pronoun: me is not resolvable from the text, and the sender address is not part of the extraction contract. 2026.2 says first- and second-person references name nobody, so this announcement names one person and is unclear."
     },
     {
       "id": 62,
@@ -647,6 +647,15 @@
       "expected_status": "created",
       "prereq": null,
       "notes": "Four parties, eight assets, four different asset kinds in one alert."
+    },
+    {
+      "id": 73,
+      "category": "unclear",
+      "text": "\ud83d\udea8 Trade Alert \ud83d\udea8 Sparkplug sends Bijan Robinson to the Chairman for 200 FAAB",
+      "expected_kind": "unclear",
+      "expected_status": "clarification",
+      "prereq": null,
+      "notes": "Nobody named is on the member list, but the trade is not placed in another league either -- Sparkplug and the Chairman read like nicknames nobody has registered. 2026.2 answers unclear here rather than not_a_trade, so the bot asks who is meant instead of silently dropping a real alert."
     }
   ]
 }
