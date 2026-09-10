@@ -404,7 +404,7 @@ def _alert(chat_guid: str) -> InboundMessage:
         guid="g1",
         chat_guid=chat_guid,
         sender_address="+15555550100",
-        text="🚨 Member01 sends Player Alpha to Member02",
+        text="🚨 Trade alert 🚨 Member01 sends Player Alpha to Member02",
         is_from_me=False,
         is_group=True,
         sent_at=datetime.now(UTC),

@@ -23,7 +23,7 @@ def test_load_replay_rows_reads_terms_and_parties(tmp_path: Path) -> None:
 
     rows = load_replay_rows(path)
 
-    assert rows == [("Week 1", f"🚨 {TERMS}", ["Member01", "Member02"])]
+    assert rows == [("Week 1", f"🚨 Trade alert 🚨 {TERMS}", ["Member01", "Member02"])]
 
 
 def test_replay_rows_prints_one_line_per_row_and_a_summary(
@@ -36,11 +36,11 @@ def test_replay_rows_prints_one_line_per_row_and_a_summary(
     up to the row count.
     """
     rows = [
-        ("Week 1", f"🚨 {TERMS}", ["Member01", "Member02"]),
-        ("Week 2", "🚨 Member03 sends Player Gamma to Member04", ["Member03"]),
+        ("Week 1", f"🚨 Trade alert 🚨 {TERMS}", ["Member01", "Member02"]),
+        ("Week 2", "🚨 Trade alert 🚨 Member03 sends Player Gamma to Member04", ["Member03"]),
         ("Week 3", "Congrats on the win", []),
-        ("Week 4", "🚨 Member05 sends Player Delta to Member06", ["Member05"]),
-        ("Week 5", "🚨 Member07 sends Player Epsilon to Member08", ["Member07"]),
+        ("Week 4", "🚨 Trade alert 🚨 Member05 sends Player Delta to Member06", ["Member05"]),
+        ("Week 5", "🚨 Trade alert 🚨 Member07 sends Player Epsilon to Member08", ["Member07"]),
     ]
     seen: list[tuple[int, str]] = []
     outcomes = iter(["created", "clarification: I don't know Player Gamma", "revised", "failed"])

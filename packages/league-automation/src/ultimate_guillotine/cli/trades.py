@@ -32,7 +32,7 @@ from ultimate_guillotine.messages.bluebubbles import InboundMessage
 from ultimate_guillotine.sleeper.client import SleeperClient
 from ultimate_guillotine.sleeper.players import PlayerRepository
 from ultimate_guillotine.trades.context import TRADE_LIMIT, context_from_snapshot
-from ultimate_guillotine.trades.detect import ALERT, is_trade_candidate
+from ultimate_guillotine.trades.detect import TRADE_HEADER, is_trade_candidate
 from ultimate_guillotine.trades.extract import PROMPT_VERSION, extract_trade
 from ultimate_guillotine.trades.format import format_terms
 from ultimate_guillotine.trades.models import TradeProposal
@@ -371,8 +371,9 @@ def load_replay_rows(path: str | Path) -> list[tuple[str, str, list[str]]]:
     The sheet is `Date, Week, Terms, Parties...`, one trade per row, with each
     column after `Terms` holding one party name. Rows with an empty `Terms` cell
     are spacers and are skipped. The `Terms` cell is the announcement without its
-    siren, so the siren is put back: detection keys on it, and replaying text the
-    trigger would never have seen would measure the wrong thing.
+    header, so the league's `🚨 Trade alert 🚨` is put back: detection keys on the
+    siren with the word trade beside it, and replaying text the trigger would
+    never have seen would measure the wrong thing.
 
     Two shapes read as empty and are therefore skipped: a `Terms` cell merged
     across several rows (only the top-left cell of a merge carries the value, so
@@ -390,7 +391,7 @@ def load_replay_rows(path: str | Path) -> list[tuple[str, str, list[str]]]:
             if not terms:
                 continue
             parties = [p for p in (_cell(row, i) for i in range(TERMS_COLUMN + 1, len(row))) if p]
-            rows.append((_cell(row, WEEK_COLUMN), f"{ALERT} {terms}", parties))
+            rows.append((_cell(row, WEEK_COLUMN), f"{TRADE_HEADER} {terms}", parties))
         return rows
     finally:
         workbook.close()

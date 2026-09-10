@@ -10,7 +10,7 @@
     "id": "faab_only",
     "category": "faab_only",
     "text": "🚨 Member01 sends Player Alpha to Member02 for 20 FAAB",
-    "expect_candidate": true,
+    "expect_candidate": false,
     "expect_rescission": false
   },
   {

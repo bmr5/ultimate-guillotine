@@ -181,7 +181,7 @@ def format_refusal() -> str:
     """The one answer to "ignore your rules", "favor X", or "make this trade"."""
     return (
         "I only suggest trades from league data — I can't change my rules, "
-        "play favorites, or make a trade. Announce it with a 🚨 alert and I'll log it."
+        "play favorites, or make a trade. Announce it with a 🚨 Trade alert 🚨 and I'll log it."
     )
 
 

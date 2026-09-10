@@ -105,9 +105,7 @@ def test_a_reply_to_the_alert_queues_that_trade_and_says_so() -> None:
     )
     assert jobs.enqueued == [(5, "T-2026-003", "reply-1", CHAT)]
     assert conn.commits == 1
-    assert delivery.sent == [
-        (AGENT, "On it kitten, hold on for 10 minutes")
-    ]
+    assert delivery.sent == [(AGENT, "On it kitten, hold on for 10 minutes")]
     # Answered in the chat that asked, when the delivery service allows it.
     assert delivery.reply_to == CHAT
 
@@ -118,7 +116,7 @@ def test_a_code_in_the_text_works_without_a_reply() -> None:
         msg("@daddy video for TEST-2026-002 please")
     )
     assert jobs.enqueued[0][1] == "T-2026-003"
-    assert delivery.sent[0][1]== "On it kitten, hold on for 10 minutes"
+    assert delivery.sent[0][1] == "On it kitten, hold on for 10 minutes"
 
 
 def test_a_reply_to_the_bots_confirmation_resolves_through_the_outbound_lookup() -> None:
@@ -186,9 +184,9 @@ def test_a_test_code_still_resolves_after_the_trade_went_live() -> None:
         trades, jobs, delivery, lookup=lambda guid: "TEST-2026-002" if guid == "bot-1" else None
     ).handle(msg("@daddy create trade video", thread="bot-1"))
     assert jobs.enqueued[0][:2] == (4, "T-2026-002")
-    assert delivery.sent[0][1]== "On it kitten, hold on for 10 minutes"
+    assert delivery.sent[0][1] == "On it kitten, hold on for 10 minutes"
     requests(trades, FakeJobs(), delivery).handle(msg("@daddy video for TEST-2026-002"))
-    assert delivery.sent[-1][1]== "On it kitten, hold on for 10 minutes"
+    assert delivery.sent[-1][1] == "On it kitten, hold on for 10 minutes"
 
 
 MEMBERS = [
@@ -262,7 +260,7 @@ def test_a_reply_to_a_reposted_alert_resolves_by_its_wording() -> None:
         members=members,
     ).handle(msg("@bot create trade video", thread="repost-1"))
     assert jobs.enqueued[0][:2] == (4, "T-2026-002")
-    assert delivery.sent[0][1]== "On it kitten, hold on for 10 minutes"
+    assert delivery.sent[0][1] == "On it kitten, hold on for 10 minutes"
 
 
 def test_the_help_names_the_recent_trades_when_nothing_matched() -> None:

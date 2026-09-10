@@ -10,6 +10,8 @@ a false negative costs a trade nobody logged.
 import re
 
 ALERT = "🚨"
+#: The league's header, the shape every alert should take.
+TRADE_HEADER = f"{ALERT} Trade alert {ALERT}"
 
 TRADE_TERMS = re.compile(
     r"\b(send|sends|sent|sending|receive|receives|received|trade|trades|traded|trading|"
@@ -22,16 +24,21 @@ RESCIND_TERMS = re.compile(
     re.IGNORECASE,
 )
 HEADER = re.compile(r"trade\s+alert", re.IGNORECASE)
+#: The word "trade" beside a siren, on the same line: `🚨 Trade alert 🚨`,
+#: `Trade alert 🚨`, `🚨 traded …`. Up to fifteen characters may sit between
+#: them, which is "alert " and a colon, not a sentence.
+TRADE_BY_SIREN = re.compile(r"🚨[^\n🚨]{0,15}\btrade|\btrade\w*[^\n🚨]{0,15}🚨", re.IGNORECASE)
 
 
 def is_trade_candidate(text: str) -> bool:
     """Is this message worth putting to the model?
 
     Ben (2026-09-10): "Trades need to be explicitly marked with the Siren."
-    The 🚨 is the league's own signal that a message is an announcement to be
-    logged, so nothing without one goes to the model -- however much it looks
-    like a trade. With a siren, a trade word, a rescission word or a `trade
-    alert` header is enough.
+    And later that day: the word *trade* has to sit next to the siren too --
+    "🚨 Trade alert 🚨" -- so a siren used for anything else (a FAAB shout, a
+    big game) never costs a model call, and a trade nobody marked that way is
+    the announcer's to re-post. A siren with a rescission word still counts:
+    `🚨 Cancel T-2026-014 🚨` is exactly the message the registrar acts on.
 
     **This function does not decide what is a trade.** The model's
     `not_a_trade` verdict does; this only decides whether a model call is worth
@@ -39,11 +46,7 @@ def is_trade_candidate(text: str) -> bool:
     """
     if ALERT not in text:
         return False
-    return (
-        HEADER.search(text) is not None
-        or TRADE_TERMS.search(text) is not None
-        or RESCIND_TERMS.search(text) is not None
-    )
+    return TRADE_BY_SIREN.search(text) is not None or RESCIND_TERMS.search(text) is not None
 
 
 def is_rescission_candidate(text: str) -> bool:

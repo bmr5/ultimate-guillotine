@@ -85,7 +85,7 @@ def test_updated_and_rescinded_and_clarification() -> None:
     assert format_rescinded("T-2026-014") == "🚨 Trade T-2026-014 rescinded"
     assert format_clarification("Two players named Mike Williams; which team?") == (
         "🚨 Trade not logged yet: Two players named Mike Williams; which team? "
-        "Reply with a corrected 🚨 alert."
+        "Reply with a corrected 🚨 Trade alert 🚨."
     )
 
 

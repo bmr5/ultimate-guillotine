@@ -209,4 +209,4 @@ def format_rescinded(code: str) -> str:
 
 
 def format_clarification(reason: str) -> str:
-    return f"🚨 Trade not logged yet: {reason} Reply with a corrected 🚨 alert."
+    return f"🚨 Trade not logged yet: {reason} Reply with a corrected 🚨 Trade alert 🚨."
