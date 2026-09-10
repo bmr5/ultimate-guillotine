@@ -509,9 +509,9 @@
       "category": "happy",
       "text": "Trade alert: chobes sends DJ Moore to jrayay for 125 FAAB",
       "expected_kind": "permanent",
-      "expected_status": "created",
+      "expected_status": "not_a_trade",
       "prereq": null,
-      "notes": "A real trade written without a siren. This case was `not_a_trade` for three waves, and its note said so plainly: no siren, so `is_trade_candidate` was false and no model call happened. That was never a judgement about the message -- it is a perfectly clear alert -- it was a description of the detector, and on 2026-09-10 the league chat proved it wrong by announcing a real trade the same way. The wider rule reads a `trade alert` header with no siren, so this now reaches the model and is logged."
+      "notes": "No siren, so never a candidate (Ben, 2026-09-10: trades are explicitly marked with the siren). Satisfied by the detector, not the model."
     },
     {
       "id": 58,
@@ -756,27 +756,27 @@
       "category": "happy",
       "text": "kpbowe buys Quentin Johnston from mdurgin for $65 FAAB",
       "expected_kind": "permanent",
-      "expected_status": "created",
+      "expected_status": "not_a_trade",
       "prereq": null,
-      "notes": "The shape that started the shadow wave: no siren, no header, a buy verb and a price. `buys` moves something and `FAAB` says what pays for it, and the wider rule needs both -- either alone is half the chat."
+      "notes": "No siren, so never a candidate (Ben, 2026-09-10: trades are explicitly marked with the siren). Satisfied by the detector, not the model."
     },
     {
       "id": 85,
       "category": "happy",
       "text": "chobes sells Zay Flowers to kpbowe for a 3rd round pick",
       "expected_kind": "permanent",
-      "expected_status": "created",
+      "expected_status": "not_a_trade",
       "prereq": null,
-      "notes": "No siren, and the price is not money: `round` and `pick` are asset words too, so an alert paid in draft capital is not held out for lack of a FAAB figure. The pick itself has no player and no amount, so it is an `other` asset with the phrase copied verbatim."
+      "notes": "No siren, so never a candidate (Ben, 2026-09-10: trades are explicitly marked with the siren). Satisfied by the detector, not the model."
     },
     {
       "id": 86,
       "category": "happy",
       "text": "mdurgin sends Khalil Shakir to chobes as a 2 week rental, back after the Week 6 games",
       "expected_kind": "rental",
-      "expected_status": "created",
+      "expected_status": "not_a_trade",
       "prereq": null,
-      "notes": "No siren on a rental. `rental` is both a verb-ish word and an asset word in the wider rule, so it satisfies the test on its own alongside `sends`. The return condition is stated, which is what keeps `validate` from asking for one."
+      "notes": "No siren, so never a candidate (Ben, 2026-09-10: trades are explicitly marked with the siren). Satisfied by the detector, not the model."
     },
     {
       "id": 87,
