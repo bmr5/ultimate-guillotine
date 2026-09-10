@@ -401,54 +401,54 @@
       "category": "rescission",
       "text": "🚨 Rescind T-2026-001 🚨",
       "expected_kind": "rescission",
-      "expected_status": "rescinded",
-      "prereq": 1,
-      "notes": "Rescission by code; handled before any model call. Substitute the code the prereq actually received when running against a database."
+      "expected_status": "not_a_trade",
+      "notes": "Rescission by code; handled before any model call. Substitute the code the prereq actually received when running against a database. — Since 2026-09-10 a cancellation in the chat does nothing (Ben: a wrong log is a manual `ug trades rescind`).",
+      "prereq": null
     },
     {
       "id": 46,
       "category": "rescission",
       "text": "🚨 Cancel T-2026-01 🚨",
       "expected_kind": "rescission",
-      "expected_status": "clarification",
-      "prereq": 1,
-      "notes": "Typo in the code: TRADE_CODE needs four then three digits, so this falls through to the model and then to the no-code question."
+      "expected_status": "not_a_trade",
+      "notes": "Typo in the code: TRADE_CODE needs four then three digits, so this falls through to the model and then to the no-code question. — Since 2026-09-10 a cancellation in the chat does nothing (Ben: a wrong log is a manual `ug trades rescind`).",
+      "prereq": null
     },
     {
       "id": 47,
       "category": "rescission",
       "text": "🚨 Trade Alert 🚨\nCancel the Bijan rental, T-2026-004 is off",
       "expected_kind": "rescission",
-      "expected_status": "rescinded",
-      "prereq": 4,
-      "notes": "The word cancel with a code embedded in a sentence. Substitute the prereq's real code."
+      "expected_status": "not_a_trade",
+      "notes": "The word cancel with a code embedded in a sentence. Substitute the prereq's real code. — Since 2026-09-10 a cancellation in the chat does nothing (Ben: a wrong log is a manual `ug trades rescind`).",
+      "prereq": null
     },
     {
       "id": 48,
       "category": "rescission",
       "text": "🚨 Void T-2026-006 🚨",
       "expected_kind": "rescission",
-      "expected_status": "rescinded",
-      "prereq": 6,
-      "notes": "The word void with a code. Substitute the prereq's real code."
+      "expected_status": "not_a_trade",
+      "notes": "The word void with a code. Substitute the prereq's real code. — Since 2026-09-10 a cancellation in the chat does nothing (Ben: a wrong log is a manual `ug trades rescind`).",
+      "prereq": null
     },
     {
       "id": 49,
       "category": "rescission",
       "text": "🚨 Trade Alert 🚨\nnickgrod and blandon are undoing the Chase deal",
       "expected_kind": "rescission",
-      "expected_status": "clarification",
-      "prereq": 1,
-      "notes": "No code and undo is not a rescission keyword, so this needs the model; the context lookup will not match and the bot must ask for the T- code."
+      "expected_status": "not_a_trade",
+      "notes": "No code and undo is not a rescission keyword, so this needs the model; the context lookup will not match and the bot must ask for the T- cod — Since 2026-09-10 a cancellation in the chat does nothing (Ben: a wrong log is a manual `ug trades rescind`).",
+      "prereq": null
     },
     {
       "id": 50,
       "category": "rescission",
       "text": "🚨 Trade Alert 🚨\nRescind T-2026-007. New deal: RylandRad sends Tucker Kraft to scrappyCon16 for 40 FAAB",
       "expected_kind": "rescission",
-      "expected_status": "rescinded",
-      "prereq": 7,
-      "notes": "Known limitation: the coded rescission short-circuits before extraction, so the second trade in the same message is never logged and nobody is told."
+      "expected_status": "not_a_trade",
+      "notes": "Known limitation: the coded rescission short-circuits before extraction, so the second trade in the same message is never logged and nobody  — Since 2026-09-10 a cancellation in the chat does nothing (Ben: a wrong log is a manual `ug trades rescind`).",
+      "prereq": null
     },
     {
       "id": 51,
@@ -701,10 +701,10 @@
       "category": "rescission",
       "text": "🚨 Trade Alert 🚨\nI'm cancelling my trade with mdurgin",
       "expected_kind": "rescission",
-      "expected_status": "rescinded",
-      "prereq": 38,
+      "expected_status": "not_a_trade",
       "announcer": "kpbowe",
-      "notes": "A rescission written in the first person: `I` and `my trade` name the announcer, so the two sides are known without a code and the open trade between them on file is the one cancelled. With nothing on file it asks for the code instead."
+      "notes": "A rescission written in the first person: `I` and `my trade` name the announcer, so the two sides are known without a code and the open trad — Since 2026-09-10 a cancellation in the chat does nothing (Ben: a wrong log is a manual `ug trades rescind`).",
+      "prereq": null
     },
     {
       "id": 79,

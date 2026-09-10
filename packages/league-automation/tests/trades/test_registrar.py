@@ -395,16 +395,16 @@ def test_ai_unavailable_alerts_and_fails_run_without_sending() -> None:
     assert delivery.sent == [] and runs.finished[0][1] == "failed" and notifier.alerts_sent
 
 
-def test_rescission_by_code_rescinds_without_calling_the_model() -> None:
+def test_a_coded_cancellation_in_the_chat_does_nothing() -> None:
+    """Ben (2026-09-10): nothing in the chat cancels a trade. A cancellation
+    message is a candidate like any other; the model calls it a rescission and
+    the registrar records the run and says nothing."""
     delivery, trades = FakeDelivery(), FakeTrades()
-    reg, _, _ = build(
-        FakeAI(error=AssertionError("model must not be called")), trades=trades, delivery=delivery
-    )
-    assert reg.handle(msg("🚨 Trade T-2026-001 is rescinded")) == "rescinded"
-    assert (
-        trades.rescinded == ["T-2026-001"]
-        and delivery.sent[0][1] == "🚨 Trade T-2026-001 rescinded"
-    )
+    rescission = good_extraction().model_copy(update={"kind": "rescission"})
+    reg, runs, _ = build(FakeAI(rescission), trades=trades, delivery=delivery)
+    assert reg.handle(msg("🚨 Trade T-2026-001 is rescinded")) == "not_a_trade"
+    assert trades.rescinded == [] and delivery.sent == []
+    assert runs.finished[0][1] == "succeeded"
 
 
 def test_trigger_matches_alerts_and_ignores_signed_bot_text() -> None:
@@ -441,24 +441,21 @@ def test_a_failure_rolls_back_before_finishing_the_run() -> None:
     assert journal.index("rollback") < journal.index("finish")
 
 
-def test_an_uncoded_rescission_resolves_its_target_by_context() -> None:
+def test_an_uncoded_cancellation_in_the_chat_does_nothing() -> None:
     delivery, trades = FakeDelivery(), ContextTrades()
     rescission = good_extraction().model_copy(update={"kind": "rescission"})
     reg, runs, _ = build(FakeAI(rescission), trades=trades, delivery=delivery)
-    assert reg.handle(msg("🚨 that Player Alpha deal is off")) == "rescinded"
-    assert trades.rescinded == ["T-2026-002"]
-    assert delivery.sent[0][1] == "🚨 Trade T-2026-002 rescinded"
+    assert reg.handle(msg("🚨 that Player Alpha deal is off")) == "not_a_trade"
+    assert trades.rescinded == [] and delivery.sent == []
     assert runs.finished[0][1] == "succeeded"
 
 
-def test_rescinding_a_code_with_no_trade_asks_instead_of_claiming_it_happened() -> None:
+def test_a_cancellation_of_an_unknown_code_is_silent_too() -> None:
     delivery, trades = FakeDelivery(), RefusingTrades()
-    reg, runs, _ = build(
-        FakeAI(error=AssertionError("model must not be called")), trades=trades, delivery=delivery
-    )
-    assert reg.handle(msg("🚨 Trade T-2026-009 is rescinded")) == "clarification"
-    assert trades.rescinded == ["T-2026-009"]
-    assert "T-2026-009" in delivery.sent[0][1]
+    rescission = good_extraction().model_copy(update={"kind": "rescission"})
+    reg, runs, _ = build(FakeAI(rescission), trades=trades, delivery=delivery)
+    assert reg.handle(msg("🚨 Trade T-2026-009 is rescinded")) == "not_a_trade"
+    assert trades.rescinded == [] and delivery.sent == []
     assert runs.finished[0][1] == "succeeded"
 
 
@@ -489,15 +486,12 @@ def test_trigger_ignores_alerts_from_another_chat() -> None:
     )
 
 
-def test_rescission_by_a_test_mode_code_is_recognised() -> None:
-    """Gate trades carry `TEST-` codes; rescinding one must work like any other."""
+def test_a_test_mode_code_in_a_cancellation_is_silent_as_well() -> None:
     delivery, trades = FakeDelivery(), FakeTrades()
-    reg, _, _ = build(
-        FakeAI(error=AssertionError("model must not be called")), trades=trades, delivery=delivery
-    )
-    assert reg.handle(msg("🚨 Trade TEST-2026-001 is rescinded")) == "rescinded"
-    assert trades.rescinded == ["TEST-2026-001"]
-    assert delivery.sent[0][1] == "🚨 Trade TEST-2026-001 rescinded"
+    rescission = good_extraction().model_copy(update={"kind": "rescission"})
+    reg, _, _ = build(FakeAI(rescission), trades=trades, delivery=delivery)
+    assert reg.handle(msg("🚨 Trade TEST-2026-001 is rescinded")) == "not_a_trade"
+    assert trades.rescinded == [] and delivery.sent == []
 
 
 ALERT_TEXT = "🚨 Member01 sends Player Alpha to Member02 for 450 FAAB"
