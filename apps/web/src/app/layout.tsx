@@ -1,4 +1,4 @@
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet } from "react-router";
 
 import { ModeToggle } from "@/components/mode-toggle";
 import { cn } from "@/lib/utils";

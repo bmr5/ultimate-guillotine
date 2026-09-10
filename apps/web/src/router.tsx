@@ -1,4 +1,4 @@
-import { createBrowserRouter, redirect, RouteObject } from "react-router-dom";
+import { createBrowserRouter, redirect, RouteObject } from "react-router";
 
 import { BoardPage } from "@/app/board/BoardPage";
 import ErrorPage from "@/app/error-page";

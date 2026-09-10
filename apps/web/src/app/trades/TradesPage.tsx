@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router";
 
 import { UNKNOWN_OWNER } from "@/board/derive/join";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
