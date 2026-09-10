@@ -32,6 +32,10 @@ class FakeClient:
         self.sent.append((chat_guid, text))
         return f"guid-{len(self.sent)}"
 
+    def send_attachment(self, chat_guid, filename, data, mime="text/html"):
+        self.sent.append((chat_guid, filename, data))
+        return f"guid-{len(self.sent)}"
+
     def messages_after(self, chat_guid, after, limit=100):
         return self.history
 
@@ -225,3 +229,38 @@ def test_delivery_without_commit_callback_still_sends() -> None:
     service, client, _, _ = make(DeliveryMode.TEST)
     assert service.deliver(None, "self-test", "hello").status == "sent"
     assert client.sent == [(TEST_GUID, sign("hello"))]
+
+
+def test_deliver_attachment_reserves_sends_and_marks_sent() -> None:
+    client = FakeClient()
+    outbound = FakeOutbound()
+    service, _, _, notifier = make(DeliveryMode.TEST, client=client, outbound=outbound)
+    result = service.deliver_attachment(7, "league-agent", "bowers-hold-week-6.html", b"<p>x</p>")
+    assert result.status == "sent"
+    assert client.sent[-1] == (TEST_GUID, "bowers-hold-week-6.html", b"<p>x</p>")
+    record = outbound.records[result.outbound_id]
+    assert record["state"] == "sent" and record["guid"] == result.message_guid
+    assert notifier.feed_posts[-1].endswith("bowers-hold-week-6.html")
+    assert b"<p>x</p>" not in notifier.feed_posts[-1].encode()
+
+
+def test_deliver_attachment_reconciles_a_crashed_send_by_filename() -> None:
+    client = FakeClient()
+    outbound = FakeOutbound()
+    outbound.pending = OutboundRecord(
+        3, "sending", datetime(2026, 9, 10, 12, 0, tzinfo=UTC), "hash", None
+    )
+    client.history = [
+        InboundMessage(
+            guid="p:0/BOT-3", chat_guid=TEST_GUID, sender_address=None, text="",
+            is_from_me=True, is_group=True,
+            sent_at=datetime(2026, 9, 10, 12, 0, 5, tzinfo=UTC),
+            attachment_names=("bowers-hold-week-6.html",),
+        )
+    ]
+    outbound.records[3] = {"state": "sending", "hash": "hash"}
+    service, _, _, _ = make(DeliveryMode.TEST, client=client, outbound=outbound)
+    result = service.deliver_attachment(7, "league-agent", "bowers-hold-week-6.html", b"x")
+    assert result.status == "reconciled" and result.outbound_id == 3
+    assert result.message_guid == "p:0/BOT-3"
+    assert client.sent == []
