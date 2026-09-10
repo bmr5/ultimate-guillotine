@@ -1,8 +1,14 @@
 """The reader's whole job is to drop things: private fields, unresolvable names, prose.
 
 Every test here is a thing the classification file carries and the public table must
-not: the analyst's notes, the chat lines a ruling was read out of, a nickname that two
-members answer to, and the free-text return conditions that are most of the file.
+not: the analyst's notes, a nickname that two members answer to, and the free-text
+return conditions that are most of the file.
+
+The one thing it now carries on purpose is the league's own announcement of a trade
+(Ben's ruling, 2026-09-10). Its sentinel is spelled differently from the private one
+for that reason: `SENTINEL-NOTE` must appear nowhere, `ANNOUNCEMENT-ONE` must appear
+in exactly one field, and a test that used one sentinel for both could not tell the
+difference. Every string here is synthetic; none of it is anything the league said.
 """
 
 from datetime import UTC, date, datetime
@@ -49,22 +55,62 @@ def _record(**overrides) -> dict:
         "confidence": "high",
         "source": "chat",
         "notes": "SENTINEL-NOTE",
-        "source_texts": ["SENTINEL-TEXT"],
+        "source_texts": ["ANNOUNCEMENT-ONE"],
     }
     base.update(overrides)
     return base
 
 
-def test_private_fields_are_not_in_the_allowlist() -> None:
+def test_the_analysts_own_fields_are_not_in_the_allowlist() -> None:
+    """`notes` is his commentary and `source` names the private artefact he read."""
     assert "notes" not in CATALOG_FIELDS
-    assert "source_texts" not in CATALOG_FIELDS
+    assert "source" not in CATALOG_FIELDS
+
+
+def test_source_texts_load_into_announcement_and_nowhere_else() -> None:
+    """Ben's ruling: the league's own words are published, the analyst's are not.
+
+    The assertion is deliberately two-sided. That the announcement landed is half of it;
+    the other half is that reading one chat-derived field did not quietly open the door
+    to the one beside it in the same record.
+    """
+    assert "source_texts" in CATALOG_FIELDS
+    reading = read_record(_record(), {}, NO_PLAYERS, season_id=None, loaded_at=LOADED_AT)
+
+    assert reading.row.announcement == "ANNOUNCEMENT-ONE"
+    assert "SENTINEL-NOTE" not in repr(reading)
+
+
+def test_several_messages_become_one_block_split_by_a_blank_line() -> None:
+    """Two messages about one trade are two paragraphs, not one run-on sentence."""
+    reading = read_record(
+        _record(source_texts=["ANNOUNCEMENT-ONE", "  ANNOUNCEMENT-TWO  "]),
+        {}, NO_PLAYERS, season_id=None, loaded_at=LOADED_AT,
+    )
+    assert reading.row.announcement == "ANNOUNCEMENT-ONE\n\nANNOUNCEMENT-TWO"
+
+
+@pytest.mark.parametrize(
+    "source_texts", [[], ["", "   "], "ANNOUNCEMENT-ONE", None, [12, {"text": "SENTINEL-NOTE"}]]
+)
+def test_a_record_with_no_readable_message_carries_no_announcement(source_texts) -> None:
+    """None, not "" -- the card renders nothing rather than an empty quote block.
+
+    A non-string entry is unreadable rather than something to stringify: `str()` on it
+    would publish a repr, which is how the private half of a dict ends up on a page.
+    """
+    reading = read_record(
+        _record(source_texts=source_texts), {}, NO_PLAYERS, season_id=None, loaded_at=LOADED_AT
+    )
+    assert reading.row.announcement is None
+    assert "SENTINEL-NOTE" not in repr(reading)
 
 
 def test_row_carries_no_private_field() -> None:
     index = build_label_index([MEMBERS[1]])
     reading = read_record(_record(), index, NO_PLAYERS, season_id=None, loaded_at=LOADED_AT)
 
-    assert "SENTINEL" not in repr(reading)
+    assert "SENTINEL-NOTE" not in repr(reading)
     assert reading.row.week == 4
     assert reading.row.occurred_on == date(2025, 9, 30)
     assert reading.row.party_member_ids == [2]

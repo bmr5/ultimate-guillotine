@@ -24,14 +24,19 @@ function optionalIndex(value: unknown): number | null {
 }
 
 /**
- * A trade party, named. A member id the directory does not carry is still a party to the deal,
- * so it keeps its place on the card under `FORMER_MANAGER` rather than being dropped — the row
- * would otherwise read as a smaller trade than it was.
+ * A trade party, named where the directory can name one. A member id it does not carry is still
+ * a party to the deal, so it keeps its place on the card under `FORMER_MANAGER` rather than
+ * being dropped — the row would otherwise read as a smaller trade than it was.
+ *
+ * `resolved` records which of the two happened, so a caller can count the parties it cannot
+ * name without reading the stand-in label back out of the field meant for a name.
  */
 function tradeParty(memberId: number, members: HistoryMemberRow[]): TradeParty {
+  const label = ownerLabelFor(memberId, members);
   return {
     memberId,
-    label: ownerLabelFor(memberId, members) ?? FORMER_MANAGER,
+    label: label ?? FORMER_MANAGER,
+    resolved: label !== null,
   };
 }
 
@@ -81,6 +86,10 @@ export function normalizeCatalogTrade(
     assets: catalogAssets(row.assets),
     faabTotal: row.faab_total,
     confidence: row.confidence,
+    // `optionalText`, not the field itself, for the reason the asset name below is guarded:
+    // a column PostgREST did not return is `undefined`, and `filterTrades` folds this string
+    // on every keystroke. The type says `string | null`, so nothing else may say otherwise.
+    announcement: optionalText(row.announcement),
     sourceLabel: CATALOG_SOURCE_LABEL,
     registered: false,
     rescinded: false,
@@ -104,12 +113,16 @@ function partyIndex(memberIds: number[], value: unknown): number | null {
 /**
  * Turn a registered trade into the same shape, reading only the fields that are safe.
  *
- * The revision's `terms` document also holds `evidence_excerpt` — verbatim league chat — and
- * `parties[].display_name`, the bare Sleeper username. Neither is read here, and the fetcher
- * never requests them. `assets[].description` and `assets[].player_name` are requested, because
- * they ride along inside `terms->assets`, but neither is copied out: this function takes ids and
- * amounts and nothing else, so no wording from the chat can reach the page even if a future
- * terms shape adds more prose.
+ * `evidence_excerpt` is one of them now. It is the message the league announced the trade in,
+ * the fetcher asks for it under the name `announcement`, and it is carried through to the card
+ * by Ben's ruling of 2026-09-10 — one field, named and decided on.
+ *
+ * Everything else in the document is unchanged. `parties[].display_name` is the bare Sleeper
+ * username; `assets[].player_name` is the player as he was typed into the chat and
+ * `assets[].description` is the trade as somebody phrased it. All three ride along inside
+ * `terms->parties` and `terms->assets` because PostgREST cannot project keys out of a JSON
+ * array, and none of them is copied out: below this line the function takes ids and amounts and
+ * nothing else, so a future terms shape that adds more prose adds it to a field nobody reads.
  */
 export function normalizeRegisteredTrade(
   trade: RegisteredTradeRow,
@@ -170,6 +183,7 @@ export function normalizeRegisteredTrade(
     assets,
     faabTotal,
     confidence: "high",
+    announcement: optionalText(revision?.announcement),
     sourceLabel: trade.trade_code,
     registered: true,
     rescinded: trade.status === "rescinded",

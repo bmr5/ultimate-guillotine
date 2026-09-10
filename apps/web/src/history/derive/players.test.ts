@@ -25,6 +25,7 @@ function tradeWith(assets: CatalogTrade["assets"]): CatalogTrade {
     assets,
     faabTotal: null,
     confidence: "high",
+    announcement: null,
     sourceLabel: "T-2025-014",
     registered: true,
     rescinded: false,

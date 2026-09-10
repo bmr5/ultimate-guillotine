@@ -71,6 +71,7 @@ describe("fetchTradeCatalog", () => {
     await fetchTradeCatalog(client);
     expect(calls[0].table).toBe("trade_catalog");
     expect(calls[0].columns).toContain("party_member_ids");
+    expect(calls[0].columns).toContain("announcement");
     expect(calls[0].order).toEqual(["season", false]);
   });
 });
@@ -87,18 +88,22 @@ describe("fetchRegisteredTrades", () => {
 });
 
 describe("fetchRegisteredRevisions", () => {
-  it("reads three JSON paths out of terms and never the document itself", async () => {
+  // Four paths now, not three: `evidence_excerpt` is requested on purpose, as `announcement`.
+  // The assertion is still an equality against the whole list rather than a check that the new
+  // path is present — the point of it is that no *fifth* path joins these by accident, and a
+  // `toContain` would not notice one.
+  it("reads four named JSON paths out of terms and never the document itself", async () => {
     const { client, calls } = createFakeClient({ trade_revisions: [] });
     await fetchRegisteredRevisions(client);
     expect(calls[0].table).toBe("trade_revisions");
     expect(calls[0].columns).not.toMatch(/(^|,)\s*terms\s*(,|$)/);
-    expect(calls[0].columns).not.toContain("evidence_excerpt");
     const paths = calls[0].columns
       .split(",")
       .map((column) => column.trim())
       .filter((column) => column.includes("terms"));
     expect(paths).toEqual([
       "kind:terms->>kind",
+      "announcement:terms->>evidence_excerpt",
       "parties:terms->parties",
       "assets:terms->assets",
     ]);

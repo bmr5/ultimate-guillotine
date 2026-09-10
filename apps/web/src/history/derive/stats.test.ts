@@ -15,6 +15,7 @@ const base: CatalogTrade = {
   assets: [],
   faabTotal: 10,
   confidence: "high",
+  announcement: null,
   sourceLabel: "catalog",
   registered: false,
   rescinded: false,

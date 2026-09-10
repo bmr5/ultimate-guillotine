@@ -45,18 +45,28 @@ export interface RegisteredTradeRow {
 
 /**
  * One current revision, read as JSON paths rather than as the whole `terms` document.
- * `terms.evidence_excerpt` is verbatim league chat and `terms.parties[].display_name` is the
- * bare Sleeper username; both are anon-readable today, and selecting them here would put them
- * on a public page. Only these three paths are ever requested. PostgREST cannot project keys
- * out of a JSON array, so `terms->parties` still carries `display_name` in the payload:
- * `normalizeRegisteredTrade` (src/history/derive/merge.ts) drops it before anything renders,
- * and nothing may hand a raw parties object to a component.
+ *
+ * `terms.evidence_excerpt` is now requested, as `announcement`. It is the message the Registrar
+ * quoted when it recorded the trade — the league announcing its own deal — and Ben's ruling of
+ * 2026-09-10 is that the cards are unreadable without it. That is a decision about one field,
+ * taken once, and it is why this doc comment is not the one it replaced: the excerpt is shown on
+ * purpose, and `announcement` is the name it is shown under so nothing downstream has to know
+ * where it came from.
+ *
+ * It changes nothing about the rest of the document. `terms.parties[].display_name` is the bare
+ * Sleeper username and `terms.assets[].player_name` / `description` are the wording of the chat
+ * message itself, and all three are still dropped by `normalizeRegisteredTrade`
+ * (src/history/derive/merge.ts) rather than merely unrequested — PostgREST cannot project keys
+ * out of a JSON array, so `terms->parties` and `terms->assets` still carry them in the payload.
+ * Nothing may hand a raw parties or assets object to a component.
  */
 export interface RegisteredRevisionRow {
   id: number;
   trade_id: number;
   effective_week: number | null;
   kind: string | null;
+  /** `terms.evidence_excerpt`: the league's own announcement, or null when there is none. */
+  announcement: string | null;
   parties: unknown;
   assets: unknown;
 }
@@ -83,7 +93,7 @@ async function unwrap<T>(
  * returns `GenericStringError` and silently costs the fetcher its typed result.
  */
 const CATALOG_COLUMNS =
-  "id, catalog_id, season, week, occurred_on, trade_type, structure, party_member_ids, party_count, assets, faab_total, confidence, unresolved_parties, loaded_at";
+  "id, catalog_id, season, week, occurred_on, trade_type, structure, party_member_ids, party_count, assets, faab_total, confidence, announcement, unresolved_parties, loaded_at";
 
 /** Also one literal, for the reason `CATALOG_COLUMNS` is. */
 const SEASON_RESULT_COLUMNS =
@@ -120,7 +130,7 @@ export function fetchRegisteredRevisions(
     client
       .from("trade_revisions")
       .select(
-        "id, trade_id, effective_week, kind:terms->>kind, parties:terms->parties, assets:terms->assets",
+        "id, trade_id, effective_week, kind:terms->>kind, announcement:terms->>evidence_excerpt, parties:terms->parties, assets:terms->assets",
       ),
     "trade_revisions",
   );

@@ -20,6 +20,16 @@ export type TradeAsset =
 export interface TradeParty {
   memberId: number;
   label: string;
+  /**
+   * Whether `label` is this party's own name or the word that stands in for one.
+   *
+   * `false` where the directory carries nobody for the id: the party keeps its place, but its
+   * label is `FORMER_MANAGER` rather than anybody's name. The flag is needed because the label
+   * alone cannot be read back — a caller that folds the parties it cannot name into one counted
+   * segment would otherwise have to compare against that string to tell them apart, and a
+   * manager nicknamed the same thing would fold with them.
+   */
+  resolved: boolean;
 }
 
 /** One row on `/trades`, whether it came from the catalog or from a registered trade. */
@@ -36,6 +46,16 @@ export interface CatalogTrade {
   assets: TradeAsset[];
   faabTotal: number | null;
   confidence: Confidence;
+  /**
+   * What the league said when the trade was made, or `null` when there is nothing to quote.
+   *
+   * The one piece of league chat these pages carry, by Ben's ruling of 2026-09-10: the tiles
+   * were unreadable as a taxonomy alone. A catalog row's comes from the classification file's
+   * `source_texts`, joined a message per paragraph; a registered row's is the excerpt the
+   * Registrar quoted when it recorded the deal. `null` renders as nothing — never as an empty
+   * quote block, which would say the league said nothing rather than that nothing was kept.
+   */
+  announcement: string | null;
   /** The trade code for a registered row, the literal `catalog` for a catalog row. */
   sourceLabel: string;
   registered: boolean;

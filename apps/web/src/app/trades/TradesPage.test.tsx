@@ -56,8 +56,8 @@ beforeEach(() => {
       tradeType: "trade",
       structure: "1-for-1",
       parties: [
-        { memberId: 1, label: "Zulu" },
-        { memberId: 2, label: "Alpha" },
+        { memberId: 1, label: "Zulu", resolved: true },
+        { memberId: 2, label: "Alpha", resolved: true },
       ],
       partyCount: 2,
       assets: [
@@ -72,6 +72,7 @@ beforeEach(() => {
       ],
       faabTotal: 4,
       confidence: "high",
+      announcement: "ANNOUNCEMENT-ONE",
       sourceLabel: "catalog",
       registered: false,
       rescinded: false,
@@ -89,6 +90,7 @@ beforeEach(() => {
       assets: [],
       faabTotal: null,
       confidence: "high",
+      announcement: null,
       sourceLabel: "catalog",
       registered: false,
       rescinded: false,
@@ -185,7 +187,7 @@ describe("TradesPage", () => {
       {
         ...base,
         key: "k3",
-        parties: [{ memberId: 3, label: "Former manager" }],
+        parties: [{ memberId: 3, label: "Former manager", resolved: false }],
       },
     ];
     renderPage();

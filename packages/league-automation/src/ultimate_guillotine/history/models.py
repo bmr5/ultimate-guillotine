@@ -1,7 +1,11 @@
 """The only two shapes that reach the public history tables.
 
 Deliberately id-only: no member name, nickname, or workbook cell has a field to
-live in, so nothing private can be carried into Postgres by accident.
+live in, so nothing private can be carried into Postgres by accident. `announcement`
+is the single exception and it is a narrow one -- the league's own announcement of a
+trade, published on Ben's ruling of 2026-09-10 because the cards were unreadable
+without it. It is the trade's text, not the analyst's: `notes` still has nowhere here
+to live.
 """
 
 from dataclasses import dataclass, field
@@ -29,6 +33,10 @@ class CatalogRow:
     # the league's own flow. The migration's check constraint holds the same two
     # values, so a third one is refused by the database rather than published.
     source: str = "catalog"
+    # What the league said when the trade was made, or None for a record that carried
+    # no text. Defaulted so every caller that predates the column still builds a row --
+    # a missing announcement is a card with no quote, not a broken load.
+    announcement: str | None = None
 
 
 @dataclass(frozen=True)

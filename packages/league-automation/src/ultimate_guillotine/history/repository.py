@@ -72,8 +72,8 @@ class HistoryRepository:
                     insert into public.trade_catalog (
                         catalog_id, season, season_id, week, occurred_on, trade_type, structure,
                         party_member_ids, party_count, assets, faab_total, confidence, source,
-                        unresolved_parties, loaded_at
-                    ) values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        announcement, unresolved_parties, loaded_at
+                    ) values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     on conflict (catalog_id) do update set
                         season = excluded.season,
                         season_id = excluded.season_id,
@@ -87,6 +87,7 @@ class HistoryRepository:
                         faab_total = excluded.faab_total,
                         confidence = excluded.confidence,
                         source = excluded.source,
+                        announcement = excluded.announcement,
                         unresolved_parties = excluded.unresolved_parties,
                         loaded_at = excluded.loaded_at
                     returning (xmax = 0)
@@ -95,7 +96,7 @@ class HistoryRepository:
                         row.catalog_id, row.season, row.season_id, row.week, row.occurred_on,
                         row.trade_type, row.structure, row.party_member_ids, row.party_count,
                         Jsonb(row.assets), row.faab_total, row.confidence, row.source,
-                        row.unresolved_parties, row.loaded_at,
+                        row.announcement, row.unresolved_parties, row.loaded_at,
                     ),
                 )
                 inserted = cur.fetchone()[0]

@@ -50,7 +50,10 @@ def _record(**overrides) -> dict:
         "faab_total": 0,
         "confidence": "high",
         "notes": "SENTINEL",
-        "source_texts": ["SENTINEL"],
+        # Loaded into the row by Ben's ruling of 2026-09-10 -- and still never printed. The
+        # sentinel is spelled apart from the private one so the assertions below can tell a
+        # field that must not exist from a field that must not be echoed.
+        "source_texts": ["ANNOUNCEMENT-SENTINEL"],
     }
     base.update(overrides)
     return base
@@ -134,6 +137,8 @@ def test_load_catalog_prints_counts_only(
     out = capsys.readouterr().out
     assert exit_code == 0
     assert out.strip() == "catalog: 1 rows, 0 updated, 1 unresolved parties, 1 unmapped conditions"
+    # Neither the analyst's note nor the announcement the loader *did* store: a field being
+    # published on a page is not a licence to print it into a terminal Ben shares his screen on.
     assert "SENTINEL" not in out
     _assert_counts_only(out)
 
