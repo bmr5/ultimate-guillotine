@@ -702,7 +702,7 @@
       "text": "🚨 Trade Alert 🚨\nI'm cancelling my trade with mdurgin",
       "expected_kind": "rescission",
       "expected_status": "rescinded",
-      "prereq": null,
+      "prereq": 38,
       "announcer": "kpbowe",
       "notes": "A rescission written in the first person: `I` and `my trade` name the announcer, so the two sides are known without a code and the open trade between them on file is the one cancelled. With nothing on file it asks for the code instead."
     },

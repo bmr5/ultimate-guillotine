@@ -59,7 +59,7 @@ def cmd_gap_fill(args: argparse.Namespace) -> int:
                     # a plain replay; --reprocess gives it a fresh id (source_messages still
                     # dedupes the trigger, so nothing logs twice).
                     event_id = (
-                        f"reprocess:{now.isoformat()}:{msg.guid}" if args.reprocess else msg.guid
+                        f"reprocess:{now.isoformat()}:{msg.guid}" if getattr(args, "reprocess", False) else msg.guid
                     )
                     outcome = processor.process(msg, event_id)
                     total += 1
