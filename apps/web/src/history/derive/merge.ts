@@ -81,7 +81,10 @@ export function normalizeCatalogTrade(
     assets: catalogAssets(row.assets),
     faabTotal: row.faab_total,
     confidence: row.confidence,
-    announcement: row.announcement,
+    // `optionalText`, not the field itself, for the reason the asset name below is guarded:
+    // a column PostgREST did not return is `undefined`, and `filterTrades` folds this string
+    // on every keystroke. The type says `string | null`, so nothing else may say otherwise.
+    announcement: optionalText(row.announcement),
     sourceLabel: CATALOG_SOURCE_LABEL,
     registered: false,
     rescinded: false,
@@ -175,7 +178,7 @@ export function normalizeRegisteredTrade(
     assets,
     faabTotal,
     confidence: "high",
-    announcement: revision?.announcement ?? null,
+    announcement: optionalText(revision?.announcement),
     sourceLabel: trade.trade_code,
     registered: true,
     rescinded: trade.status === "rescinded",

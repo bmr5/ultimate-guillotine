@@ -114,6 +114,23 @@ describe("mergeTradeSources", () => {
     expect(trades[0].announcement).toBeNull();
   });
 
+  // A column PostgREST did not return arrives as `undefined`, not as `null`, and the search box
+  // folds this string on every keystroke — so the normalizer answers `null` for either.
+  it("reads a missing announcement column as no announcement, never undefined", () => {
+    const withoutColumn: Record<string, unknown> = { ...CATALOG_2024 };
+    delete withoutColumn.announcement;
+    const { trades } = mergeTradeSources(
+      [withoutColumn as unknown as typeof CATALOG_2024],
+      [],
+      [],
+      MEMBERS,
+    );
+    expect(trades[0].announcement).toBeNull();
+    expect(
+      filterTrades(trades, { ...EMPTY_FILTERS, search: "announcement" }),
+    ).toEqual([]);
+  });
+
   it("labels owners by nickname, else Sleeper display name", () => {
     const { trades } = mergeTradeSources([CATALOG_2024], [], [], MEMBERS);
     expect(trades[0].parties.map((party) => party.label)).toEqual([
