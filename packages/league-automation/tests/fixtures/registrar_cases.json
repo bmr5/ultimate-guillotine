@@ -489,7 +489,7 @@
     {
       "id": 55,
       "category": "not_a_trade",
-      "text": "🚨 Trade T-2026-001 logged\nblandon receives: Ja'Marr Chase\nWeek ? · Permanent\n— 🤖 Guillotine Bot",
+      "text": "🚨 Trade T-2026-001 logged\nblandon receives: Ja'Marr Chase\nWeek ? · Permanent\n— 🍼 Daddy",
       "expected_kind": "not_a_trade",
       "expected_status": "dropped_upstream",
       "prereq": null,
