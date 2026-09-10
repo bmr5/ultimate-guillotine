@@ -112,4 +112,30 @@ describe("filterTrades", () => {
       filterTrades([accented], { ...EMPTY_FILTERS, search: "  NACUÁ " }),
     ).toEqual([accented]);
   });
+
+  it("matches every word of the term in any order, as the board does", () => {
+    const accented: CatalogTrade = {
+      ...TRADE,
+      assets: [
+        {
+          kind: "player",
+          playerId: "2",
+          name: "Puka Nacuá",
+          position: "WR",
+          fromParty: 0,
+          toParty: 1,
+        },
+      ],
+    };
+    expect(
+      filterTrades([accented], { ...EMPTY_FILTERS, search: "nacua puka" }),
+    ).toEqual([accented]);
+    expect(
+      filterTrades([accented], { ...EMPTY_FILTERS, search: "puka nacua" }),
+    ).toEqual([accented]);
+    // Every word still has to land in the same player: one hit is not a match.
+    expect(
+      filterTrades([accented], { ...EMPTY_FILTERS, search: "puka allen" }),
+    ).toEqual([]);
+  });
 });

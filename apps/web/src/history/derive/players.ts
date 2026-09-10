@@ -23,6 +23,26 @@ function needsName(asset: TradeAsset): asset is PlayerAsset {
 }
 
 /**
+ * Exactly the directory ids `resolvePlayerNames` would look up, sorted and deduped.
+ *
+ * The set is the *nameless* player assets' ids, not every player id the merged trades mention: a
+ * catalog asset arrives already named and is returned untouched below, so fetching its row would
+ * download a name that is then discarded. An empty result means the page has nothing to look up
+ * and the directory query stays disabled.
+ */
+export function playerIdsToResolve(trades: CatalogTrade[]): string[] {
+  const ids = new Set<string>();
+  for (const trade of trades) {
+    for (const asset of trade.assets) {
+      if (needsName(asset) && asset.playerId !== null) {
+        ids.add(asset.playerId);
+      }
+    }
+  }
+  return [...ids].sort();
+}
+
+/**
  * Put a name and a position on every player asset that has neither, from `public.players`.
  *
  * Pure, and identity-preserving: a trade with nothing to resolve is returned as it came in, so

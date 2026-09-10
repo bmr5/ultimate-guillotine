@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { chunkIds } from "@/board/fetchers";
 import type { Database, TableRow } from "@/board/types";
 
 export type HistoryClient = SupabaseClient<Database>;
@@ -128,7 +129,7 @@ export function fetchSeasonResults(
 }
 
 /**
- * The player directory, for putting a name on a registered trade's player asset.
+ * The player directory rows the trades on screen actually reference, and no others.
  *
  * A registered asset carries a resolved `player_id` and nothing else the page may render —
  * `terms.assets[].player_name` is the name as it was typed into the league chat and is
@@ -136,14 +137,31 @@ export function fetchSeasonResults(
  * from `public.players`, which is Sleeper's own directory. `active` is not filtered on: a trade
  * from 2022 names players who have since retired, and Sleeper's dump drops them, so the sync
  * keeps their rows with `active = false` precisely so history can still be read.
+ *
+ * The ids are passed in and chunked rather than the table being read whole, for the reason the
+ * board chunks its own: `public.players` holds every player Sleeper has ever dumped, PostgREST
+ * caps rows silently, and a truncated response does not fail — it renames a traded player
+ * "Unlisted player". One request per `IN_CHUNK_SIZE` ids, in parallel, merged in id order.
  */
-export function fetchHistoryPlayers(
+export async function fetchHistoryPlayers(
   client: HistoryClient,
+  sleeperPlayerIds: readonly string[],
 ): Promise<HistoryPlayerRow[]> {
-  return unwrap<HistoryPlayerRow>(
-    client.from("players").select("sleeper_player_id, full_name, position"),
-    "players",
+  if (sleeperPlayerIds.length === 0) {
+    return [];
+  }
+  const batches = await Promise.all(
+    chunkIds(sleeperPlayerIds).map((ids) =>
+      unwrap<HistoryPlayerRow>(
+        client
+          .from("players")
+          .select("sleeper_player_id, full_name, position")
+          .in("sleeper_player_id", ids),
+        "players",
+      ),
+    ),
   );
+  return batches.flat();
 }
 
 export function fetchHistoryMembers(

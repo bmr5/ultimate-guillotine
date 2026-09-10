@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 
 import { formatUpdatedAt } from "@/board/derive/time";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatsStrip } from "@/history/components/StatsStrip";
 import { TradeCard } from "@/history/components/TradeCard";
@@ -16,6 +17,9 @@ import {
 import { tradeStats } from "@/history/derive/stats";
 import { parseNumberParam, type TradeFilters } from "@/history/types";
 import { useTradeCatalog } from "@/history/useTradeCatalog";
+
+/** The query params this page owns. Anything else in the URL is somebody else's and survives. */
+const FILTER_PARAMS = ["season", "type", "pos", "owner", "q"] as const;
 
 export function TradesPage() {
   const [params, setParams] = useSearchParams();
@@ -54,6 +58,14 @@ export function TradesPage() {
     setParams(updated, { replace: true });
   }
 
+  // Clear drops this page's five filters and nothing else: replacing the whole query string
+  // would also throw away a param the router or a future feature put there.
+  function clearFilters() {
+    const updated = new URLSearchParams(params);
+    for (const param of FILTER_PARAMS) updated.delete(param);
+    setParams(updated, { replace: true });
+  }
+
   const visible = useMemo(
     () => filterTrades(trades, filters),
     [trades, filters],
@@ -78,13 +90,16 @@ export function TradesPage() {
         members={members}
         memberIds={memberIds}
         onChange={change}
-        onClear={() => setParams(new URLSearchParams(), { replace: true })}
+        onClear={clearFilters}
       />
       <StatsStrip stats={stats} replacedByBackfill={replacedByBackfill} />
 
-      {errors.map((error) => (
-        <Alert key={error.message} variant="destructive">
-          <AlertTitle>Could not load part of the catalog</AlertTitle>
+      {/* Keyed by source, not by message: two sources that fail the same way — one outage, two
+          identical messages — are two alerts with the same key otherwise, and React keeps only
+          one of them. */}
+      {errors.map(({ source, error }) => (
+        <Alert key={source} variant="destructive">
+          <AlertTitle>Could not load {source.toLowerCase()}</AlertTitle>
           <AlertDescription>{error.message}</AlertDescription>
         </Alert>
       ))}
@@ -103,9 +118,17 @@ export function TradesPage() {
         </p>
       )}
       {!isPending && trades.length > 0 && visible.length === 0 && (
-        <p className="rounded-md border bg-card p-4 text-sm">
-          No trades match these filters.
-        </p>
+        <div className="space-y-2 rounded-md border bg-card p-4 text-sm">
+          <p>No trades match these filters.</p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={clearFilters}
+          >
+            Clear filters
+          </Button>
+        </div>
       )}
 
       <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">

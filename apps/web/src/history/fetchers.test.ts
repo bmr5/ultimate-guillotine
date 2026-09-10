@@ -3,6 +3,8 @@
  */
 import { describe, expect, it } from "vitest";
 
+import { IN_CHUNK_SIZE } from "@/board/fetchers";
+
 import type { HistoryClient } from "./fetchers";
 import {
   fetchHistoryPlayers,
@@ -16,6 +18,7 @@ interface Call {
   table: string;
   columns: string;
   order?: [string, boolean];
+  in?: [string, readonly string[]];
 }
 
 function createFakeClient(
@@ -37,6 +40,10 @@ function createFakeClient(
         },
         order(column: string, options: { ascending: boolean }) {
           call.order = [column, options.ascending];
+          return builder;
+        },
+        in(column: string, values: readonly string[]) {
+          call.in = [column, values];
           return builder;
         },
         then(
@@ -108,13 +115,32 @@ describe("fetchRegisteredRevisions", () => {
 describe("fetchHistoryPlayers", () => {
   it("selects the id, the display name and the position, and nothing else", async () => {
     const { client, calls } = createFakeClient({ players: [] });
-    await fetchHistoryPlayers(client);
+    await fetchHistoryPlayers(client, ["1"]);
     expect(calls[0].table).toBe("players");
     expect(calls[0].columns.split(",").map((column) => column.trim())).toEqual([
       "sleeper_player_id",
       "full_name",
       "position",
     ]);
+    expect(calls[0].in).toEqual(["sleeper_player_id", ["1"]]);
+  });
+
+  it("chunks the id list rather than sending one oversized .in filter", async () => {
+    // PostgREST puts `.in()` in the query string; past IN_CHUNK_SIZE the URL is the limit, and
+    // an unfiltered read of the whole directory is worse — it can be silently row-capped.
+    const ids = Array.from({ length: IN_CHUNK_SIZE + 1 }, (_, i) => String(i));
+    const { client, calls } = createFakeClient({ players: [] });
+    await fetchHistoryPlayers(client, ids);
+    expect(calls).toHaveLength(2);
+    expect(calls[0].in?.[1]).toHaveLength(IN_CHUNK_SIZE);
+    expect(calls[1].in?.[1]).toEqual([String(IN_CHUNK_SIZE)]);
+    expect(calls.every((call) => call.table === "players")).toBe(true);
+  });
+
+  it("asks for nothing at all when no trade references a player", async () => {
+    const { client, calls } = createFakeClient({ players: [] });
+    await expect(fetchHistoryPlayers(client, [])).resolves.toEqual([]);
+    expect(calls).toHaveLength(0);
   });
 });
 

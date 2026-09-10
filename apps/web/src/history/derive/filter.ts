@@ -1,21 +1,27 @@
-import { normalizeSearchText } from "@/board/derive/search";
+import {
+  matchesAllTokens,
+  normalizeSearchText,
+  tokenizeSearchTerm,
+} from "@/board/derive/search";
 
 import type { CatalogTrade, TradeFilters } from "../types";
 
 /**
- * The player-name search, folded exactly the way the board folds its own.
+ * The player-name search, folded and tokenised exactly the way the board folds and tokenises its
+ * own — the board's helpers, not a second copy of them.
  *
  * `normalizeSearchText` strips accents and the punctuation nobody types, so `Nacua` reaches
- * `Puka Nacuá` and `jamarr` reaches `Ja'Marr Chase` here for the same reason it does on the
- * board — one behaviour to learn, not two.
+ * `Puka Nacuá` and `jamarr` reaches `Ja'Marr Chase`. The term is then a *set of words*, all of
+ * which have to land in one player's name in any order, so `nacua puka` finds Puka Nacua on this
+ * page for the same reason it finds him on the board — one behaviour to learn, not two.
  */
 function matchesSearch(trade: CatalogTrade, term: string): boolean {
-  const needle = normalizeSearchText(term);
-  if (needle === "") return true;
+  const tokens = tokenizeSearchTerm(term);
+  if (tokens.length === 0) return true;
   return trade.assets.some(
     (asset) =>
       asset.kind === "player" &&
-      normalizeSearchText(asset.name).includes(needle),
+      matchesAllTokens(normalizeSearchText(asset.name), tokens),
   );
 }
 

@@ -17,6 +17,24 @@ interface Props {
   onClear: () => void;
 }
 
+/**
+ * A `<option>` for a filter value the loaded trades do not offer.
+ *
+ * The filters live in the URL, so a link can carry a value nothing on screen has — a season the
+ * catalog no longer reaches, a position filtered out by the season chip above it. Without this
+ * the `<select>` falls back to its first option and silently reads "Any type" while a type
+ * filter is in force. Rendered disabled: it says what the filter applies, and the only way out
+ * is another value or Clear.
+ */
+function orphanOption(value: string | null, options: string[]) {
+  if (value === null || value === "" || options.includes(value)) return null;
+  return (
+    <option value={value} disabled>
+      {value}
+    </option>
+  );
+}
+
 export function TradeFilterBar(props: Props) {
   const {
     filters,
@@ -69,6 +87,7 @@ export function TradeFilterBar(props: Props) {
               {type}
             </option>
           ))}
+          {orphanOption(filters.type, types)}
         </select>
         <select
           aria-label="Position"
@@ -84,6 +103,7 @@ export function TradeFilterBar(props: Props) {
               {position}
             </option>
           ))}
+          {orphanOption(filters.position, positions)}
         </select>
         <select
           aria-label="Owner"
@@ -101,6 +121,14 @@ export function TradeFilterBar(props: Props) {
               {resolveOwnerLabel(members.find((member) => member.id === id))}
             </option>
           ))}
+          {filters.memberId !== null &&
+            !memberIds.includes(filters.memberId) && (
+              <option value={filters.memberId} disabled>
+                {resolveOwnerLabel(
+                  members.find((member) => member.id === filters.memberId),
+                )}
+              </option>
+            )}
         </select>
       </div>
 

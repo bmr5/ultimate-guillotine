@@ -25,10 +25,16 @@ export function StatsStrip({
           </div>
         ))}
       </dl>
+      {/* `tradeCount` counts a rescinded trade — it happened — and `faabMoved` does not, so the
+          two numbers in the strip are answering slightly different questions. Say which. */}
+      <p className="mt-1 text-xs text-muted-foreground">
+        FAAB moved excludes rescinded trades
+      </p>
       {replacedByBackfill > 0 && (
         <p className="mt-1 text-xs text-muted-foreground">
-          {replacedByBackfill} earlier catalog readings replaced by registered
-          trades
+          {replacedByBackfill} earlier catalog{" "}
+          {replacedByBackfill === 1 ? "reading" : "readings"} replaced by
+          registered trades
         </p>
       )}
     </div>
