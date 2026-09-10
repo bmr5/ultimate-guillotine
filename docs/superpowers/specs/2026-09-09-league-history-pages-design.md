@@ -88,7 +88,7 @@ ug history load-results history/league/ultimate-guillotine-records.xlsx
 Both follow `cli/members.py`: build deps, read the file, upsert, commit, print **counts only**, exit
 non-zero only when nothing loaded. Neither ever prints a member name, a player name, a nickname, or a
 line of source text — output is `catalog: 214 rows, 3 updated, 5 unresolved parties` and `results: 6
-seasons, 2 unresolved names`. Both are idempotent, upserting on `catalog_id` and `season`.
+seasons, 6 updated, 2 unresolved names, 0 weeks with no count`. Both are idempotent, upserting on `catalog_id` and `season`.
 
 `load-catalog` copies fields through an explicit **allowlist** — `id`, `season`, `week_or_date`,
 `type`, `structure`, `parties`, `assets`, `faab_total`, `confidence` — not by deleting private fields

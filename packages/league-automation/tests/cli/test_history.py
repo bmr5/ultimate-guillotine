@@ -22,7 +22,7 @@ from ultimate_guillotine.history.repository import HistoryRowRejected
 #: chat would all fail this, which is the point.
 ALLOWED_WORDS = {
     "catalog", "rows", "updated", "unresolved", "parties", "unmapped", "conditions",
-    "results", "seasons", "names",
+    "results", "seasons", "names", "weeks", "with", "no", "count",
 }
 
 #: The records workbook, read by `load-results`. It is also the dues ledger, which is why
@@ -253,7 +253,9 @@ def test_load_results_prints_counts_only(stack, capsys: pytest.CaptureFixture[st
     assert exit_code == 0
     # Six seasons on the Winners sheet; with no members loaded, six champions and one
     # second name resolve to nobody.
-    assert out.strip() == "results: 6 seasons, 0 updated, 7 unresolved names"
+    assert out.strip() == (
+        "results: 6 seasons, 0 updated, 7 unresolved names, 0 weeks with no count"
+    )
     _assert_counts_only(out)
 
 
@@ -266,7 +268,9 @@ def test_a_results_rerun_reports_the_seasons_it_updated(
     assert history_cli.cmd_load_results(args) == 0
 
     out = capsys.readouterr().out
-    assert out.strip() == "results: 6 seasons, 6 updated, 7 unresolved names"
+    assert out.strip() == (
+        "results: 6 seasons, 6 updated, 7 unresolved names, 0 weeks with no count"
+    )
     _assert_counts_only(out)
 
 

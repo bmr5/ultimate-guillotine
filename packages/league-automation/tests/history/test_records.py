@@ -20,6 +20,7 @@ from ultimate_guillotine.history.records import (
     SheetRefused,
     public_sheet,
     read_eliminations,
+    read_week_grid,
     read_winners,
     season_result_rows,
 )
@@ -137,7 +138,7 @@ def test_a_season_with_no_sheet_has_no_eliminations(workbook) -> None:
 
 
 def test_unresolved_champion_is_counted_not_named() -> None:
-    rows, unresolved = season_result_rows(WORKBOOK, index={}, notes={}, loaded_at=LOADED_AT)
+    rows, unresolved, _ = season_result_rows(WORKBOOK, index={}, notes={}, loaded_at=LOADED_AT)
     by_season = {row.season: row for row in rows}
 
     assert unresolved == 7, "six champions and one second name, none of them resolvable"
@@ -151,7 +152,7 @@ def test_a_resolved_champion_is_an_id_and_costs_no_count(workbook) -> None:
     champion = read_winners(workbook)[-1].champion_name
     index = {champion.strip().lower(): 7}
 
-    rows, unresolved = season_result_rows(WORKBOOK, index=index, notes={}, loaded_at=LOADED_AT)
+    rows, unresolved, _ = season_result_rows(WORKBOOK, index=index, notes={}, loaded_at=LOADED_AT)
     by_season = {row.season: row for row in rows}
 
     assert by_season[2024].champion_member_id == 7
@@ -160,7 +161,7 @@ def test_a_resolved_champion_is_an_id_and_costs_no_count(workbook) -> None:
 
 
 def test_team_count_is_read_only_where_the_sheet_states_it() -> None:
-    rows, _ = season_result_rows(WORKBOOK, index={}, notes={}, loaded_at=LOADED_AT)
+    rows, _, _ = season_result_rows(WORKBOOK, index={}, notes={}, loaded_at=LOADED_AT)
     by_season = {row.season: row for row in rows}
 
     assert by_season[2024].team_count == 19
@@ -171,7 +172,7 @@ def test_team_count_is_read_only_where_the_sheet_states_it() -> None:
 
 
 def test_a_note_is_attached_to_its_season() -> None:
-    rows, _ = season_result_rows(
+    rows, _, _ = season_result_rows(
         WORKBOOK, index={}, notes={2022: "co-champions"}, loaded_at=LOADED_AT
     )
     by_season = {row.season: row for row in rows}
@@ -187,15 +188,77 @@ def test_a_workbook_with_no_winners_yields_no_rows(tmp_path: Path) -> None:
     path = tmp_path / "empty.xlsx"
     book.save(path)
 
-    rows, unresolved = season_result_rows(path, index={}, notes={}, loaded_at=LOADED_AT)
+    rows, unresolved, _ = season_result_rows(path, index={}, notes={}, loaded_at=LOADED_AT)
 
     assert rows == []
     assert unresolved == 0
 
 
+def _uncached_2024(path: Path) -> None:
+    """A 2024 sheet whose middle week is formulas, saved without a calculation pass.
+
+    This is the real workbook's condition in miniature: openpyxl writes the formula and
+    no cached result, so `data_only=True` reads `None` -- a week that exists as a row and
+    states no count. Sentinel text only; nothing here came out of the file.
+    """
+    book = Workbook()
+    winners = book.active
+    winners.title = "Winners"
+    winners["B3"], winners["C3"] = 2024, "sentinel-champion"
+    grid = book.create_sheet("2024")
+    grid["F4"], grid["G4"] = 0, 1  # week 1: counted
+    grid["F5"], grid["G5"] = "=D5-1", "=E5"  # week 2: formulas, no cached value
+    grid["F6"], grid["G6"] = 1, 0  # week 3: counted
+    grid["I6"] = "Winner"
+    book.save(path)
+
+
+def test_a_week_stating_no_count_is_counted_not_invented(tmp_path: Path) -> None:
+    """The third counter: weeks the file leaves silent, so a load cannot look complete."""
+    path = tmp_path / "uncached.xlsx"
+    _uncached_2024(path)
+
+    opened = load_workbook(path, data_only=True)
+    try:
+        entries, silent = read_week_grid(opened, 2024)
+    finally:
+        opened.close()
+
+    # The silent week yields no entry -- nothing is recomputed from the formula -- and
+    # the weeks that do have counts keep the numbers their own rows give them.
+    assert [entry["week"] for entry in entries] == [1, 3]
+    assert [entry["order"] for entry in entries] == [1, 2]
+    assert silent == 1
+
+    rows, _, total_silent = season_result_rows(path, index={}, notes={}, loaded_at=LOADED_AT)
+
+    assert total_silent == 1
+    assert len(rows[0].eliminations) == 2
+
+
+def test_the_sheets_empty_tail_is_not_counted_as_weeks(tmp_path: Path) -> None:
+    """Blank rows past the last week are the end of the sheet, not weeks with no count."""
+    book = Workbook()
+    winners = book.active
+    winners.title = "Winners"
+    winners["B3"], winners["C3"] = 2024, "sentinel-champion"
+    grid = book.create_sheet("2024")
+    grid["F4"], grid["G4"] = 0, 1
+    grid["F5"], grid["G5"] = 1, 0
+    # No `Winner` marker, and a stray value four rows down that leaves `max_row` at 9.
+    grid["C9"] = 19
+    path = tmp_path / "tail.xlsx"
+    book.save(path)
+
+    rows, _, silent = season_result_rows(path, index={}, notes={}, loaded_at=LOADED_AT)
+
+    assert [entry["week"] for entry in rows[0].eliminations] == [1, 2]
+    assert silent == 0
+
+
 def test_every_elimination_entry_passes_the_databases_validator(conn) -> None:
     """The jsonb shape is the database's rule; this asserts the reader obeys it."""
-    rows, _ = season_result_rows(WORKBOOK, index={}, notes={}, loaded_at=LOADED_AT)
+    rows, _, _ = season_result_rows(WORKBOOK, index={}, notes={}, loaded_at=LOADED_AT)
 
     with conn.cursor() as cur:
         for row in rows:

@@ -137,18 +137,26 @@ def cmd_load_results(args: argparse.Namespace) -> int:
     would render as the whole thing. A row the jsonb validator refuses is reported on
     stderr by its season and skipped. Exit 1 only when nothing landed at all, which means
     the Winners sheet is empty or every row was refused.
+
+    `weeks with no count` is the last number on the line because it is the one Ben can
+    act on without touching the loader: the workbook's grids are mostly formulas and the
+    file has never been saved with its results cached, so a week can exist as a row and
+    still state nothing. Opening the workbook in Excel, saving, and rerunning drives that
+    count down. Without it, a load reports six clean seasons over a file full of holes.
     """
     deps = build_deps()
     notes = _parse_notes(args.notes)
     loaded_at = datetime.now(UTC)
 
-    loaded = updated = unresolved = 0
+    loaded = updated = unresolved = silent_weeks = 0
     # The reads belong inside the transaction too -- see `cmd_load_catalog` for why a
     # query taken first turns the whole load into a savepoint that rolls back at exit.
     with deps.conn.transaction():
         repo = HistoryRepository(deps.conn)
         index = build_label_index(MemberAliasRepository(deps.conn).all_members())
-        rows, unresolved = season_result_rows(Path(args.path), index, notes, loaded_at)
+        rows, unresolved, silent_weeks = season_result_rows(
+            Path(args.path), index, notes, loaded_at
+        )
         for row in rows:
             stored = replace(row, season_id=repo.season_id_for(row.season))
             try:
@@ -160,5 +168,8 @@ def cmd_load_results(args: argparse.Namespace) -> int:
             loaded += 1
             updated += outcome == "updated"
 
-    print(f"results: {loaded} seasons, {updated} updated, {unresolved} unresolved names")
+    print(
+        f"results: {loaded} seasons, {updated} updated, "
+        f"{unresolved} unresolved names, {silent_weeks} weeks with no count"
+    )
     return 1 if loaded == 0 else 0

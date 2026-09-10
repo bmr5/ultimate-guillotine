@@ -165,27 +165,40 @@ def read_winners(workbook) -> list[WinnerRow]:
     return winners
 
 
-def _eliminations_2024(sheet) -> list[dict[str, Any]]:
-    """Rows 4 down to the `Winner` row, one entry per week.
+def _eliminations_2024(sheet) -> tuple[list[dict[str, Any]], int]:
+    """Rows 4 down to the `Winner` row, one entry per week, plus the weeks that state nothing.
 
     The week is the row's distance from the first, never the previous entry's week plus
     one: a skipped row would otherwise renumber every week after it, and the renumbering
     would look exactly like data.
+
+    A row whose two elimination cells are both empty -- blank, or a formula the file has
+    no cached result for -- yields no entry and is counted instead. The counting is
+    deferred until a later row proves the grid carried on, so the sheet's empty tail is
+    not mistaken for weeks the season played: only a gap with data after it, or the
+    `Winner` row itself, is a week the workbook failed to state.
     """
     entries: list[dict[str, Any]] = []
+    silent = pending = 0
     for row in range(GRID_2024_FIRST_ROW, sheet.max_row + 1):
         gulag_out = _int(sheet.cell(row=row, column=GRID_2024_GULAG_OUT_COL).value)
         pool_out = _int(sheet.cell(row=row, column=GRID_2024_POOL_OUT_COL).value)
-        if gulag_out is not None or pool_out is not None:
+        if gulag_out is None and pool_out is None:
+            pending += 1
+        else:
             week = row - GRID_2024_FIRST_ROW + 1
             entries.append(_entry(week, len(entries) + 1, gulag_out, pool_out))
-        # The `Winner` cell sits on the season's last week. Past it the sheet is over.
+            silent += pending
+            pending = 0
+        # The `Winner` cell sits on the season's last week. Past it the sheet is over,
+        # so any gap still pending at that point was inside the season after all.
         if _text(sheet.cell(row=row, column=GRID_2024_WINNER_COL).value):
+            silent += pending
             break
-    return entries
+    return entries, silent
 
 
-def _eliminations_2023(sheet) -> list[dict[str, Any]]:
+def _eliminations_2023(sheet) -> tuple[list[dict[str, Any]], int]:
     """The summary grid's weeks 11-17, which is every elimination count the sheet states.
 
     2023 ran without a general pool -- a team was safe, in the gulag, or cut -- so the
@@ -194,17 +207,37 @@ def _eliminations_2023(sheet) -> list[dict[str, Any]]:
 
     The read stops at the first row whose week cell is not a number, which is row 24's
     `Winner` marker. That is also the fence: the signup block starts three rows later.
+    A numbered week with no cut count is a week the sheet does not state, and is counted.
     """
     entries: list[dict[str, Any]] = []
+    silent = 0
     for row in range(SUMMARY_2023_FIRST_ROW, SUMMARY_2023_LAST_ROW + 1):
         week = _int(sheet.cell(row=row, column=SUMMARY_2023_WEEK_COL).value)
         if week is None:
             break
         cut = _int(sheet.cell(row=row, column=SUMMARY_2023_CUT_COL).value)
         if cut is None:
+            silent += 1
             continue
         entries.append(_entry(week, len(entries) + 1, gulag_out=cut, pool_out=None))
-    return entries
+    return entries, silent
+
+
+def read_week_grid(workbook, season: int) -> tuple[list[dict[str, Any]], int]:
+    """The season's elimination entries, plus how many of its weeks state no count at all.
+
+    The second number is the honest size of the hole in the file. Both grids lean on
+    formulas, and the workbook has never been saved with its results cached, so a week
+    can be present as a row and absent as a number; an entry is built only where a count
+    was actually written down, and every other week of the grid is counted here so the
+    loader can say how much of the season it could not read. It is a count of weeks and
+    nothing else -- no row, no cell, no text.
+    """
+    name = str(season)
+    if name not in PUBLIC_SHEETS or name not in workbook.sheetnames:
+        return [], 0
+    sheet = public_sheet(workbook, name)
+    return _eliminations_2024(sheet) if season == 2024 else _eliminations_2023(sheet)
 
 
 def read_eliminations(workbook, season: int) -> list[dict[str, Any]]:
@@ -215,11 +248,8 @@ def read_eliminations(workbook, season: int) -> list[dict[str, Any]]:
     all: their row carries a champion and an empty grid, which is the truth about what
     the workbook remembers of them.
     """
-    name = str(season)
-    if name not in PUBLIC_SHEETS or name not in workbook.sheetnames:
-        return []
-    sheet = public_sheet(workbook, name)
-    return _eliminations_2024(sheet) if season == 2024 else _eliminations_2023(sheet)
+    entries, _ = read_week_grid(workbook, season)
+    return entries
 
 
 def _team_count(workbook, season: int) -> int | None:
@@ -246,14 +276,20 @@ def season_result_rows(
     index: dict[str, int | None],
     notes: dict[int, str],
     loaded_at: datetime,
-) -> tuple[list[SeasonResultRow], int]:
-    """Build one row per season in `Winners`, plus the count of names nobody matched.
+) -> tuple[list[SeasonResultRow], int, int]:
+    """Build one row per season in `Winners`, and two counts describing what was missed.
 
     A name that does not resolve leaves its column null and increments a count; the
     workbook's spelling is never stored, so an unresolved champion is a number Ben can
     fix with an alias and a rerun rather than a name sitting in a public table. A label
     two members answer to is unresolved for the same reason it is in the trade catalog:
     the wrong champion published permanently is worse than a count.
+
+    The third value is how many weeks across every season's grid state no elimination
+    count at all. It is the file's silence made visible: without it a load of a workbook
+    whose formulas have never been cached reports six clean seasons and a page renders
+    weeks that quietly do not exist. Recalculating the workbook in Excel and rerunning is
+    what drives it down.
 
     `notes` is the operator's own text, passed in by the command; no cell of the
     workbook reaches that column.
@@ -262,6 +298,7 @@ def season_result_rows(
     try:
         rows: list[SeasonResultRow] = []
         unresolved_total = 0
+        silent_weeks = 0
         for winner in read_winners(workbook):
             champion_id = index.get(normalize_name(winner.champion_name))
             second_id = (
@@ -271,6 +308,8 @@ def season_result_rows(
                 winner.second_name is not None and second_id is None
             )
             unresolved_total += unresolved
+            eliminations, silent = read_week_grid(workbook, winner.year)
+            silent_weeks += silent
             rows.append(
                 SeasonResultRow(
                     season=winner.year,
@@ -282,12 +321,12 @@ def season_result_rows(
                     runner_up_member_id=None,
                     third_member_id=None,
                     team_count=_team_count(workbook, winner.year),
-                    eliminations=read_eliminations(workbook, winner.year),
+                    eliminations=eliminations,
                     notes=notes.get(winner.year),
                     unresolved_names=unresolved,
                     loaded_at=loaded_at,
                 )
             )
-        return rows, unresolved_total
+        return rows, unresolved_total, silent_weeks
     finally:
         workbook.close()
