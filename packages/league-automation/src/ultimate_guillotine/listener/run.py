@@ -295,6 +295,8 @@ def _register_trade_video(conn, delivery, registry, chat_guids: frozenset[str]) 
         delivery,
         conn,
         code_for_outbound_guid=lambda guid: code_in(outbound.content_for_guid(guid)),
+        sources=SourceMessageRepository(conn),
+        members=MemberAliasRepository(conn),
     )
     registry.register(video_trigger(requests, chat_guids))
 

@@ -1,13 +1,17 @@
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
 from ultimate_guillotine.core.signature import is_signed
 from ultimate_guillotine.messages.bluebubbles import InboundMessage
+from ultimate_guillotine.trades.models import MemberRef
 from ultimate_guillotine.video.trigger import (
     AGENT,
     HELP,
     VideoRequests,
     code_variants,
+    help_text,
     is_video_request,
+    match_trade,
     video_trigger,
 )
 
@@ -32,15 +36,19 @@ def msg(text: str, guid: str = "m1", thread: str | None = None, chat: str = CHAT
 
 
 class FakeTrades:
-    def __init__(self, by_guid=None, by_code=None) -> None:
+    def __init__(self, by_guid=None, by_code=None, recent=None) -> None:
         self.by_guid = by_guid or {}
         self.by_code = by_code or {}
+        self.recent = recent or []
 
     def find_by_source_guid(self, guid):
         return self.by_guid.get(guid)
 
     def find_by_code(self, code):
         return self.by_code.get(code)
+
+    def list_recent(self, limit=10):
+        return self.recent[:limit]
 
 
 class FakeJobs:
@@ -181,3 +189,96 @@ def test_a_test_code_still_resolves_after_the_trade_went_live() -> None:
     assert delivery.sent[0][1].startswith("🎬 On it — the video for T-2026-002")
     requests(trades, FakeJobs(), delivery).handle(msg("@daddy video for TEST-2026-002"))
     assert delivery.sent[-1][1].startswith("🎬 On it — the video for T-2026-002")
+
+
+MEMBERS = [
+    MemberRef(
+        1, "DaOneTrueKING", ("derek",), nickname="Derek", sleeper_display_name="DaOneTrueKING"
+    ),
+    MemberRef(
+        2, "chobes", ("charlie", "chobes"), nickname="Charlie", sleeper_display_name="chobes"
+    ),
+    MemberRef(3, "RylandRad", ("ryland",), nickname="Ryland", sleeper_display_name="RylandRad"),
+    MemberRef(4, "benray887", ("ben r",), nickname="Ben R", sleeper_display_name="benray887"),
+]
+RENTAL = {
+    "trade_id": 4,
+    "trade_code": "T-2026-002",
+    "status": "accepted",
+    "terms": {
+        "parties": [
+            {"member_id": 1, "display_name": "DaOneTrueKING"},
+            {"member_id": 2, "display_name": "chobes"},
+        ],
+        "assets": [
+            {"kind": "player", "player_name": "Rhamondre Stevenson", "to_member_id": 2},
+            {"kind": "player", "player_name": "Michael Wilson", "to_member_id": 1},
+        ],
+    },
+}
+OTHER = {
+    "trade_id": 3,
+    "trade_code": "T-2026-001",
+    "status": "accepted",
+    "terms": {
+        "parties": [
+            {"member_id": 3, "display_name": "RylandRad"},
+            {"member_id": 4, "display_name": "benray887"},
+        ],
+        "assets": [{"kind": "player", "player_name": "Josh Jacobs", "to_member_id": 4}],
+    },
+}
+
+
+def test_an_alerts_wording_picks_the_trade_by_the_names_in_it() -> None:
+    alert = (
+        "Trade alert 🚨\n\nDerek sends a 1 week Rhamondre rental to Charlie (no gulag protections)"
+    )
+    assert match_trade(alert, [OTHER, RENTAL], MEMBERS)["trade_code"] == "T-2026-002"
+    assert match_trade("Trade alert 🚨 a rental to Charlie", [OTHER, RENTAL], MEMBERS) is None
+    assert (
+        match_trade("Josh Jacobs to Ben R for Rhamondre from Derek", [OTHER, RENTAL], MEMBERS)
+        is None
+    )
+    assert match_trade("nothing here", [], MEMBERS) is None
+
+
+def test_a_reply_to_a_reposted_alert_resolves_by_its_wording() -> None:
+    sources = SimpleNamespace(
+        get=lambda guid: (
+            SimpleNamespace(
+                excerpt="Trade alert 🚨\n\nDerek sends a 1 week Rhamondre rental to Charlie"
+            )
+            if guid == "repost-1"
+            else None
+        )
+    )
+    members = SimpleNamespace(all_members=lambda: MEMBERS)
+    jobs, delivery = FakeJobs(), FakeDelivery()
+    VideoRequests(
+        FakeTrades(recent=[RENTAL, OTHER]),
+        jobs,
+        delivery,
+        FakeConn(),
+        sources=sources,
+        members=members,
+    ).handle(msg("@bot create trade video", thread="repost-1"))
+    assert jobs.enqueued[0][:2] == (4, "T-2026-002")
+    assert delivery.sent[0][1].startswith("🎬 On it — the video for T-2026-002")
+
+
+def test_the_help_names_the_recent_trades_when_nothing_matched() -> None:
+    labels = {1: "Derek", 2: "Charlie", 3: "Ryland", 4: "Ben R"}
+    assert help_text([RENTAL, OTHER], labels) == (
+        "I couldn't tie that to a logged trade. Recent: T-2026-002 (Derek ↔ Charlie); "
+        "T-2026-001 (Ryland ↔ Ben R). Reply with the code and I'll make the video."
+    )
+    assert help_text([], labels) == HELP
+    members = SimpleNamespace(all_members=lambda: MEMBERS)
+    delivery = FakeDelivery()
+    VideoRequests(
+        FakeTrades(recent=[RENTAL, OTHER]), FakeJobs(), delivery, FakeConn(), members=members
+    ).handle(msg("@bot create trade video"))
+    assert delivery.sent[0][1].startswith(
+        "I couldn't tie that to a logged trade. Recent: T-2026-002 (Derek ↔ Charlie)"
+    )
