@@ -62,10 +62,28 @@ class DeliveryService:
         if self._commit is not None:
             self._commit()
 
-    def _resolve_target(self):
+    def _resolve_target(self, reply_to: str | None = None):
+        """The chat a message goes to.
+
+        ``reply_to`` is the chat the triggering message came from. In production
+        the league chat is the target, but a message posted in the registered
+        self-test chat is still answered there (Ben, 2026-09-10: "monitoring the
+        actual group chat along with the test one so I can still keep testing").
+        Anything else -- a listen-only chat, an unknown chat -- gets the mode's
+        target, never the chat it came from.
+        """
         mode = self._settings.delivery_mode
         if mode is DeliveryMode.DISABLED:
             raise DeliveryDisabled("delivery mode is disabled")
+        if (
+            reply_to is not None
+            and mode is DeliveryMode.PRODUCTION
+            and self._settings.test_chat_guid
+            and reply_to == self._settings.test_chat_guid
+        ):
+            test_target = self._targets.get(DeliveryMode.TEST)
+            if test_target is not None and test_target.chat_guid == reply_to:
+                return test_target
         target = self._targets.get(mode)
         if target is None:
             raise TargetMismatch(f"no delivery target configured for {mode}")
@@ -85,7 +103,14 @@ class DeliveryService:
                 raise TargetMismatch("participant fingerprint changed")
         return target
 
-    def deliver(self, run_id: int | None, agent: str, content: str) -> DeliveryResult:
+    def deliver(
+        self,
+        run_id: int | None,
+        agent: str,
+        content: str,
+        *,
+        reply_to: str | None = None,
+    ) -> DeliveryResult:
         """Deliver signed content to the configured chat, effectively once.
 
         When a `commit` hook was supplied, the reservation is durable before the
@@ -93,7 +118,7 @@ class DeliveryService:
         `send_text` crosses the Messages boundary, so a crash mid-send leaves a
         reservation the next attempt can reconcile instead of double-sending.
         """
-        target = self._resolve_target()
+        target = self._resolve_target(reply_to)
         signed = sign(content)
         digest = content_hash(content)
         pending = self._outbound.pending_sending(target.id, digest)
