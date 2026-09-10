@@ -145,8 +145,9 @@ for there is delivered there. So the full loop, without the league seeing anythi
 3. Reply to either message with `@daddy create trade video`.
 4. Read `🎬 On it — the video for TEST-2026-001 usually takes 5 to 10 minutes.`, then the clip.
 
-`TEST-` trades show up wherever trades are listed until they are rescinded
-(`ug trades rescind TEST-2026-001`).
+`TEST-` trades never reach the web app: the public read policies on trades, revisions and
+league events hide them (migration 20260910230000), while `ug trades list` and the video
+worker still see them. Rescind one with `ug trades rescind TEST-2026-001` when it has served.
 
 ## Asking for one from the chat
 
