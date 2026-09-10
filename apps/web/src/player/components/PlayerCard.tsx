@@ -184,7 +184,7 @@ export function PlayerCardContent({
   const tag = injuryTag(view.injuryStatus);
   const meta = [view.position, view.nflTeam].filter(Boolean).join(" · ");
   return (
-    <DialogContent aria-describedby={undefined}>
+    <DialogContent>
       <DialogHeader>
         <DialogTitle>{view.name}</DialogTitle>
         <DialogDescription>

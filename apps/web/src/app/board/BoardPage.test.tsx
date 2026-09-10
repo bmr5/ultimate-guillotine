@@ -29,6 +29,30 @@ vi.mock("@/board/useBoardData", () => ({
   useBoardData: () => boardData.current,
 }));
 
+const playerCard = vi.hoisted(() => ({
+  current: {
+    transactions: [],
+    moves: [],
+    seasonScores: [],
+    directory: null as {
+      sleeper_player_id: string;
+      full_name: string;
+      position: string | null;
+      team: string | null;
+      injury_status: string | null;
+    } | null,
+    otherPlayers: [],
+    registered: [],
+    isPending: false,
+    errors: [],
+    refetch: vi.fn(),
+  },
+}));
+
+vi.mock("@/player/usePlayerCard", () => ({
+  usePlayerCard: () => playerCard.current,
+}));
+
 vi.mock("@/board/useLeagueBoardRealtime", () => ({
   useLeagueBoardRealtime: () => ({
     isConnected: realtime.isConnected,
@@ -782,5 +806,55 @@ describe("BoardPage leaving the FAAB tiers", () => {
       ).toHaveAttribute("data-state", "on"),
     );
     expect(screen.queryByRole("list", { name: /FAAB tiers/i })).toBeNull();
+  });
+});
+
+describe("the player card", () => {
+  const nacua = player({ sleeperPlayerId: "9493", fullName: "Puka Nacua" });
+
+  beforeEach(() => {
+    playerCard.current = { ...playerCard.current, directory: null };
+  });
+
+  it("opens from the URL on load, labelled by the player's name", () => {
+    boardData.current = result({ teams: [team({ teamId: 1, roster: [nacua] })] });
+    renderPage("/?player=9493");
+    expect(screen.getByRole("dialog", { name: "Puka Nacua" })).toBeInTheDocument();
+  });
+
+  it("opens when a name is tapped, and writes the player into the URL", () => {
+    boardData.current = result({ teams: [team({ teamId: 1, roster: [nacua] })] });
+    renderPage("/?sort=faab");
+    fireEvent.click(screen.getByRole("button", { name: /owner1/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Puka Nacua" }));
+    expect(screen.getByRole("dialog", { name: "Puka Nacua" })).toBeInTheDocument();
+    expect(screen.getByTestId("location")).toHaveTextContent(
+      "/?sort=faab&player=9493",
+    );
+  });
+
+  it("closes by taking the player out of the URL, keeping the rest", () => {
+    boardData.current = result({ teams: [team({ teamId: 1, roster: [nacua] })] });
+    renderPage("/?sort=faab&player=9493");
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByTestId("location")).toHaveTextContent("/?sort=faab");
+  });
+
+  it("still opens for a player the board does not hold", () => {
+    boardData.current = result({ teams: [team({ teamId: 1 })] });
+    playerCard.current = {
+      ...playerCard.current,
+      directory: {
+        sleeper_player_id: "9493",
+        full_name: "Puka Nacua",
+        position: "WR",
+        team: "LAR",
+        injury_status: null,
+      },
+    };
+    renderPage("/?player=9493");
+    expect(screen.getByRole("dialog", { name: "Puka Nacua" })).toBeInTheDocument();
+    expect(screen.getByText("Not rostered this week")).toBeInTheDocument();
   });
 });

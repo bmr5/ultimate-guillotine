@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 
 import { BoardHeader } from "@/board/components/BoardHeader";
 import {
@@ -29,6 +29,7 @@ import {
 import { useBoardData } from "@/board/useBoardData";
 import { useDebouncedValue } from "@/board/useDebouncedValue";
 import { useLeagueBoardRealtime } from "@/board/useLeagueBoardRealtime";
+import { PlayerCard } from "@/player/components/PlayerCard";
 
 /** The URL parameter the sort is shared through. */
 const SORT_PARAM = "sort";
@@ -36,6 +37,8 @@ const SORT_PARAM = "sort";
 /** The URL parameter the position quick view is shared through; absent means the whole board. */
 const POSITION_PARAM = "pos";
 const VIEW_PARAM = "view";
+/** The URL parameter an open player card is shared through; absent means no card. */
+const PLAYER_PARAM = "player";
 const TIERS_VIEW = "tiers";
 
 /** Long enough that a typed word settles into one derivation, short enough to feel immediate. */
@@ -216,8 +219,45 @@ export function BoardPage() {
     [searchParams, setSearchParams],
   );
 
-  /** Stands in until the player card lands: the name is a control that goes nowhere yet. */
-  const noopOpen = useCallback(() => undefined, []);
+  const navigate = useNavigate();
+  const openPlayerId = (searchParams.get(PLAYER_PARAM) ?? "").trim() || null;
+  /**
+   * `setSearchParams` changes identity with the params, and the opener is a prop on every
+   * memoized card, so the latest setter rides in a ref and the opener depends on nothing.
+   */
+  const setSearchParamsRef = useRef(setSearchParams);
+  useEffect(() => {
+    setSearchParamsRef.current = setSearchParams;
+  }, [setSearchParams]);
+  /** True when this page pushed the open card's entry, so closing can pop it. */
+  const openedHereRef = useRef(false);
+
+  const handleOpenPlayer = useCallback((sleeperPlayerId: string) => {
+    openedHereRef.current = true;
+    setSearchParamsRef.current((previous) => {
+      const next = new URLSearchParams(previous);
+      next.set(PLAYER_PARAM, sleeperPlayerId);
+      return next;
+    });
+  }, []);
+
+  const handleClosePlayer = useCallback(() => {
+    if (openedHereRef.current) {
+      // A tap pushed the entry; the back button and the close button do the same thing.
+      openedHereRef.current = false;
+      void navigate(-1);
+      return;
+    }
+    // A shared link: there is no entry of ours to pop, so the URL is replaced in place.
+    setSearchParamsRef.current(
+      (previous) => {
+        const next = new URLSearchParams(previous);
+        next.delete(PLAYER_PARAM);
+        return next;
+      },
+      { replace: true },
+    );
+  }, [navigate]);
 
   const isOpen = (teamId: number) =>
     openOverrides.get(teamId) ?? autoExpanded.has(teamId);
@@ -280,7 +320,7 @@ export function BoardPage() {
             onToggle={handleToggle}
             highlightedPlayerIds={filtered.matchedPlayerIds}
             rosterPositions={board.rosterPositions}
-            onOpenPlayer={noopOpen}
+            onOpenPlayer={handleOpenPlayer}
           />
         ) : null}
 
@@ -297,7 +337,7 @@ export function BoardPage() {
                   highlightedPlayerIds={filtered.matchedPlayerIds}
                   rosterPositions={board.rosterPositions}
                   emphasis={emphasis}
-                  onOpenPlayer={noopOpen}
+                  onOpenPlayer={handleOpenPlayer}
                 />
               ))}
             </ul>
@@ -320,7 +360,7 @@ export function BoardPage() {
                       highlightedPlayerIds={filtered.matchedPlayerIds}
                       rosterPositions={board.rosterPositions}
                       emphasis={emphasis}
-                      onOpenPlayer={noopOpen}
+                      onOpenPlayer={handleOpenPlayer}
                     />
                   ))}
                 </ul>
@@ -337,6 +377,21 @@ export function BoardPage() {
       <footer className="mt-6 text-xs text-muted-foreground">
         {PROJECTION_SOURCE_LINE}
       </footer>
+
+      {/* Mounted only while the URL names a player, so the card's reads run only then. */}
+      {openPlayerId !== null ? (
+        <PlayerCard
+          sleeperPlayerId={openPlayerId}
+          onClose={handleClosePlayer}
+          board={{
+            season: board.season,
+            seasonId: board.seasonId,
+            teams: board.teams,
+            draftPicks: board.draftPicks,
+            memberIdByTeamId: board.memberIdByTeamId,
+          }}
+        />
+      ) : null}
     </main>
   );
 }
