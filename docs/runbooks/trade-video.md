@@ -133,6 +133,21 @@ blazer, bookshelves and helmet, no text, animated speech. It composites cleanly
 from his footage, so whether generated clips are ever posted is Ben's call; the ESPN footage
 path uses the real segment the reference used.
 
+## The whole flow in the self-test chat (production mode)
+
+The league chat is live, and the self-test chat is the rehearsal room: an alert posted there
+is logged by a second registrar under a `TEST-` code and answered there, and a video asked
+for there is delivered there. So the full loop, without the league seeing anything:
+
+1. Post a trade alert in the self-test chat, siren and all:
+   `Trade alert 🚨 Derek sends Rhamondre to Charlie for Michael Wilson and 20 FAAB`
+2. Wait for `🚨 Trade TEST-2026-001 logged · Derek ↔ Charlie`.
+3. Reply to either message with `@daddy create trade video`.
+4. Read `🎬 On it — the video for TEST-2026-001 usually takes 5 to 10 minutes.`, then the clip.
+
+`TEST-` trades show up wherever trades are listed until they are rescinded
+(`ug trades rescind TEST-2026-001`).
+
 ## Asking for one from the chat
 
 Reply to a trade alert (or to the bot's "🚨 Trade T-2026-003 logged" line, or say the code)
