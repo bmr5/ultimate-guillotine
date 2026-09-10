@@ -7,7 +7,11 @@
 import { describe, expect, it } from "vitest";
 
 import type { BoardTeam, RosterPlayer } from "../types";
-import { positionView, slotAcceptsPosition } from "./position";
+import {
+  likelyBidderFigures,
+  positionView,
+  slotAcceptsPosition,
+} from "./position";
 
 /** The league's own lineup, as `seasons.roster_positions` spells it. */
 const LEAGUE_SLOTS = ["QB", "RB", "RB", "WR", "WR", "TE", "FLEX", "K", "DEF"];
@@ -295,6 +299,26 @@ describe("positionView", () => {
       [2, false],
       [3, true],
     ]);
+  });
+
+  it("carries the figures the median flag compared, and spells them for the badge", () => {
+    // Ben (2026-09-10): the tooltip said "below the visible median" without saying what the
+    // median was. Bests are 20, 10 and 4, so the median is 10; FAAB fixes the row order.
+    const rows = positionView(
+      [
+        team({ teamId: 1, faabRemaining: 30, roster: [te("best", 20, 0)] }),
+        team({ teamId: 2, faabRemaining: 20, roster: [te("mid", 10, 0)] }),
+        team({ teamId: 3, faabRemaining: 10, roster: [te("worst", 4, 0)] }),
+      ],
+      "TE",
+      ["TE"],
+    );
+    expect(rows.map((r) => r.bestStarterProjection)).toEqual([20, 10, 4]);
+    // The same median on every row, so the badge can quote it from the row alone.
+    expect(rows.map((r) => r.visibleMedian)).toEqual([10, 10, 10]);
+    expect(likelyBidderFigures(rows[2])).toBe("Best starter 4.0 · median 10.0");
+    // The other reasons compare nothing, so they have no figures to quote.
+    expect(likelyBidderFigures(rows[0])).toBeNull();
   });
 
   it("takes the median from the visible teams, not from the whole league", () => {

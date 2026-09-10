@@ -11,10 +11,12 @@ import {
 } from "@/board/components/BoardStates";
 import { PositionView } from "@/board/components/PositionView";
 import { TeamCard } from "@/board/components/TeamCard";
+import { TiersView } from "@/board/components/TiersView";
 import { positionView } from "@/board/derive/position";
 import { resolveCardEmphasis } from "@/board/derive/score";
 import { filterTeams } from "@/board/derive/search";
 import { selectEffectiveSortMode, sortBoardTeams } from "@/board/derive/sort";
+import { faabTiers } from "@/board/derive/tiers";
 import { BOARD_GRID, BOARD_WIDTH } from "@/board/layout";
 import { REALTIME_POLL_MS } from "@/board/realtime";
 import {
@@ -33,6 +35,8 @@ const SORT_PARAM = "sort";
 
 /** The URL parameter the position quick view is shared through; absent means the whole board. */
 const POSITION_PARAM = "pos";
+const VIEW_PARAM = "view";
+const TIERS_VIEW = "tiers";
 
 /** Long enough that a typed word settles into one derivation, short enough to feel immediate. */
 const SEARCH_DEBOUNCE_MS = 150;
@@ -42,7 +46,10 @@ const PROJECTION_SOURCE_LINE = "Projections: Sleeper";
 
 export function BoardPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const positionFilter = parsePositionFilter(searchParams.get(POSITION_PARAM));
+  const tiersActive = searchParams.get(VIEW_PARAM) === TIERS_VIEW;
+  const positionFilter = tiersActive
+    ? null
+    : parsePositionFilter(searchParams.get(POSITION_PARAM));
   /**
    * The position view offers two of the three sorts and defaults to FAAB rather than to the
    * board's own default, so `?sort=points_for` carried into a position view reads as FAAB and
@@ -177,6 +184,22 @@ export function BoardPage() {
     [searchParams, setSearchParams],
   );
 
+  const handleTiersChange = useCallback(
+    (active: boolean) => {
+      const next = new URLSearchParams(searchParams);
+      if (active) {
+        next.set(VIEW_PARAM, TIERS_VIEW);
+        next.delete(POSITION_PARAM);
+      } else {
+        next.delete(VIEW_PARAM);
+      }
+      setSearchParams(next, { replace: true });
+    },
+    [searchParams, setSearchParams],
+  );
+
+  const tiers = useMemo(() => faabTiers(board.teams), [board.teams]);
+
   const handlePositionFilterChange = useCallback(
     (position: PositionFilter | null) => {
       const next = new URLSearchParams(searchParams);
@@ -218,6 +241,8 @@ export function BoardPage() {
         onSortModeChange={handleSortModeChange}
         positionFilter={positionFilter}
         onPositionFilterChange={handlePositionFilterChange}
+        tiersActive={tiersActive}
+        onTiersChange={handleTiersChange}
         // The fallback is about the board's own projection sort; a position view never asks
         // for points for, so the sentence would be answering a question nobody asked.
         sortFellBack={positionFilter === null && effective.fellBack}
@@ -240,7 +265,9 @@ export function BoardPage() {
         {board.isPending ? <BoardSkeleton /> : null}
         {!board.isPending && board.isEmpty ? <BoardEmpty /> : null}
 
-        {showList && positionFilter !== null ? (
+        {showList && tiersActive ? <TiersView tiers={tiers} /> : null}
+
+        {showList && !tiersActive && positionFilter !== null ? (
           <PositionView
             position={positionFilter}
             rows={positionRows}
@@ -251,7 +278,7 @@ export function BoardPage() {
           />
         ) : null}
 
-        {showList && positionFilter === null ? (
+        {showList && !tiersActive && positionFilter === null ? (
           <>
             <ul className={BOARD_GRID}>
               {sorted.active.map((team, index) => (

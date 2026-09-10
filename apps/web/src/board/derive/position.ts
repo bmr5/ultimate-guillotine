@@ -7,6 +7,7 @@ import {
 } from "../types";
 import { isOut } from "./availability";
 import { A_BEFORE_B, B_BEFORE_A, NAME_COLLATOR, TIED } from "./compare";
+import { PROJECTION_DECIMALS } from "./projection";
 import { layoutStarters } from "./roster";
 import { sortValue } from "./sort";
 
@@ -96,6 +97,38 @@ export interface PositionRow {
   likelyBidder: boolean;
   /** Which of those it was; null when the team is not flagged. */
   likelyBidderReason: LikelyBidderReason | null;
+  /**
+   * The best projection among the team's starters at the position — the figure `below median`
+   * compares — or null when no starter there has one.
+   */
+  bestStarterProjection: number | null;
+  /**
+   * The median of that figure across every team in the view, the same value on every row: it
+   * rides on each so the badge can quote it without a second return value. Null when no
+   * visible team has a projected starter at the position.
+   */
+  visibleMedian: number | null;
+}
+
+/**
+ * The figures behind a `below median` flag, for the quieter second line of the badge's
+ * tooltip: `Best starter 4.0 · median 12.0`.
+ *
+ * Ben (2026-09-10): the sentence said "below the visible median" without ever saying what the
+ * median was. Null for the other two reasons, which compare nothing — and, defensively, for a
+ * `below median` row missing either figure, which `positionView` never produces.
+ */
+export function likelyBidderFigures(row: PositionRow): string | null {
+  if (
+    row.likelyBidderReason !== "below median" ||
+    row.bestStarterProjection === null ||
+    row.visibleMedian === null
+  ) {
+    return null;
+  }
+  const bestText = row.bestStarterProjection.toFixed(PROJECTION_DECIMALS);
+  const medianText = row.visibleMedian.toFixed(PROJECTION_DECIMALS);
+  return `Best starter ${bestText} · median ${medianText}`;
 }
 
 /** The best projection among a team's starters at the position; null when there is none. */
@@ -290,17 +323,20 @@ export function positionView(
       emptySlots,
       likelyBidder: false,
       likelyBidderReason: null,
+      bestStarterProjection: bestStarterProjection(players),
+      visibleMedian: null,
     };
   });
 
   const leagueMedian = median(
     rows
-      .map((row) => bestStarterProjection(row.players))
+      .map((row) => row.bestStarterProjection)
       .filter((best): best is number => best !== null),
   );
 
   for (const row of rows) {
-    const best = bestStarterProjection(row.players);
+    const best = row.bestStarterProjection;
+    row.visibleMedian = leagueMedian;
     // Reasons in the order they are declared: a fact about this week beats a hole in the
     // lineup, and both beat a comparison against whoever else is on screen.
     row.likelyBidderReason = hasOutStarter(row.players)

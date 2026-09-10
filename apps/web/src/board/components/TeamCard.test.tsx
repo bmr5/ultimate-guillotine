@@ -274,6 +274,10 @@ const partialTeam = (): Partial<BoardTeam> => ({
 });
 
 /** The sentence Ben asked the badge to carry, spelled out once. */
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 const COVERAGE_SENTENCE =
   "Only 6 of 9 starters have a projection (66.7%). " +
   "The number counts the players Sleeper has projected.";
@@ -784,7 +788,9 @@ describe("TeamCard summary chips", () => {
     renderCard(partialTeam());
     const chip = partialChip();
     // The sentence reaches a screen reader whether or not the tooltip is open.
-    expect(chipDescription(chip)).toBe(COVERAGE_SENTENCE);
+    expect(chipDescription(chip)).toMatch(
+      new RegExp(`^${escapeRegExp(COVERAGE_SENTENCE)}(\\. Computed .*)?$`),
+    );
     expect(screen.queryByRole("tooltip")).toBeNull();
 
     await tap(chip as Element);
@@ -843,7 +849,10 @@ describe("TeamCard summary chips", () => {
     });
     const chip = partialChip();
     expect(chip).not.toBeNull();
-    expect(chipDescription(chip)).toBe("Partial projection coverage");
+    // The computed-at line rides along whenever the row carries a computed-at instant.
+    expect(chipDescription(chip)).toMatch(
+      /^Partial projection coverage(\. Computed .*)?$/,
+    );
     expect(screen.queryByText(/starters have a projection/)).toBeNull();
   });
 

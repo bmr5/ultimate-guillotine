@@ -296,6 +296,49 @@ describe("PositionView", () => {
     expect(screen.getByText("FAAB $715").className).toContain("sr-only");
   });
 
+  it("quotes the median the thin-starter flag compared against", () => {
+    // Ben (2026-09-10): "can you say what the actual median is?" Bests are 20, 12 and 4, so
+    // the median is 12 and only the 4 is below it. Every flex is filled by a back, so the
+    // empty-slot reason cannot get in first.
+    const stacked = (teamId: number, ownerName: string, projected: number) =>
+      team({
+        teamId,
+        ownerName,
+        roster: [
+          player({
+            sleeperPlayerId: `te${teamId}`,
+            fullName: `Tight End ${teamId}`,
+            slot: "starter",
+            slotIndex: 5,
+            lineupPosition: "TE",
+            projectedPoints: projected,
+          }),
+          player({
+            sleeperPlayerId: `rb${teamId}`,
+            fullName: `Back ${teamId}`,
+            position: "RB",
+            slot: "starter",
+            slotIndex: 6,
+            lineupPosition: "FLEX",
+            projectedPoints: 10,
+          }),
+        ],
+      });
+    renderView({
+      teams: [stacked(1, "strong", 20), stacked(2, "middle", 12), stacked(3, "thin", 4)],
+    });
+    const badge = screen.getByText(LIKELY_BIDDER_LABEL).closest("button");
+    expect(badge?.closest("li")?.textContent).toContain("thin");
+    expect(badge).toHaveAttribute("data-bidder-reason", "below median");
+    const figures = "Best starter 4.0 · median 12.0";
+    // Mounted as the badge's description too, so a screen reader hears the figures.
+    const describedBy = badge?.getAttribute("aria-describedby") ?? "";
+    expect(document.getElementById(describedBy)).toHaveTextContent(figures);
+    fireEvent.pointerDown(badge as Element);
+    fireEvent.click(badge as Element);
+    expect(screen.getByRole("tooltip")).toHaveTextContent(figures);
+  });
+
   it("says $— rather than a zero for a team with no state row", () => {
     renderView({
       teams: [team({ teamId: 4, ownerName: "stateless", faabRemaining: null })],

@@ -12,6 +12,7 @@ import { injuryTag } from "../derive/availability";
 import { FAAB_LABEL, formatFaab } from "../derive/faab";
 import {
   LIKELY_BIDDER_REASONS,
+  likelyBidderFigures,
   slotDescription,
   type PositionRow,
 } from "../derive/position";
@@ -260,7 +261,9 @@ const PositionTeamRow = memo(function PositionTeamRow({
 
           {/* Ben's ruling of 2026-09-09: "I filtered by TE and a likely bidder showed up but I
               have no idea why". The reason used to be a native `title`, which never opens on a
-              tap; now the badge is a real tooltip trigger with the reason behind it. */}
+              tap; now the badge is a real tooltip trigger with the reason behind it. And Ben
+              (2026-09-10): "can you say what the actual median is?" — the figures the flag
+              compared ride under the sentence as the tooltip's quieter second line. */}
           {row.likelyBidder ? (
             <div className="flex flex-wrap gap-2 px-4 pb-3">
               {/* The button is the 44px tap target every control in this view sits on; the
@@ -273,6 +276,7 @@ const PositionTeamRow = memo(function PositionTeamRow({
                     ? LIKELY_BIDDER_FALLBACK_DESCRIPTION
                     : LIKELY_BIDDER_REASONS[row.likelyBidderReason]
                 }
+                secondary={likelyBidderFigures(row) ?? undefined}
                 className="-my-2.5 inline-flex min-h-[44px] items-center rounded-md"
               >
                 <span className={badgeVariants({ variant: "outline" })}>
