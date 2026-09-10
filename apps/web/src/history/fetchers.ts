@@ -1,0 +1,122 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
+
+import type { Database, TableRow } from "@/board/types";
+
+export type HistoryClient = SupabaseClient<Database>;
+
+export type TradeCatalogRow = TableRow<"trade_catalog">;
+export type SeasonResultRow = TableRow<"season_results">;
+export type HistoryMemberRow = Pick<
+  TableRow<"members">,
+  "id" | "sleeper_display_name" | "nickname"
+>;
+
+/** A registered trade with its season year embedded; `public.trades` has no year column. */
+export interface RegisteredTradeRow {
+  id: number;
+  trade_code: string;
+  status: "accepted" | "rescinded";
+  current_revision_id: number | null;
+  seasons: { year: number } | null;
+}
+
+/**
+ * One current revision, read as JSON paths rather than as the whole `terms` document.
+ * `terms.evidence_excerpt` is verbatim league chat and `terms.parties[].display_name` is the
+ * bare Sleeper username; both are anon-readable today, and selecting them here would put them
+ * on a public page. Only these three paths are ever requested.
+ */
+export interface RegisteredRevisionRow {
+  id: number;
+  trade_id: number;
+  effective_week: number | null;
+  kind: string | null;
+  parties: unknown;
+  assets: unknown;
+}
+
+interface SupabaseResult<T> {
+  data: T[] | null;
+  error: { message: string } | null;
+}
+
+async function unwrap<T>(
+  query: PromiseLike<SupabaseResult<T>>,
+  label: string,
+): Promise<T[]> {
+  const { data, error } = await query;
+  if (error !== null) {
+    throw new Error(`${label}: ${error.message}`);
+  }
+  return data ?? [];
+}
+
+/**
+ * One string literal rather than a concatenation on purpose: supabase-js parses the select
+ * list at the type level, and `"a, " + "b"` widens to `string`, which makes every row it
+ * returns `GenericStringError` and silently costs the fetcher its typed result.
+ */
+const CATALOG_COLUMNS =
+  "id, catalog_id, season, week, occurred_on, trade_type, structure, party_member_ids, party_count, assets, faab_total, confidence, source, unresolved_parties, loaded_at";
+
+/** Also one literal, for the reason `CATALOG_COLUMNS` is. */
+const SEASON_RESULT_COLUMNS =
+  "id, season, champion_member_id, co_champion_member_id, runner_up_member_id, third_member_id, team_count, eliminations, notes, unresolved_names, loaded_at";
+
+export function fetchTradeCatalog(
+  client: HistoryClient,
+): Promise<TradeCatalogRow[]> {
+  return unwrap<TradeCatalogRow>(
+    client
+      .from("trade_catalog")
+      .select(CATALOG_COLUMNS)
+      .order("season", { ascending: false }),
+    "trade_catalog",
+  );
+}
+
+export function fetchRegisteredTrades(
+  client: HistoryClient,
+): Promise<RegisteredTradeRow[]> {
+  return unwrap<RegisteredTradeRow>(
+    client
+      .from("trades")
+      .select("id, trade_code, status, current_revision_id, seasons ( year )")
+      .order("id", { ascending: false }),
+    "trades",
+  );
+}
+
+export function fetchRegisteredRevisions(
+  client: HistoryClient,
+): Promise<RegisteredRevisionRow[]> {
+  return unwrap<RegisteredRevisionRow>(
+    client
+      .from("trade_revisions")
+      .select(
+        "id, trade_id, effective_week, kind:terms->>kind, parties:terms->parties, assets:terms->assets",
+      ),
+    "trade_revisions",
+  );
+}
+
+export function fetchSeasonResults(
+  client: HistoryClient,
+): Promise<SeasonResultRow[]> {
+  return unwrap<SeasonResultRow>(
+    client
+      .from("season_results")
+      .select(SEASON_RESULT_COLUMNS)
+      .order("season", { ascending: false }),
+    "season_results",
+  );
+}
+
+export function fetchHistoryMembers(
+  client: HistoryClient,
+): Promise<HistoryMemberRow[]> {
+  return unwrap<HistoryMemberRow>(
+    client.from("members").select("id, sleeper_display_name, nickname"),
+    "members",
+  );
+}

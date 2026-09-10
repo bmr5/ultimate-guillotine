@@ -6,12 +6,22 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[];
 
-/** The board holds anon `select` only, so Insert/Update exist purely to satisfy supabase-js. */
-type ReadOnlyTable<Row extends Record<string, unknown>> = {
+/**
+ * The board holds anon `select` only, so Insert/Update exist purely to satisfy supabase-js.
+ *
+ * `Relationships` is empty for every table that is never embedded in another table's select:
+ * supabase-js reads it only to decide whether `parent ( column )` returns one row or an array,
+ * and a table nothing embeds has no such decision to make. The one table that needs it declares
+ * its foreign key rather than leaving the shape to be guessed.
+ */
+type ReadOnlyTable<
+  Row extends Record<string, unknown>,
+  Relationships extends unknown[] = [],
+> = {
   Row: Row;
   Insert: Row;
   Update: Partial<Row>;
-  Relationships: [];
+  Relationships: Relationships;
 };
 
 export type RosterSlot = "starter" | "bench" | "ir" | "taxi";
@@ -165,6 +175,71 @@ export interface Database {
         week: number;
         display_week: number | null;
         synced_at: string;
+      }>;
+      trade_catalog: ReadOnlyTable<{
+        id: number;
+        catalog_id: string;
+        season: number;
+        week: number | null;
+        occurred_on: string | null;
+        trade_type: string;
+        structure: string;
+        party_member_ids: number[];
+        party_count: number;
+        assets: Json;
+        faab_total: number | null;
+        confidence: "high" | "medium" | "low";
+        source: "catalog" | "registered";
+        unresolved_parties: number;
+        loaded_at: string;
+      }>;
+      season_results: ReadOnlyTable<{
+        id: number;
+        season: number;
+        champion_member_id: number | null;
+        co_champion_member_id: number | null;
+        runner_up_member_id: number | null;
+        third_member_id: number | null;
+        team_count: number | null;
+        eliminations: Json;
+        notes: string | null;
+        unresolved_names: number;
+        loaded_at: string;
+      }>;
+      /**
+       * The declared foreign key is what tells supabase-js that `seasons ( year )` embedded in
+       * a `trades` select is one season, not an array of them; without it the fetcher's row
+       * type and the row PostgREST actually returns disagree.
+       */
+      trades: ReadOnlyTable<
+        {
+          id: number;
+          season_id: number;
+          trade_code: string;
+          current_revision_id: number | null;
+          status: "accepted" | "rescinded";
+        },
+        [
+          {
+            foreignKeyName: "trades_season_id_fkey";
+            columns: ["season_id"];
+            isOneToOne: false;
+            referencedRelation: "seasons";
+            referencedColumns: ["id"];
+          },
+        ]
+      >;
+      /**
+       * `terms` is deliberately typed `Json` and never selected whole: it carries
+       * `evidence_excerpt` (verbatim league chat) and `parties[].display_name` (the bare
+       * Sleeper username). The history fetchers select JSON paths out of it instead.
+       */
+      trade_revisions: ReadOnlyTable<{
+        id: number;
+        trade_id: number;
+        revision: number;
+        terms: Json;
+        effective_week: number | null;
       }>;
     };
     Views: { [_ in never]: never };
