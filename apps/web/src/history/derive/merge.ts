@@ -84,12 +84,14 @@ export function normalizeCatalogTrade(
     parties: row.party_member_ids.map((id) => tradeParty(id, members)),
     partyCount: row.party_count,
     assets: catalogAssets(row.assets),
-    faabTotal: row.faab_total,
     confidence: row.confidence,
     // `optionalText`, not the field itself, for the reason the asset name below is guarded:
     // a column PostgREST did not return is `undefined`, and `filterTrades` folds this string
     // on every keystroke. The type says `string | null`, so nothing else may say otherwise.
     announcement: optionalText(row.announcement),
+    // The catalog is a reading of a spreadsheet: it knows a season and a week, never an
+    // instant, so a catalog card is dated by those and this stays null.
+    registeredAt: null,
     sourceLabel: CATALOG_SOURCE_LABEL,
     registered: false,
     rescinded: false,
@@ -143,10 +145,8 @@ export function normalizeRegisteredTrade(
   ).filter(isRecord);
 
   const assets: TradeAsset[] = [];
-  let faabTotal: number | null = null;
   for (const asset of rawAssets) {
     if (asset.kind === "faab" && typeof asset.amount === "number") {
-      faabTotal = (faabTotal ?? 0) + asset.amount;
       assets.push({
         kind: "faab",
         amount: asset.amount,
@@ -181,9 +181,9 @@ export function normalizeRegisteredTrade(
     parties: memberIds.map((id) => tradeParty(id, members)),
     partyCount: rawParties.length,
     assets,
-    faabTotal,
     confidence: "high",
     announcement: optionalText(revision?.announcement),
+    registeredAt: trade.created_at,
     sourceLabel: trade.trade_code,
     registered: true,
     rescinded: trade.status === "rescinded",

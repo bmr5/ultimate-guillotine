@@ -42,6 +42,7 @@ from ultimate_guillotine.trades.format import (
     format_confirmation,
     format_rescinded,
     format_updated,
+    party_labels,
 )
 from ultimate_guillotine.trades.resolve import (
     MemberRef,
@@ -243,12 +244,13 @@ class TradeRegistrar:
             # The same terms are already on file; re-posting them would be noise.
             self._finish(run_id, "duplicate", input_version=input_version)
             return "duplicate"
+        labels = party_labels(members)
         if acceptance.status == "revised":
             content = format_updated(
-                acceptance.trade_code, proposal, acceptance.previous_terms or {}
+                acceptance.trade_code, proposal, acceptance.previous_terms or {}, labels
             )
         else:
-            content = format_confirmation(acceptance.trade_code, proposal)
+            content = format_confirmation(acceptance.trade_code, proposal, labels)
         self._deliver(run_id, content)
         self._finish(run_id, "succeeded", content=content, input_version=input_version)
         return acceptance.status

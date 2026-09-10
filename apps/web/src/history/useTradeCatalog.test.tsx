@@ -40,7 +40,6 @@ function catalogRow(
         position: "RB",
       },
     ],
-    faab_total: null,
     confidence: "high",
     announcement: null,
     unresolved_parties: 0,
@@ -51,6 +50,7 @@ function catalogRow(
 /** A registered trade, whose player assets are the ones the directory has to name. */
 const REGISTERED = {
   id: 5,
+  created_at: "2026-09-09T21:12:00Z",
   trade_code: "T-5",
   status: "accepted" as const,
   current_revision_id: 50,

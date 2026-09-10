@@ -248,6 +248,8 @@ export interface Database {
       trades: ReadOnlyTable<
         {
           id: number;
+          /** When the Registrar recorded the trade; `/trades` dates a registered card by it. */
+          created_at: string;
           season_id: number;
           trade_code: string;
           current_revision_id: number | null;

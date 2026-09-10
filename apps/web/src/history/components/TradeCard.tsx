@@ -3,10 +3,10 @@ import { ChevronDown } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 
 import { formerManagerPhrase } from "../derive/ownerLabel";
+import { tradeDateLine } from "../derive/tradeDate";
 import type { CatalogTrade } from "../types";
 
 /**
@@ -17,8 +17,8 @@ import type { CatalogTrade } from "../types";
 const FOCUS_RING_CLASS =
   "ring-offset-background focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
 
-/** Shown in the panel when a trade carries no itemised assets. */
-const NO_ASSETS_TEXT = "No itemised assets recorded";
+/** The chip on a trade the league undid. */
+const RESCINDED_LABEL = "Rescinded";
 
 /**
  * What sits between two owners in the title. A trade goes both ways, so the arrow does too —
@@ -42,34 +42,22 @@ function words(value: string): string {
 }
 
 /**
- * The sublabel Ben asked for: the category, then the structure, in sentence case.
+ * The sublabel: the category, and only the category.
+ *
+ * It used to carry the structure as well (`Rental · player for FAAB`). Ben's ruling of
+ * 2026-09-09 cut the card to "the Participants, the date and time, a category, and the exact
+ * text", and `2 team` was never a category — it was a restatement of the title, which already
+ * names every party in the deal.
  *
  * Sentence case rather than title case because it is a caption under a title, not a second
- * title — "Rental · player for FAAB" reads as a description of the deal above it, where
- * "Rental · Player For FAAB" reads as a heading competing with one.
+ * title: "Rental" reads as a description of the deal above it, where a heading-cased word reads
+ * as a second heading competing with one. The empty string for a row carrying no category at
+ * all, which the caller renders as no sublabel rather than as a blank line.
  */
 function categoryLabel(trade: CatalogTrade): string {
-  // Joined from the parts that exist rather than interpolated, and capitalised after the
-  // filter rather than before it. A row carrying no `trade_type` would otherwise open its
-  // sublabel with a bare " · ", which reads as a category the page failed to print rather than
-  // as one the row never carried — and then lead with a lowercase word where the caption is
-  // supposed to start with a capital one.
-  const parts = [words(trade.tradeType), words(trade.structure)].filter(
-    (part) => part !== "",
-  );
-  return parts
-    .map((part, index) =>
-      index === 0 ? `${part.charAt(0).toUpperCase()}${part.slice(1)}` : part,
-    )
-    .join(" · ");
-}
-
-/** `Season 2024 · Week 3`, or the date when the catalog placed the trade by date instead. */
-function whenLabel(trade: CatalogTrade): string {
-  if (trade.week !== null) return `Season ${trade.season} · Week ${trade.week}`;
-  if (trade.occurredOn !== null)
-    return `Season ${trade.season} · ${trade.occurredOn}`;
-  return `Season ${trade.season}`;
+  const category = words(trade.tradeType);
+  if (category === "") return "";
+  return `${category.charAt(0).toUpperCase()}${category.slice(1)}`;
 }
 
 /**
@@ -102,80 +90,81 @@ function ownersTitle(trade: CatalogTrade): string {
   return segments.join(OWNER_SEPARATOR);
 }
 
-function assetLabel(asset: CatalogTrade["assets"][number]): string {
-  if (asset.kind === "player") {
-    return asset.position ? `${asset.name} (${asset.position})` : asset.name;
-  }
-  if (asset.kind === "faab") return `${asset.amount} FAAB`;
-  return asset.label.replace(/_/g, " ");
-}
-
 export function TradeCard({ trade }: { trade: CatalogTrade }) {
   const [open, setOpen] = useState(false);
   const panelId = useId();
   const category = categoryLabel(trade);
   const owners = ownersTitle(trade);
+  // The trade code is the registered row's own name for itself. A catalog row's `sourceLabel`
+  // is the literal `catalog`, which Ben's ruling leaves off the card: it says where the page
+  // read the deal, not anything about the deal.
+  const chips = trade.rescinded || trade.registered;
 
   return (
     <li data-rescinded={trade.rescinded} className="list-none">
       <Card className={cn(trade.rescinded && "opacity-60")}>
         <CardContent className="p-3">
-          <Collapsible open={open} onOpenChange={setOpen}>
-            {/* A real <button>, not a Radix trigger, so the card owns its `aria-controls`. */}
-            <button
-              type="button"
-              onClick={() => setOpen((value) => !value)}
-              aria-expanded={open}
-              aria-controls={panelId}
-              className={cn(
-                "flex w-full items-start justify-between gap-2 text-left",
-                FOCUS_RING_CLASS,
-              )}
-            >
-              <span className="min-w-0">
-                <span
-                  className={cn(
-                    "block truncate text-sm font-medium",
-                    trade.rescinded && "line-through",
-                  )}
-                >
-                  {/* A trade whose parties were never recorded has no owners to be named
-                      between, so it keeps the heading the card used to carry rather than an
-                      empty one — and then the sublabel below would only repeat it. */}
-                  {owners === "" ? category : owners}
-                </span>
-                {owners !== "" && (
-                  <span className="block text-xs text-muted-foreground">
-                    {category}
-                  </span>
-                )}
-                <span className="block text-xs text-muted-foreground">
-                  {whenLabel(trade)}
-                </span>
-              </span>
-              <ChevronDown
-                aria-hidden
+          {/* A real <button>, not a Radix trigger, so the card owns its `aria-controls`. */}
+          <button
+            type="button"
+            onClick={() => setOpen((value) => !value)}
+            aria-expanded={open}
+            aria-controls={panelId}
+            className={cn(
+              "flex w-full items-start justify-between gap-2 text-left",
+              FOCUS_RING_CLASS,
+            )}
+          >
+            <span className="min-w-0">
+              <span
                 className={cn(
-                  "mt-1 h-4 w-4 shrink-0 transition-transform",
-                  open && "rotate-180",
+                  "block truncate text-sm font-medium",
+                  trade.rescinded && "line-through",
                 )}
-              />
-            </button>
+              >
+                {/* A trade whose parties were never recorded has no owners to be named
+                    between, so it keeps the heading the card used to carry rather than an
+                    empty one — and then the sublabel below would only repeat it. */}
+                {owners === "" ? category : owners}
+              </span>
+              {owners !== "" && category !== "" && (
+                <span className="block text-xs text-muted-foreground">
+                  {category}
+                </span>
+              )}
+              <span className="block text-xs text-muted-foreground">
+                {tradeDateLine(trade)}
+              </span>
+            </span>
+            <ChevronDown
+              aria-hidden
+              className={cn(
+                "mt-1 h-4 w-4 shrink-0 transition-transform",
+                open && "rotate-180",
+              )}
+            />
+          </button>
 
-            {/*
-              Ben's ruling: "include the actual text of the trade to give more context, it is
-              hard to understand these tiles". A <blockquote>, because it is somebody else's
-              words and not the page's, and `whitespace-pre-line` so two messages stay two
-              paragraphs — the loader joined them with a blank line for exactly that.
+          {/*
+            The panel the toggle above controls, and the whole of it: Ben's ruling of 2026-09-09
+            took the asset list off the expanded card, so opening a card is now exactly "show me
+            the rest of what was said". The wrapper is rendered unconditionally rather than with
+            the quotation inside it, so `aria-controls` always resolves to a real element — the
+            same guarantee the force-mounted collapsible used to give, without the collapsible.
 
-              Clamped to four lines while the card is collapsed and whole once it is open, so a
-              long announcement cannot turn one card in a grid of them into a wall of text. It
-              sits outside the button on purpose: a quotation is not part of the toggle's
-              accessible name, and a <blockquote> inside a <button> is not valid markup either.
+            The quotation itself: a <blockquote>, because it is somebody else's words and not the
+            page's, and `whitespace-pre-line` so two messages stay two paragraphs — the loader
+            joined them with a blank line for exactly that. Clamped to four lines while the card
+            is collapsed and whole once it is open, so a long announcement cannot turn one card
+            in a grid of them into a wall of text.
 
-              `null` renders nothing at all. An empty quote block would say the league said
-              nothing, when what happened is that this row carries nothing.
-            */}
+            It sits outside the button on purpose: a quotation is not part of the toggle's
+            accessible name, and a <blockquote> inside a <button> is not valid markup either.
+
+            `null` renders nothing at all. An empty quote block would say the league said
+            nothing, when what happened is that this row carries nothing.
+          */}
+          <div id={panelId}>
             {trade.announcement !== null && (
               <blockquote
                 className={cn(
@@ -186,53 +175,19 @@ export function TradeCard({ trade }: { trade: CatalogTrade }) {
                 {trade.announcement}
               </blockquote>
             )}
+          </div>
 
+          {/* The two chips Ben kept, and nothing else. The owners are the title now; the FAAB
+              total and the analyst's confidence are both gone — "because of the dynamic nature
+              of many deals it's most likely not useful to include the FAAB number here". */}
+          {chips && (
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
-              {/* The owners are the title now, so they are not also badges. What is left here
-                  is everything the title does not say: the money, the analyst's doubt, and the
-                  two chips Ben kept — the rescinded mark and the trade code. */}
-              {trade.faabTotal !== null && (
-                <Badge
-                  variant="outline"
-                  className="border-primary/40 text-primary"
-                >
-                  {trade.faabTotal} FAAB
-                </Badge>
-              )}
-              {trade.confidence !== "high" && !trade.registered && (
-                <Badge variant="outline">low confidence</Badge>
-              )}
               {trade.rescinded && (
-                <Badge variant="destructive">rescinded</Badge>
+                <Badge variant="destructive">{RESCINDED_LABEL}</Badge>
               )}
-              <Badge variant={trade.registered ? "default" : "outline"}>
-                {trade.sourceLabel}
-              </Badge>
+              {trade.registered && <Badge>{trade.sourceLabel}</Badge>}
             </div>
-
-            {/*
-              Force-mounted and hidden with the `hidden` attribute rather than unmounted, so the
-              `aria-controls` above always resolves to a real element — the same arrangement the
-              board's `TeamCard` uses. The *contents* are still mounted lazily, so a page of
-              collapsed cards carries no hidden asset rows.
-            */}
-            <CollapsibleContent id={panelId} forceMount hidden={!open}>
-              {open ? (
-                <ul className="mt-2 space-y-1 border-t pt-2">
-                  {trade.assets.map((asset, index) => (
-                    <li key={`${asset.kind}-${index}`} className="text-sm">
-                      {assetLabel(asset)}
-                    </li>
-                  ))}
-                  {trade.assets.length === 0 && (
-                    <li className="text-sm text-muted-foreground">
-                      {NO_ASSETS_TEXT}
-                    </li>
-                  )}
-                </ul>
-              ) : null}
-            </CollapsibleContent>
-          </Collapsible>
+          )}
         </CardContent>
       </Card>
     </li>

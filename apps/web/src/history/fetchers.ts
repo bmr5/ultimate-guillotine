@@ -9,10 +9,16 @@ export type HistoryClient = SupabaseClient<Database>;
  * Both row types name exactly the columns their select asks for, and no more — the rule
  * `HistoryPlayerRow` states below. `trade_catalog.source` says whether the analyst read the
  * deal from the Registrar or from the chat, which the page answers from `sourceLabel` instead;
- * `season_results.unresolved_names` is a loader diagnostic no page renders. Neither is
- * requested, so neither is in the type: a field the fetch never returns must not typecheck.
+ * `trade_catalog.faab_total` is the analyst's total for a deal, which no longer reaches a card
+ * (Ben's ruling of 2026-09-09: "because of the dynamic nature of many deals it's most likely
+ * not useful to include the FAAB number here"); `season_results.unresolved_names` is a loader
+ * diagnostic no page renders. None is requested, so none is in the type: a field the fetch
+ * never returns must not typecheck.
  */
-export type TradeCatalogRow = Omit<TableRow<"trade_catalog">, "source">;
+export type TradeCatalogRow = Omit<
+  TableRow<"trade_catalog">,
+  "source" | "faab_total"
+>;
 export type SeasonResultRow = Omit<
   TableRow<"season_results">,
   "unresolved_names"
@@ -37,6 +43,16 @@ export type HistoryPlayerRow = Pick<
 /** A registered trade with its season year embedded; `public.trades` has no year column. */
 export interface RegisteredTradeRow {
   id: number;
+  /**
+   * When the Registrar recorded the trade — the one instant these rows carry.
+   *
+   * A registered card is dated by this rather than by its season and effective week, per Ben's
+   * ruling of 2026-09-09 that a card logs "the date and time". `trade_revisions.created_at`
+   * would date the *current revision* instead, which moves every time a deal is amended, so the
+   * card would silently re-date itself; the trade's own stamp is when the deal was logged and
+   * does not move.
+   */
+  created_at: string;
   trade_code: string;
   status: "accepted" | "rescinded";
   current_revision_id: number | null;
@@ -93,7 +109,7 @@ async function unwrap<T>(
  * returns `GenericStringError` and silently costs the fetcher its typed result.
  */
 const CATALOG_COLUMNS =
-  "id, catalog_id, season, week, occurred_on, trade_type, structure, party_member_ids, party_count, assets, faab_total, confidence, announcement, unresolved_parties, loaded_at";
+  "id, catalog_id, season, week, occurred_on, trade_type, structure, party_member_ids, party_count, assets, confidence, announcement, unresolved_parties, loaded_at";
 
 /** Also one literal, for the reason `CATALOG_COLUMNS` is. */
 const SEASON_RESULT_COLUMNS =
@@ -117,7 +133,9 @@ export function fetchRegisteredTrades(
   return unwrap<RegisteredTradeRow>(
     client
       .from("trades")
-      .select("id, trade_code, status, current_revision_id, seasons ( year )")
+      .select(
+        "id, created_at, trade_code, status, current_revision_id, seasons ( year )",
+      )
       .order("id", { ascending: false }),
     "trades",
   );

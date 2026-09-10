@@ -12,8 +12,15 @@ __all__ = [
     "format_clarification",
     "format_confirmation",
     "format_rescinded",
+    "format_terms",
     "format_updated",
+    "party_labels",
 ]
+
+# A member id -> the label the board shows for that owner (nickname, else the
+# Sleeper display name); anything missing falls back to the proposal's own
+# ``display_name``, the bare Sleeper username.
+Labels = dict[int, str]
 
 # Asset kinds that carry a number rather than a name or a description. They
 # double as the unit when an asset leaves ``unit`` unset.
@@ -129,22 +136,63 @@ def _previous_amounts(previous_terms: dict[str, Any]) -> list[str]:
     ]
 
 
-def format_confirmation(code: str, proposal: TradeProposal) -> str:
-    """The message posted when a trade is logged for the first time."""
-    return "\n".join([f"🚨 Trade {code} logged", *_body(proposal)])
+def party_labels(members) -> Labels:
+    """The owner label per member id, the way the board renders it.
 
-
-def format_updated(code: str, proposal: TradeProposal, previous_terms: dict[str, Any]) -> str:
-    """The message posted when a logged trade is revised.
-
-    ``previous_terms`` is the prior revision's ``TradeProposal.model_dump()``.
-    When its amounts differ from the new ones, a ``Was:`` line spells the old
-    ones out so the chat can see exactly what moved.
+    ``members`` are ``MemberRef``s: nickname first, then the Sleeper display
+    name. A member with neither is left out, so the proposal's own
+    ``display_name`` is what the chat sees for them.
     """
-    lines = [f"🚨 Trade {code} updated", *_body(proposal)]
-    previous = _previous_amounts(previous_terms)
-    if sorted(previous) != sorted(_current_amounts(proposal)):
-        lines.append("Was: " + (", ".join(previous) if previous else "nothing"))
+    labels: Labels = {}
+    for member in members:
+        label = getattr(member, "nickname", None) or getattr(member, "sleeper_display_name", None)
+        if label:
+            labels[member.member_id] = label
+    return labels
+
+
+def _parties_line(proposal: TradeProposal, labels: Labels | None) -> str:
+    labels = labels or {}
+    return " ↔ ".join(labels.get(p.member_id, p.display_name) for p in proposal.parties)
+
+
+def format_confirmation(code: str, proposal: TradeProposal, labels: Labels | None = None) -> str:
+    """The one line posted when a trade is logged.
+
+    Ben (2026-09-10): "I'd like the bot only to respond with confirmation that
+    the trade has been logged, nothing else." The terms are stored in full and
+    read back by ``format_terms`` for the operator, never by the chat.
+    """
+    return f"🚨 Trade {code} logged · {_parties_line(proposal, labels)}"
+
+
+def format_updated(
+    code: str,
+    proposal: TradeProposal,
+    previous_terms: dict[str, Any],
+    labels: Labels | None = None,
+) -> str:
+    """The one line posted when a logged trade is revised.
+
+    ``previous_terms`` is kept in the signature for the registrar's call and
+    for ``format_terms``; the chat no longer sees a ``Was:`` line.
+    """
+    del previous_terms
+    return f"🚨 Trade {code} updated · {_parties_line(proposal, labels)}"
+
+
+def format_terms(proposal: TradeProposal, previous_terms: dict[str, Any] | None = None) -> str:
+    """The full terms, for the operator (``ug trades show``), never for the chat.
+
+    ``previous_terms`` is the prior revision's ``TradeProposal.model_dump()``;
+    when its amounts differ from the new ones a ``Was:`` line spells the old
+    ones out.
+    """
+    lines = list(_body(proposal))
+    if previous_terms is not None:
+        previous = _previous_amounts(previous_terms)
+        if sorted(previous) != sorted(_current_amounts(proposal)):
+            lines.append("Was: " + (", ".join(previous) if previous else "nothing"))
     return "\n".join(lines)
 
 
