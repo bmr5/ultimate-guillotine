@@ -25,6 +25,7 @@ AGENT = "trade-video"
 #: What Ben is told to expect: an 8 s voiced clip took about four minutes on
 #: 2026-09-10, and Higgsfield's queue adds what it adds.
 ETA = "usually takes 5 to 10 minutes"
+ACKNOWLEDGEMENT = "On it kitten, hold on for 10 minutes"
 
 _TAG = re.compile(r"@daddy\b", re.IGNORECASE)
 _VIDEO = re.compile(r"\bvideo\b", re.IGNORECASE)
@@ -221,9 +222,10 @@ class VideoRequests:
         _job_id, created = self._jobs.enqueue(trade["trade_id"], code, msg.guid, msg.chat_guid)
         self._conn.commit()
         if created:
-            text = f"🎬 On it — the video for {code} {self._eta}."
+            # Ben (2026-09-10): exactly this, no emoji, no code, no range.
+            text = ACKNOWLEDGEMENT
         else:
-            text = f"🎬 The video for {code} is already in the works."
+            text = f"The video for {code} is already in the works."
         self._delivery.deliver(None, AGENT, text, reply_to=msg.chat_guid)
 
 
