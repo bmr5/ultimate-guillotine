@@ -60,63 +60,52 @@ const PARTIAL_BADGE_TEXT = "partial";
  * The collapsed summary's height, so every card in the grid is the same one.
  *
  * Ben's addendum: "make every card the same height — the badge currently changes card height."
- * A `min-h` alone would not do it; it works because everything inside the summary is bounded.
- * The owner line, the team name and the total line each truncate to one line, the chip row does
- * not wrap, and the projection block is at most three lines (number, `proj`, empty count).
- * 6.5rem clears that tallest case with the card's `p-4` around it, so a card with chips, a card
- * with an empty-slot count and a plain card all measure the same.
+ * A `min-h` alone would not do it; it works because every line inside the summary is bounded and
+ * both rows are mounted on every card whatever it has to say.
  *
- * The summary is one grid row. The fallback row round 2 added below it — where a third chip went
- * when the owner's line could not hold it — is gone: it was mounted on every card to keep the
- * heights level, which cost all twelve cards 44px to serve a case the chip-set rule has since
- * made impossible.
+ * The arithmetic, from the line heights this markup actually uses (16px root):
+ *
+ * - row 1, the owner block: name 24px (inherited 1rem/1.5) + team name 20px (`text-sm`) +
+ *   `mt-1` 4px + total line 16px (`text-xs`) = **64px**;
+ * - row 1, the projection block beside it: 32px (`text-2xl`) + `proj` 16px + `mt-1` 4px +
+ *   empty-slot count 16px = **68px**, which is the taller of the two and so the row;
+ * - row 2, the chip line: `mt-1` 4px + `h-6` 24px = **28px**;
+ * - the card's own `p-4`: 32px.
+ *
+ * 32 + 68 + 28 = **128px = 8rem**. The ruling estimated 7.75rem from the owner block alone; the
+ * extra quarter-rem is the `N empty` line under `proj`, which is the taller column whenever a
+ * lineup has a hole in it, and a floor that did not clear it would let exactly those cards grow.
+ * The toggle's own `min-h-[44px]` is well under the row it sits in and never binds.
  */
-export const SUMMARY_MIN_HEIGHT_CLASS = "min-h-[6.5rem]";
+export const SUMMARY_MIN_HEIGHT_CLASS = "min-h-[8rem]";
 
 /**
- * The floor under the chip row overlaid on the owner's line, so it occupies the same band on
- * every card whether it holds chips or none. It is the 44px touch target the tooltip triggers
- * inside it need anyway; naming it here is what makes the equal-height claim independent of
- * what is in the row.
+ * The chip line's height, fixed rather than floored, so the line occupies the same band on every
+ * card whether it holds two chips or none — that is what makes the equal height structural
+ * instead of a coincidence of what each card happens to say. The chips are the same height as
+ * the line they sit on.
+ *
+ * 24px, not the 44px touch target the overlaid row carried through rounds 1–3: a chip no longer
+ * covers anything, so its target need not be big enough to be dodged. The chip's own 11px face
+ * (`CHIP_FACE_CLASS`) measures 22px with its padding and border, and centres inside this.
  */
-export const CHIP_ROW_MIN_HEIGHT_CLASS = "min-h-[44px]";
+export const CHIP_ROW_HEIGHT_CLASS = "h-6";
 
 /**
- * The projection block's width. Fixed, for two reasons: the numbers line up down the grid, and
- * the chip row can reserve exactly this much room to its right (plus the toggle's `gap-3`) and
- * so never land on top of the number it is a footnote to.
+ * The chip line's indent, so the chips start at the owner name's left edge rather than at the
+ * card's: the rank column's `w-5` (20px) plus the toggle's `gap-3` (12px) is 32px = `pl-8`.
+ */
+export const CHIP_ROW_INDENT_CLASS = "pl-8";
+
+/**
+ * The projection block's width. Fixed so the numbers line up down the grid.
+ *
+ * It used to do a second job — the chip row overlaid on the owner's line reserved exactly this
+ * much plus the toggle's `gap-3`, so a chip never landed on the number. Round 3 measured that
+ * geometry on a 375px card and it does not fit: the name field is 141px and a two-chip set is
+ * 139px. The chips have their own line now, and nothing reserves against this any more.
  */
 const PROJECTION_WIDTH_CLASS = "w-[4.5rem]";
-
-/** `PROJECTION_WIDTH_CLASS` + the toggle's `gap-3`, kept next to it so the two cannot drift. */
-const CHIP_ROW_RESERVE_CLASS = "pr-[5.25rem]";
-
-/**
- * The room the owner's name leaves for the chips overlaid at the end of its line, indexed by
- * how many chips are actually on that line. Nothing on the line, no reserve.
- *
- * Both figures are measured in a browser, laying out this markup against this project's own
- * Tailwind build at the chip's own 11px face — not estimated. `resolveChipKinds` is what makes
- * the two-chip figure a *worst* case rather than a guess: the only pair the card can now carry
- * is `2 starters out` (86.5px) and `partial` (48.2px), which with the row's `gap-1` is 138.7px.
- * `pr-36` (144px) is the next step up, with 5.3px of slack.
- *
- * Two numbers from the same session that this reserve does not fix, because they are properties
- * of the line rather than of the padding, and both are in the report's fix-round-3 concerns.
- * On a 375px phone the card is 343px and the owner's name field is 141px, so a 144px reserve is
- * all of it: a two-chip card shows no name at all. And a lone `Projection unavailable` (131.8px)
- * or `Eliminated week 18` (116.5px) is wider than this one-chip `pr-24`, so it overlaps the
- * name it sits beside by 35.8px and 20.5px — both are one-chip cards under the rule.
- */
-export const OWNER_NAME_RESERVE_ONE_CHIP_CLASS = "pr-24";
-export const OWNER_NAME_RESERVE_TWO_CHIP_CLASS = "pr-36";
-
-/** The reserve by chip count, so the name is padded for the chips the card actually has. */
-const OWNER_NAME_RESERVE_CLASSES = [
-  "",
-  OWNER_NAME_RESERVE_ONE_CHIP_CLASS,
-  OWNER_NAME_RESERVE_TWO_CHIP_CLASS,
-] as const;
 
 /** Label for a team eliminated in a week the data layer does not know yet. */
 const ELIMINATED_LABEL = "Eliminated";
@@ -166,14 +155,18 @@ interface SummaryChipProps {
 }
 
 /**
- * One chip on the owner's line.
+ * One chip on the line under the owner's name.
  *
- * Ben asked for the badge "by the owner's name". The chips are therefore a *sibling* of the
- * summary toggle, laid over the end of the owner's line by the summary grid rather than nested
- * inside the button — a control inside a `<button>` is invalid HTML, and it was what cost the
- * card its whole-card tap target the last time. Outside it, a chip can be a real Radix tooltip
- * trigger, which is the point: the native `title` this replaced never opened on a tap, and a
- * phone is where this board is read.
+ * Ben asked for the badge "by the owner's name". The chips are a *sibling* of the summary
+ * toggle, on the summary grid's second row rather than nested inside the button — a control
+ * inside a `<button>` is invalid HTML, and it was what cost the card its whole-card tap target
+ * the last time. Outside it, a chip can be a real Radix tooltip trigger, which is the point: the
+ * native `title` this replaced never opened on a tap, and a phone is where this board is read.
+ *
+ * They sat *on* the owner's line through rounds 1–3, overlaid from outside the button and dodged
+ * by a reserve on the name. Round 3 measured that on a 375px card: 141px of name field against
+ * 139px of chips, and no reserve fixes it. A line of their own costs 28px of card and gives the
+ * name its whole width back.
  *
  * The tooltip is controlled rather than left to Radix's hover-and-focus default, because Radix
  * suppresses tooltips opened by touch. Hover and keyboard focus still open it through
@@ -230,6 +223,7 @@ const SummaryChip = memo(function SummaryChip({
         data-chip={kind}
         className={cn(
           "inline-flex shrink-0 items-center whitespace-nowrap",
+          CHIP_ROW_HEIGHT_CLASS,
           CHIP_TEXT_CLASS[tone],
         )}
       >
@@ -255,10 +249,10 @@ const SummaryChip = memo(function SummaryChip({
               setOpen(!wasOpen);
             }}
             className={cn(
-              // The row itself is inert so an empty one never swallows a tap meant for the
-              // card; each chip takes its own events back, with a full-height touch target.
-              "pointer-events-auto inline-flex shrink-0 items-center whitespace-nowrap rounded-md",
-              CHIP_ROW_MIN_HEIGHT_CLASS,
+              // The chip covers nothing now, so it needs no `pointer-events-auto` to take its
+              // own taps back and no 44px target to keep the card's line reachable around it.
+              "inline-flex shrink-0 items-center whitespace-nowrap rounded-md",
+              CHIP_ROW_HEIGHT_CLASS,
               CHIP_TEXT_CLASS[tone],
               FOCUS_RING_CLASS,
             )}
@@ -418,8 +412,8 @@ export const TeamCard = memo(function TeamCard({
   };
 
   // The ruling after fix round 2: the chip set is mutually limited, so a card carries at most
-  // two short chips and the owner's name has a measured worst case to reserve against. The
-  // fallback row a third chip used to fall into is gone with the third chip.
+  // two short chips. They no longer have to fit beside the name — they have their own line — but
+  // the limit is still what keeps that line to one row of `flex-nowrap`.
   const chips = resolveChipKinds({
     isEliminated: team.isEliminated,
     hasProjection: projection.kind === "value",
@@ -428,7 +422,6 @@ export const TeamCard = memo(function TeamCard({
   })
     .map((kind) => chipCopy[kind])
     .filter((chip): chip is SummaryChipProps => chip !== undefined);
-  const ownerNameReserveClass = OWNER_NAME_RESERVE_CLASSES[chips.length] ?? "";
 
   return (
     <li>
@@ -448,12 +441,12 @@ export const TeamCard = memo(function TeamCard({
       >
         <Collapsible open={isOpen}>
           {/*
-            The whole summary is one button: the projection number is the part of a card a thumb
-            actually lands on, and splitting it to give a badge its own control cost the card
-            that target once already. The chips are a sibling laid over the end of the owner's
-            line by the grid — inside the button they could not be tooltip triggers, and a
-            control inside a `<button>` is invalid HTML. The chevron keeps its own 44px target
-            in the second column.
+            Two grid rows. Row 1 is the whole summary as one button — the projection number is
+            the part of a card a thumb actually lands on, and splitting it to give a badge its
+            own control cost the card that target once already — with the chevron's own 44px
+            target beside it in column 2. Row 2 is the chip line, a sibling of the button because
+            inside it the chips could not be tooltip triggers and a control inside a `<button>`
+            is invalid HTML.
           */}
           <div
             data-card-summary
@@ -479,16 +472,14 @@ export const TeamCard = memo(function TeamCard({
               <span className="min-w-0 flex-1">
                 {/*
                   The owner's line. Ben: "I'd prefer the badge by the owner's name." The chips
-                  are overlaid on the end of this line from outside the button, so the name
-                  reserves room for them and truncates into it — as much room as the chips
-                  actually rendered need, and none at all on the many cards that have none.
+                  are on the line below, indented to this one's left edge, so the name keeps the
+                  whole column and truncates only against the projection beside it. It reserved
+                  room for overlaid chips until round 3 measured that reserve as the entire name
+                  field on a 375px phone.
                 */}
                 <span
                   data-owner-name
-                  className={cn(
-                    "block truncate font-medium text-foreground",
-                    ownerNameReserveClass,
-                  )}
+                  className="block truncate font-medium text-foreground"
                 >
                   {/* Full-strength foreground even when eliminated; only the chrome dims. */}
                   {team.ownerName}
@@ -533,29 +524,26 @@ export const TeamCard = memo(function TeamCard({
             </button>
 
             {/*
-              Everything that qualifies this card, on one row at the end of the owner's line.
+              Everything that qualifies this card, on a line of its own under the owner's name.
 
-              Always mounted, chips or not, and with a floor of its own, so the summary has one
-              structure and one height rather than two: a row that appeared and disappeared —
-              the badge row that used to sit *below* the summary, holding the elimination and
-              `Projection unavailable` badges — is what was changing the card's height, so those
-              two badges are chips in this row now as well.
+              Always mounted, chips or not, and a fixed height rather than a floor, so the summary
+              has one structure and one height rather than two: a row that appeared and
+              disappeared — the badge row that used to sit below the summary, holding the
+              elimination and `Projection unavailable` badges — is what was changing the card's
+              height, so those two badges are chips in this line as well.
 
-              It sits in the toggle's own grid cell, right-aligned and top-aligned above it,
-              reserving the projection block's width so a chip never lands on the number. The row
-              is inert (`pointer-events-none`) and the chips take their events back one by one,
-              so an empty row never swallows a tap meant for the card.
-
-              It holds at most two chips, and that is a property of the chip set rather than of
-              this row: see `derive/chips.ts`. That is what lets the name reserve a measured
-              worst case and keep the rest of its own line.
+              It covers nothing, so it needs no `pointer-events-none`: an empty line has no
+              children and is inert by having nothing in it, and a chip stays clickable without
+              taking its own events back. `flex-nowrap` with `overflow-hidden` keeps it to one
+              line whatever it holds; it holds at most two chips, which is a property of the chip
+              set rather than of this line — see `derive/chips.ts`.
             */}
             <div
               data-chip-row
               className={cn(
-                "pointer-events-none z-10 col-start-1 row-start-1 flex max-w-full flex-nowrap items-center justify-end gap-1 self-start justify-self-end overflow-hidden",
-                CHIP_ROW_MIN_HEIGHT_CLASS,
-                CHIP_ROW_RESERVE_CLASS,
+                "col-start-1 row-start-2 mt-1 flex flex-nowrap items-center gap-1 overflow-hidden",
+                CHIP_ROW_HEIGHT_CLASS,
+                CHIP_ROW_INDENT_CLASS,
               )}
             >
               {chips.map((chip) => (

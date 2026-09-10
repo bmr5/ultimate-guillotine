@@ -3,9 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { BoardTeam, RosterPlayer } from "../types";
 import {
-  CHIP_ROW_MIN_HEIGHT_CLASS,
-  OWNER_NAME_RESERVE_ONE_CHIP_CLASS,
-  OWNER_NAME_RESERVE_TWO_CHIP_CLASS,
+  CHIP_ROW_HEIGHT_CLASS,
+  CHIP_ROW_INDENT_CLASS,
   SUMMARY_MIN_HEIGHT_CLASS,
   TEAM_CARD_CLASS,
   TeamCard,
@@ -118,18 +117,18 @@ const renderCard = (
 
 const toggleButton = () => screen.getByRole("button", { name: /benray/i });
 
-/** The `partial` chip, beside the owner's name. */
+/** The `partial` chip, on the line under the owner's name. */
 const partialChip = () =>
   screen.getByText(PARTIAL_BADGE_TEXT).closest("[data-chip]");
 
-/** The `N starter(s) out` chip, beside the owner's name. */
+/** The `N starter(s) out` chip, on the line under the owner's name. */
 const outChip = () => screen.getByText(OUT_CHIP_TEXT).closest("[data-chip]");
 
-/** The chip row overlaid on the owner's line, mounted whether or not it holds anything. */
+/** The chip line under the owner's name, mounted whether or not it holds anything. */
 const chipRow = (container: HTMLElement) =>
   container.querySelector("[data-chip-row]");
 
-/** The owner's name, which reserves room for whatever is overlaid on its line. */
+/** The owner's name, which keeps its whole line now that nothing is overlaid on it. */
 const ownerName = (container: HTMLElement) =>
   container.querySelector("[data-owner-name]");
 
@@ -153,17 +152,31 @@ const outline = (container: HTMLElement) => {
 
 /**
  * The shape every card's summary has to have, written out rather than read off a second render:
- * the toggle, the chip row overlaid on it, and the chevron's redundant target. Spelling it makes
- * the equal-height cases assert something — comparing two renders only proved the component is
- * deterministic. A card that grows a row of its own for its chips fails here first.
+ * the toggle, the chip line under it, and the chevron's redundant target. Spelling it makes the
+ * equal-height cases assert something — comparing two renders only proved the component is
+ * deterministic. A card that mounts its chip line only when it has chips fails here first.
  */
 const PLAIN_OUTLINE = ["BUTTON::toggle", "DIV:chip-row:", "BUTTON::"];
 
-/** Every element between the card and its collapsible panel: the rows a card is made of. */
-const rowCount = (container: HTMLElement) =>
-  container.querySelectorAll(
-    `.${TEAM_CARD_CLASS} > * > div:not([hidden]):not([data-chip-row])`,
-  ).length;
+/**
+ * The summary grid's rows, read off the row each child is placed in: the toggle's line, the
+ * chevron beside it, and the chip line below. Two on every card — the chip line is mounted
+ * whether or not it has anything to say, which is what makes the equal height structural rather
+ * than a coincidence of what each card carries.
+ */
+const rowCount = (container: HTMLElement) => {
+  const summary = container.querySelector("[data-card-summary]");
+  return new Set(
+    [...(summary?.children ?? [])].flatMap((child) =>
+      [...child.classList].filter((name) => name.startsWith("row-start-")),
+    ),
+  ).size;
+};
+
+/** The card's own boxes between it and the collapsible panel — the summary, and nothing else. */
+const cardRowCount = (container: HTMLElement) =>
+  container.querySelectorAll(`.${TEAM_CARD_CLASS} > * > div:not([hidden])`)
+    .length;
 
 /** The sentence a chip is described by, read the way a screen reader would reach it. */
 const chipDescription = (chip: Element | null) => {
@@ -705,21 +718,23 @@ describe("TeamCard injury tags", () => {
 
 /**
  * Ben's addendum: "make every card the same height — the badge currently changes card height",
- * and "I'd prefer the badge by the owner's name." So the chips moved onto the owner's line, the
- * chip row is always mounted, and the summary carries a fixed height.
+ * and "I'd prefer the badge by the owner's name." So the chips sit on their own line directly
+ * under the name, indented to it, always mounted, under a summary with a fixed floor.
  */
 describe("TeamCard summary chips", () => {
-  it("puts the partial chip on the owner's line, outside the toggle", () => {
+  it("puts the partial chip under the owner's name, outside the toggle", () => {
     const { container } = renderCard(partialTeam());
     const chip = partialChip();
     expect(chip).not.toBeNull();
     expect(chip).toHaveAttribute("data-chip", "partial");
     const row = chipRow(container);
     expect(row?.contains(chip as Node)).toBe(true);
-    // On the owner's line: the row and the toggle share the summary grid's first cell.
+    // The summary grid's second row, in the same column as the toggle, indented past the rank
+    // to the name's own left edge and left-aligned under it.
     expect(row?.className).toContain("col-start-1");
-    expect(row?.className).toContain("row-start-1");
-    expect(row?.className).toContain("justify-self-end");
+    expect(row?.className).toContain("row-start-2");
+    expect(row?.className).toContain(CHIP_ROW_INDENT_CLASS);
+    expect(row?.className).not.toContain("justify-self-end");
     expect(row?.parentElement).toBe(
       container.querySelector("[data-card-summary]"),
     );
@@ -763,10 +778,12 @@ describe("TeamCard summary chips", () => {
     expect(screen.getByRole("tooltip")).toHaveTextContent(COVERAGE_SENTENCE);
   });
 
-  it("keeps a 44px target and the shared focus ring on a chip that opens", () => {
+  it("keeps the chip to the line's own height, with the shared focus ring", () => {
     renderCard(partialTeam());
     const className = (partialChip() as Element).className;
-    expect(className).toContain(CHIP_ROW_MIN_HEIGHT_CLASS);
+    // 24px, the height of the line it sits on. The 44px target the overlaid row carried was
+    // there so a chip could be dodged; on a line of its own it covers nothing.
+    expect(className).toContain(CHIP_ROW_HEIGHT_CLASS);
     expect(className).toContain("focus-visible:ring-2");
   });
 
@@ -832,7 +849,7 @@ describe("TeamCard summary chips", () => {
     expect(container.querySelector("[data-chip]")).toBeNull();
   });
 
-  it("keeps the chip row on one line so no chip can grow the card", () => {
+  it("keeps the chip line to one line so no chip can grow the card", () => {
     const { container } = renderCard(outTeam(), {
       rosterPositions: LEAGUE_SLOTS,
     });
@@ -844,18 +861,22 @@ describe("TeamCard summary chips", () => {
     }
   });
 
-  // An empty row spans the end of the owner's line on every card; if it took pointer events it
-  // would eat the taps that used to open the card there.
-  it("leaves the row itself inert so it never swallows a tap on the card", () => {
+  // The chip line is mounted on every card, empty or not. It sits under the owner's line
+  // rather than over it, so an empty one has nothing in it and covers nothing: the name is a
+  // tap on the card, and no `pointer-events-none` is needed to keep it one.
+  it("leaves an empty chip line with nothing in it to swallow a tap", () => {
     const onToggle = vi.fn();
     const { container } = renderCard({}, { onToggle });
-    expect(chipRow(container)?.className).toContain("pointer-events-none");
+    const row = chipRow(container);
+    expect(row).not.toBeNull();
+    expect(row?.children).toHaveLength(0);
+    expect(row?.className).not.toContain("pointer-events-none");
     fireEvent.click(screen.getByText("benray"));
     expect(onToggle).toHaveBeenCalledWith(7);
   });
 
   // A control inside a <button> is invalid HTML, and it cost the card its whole-card tap
-  // target the last time. The chips are siblings of the toggle, laid over its first row.
+  // target the last time. The chips are siblings of the toggle, on the grid's second row.
   it("nests no control inside the summary button", () => {
     renderCard(outTeam(), { rosterPositions: LEAGUE_SLOTS });
     expect(toggleButton().querySelector("button, a, input, select")).toBeNull();
@@ -864,12 +885,12 @@ describe("TeamCard summary chips", () => {
 
 /**
  * Ben's addendum: "make every card the same height — the badge currently changes card height."
- * The chip row is mounted on every card with a floor of its own, and the badges that used to
- * sit in a row *below* the summary — the elimination ruling and `Projection unavailable` — are
- * chips in that same row, so no card carries a row its neighbour does not.
+ * The chip line is mounted on every card at a fixed height, and the badges that used to sit in a
+ * row *below* the summary — the elimination ruling and `Projection unavailable` — are chips on
+ * that line, so no card carries a box its neighbour does not.
  *
- * The stacked fallback row round 2 added for a third chip is gone with the third chip: the
- * chip set is mutually limited now, so the summary is one row again on every card in the grid.
+ * The ruling after round 3 moved that line off the owner's name and under it: two grid rows on
+ * every card, 0 chips or 2, rather than an overlay a 375px name field cannot dodge.
  */
 describe("TeamCard equal heights", () => {
   /** A card at each size the chip set can be: none, one chip, and the two-chip maximum. */
@@ -889,22 +910,25 @@ describe("TeamCard equal heights", () => {
   ];
 
   it.each(SIZES)(
-    "keeps a card with $name to one row, in the same boxes",
+    "keeps a card with $name to the same two rows, in the same boxes",
     ({ team: overrides, chips }) => {
       const { container, unmount } = renderCard(overrides, {
         rosterPositions: LEAGUE_SLOTS,
       });
       // The case really is the size it claims: otherwise this is three copies of one card.
       expect(chipKinds(chipRow(container))).toHaveLength(chips);
-      // One visible row on every card: the summary. A second — the badge row this replaced,
+      // Two grid rows on every card — the toggle's line and the chip line under it — whether
+      // the chip line has two chips in it or none.
+      expect(rowCount(container)).toBe(2);
+      // And one box on the card itself: the summary. A second — the badge row this replaced,
       // and the stacked row that replaced *that* — is the extra height Ben was looking at.
-      expect(rowCount(container)).toBe(1);
+      expect(cardRowCount(container)).toBe(1);
       expect(outline(container)).toEqual(PLAIN_OUTLINE);
       unmount();
     },
   );
 
-  it("puts the loudest chip in the row rather than in a row of its own", () => {
+  it("puts the loudest chip on the chip line rather than in a row of its own", () => {
     const { container } = renderCard(
       {
         ...outTeam(),
@@ -920,24 +944,22 @@ describe("TeamCard equal heights", () => {
     expect(container.querySelector("[data-chip-stack]")).toBeNull();
   });
 
-  it("floors the summary and the chip row on every card, chips or not", () => {
+  it("floors the summary and fixes the chip line on every card, chips or not", () => {
     const loud = renderCard(outAndPartialTeam(), {
       rosterPositions: LEAGUE_SLOTS,
     });
     const summary = loud.container.querySelector("[data-card-summary]");
     expect(summary?.className).toContain(SUMMARY_MIN_HEIGHT_CLASS);
-    expect(chipRow(loud.container)?.className).toContain(
-      CHIP_ROW_MIN_HEIGHT_CLASS,
-    );
+    expect(chipRow(loud.container)?.className).toContain(CHIP_ROW_HEIGHT_CLASS);
     loud.unmount();
 
     const live = renderCard({}, { rosterPositions: LEAGUE_SLOTS });
     expect(
       live.container.querySelector("[data-card-summary]")?.className,
     ).toContain(SUMMARY_MIN_HEIGHT_CLASS);
-    expect(chipRow(live.container)?.className).toContain(
-      CHIP_ROW_MIN_HEIGHT_CLASS,
-    );
+    // Fixed, not floored: an empty line has to hold the same band as a full one.
+    expect(chipRow(live.container)?.className).toContain(CHIP_ROW_HEIGHT_CLASS);
+    expect(chipRow(live.container)?.className).not.toContain("min-h-");
   });
 });
 
@@ -1039,42 +1061,44 @@ describe("TeamCard out starters", () => {
 });
 
 /**
- * The ruling after fix round 2: the chip set is mutually limited, so the widest thing the
- * owner's name can be asked to dodge is `2 starters out` + `partial` — 138.7px measured in a
- * browser against this project's own Tailwind build at the chip's 11px face, hence `pr-36`.
- * Round 2's 15.75rem reserve was the whole name field on a phone, and the stacked row that
- * caught a third chip cost every card in the grid 44px; both are gone with the third chip.
+ * The ruling after fix round 3: no reserve fits. Measured on a 375px phone, the card is 343px
+ * and the owner's name field 141px, against a two-chip set of 138.7px — so a two-chip card
+ * showed no name at all, and a lone `Projection unavailable` (131.8px) overlapped the name it
+ * sat beside. The chips have their own line under the name now, and the name has its whole
+ * column back.
  */
 describe("TeamCard chip crowding", () => {
   const options = { rosterPositions: LEAGUE_SLOTS };
 
-  it("keeps the one-chip reserve on a card carrying one chip", () => {
+  it("leaves the name its whole line with one chip on the card", () => {
     const { container } = renderCard(partialTeam());
     expect(chipKinds(chipRow(container))).toEqual(["partial"]);
-    expect(ownerName(container)?.className).toContain(
-      OWNER_NAME_RESERVE_ONE_CHIP_CLASS,
-    );
+    // No reserve at any chip count: nothing is overlaid on this line any more.
+    expect(ownerName(container)?.className).not.toContain("pr-");
   });
 
   it("leaves the name its whole line when there is no chip at all", () => {
     const { container } = renderCard();
     expect(chipKinds(chipRow(container))).toEqual([]);
-    // Not "a narrower reserve": none. There is nothing on the line to dodge.
     expect(ownerName(container)?.className).not.toContain("pr-");
   });
 
-  it("widens the reserve for two chips instead of running them over the name", () => {
+  it("puts two chips on their own line rather than over the name", () => {
     const { container } = renderCard(outAndPartialTeam(), options);
     expect(chipKinds(chipRow(container))).toEqual(["out", "partial"]);
-    const className = ownerName(container)?.className ?? "";
-    expect(className).toContain(OWNER_NAME_RESERVE_TWO_CHIP_CLASS);
-    expect(className).not.toContain(OWNER_NAME_RESERVE_ONE_CHIP_CLASS);
-    // Still one row on the card: two chips stay on the owner's line, where Ben wants them.
-    expect(rowCount(container)).toBe(1);
+    expect(ownerName(container)?.className).not.toContain("pr-");
+    const row = chipRow(container);
+    // The line is row 2 of the summary grid, indented to the name's left edge, and stays one
+    // line whatever it holds.
+    expect(row?.className).toContain("row-start-2");
+    expect(row?.className).toContain(CHIP_ROW_INDENT_CLASS);
+    expect(row?.className).toContain("flex-nowrap");
+    expect(rowCount(container)).toBe(2);
+    expect(cardRowCount(container)).toBe(1);
   });
 
   /**
-   * The reserve is only honest if nothing can exceed the pair it was measured for. This is the
+   * The line is only one line if nothing can exceed the pair it was measured for. This is the
    * card that used to carry three chips: eliminated, an out starter, and no projection at all.
    */
   it("says one thing on the card that used to say three", () => {
@@ -1090,22 +1114,21 @@ describe("TeamCard chip crowding", () => {
       options,
     );
     expect(chipKinds(chipRow(container))).toEqual(["eliminated"]);
-    expect(ownerName(container)?.className).toContain(
-      OWNER_NAME_RESERVE_ONE_CHIP_CLASS,
-    );
     expect(screen.queryByText(/starters? out/)).toBeNull();
     expect(screen.queryByText("Projection unavailable")).toBeNull();
     expect(screen.queryByText(PARTIAL_BADGE_TEXT)).toBeNull();
   });
 
-  it("keeps every chip a real tooltip trigger inside an inert row", async () => {
+  it("keeps every chip a real tooltip trigger on a line that covers nothing", async () => {
     const { container } = renderCard(outAndPartialTeam(), options);
     const row = chipRow(container);
-    expect(row?.className).toContain("pointer-events-none");
+    // The line is inert by having no children, not by `pointer-events-none`, so a chip does not
+    // have to take its own events back to stay clickable.
+    expect(row?.className).not.toContain("pointer-events-none");
     const chip = outChip() as HTMLElement;
     expect(row?.contains(chip)).toBe(true);
     expect(chip.tagName).toBe("BUTTON");
-    expect(chip.className).toContain("pointer-events-auto");
+    expect(chip.className).not.toContain("pointer-events-auto");
     await tap(chip);
     expect(screen.getByRole("tooltip")).toHaveTextContent(
       "Out starters: Broken Tightend (Out)",
