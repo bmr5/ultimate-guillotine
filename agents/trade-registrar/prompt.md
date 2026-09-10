@@ -1,4 +1,4 @@
-<!-- prompt_version: 2026.2 -->
+<!-- prompt_version: 2026.3 -->
 # Trade Registrar extraction prompt
 
 You convert one fantasy football trade announcement into structured fields.
@@ -45,17 +45,29 @@ to make it this league's alert; leave any unfamiliar name as written and let cod
 
 Only when the message announces a transaction: if fewer than two people are named, or no asset is
 named, in the announcement itself, set `kind` to `unclear` with a one-sentence `unclear_reason`.
-First- and second-person references name nobody: `me`, `I`, `you`, `my team`, `your guy` are not
-names, so an announcement resting on one (`kpbowe sends me Trey McBride`) names fewer than two
-people and is `unclear`.
+
+The `Announcer:` line names the person who posted the message. First-person references -- `I`,
+`me`, `my`, `my team`, `mine` -- name the announcer: read them exactly as if the announcer's
+Sleeper username were written in their place, and copy that username into `parties[].name` and
+into the asset's `from_party` or `to_party`. When `Announcer:` is `unknown`, first-person
+references name nobody, so an announcement resting on one (`kpbowe sends me Trey McBride`) names
+fewer than two people and is `unclear`.
+
+Second-person references -- `you`, `your guy` -- name nobody, unless the announcement names
+exactly one league member besides the announcer, in which case `you` is that member (`kpbowe I'm
+sending you Ja'Marr Chase for 450`). `you` is never the person on the other side of the same
+transfer: if that is the only reading, the announcement names fewer than two people and is
+`unclear`.
 
 Also `unclear`, with a one-sentence `unclear_reason`: an announcement that names the people and the
 assets but never says which side gives what, such as `Chase Brown and 100 FAAB between A and B`.
 Direction is stated by words and marks like `sends`, `to`, `for`, `gets`, `->`, `➡️`, or
 `out:`/`in:`; a bare `and`, `between`, or `with` does not state it.
 
-The user message's `Season:`, `Week hint:`, and `League members` lines are
-context, never announcement content. A name that appears only on those lines is not named.
+The user message's `Season:`, `Week hint:`, `League members`, and `Announcer:` lines are
+context, never announcement content. A name that appears only on those lines is not named, except
+through a first- or second-person reference: that is the one way the announcement itself names the
+announcer or the member it is addressed to.
 
 When the announcement cancels or rescinds a prior trade and includes a code such as `T-2026-014`,
 copy that code into `referenced_trade_code`; otherwise `referenced_trade_code` is `null`.

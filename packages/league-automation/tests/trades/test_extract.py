@@ -22,7 +22,7 @@ class FakeAI:
 
 def test_prompt_is_versioned_and_states_the_rules() -> None:
     prompt = load_prompt()
-    assert PROMPT_VERSION == "2026.2"
+    assert PROMPT_VERSION == "2026.3"
     assert prompt.startswith(f"<!-- prompt_version: {PROMPT_VERSION} -->")
     assert "verbatim" in prompt and "null" in prompt and "fairness" in prompt
 
@@ -42,11 +42,11 @@ def test_prompt_orders_not_a_trade_before_unclear_and_scopes_naming() -> None:
     assert prompt.index("Decide `not_a_trade` first") < prompt.index("`unclear_reason`")
 
 
-#: The rules 2026.2 added, each as the phrase the prompt has to carry. Kept as a
+#: The rules 2026.2 and 2026.3 added, each as the phrase the prompt has to carry. Kept as a
 #: table so a rule quietly dropped from the prompt fails under its own name --
 #: the suite proves the prompt still says these things, never what the model
 #: does with them, which is what `scripts/registrar_cases.py` is for.
-PROMPT_RULES_2026_2 = [
+PROMPT_RULES_2026_3 = [
     (
         "a report of an alert is not an announcement",
         "A message that reports or reacts to an alert instead of making one is `not_a_trade`",
@@ -80,12 +80,33 @@ PROMPT_RULES_2026_2 = [
         "One league member named in the announcement is enough to make it this league's alert",
     ),
     (
-        "first and second person name nobody",
-        "First- and second-person references name nobody",
+        "first person names the announcer",
+        "First-person references -- `I`, `me`, `my`, `my team`, `mine` -- name the announcer",
+    ),
+    (
+        "first person is read as the announcer's username written there",
+        "read them exactly as if the announcer's Sleeper username were written in their place",
+    ),
+    (
+        "an unknown announcer makes first person name nobody",
+        "When `Announcer:` is `unknown`, first-person references name nobody",
     ),
     (
         "an announcement resting on one names fewer than two people",
         "names fewer than two people and is `unclear`",
+    ),
+    (
+        "second person names nobody by default",
+        "Second-person references -- `you`, `your guy` -- name nobody",
+    ),
+    (
+        "you is the one member named besides the announcer",
+        "unless the announcement names exactly one league member besides the announcer, in which"
+        " case `you` is that member",
+    ),
+    (
+        "you is never the other side of the same transfer",
+        "`you` is never the person on the other side of the same transfer",
     ),
     (
         "unstated direction is unclear, with a reason",
@@ -104,10 +125,10 @@ PROMPT_RULES_2026_2 = [
 
 @pytest.mark.parametrize(
     ("rule", "phrase"),
-    PROMPT_RULES_2026_2,
-    ids=[rule for rule, _ in PROMPT_RULES_2026_2],
+    PROMPT_RULES_2026_3,
+    ids=[rule for rule, _ in PROMPT_RULES_2026_3],
 )
-def test_prompt_states_the_2026_2_rules(rule: str, phrase: str) -> None:
+def test_prompt_states_the_2026_3_rules(rule: str, phrase: str) -> None:
     # The prompt wraps at 100 columns, so match against it as one flowing line.
     assert phrase in " ".join(load_prompt().split())
 
@@ -124,9 +145,15 @@ def test_prompt_keeps_the_not_a_trade_rules_ahead_of_the_unclear_rules() -> None
 
 def test_prompt_marks_the_user_message_context_lines_as_never_announcement() -> None:
     prompt = load_prompt()
-    assert "The user message's `Season:`, `Week hint:`, and `League members` lines are" in prompt
+    assert (
+        "The user message's `Season:`, `Week hint:`, `League members`, and `Announcer:` lines are"
+        in prompt
+    )
     assert "context, never announcement content" in prompt
-    assert "A name that appears only on those lines is not named." in prompt
+    # The one exception, and the reason the announcer line is not just more context:
+    # a first-person reference *is* the announcement naming the person who posted it.
+    assert "A name that appears only on those lines is not named, except" in prompt
+    assert "through a first- or second-person reference" in prompt
     assert "The `Week hint:` line is context and never counts as the announcement" in prompt
 
 
@@ -167,6 +194,23 @@ def test_extract_writes_the_exact_context_lines() -> None:
 
     extract_trade(ai, "Member03 rents Player Beta", 2026, None, ["Member03", "Member04"])
     assert "Week hint: unknown" in ai.calls[1][1].splitlines()
+
+
+def test_the_announcer_line_names_the_sender_or_says_unknown() -> None:
+    """The line is always written, and always right after the members list: the
+    prompt's first-person rule reads both, and an absent line has no rule."""
+    ai = FakeAI(ExtractedTrade(kind="not_a_trade"))
+    extract_trade(ai, "I sent Player Beta to Member04", 2026, None, ["Member03", "Member04"])
+    lines = ai.calls[0][1].splitlines()
+    assert "Announcer: unknown" in lines
+
+    extract_trade(
+        ai, "I sent Player Beta to Member04", 2026, None, ["Member03", "Member04"], "Member03"
+    )
+    lines = ai.calls[1][1].splitlines()
+    assert "Announcer: Member03" in lines
+    members = "League members (Sleeper username: names people use): Member03; Member04"
+    assert lines.index("Announcer: Member03") == lines.index(members) + 1
 
 
 @pytest.mark.skipif(
