@@ -24,7 +24,6 @@ const CATALOG_2024 = {
   party_member_ids: [1, 2],
   party_count: 2,
   assets: [{ kind: "faab", amount: 5, from_party: 0, to_party: 1 }],
-  faab_total: 5,
   confidence: "high" as const,
   announcement: "SENTINEL_CATALOG_ANNOUNCEMENT",
   unresolved_parties: 0,
@@ -39,6 +38,7 @@ const CATALOG_2025 = {
 
 const REGISTERED = {
   id: 5,
+  created_at: "2026-09-09T21:12:00Z",
   trade_code: "T-2025-014",
   status: "accepted" as const,
   current_revision_id: 50,
@@ -164,6 +164,16 @@ describe("mergeTradeSources", () => {
   });
 });
 
+describe("normalizeCatalogTrade", () => {
+  // A reading of a spreadsheet has no instant to carry: the card is dated by its season and
+  // week instead, and a `registeredAt` here would be a clock time the catalog never recorded.
+  it("gives a catalog row no recorded instant", () => {
+    expect(
+      normalizeCatalogTrade(CATALOG_2024, MEMBERS).registeredAt,
+    ).toBeNull();
+  });
+});
+
 describe("normalizeRegisteredTrade", () => {
   // Ben's ruling of 2026-09-10 moved exactly one field across this line, so this test now has
   // to prove a boundary rather than a blanket: the excerpt the league announced the trade in is
@@ -176,9 +186,16 @@ describe("normalizeRegisteredTrade", () => {
     expect(trade.announcement).toBe("SENTINEL_EVIDENCE_EXCERPT");
     expect(serialized).not.toContain("SENTINEL_PARTY_DISPLAY_NAME");
     expect(serialized).not.toContain("SENTINEL_ASSET_DESCRIPTION");
-    expect(trade.faabTotal).toBe(12);
     expect(trade.week).toBe(4);
     expect(trade.sourceLabel).toBe("T-2025-014");
+  });
+
+  // Ben's ruling of 2026-09-09: a card logs "the Participants, the date and time, a category,
+  // and the exact text". The trade's own `created_at` is the instant it carries — not the
+  // current revision's, which moves every time the deal is amended.
+  it("carries the instant the Registrar recorded the trade", () => {
+    const trade = normalizeRegisteredTrade(REGISTERED, REVISION, MEMBERS);
+    expect(trade.registeredAt).toBe("2026-09-09T21:12:00Z");
   });
 
   it("has no announcement when the trade has no current revision", () => {

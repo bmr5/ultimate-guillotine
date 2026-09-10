@@ -149,8 +149,8 @@ export function TradesPage() {
       )}
 
       {/* Named for the same reason `/history` names its season list: a screen reader announces
-          an unlabelled list by its length alone, and an expanded card puts a second list — its
-          assets — inside this one, so "list, 2 items" could mean either. */}
+          an unlabelled list by its length alone, so "list, 12 items" on a page of filters and
+          strips says nothing about which list it reached. */}
       <ul aria-label="Trades" className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         {visible.map((trade) => (
           <TradeCard key={trade.key} trade={trade} />
