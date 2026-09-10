@@ -53,6 +53,18 @@ const FAAB_UNKNOWN_TEXT = "FAAB —";
 const FOCUS_RING_CLASS =
   "ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
 
+/**
+ * The same ring for a chip, drawn *inside* the chip instead of around it.
+ *
+ * The chip line is `h-6 overflow-hidden`, and a chip fills it: an offset ring is drawn two
+ * pixels outside the chip's own box, which is two pixels outside the line, so the clipping that
+ * keeps the line to 24px was cutting the focus ring off the one control on the card that is
+ * hardest to see. `ring-inset` puts it on the chip's own border instead, where nothing clips it,
+ * and `ring-offset-background` goes with the offset it no longer has.
+ */
+const CHIP_FOCUS_RING_CLASS =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring";
+
 /** The short, visible form of the below-gate caveat; the full label rides along for readers. */
 const PARTIAL_BADGE_TEXT = "partial";
 
@@ -254,7 +266,7 @@ const SummaryChip = memo(function SummaryChip({
               "inline-flex shrink-0 items-center whitespace-nowrap rounded-md",
               CHIP_ROW_HEIGHT_CLASS,
               CHIP_TEXT_CLASS[tone],
-              FOCUS_RING_CLASS,
+              CHIP_FOCUS_RING_CLASS,
             )}
           >
             {face}

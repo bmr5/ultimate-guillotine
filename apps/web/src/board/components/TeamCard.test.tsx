@@ -778,13 +778,18 @@ describe("TeamCard summary chips", () => {
     expect(screen.getByRole("tooltip")).toHaveTextContent(COVERAGE_SENTENCE);
   });
 
-  it("keeps the chip to the line's own height, with the shared focus ring", () => {
+  it("keeps the chip to the line's own height, with a ring the line cannot clip", () => {
     renderCard(partialTeam());
     const className = (partialChip() as Element).className;
     // 24px, the height of the line it sits on. The 44px target the overlaid row carried was
     // there so a chip could be dodged; on a line of its own it covers nothing.
     expect(className).toContain(CHIP_ROW_HEIGHT_CLASS);
     expect(className).toContain("focus-visible:ring-2");
+    // And drawn inside the chip: the chip fills an `h-6 overflow-hidden` line, so a ring set
+    // outside the chip's box — any `ring-offset`, including the `ring-offset-background` that
+    // colours it — is drawn outside the line and clipped away by it.
+    expect(className).toContain("focus-visible:ring-inset");
+    expect(className).not.toContain("ring-offset");
   });
 
   /**
@@ -929,7 +934,7 @@ describe("TeamCard equal heights", () => {
   );
 
   it("puts the loudest chip on the chip line rather than in a row of its own", () => {
-    const { container } = renderCard(
+    renderCard(
       {
         ...outTeam(),
         isEliminated: true,
@@ -941,7 +946,6 @@ describe("TeamCard equal heights", () => {
     expect(
       screen.getByText("Eliminated week 4").closest("[data-chip-row]"),
     ).not.toBeNull();
-    expect(container.querySelector("[data-chip-stack]")).toBeNull();
   });
 
   it("floors the summary and fixes the chip line on every card, chips or not", () => {

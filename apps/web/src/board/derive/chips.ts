@@ -40,7 +40,7 @@ export interface ChipSetInput {
 }
 
 /**
- * The most chips a card can carry, which is what the owner's name reserves against. Derived from
+ * The most chips a card can carry, which is what keeps the chip line to one line. Derived from
  * the rule below rather than asserted next to it, so the two cannot drift.
  */
 export const MAX_CHIPS = 2;
