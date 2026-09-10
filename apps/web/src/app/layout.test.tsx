@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { BOARD_LOADING_LABEL } from "@/board/components/BoardStates";
 import { SEASONS_LOADING_LABEL } from "@/history/components/HistorySkeleton";
 import { TRADES_LOADING_LABEL } from "@/history/components/TradesSkeleton";
+import { MUTE_LABEL } from "@/music/MusicToggle";
 
 import App from "./layout";
 
@@ -176,5 +177,15 @@ describe("App layout", () => {
       "aria-current",
       "page",
     );
+  });
+
+  it("keeps the mute button in the shell, so it is on every page", () => {
+    const router = makeRouter("/history", [
+      { path: "history", element: <p>history</p> },
+    ]);
+    render(<RouterProvider router={router} />);
+    expect(
+      screen.getByRole("button", { name: MUTE_LABEL }),
+    ).toBeInTheDocument();
   });
 });

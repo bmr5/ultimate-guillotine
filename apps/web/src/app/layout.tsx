@@ -7,6 +7,7 @@ import { HistoryListSkeleton } from "@/history/components/HistorySkeleton";
 import { TradesPageSkeleton } from "@/history/components/TradesSkeleton";
 import { cn } from "@/lib/utils";
 import { REVEAL_CLASS, revealStyle } from "@/motion/reveal";
+import { MusicToggle } from "@/music/MusicToggle";
 
 /**
  * The three public pages, in the order Ben asked for them.
@@ -43,7 +44,9 @@ function PageFallback({ pathname }: { pathname: string }) {
 /**
  * The shell is the wordmark and the nav, sitting on the sky with no bar and no border of their
  * own — the board carries its own header below, and that is the one frosted surface.
- * The site is dark only, so there is no theme toggle here any more.
+ * The site is dark only, so there is no theme toggle here any more. The one control the shell
+ * does carry is the music's mute (`src/music`), top right where a game would put it, and on
+ * every page because the shell is.
  *
  * `NavLink` writes `aria-current="page"` on the active link itself, so the marking a screen
  * reader announces and the styling below always agree: the current page is set in ink with an
@@ -75,29 +78,37 @@ function App() {
   return (
     <div className="min-h-screen w-full">
       <div className="mx-auto w-full max-w-6xl px-4 py-5">
-        <header className={REVEAL_CLASS} style={revealStyle(0)}>
-          <h1 className="mb-1 text-2xl leading-none figures">
-            Ultimate Guillotine
-          </h1>
-          <nav aria-label="Pages" className="mb-4 flex gap-5 text-sm">
-            {LINKS.map(([to, label, end]) => (
-              <NavLink
-                key={to}
-                to={to}
-                end={end}
-                className={({ isActive }) =>
-                  cn(
-                    "rounded-sm py-1 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                    isActive
-                      ? "border-b-2 border-primary font-medium text-foreground"
-                      : "border-b-2 border-transparent text-muted-foreground hover:text-foreground",
-                  )
-                }
-              >
-                {label}
-              </NavLink>
-            ))}
-          </nav>
+        <header
+          className={cn("flex items-start justify-between gap-4", REVEAL_CLASS)}
+          style={revealStyle(0)}
+        >
+          <div>
+            <h1 className="mb-1 text-2xl leading-none figures">
+              Ultimate Guillotine
+            </h1>
+            <nav aria-label="Pages" className="mb-4 flex gap-5 text-sm">
+              {LINKS.map(([to, label, end]) => (
+                <NavLink
+                  key={to}
+                  to={to}
+                  end={end}
+                  className={({ isActive }) =>
+                    cn(
+                      "rounded-sm py-1 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      isActive
+                        ? "border-b-2 border-primary font-medium text-foreground"
+                        : "border-b-2 border-transparent text-muted-foreground hover:text-foreground",
+                    )
+                  }
+                >
+                  {label}
+                </NavLink>
+              ))}
+            </nav>
+          </div>
+          {/* Pulled up and out by its own padding, so the icon sits on the wordmark's line and
+              on the content's edge rather than inside a box the eye can't see. */}
+          <MusicToggle className="-mt-2.5 -mr-3" />
         </header>
         <Suspense
           key={pathname}
