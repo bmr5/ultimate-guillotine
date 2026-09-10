@@ -109,3 +109,24 @@ def test_a_tapback_is_not_a_message() -> None:
         assert parse_webhook(reaction) is None, kind
     plain = {"type": "new-message", "data": {**original["data"], "associatedMessageType": 0}}
     assert parse_webhook(plain) is not None
+
+
+def test_parse_webhook_reads_the_reply_thread_and_attachment_names() -> None:
+    record = json.loads(FIXTURE.read_text())
+    record["data"]["threadOriginatorGuid"] = "p:0/BOT-1"
+    record["data"]["attachments"] = [{"guid": "a1", "transferName": "bowers-hold-week-6.html"}]
+    msg = parse_webhook(record)
+    assert msg.thread_originator_guid == "p:0/BOT-1"
+    assert msg.attachment_names == ("bowers-hold-week-6.html",)
+
+
+def test_parse_webhook_falls_back_to_reply_to_guid() -> None:
+    record = json.loads(FIXTURE.read_text())
+    record["data"]["replyToGuid"] = "p:0/BOT-2"
+    assert parse_webhook(record).thread_originator_guid == "p:0/BOT-2"
+
+
+def test_a_plain_message_has_no_thread_and_no_attachments() -> None:
+    msg = parse_webhook(json.loads(FIXTURE.read_text()))
+    assert msg.thread_originator_guid is None
+    assert msg.attachment_names == ()

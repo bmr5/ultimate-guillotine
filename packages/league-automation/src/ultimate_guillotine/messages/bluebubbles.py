@@ -18,6 +18,13 @@ class InboundMessage(BaseModel, frozen=True):
     is_from_me: bool
     is_group: bool
     sent_at: datetime
+    #: The GUID of the message this one is an inline reply to -- the thread's
+    #: root, which iMessage keeps pointing at the first message of the thread
+    #: for every reply in it. ``None`` for a message that replies to nothing.
+    thread_originator_guid: str | None = None
+    #: The file names of any attachments, as BlueBubbles reports them. Read so a
+    #: crashed attachment send can be reconciled by name, never for content.
+    attachment_names: tuple[str, ...] = ()
 
 
 def _record_to_message(record: dict) -> InboundMessage | None:
@@ -33,6 +40,7 @@ def _record_to_message(record: dict) -> InboundMessage | None:
         return None
     handle = record.get("handle") or {}
     created = record.get("dateCreated") or 0
+    attachments = record.get("attachments") or []
     return InboundMessage(
         guid=record["guid"],
         chat_guid=chat_guid,
@@ -41,6 +49,12 @@ def _record_to_message(record: dict) -> InboundMessage | None:
         is_from_me=bool(record.get("isFromMe")),
         is_group=bool(record.get("isGroup")) or ";+;" in chat_guid,
         sent_at=datetime.fromtimestamp(created / 1000, tz=UTC),
+        thread_originator_guid=(
+            record.get("threadOriginatorGuid") or record.get("replyToGuid") or None
+        ),
+        attachment_names=tuple(
+            a.get("transferName") for a in attachments if a.get("transferName")
+        ),
     )
 
 
