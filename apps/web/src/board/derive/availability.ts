@@ -9,10 +9,11 @@ import type { StarterSlotRow } from "./roster";
  * projection looks identical whatever the reason. These six are the reason.
  *
  * Counted off the live players feed on 2026-09-09: `IR` 198, `PUP` 38, `Out` 21, `Sus` 11,
- * `COV` 2, `DNR` 2. `Questionable` (362) and `Doubtful` (1) are deliberately not here — a doubt
- * is not an absence, and a questionable starter still has a projection worth summing. `NA`
- * (95) is Sleeper's bookkeeping flag for a player who is not on an active roster, not a ruling
- * on this week's game, so it does not take a starter out of the lineup either.
+ * `COV` 2, `DNR` 2. `Questionable` (362), `Doubtful` (1) and `NA` (95) are not here, because
+ * none of them is on its own a ruling on this week's game: a doubt is not an absence, and `NA`
+ * is Sleeper's bookkeeping flag for a player who is not on an active roster. They stay out of
+ * the out set only for as long as a projection survives — once Sleeper withdraws the number
+ * behind a flag it has published, `outReason` below takes the starter out anyway.
  */
 export const UNAVAILABLE_STATUSES = [
   "Out",
@@ -86,6 +87,77 @@ export function isUnavailable(raw: string | null | undefined): boolean {
   );
 }
 
+/**
+ * Every status this build knows the meaning of: the six absences, the two doubts, and `NA`.
+ *
+ * The same nine values the sync will store (`KNOWN_INJURY_STATUSES` in `players.py`). A status
+ * outside the vocabulary is still shown on the row by its own spelling, but it never takes a
+ * starter out of a lineup — guessing a player out on a word this build has never seen is the
+ * worse error, and a stale bundle reading a row a newer build wrote is the only way one gets
+ * here at all.
+ */
+export const KNOWN_INJURY_STATUSES = [
+  ...UNAVAILABLE_STATUSES,
+  ...TENTATIVE_STATUSES,
+  "NA",
+] as const;
+
+export type KnownInjuryStatus = (typeof KNOWN_INJURY_STATUSES)[number];
+
+/** Whether a status is one of the nine this build recognises. */
+export function isKnownInjuryStatus(raw: string | null | undefined): boolean {
+  const status = normalizeInjuryStatus(raw);
+  return (
+    status !== null &&
+    KNOWN_INJURY_STATUSES.includes(status as KnownInjuryStatus)
+  );
+}
+
+/** Why a starter is out: the status says so, or Sleeper withdrew the number behind a flag. */
+export type OutReason = "unavailable" | "no-projection";
+
+/** What the out chip's tooltip adds after the status when the withdrawn number is the tell. */
+export const NO_PROJECTION_NOTE = ", no projection";
+
+/**
+ * Why this starter counts as out this week, or null when he does not.
+ *
+ * Ben's card, 2026-09-09: his tight end was flagged `Doubtful` and Sleeper published no
+ * projection for him, and the card read `partial` — "missing data" — for the exact case the
+ * injury work exists for. A withdrawn projection behind a flag Sleeper itself raised is
+ * Sleeper saying it does not expect him on the field; the two facts together say more than
+ * either does alone.
+ *
+ * So a status in `UNAVAILABLE_STATUSES` is out whatever the projection, and any other known
+ * flag — `Questionable`, `Doubtful`, `NA` — is out once the projection is gone. A `Doubtful`
+ * starter Sleeper still publishes a number for is counted as available, unchanged: the number
+ * is the league's own best guess that he plays. A starter with no flag and no projection is
+ * still missing data rather than an absence, which is what the `partial` chip is for.
+ */
+export function outReason(
+  injuryStatus: string | null | undefined,
+  projectedPoints: number | null,
+): OutReason | null {
+  const status = normalizeInjuryStatus(injuryStatus);
+  if (status === null) {
+    return null;
+  }
+  if (isUnavailable(status)) {
+    return "unavailable";
+  }
+  return projectedPoints === null && isKnownInjuryStatus(status)
+    ? "no-projection"
+    : null;
+}
+
+/** Whether this starter is out this week, by either limb of the rule. */
+export function isOut(
+  injuryStatus: string | null | undefined,
+  projectedPoints: number | null,
+): boolean {
+  return outReason(injuryStatus, projectedPoints) !== null;
+}
+
 export interface InjuryTag {
   /** The status as stored, normalised. */
   status: string;
@@ -122,26 +194,38 @@ export function injuryTag(raw: string | null | undefined): InjuryTag | null {
 export interface OutStarter {
   sleeperPlayerId: string;
   fullName: string;
-  /** The status as stored: `Out`, `IR`, … */
+  /** The status as stored: `Out`, `IR`, `Doubtful`, … */
   status: string;
-  /** The same status in words, for the chip's tooltip. */
+  /** The same status in words. `outStarterTitle` is what the chip's tooltip shows. */
   title: string;
+  /** Which limb of the rule took him out of the lineup. */
+  reason: OutReason;
   /**
    * The projection this out starter carries, if any.
    *
    * Sleeper keeps publishing a number for some players it has already flagged, so an out starter
    * can be inside `starters_projected`. Taking him out of the coverage denominator while leaving
    * him in the numerator would credit the team for a projection nobody is going to score, which
-   * is how a lineup with a genuine hole in it read as 100 percent covered.
+   * is how a lineup with a genuine hole in it read as 100 percent covered. Always null when the
+   * reason is `no-projection`: the missing number is what put him here.
    */
   projectedPoints: number | null;
+}
+
+/** How the chip's tooltip names one out starter: the status, and what gave the absence away. */
+export function outStarterTitle(starter: OutStarter): string {
+  return starter.reason === "no-projection"
+    ? `${starter.title}${NO_PROJECTION_NOTE}`
+    : starter.title;
 }
 
 /**
  * The starters who are not playing, in lineup order.
  *
  * Reads the laid-out lineup rather than the raw roster so an empty slot cannot be mistaken for
- * an injury and so the order is the league's own. Pure: the rows are only read.
+ * an injury and so the order is the league's own. A row is out by `outReason`, which reads the
+ * status and the projection together, so a doubt Sleeper has stopped projecting lands here too.
+ * Pure: the rows are only read.
  */
 export function outStarters(rows: readonly StarterSlotRow[]): OutStarter[] {
   const out: OutStarter[] = [];
@@ -150,7 +234,11 @@ export function outStarters(rows: readonly StarterSlotRow[]): OutStarter[] {
       continue;
     }
     const tag = injuryTag(row.player.injuryStatus);
-    if (tag === null || !tag.isUnavailable) {
+    if (tag === null) {
+      continue;
+    }
+    const reason = outReason(tag.status, row.player.projectedPoints);
+    if (reason === null) {
       continue;
     }
     out.push({
@@ -158,6 +246,7 @@ export function outStarters(rows: readonly StarterSlotRow[]): OutStarter[] {
       fullName: row.player.fullName,
       status: tag.status,
       title: tag.title,
+      reason,
       projectedPoints: row.player.projectedPoints,
     });
   }
@@ -257,7 +346,9 @@ export function resolveStarterAvailability(
         ? null
         : OUT_STARTERS_TITLE_PREFIX +
           out
-            .map((starter) => `${starter.fullName} (${starter.title})`)
+            .map(
+              (starter) => `${starter.fullName} (${outStarterTitle(starter)})`,
+            )
             .join(", "),
   };
 }
