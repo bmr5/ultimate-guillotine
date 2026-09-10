@@ -1,7 +1,9 @@
 """The lineup arithmetic every trade tool prices with, lifted from the Advisor.
 
-Same numbers as the Advisor's candidate generator computed, tested here against
-the fixture league so the move under ``agent/tools`` changes nothing.
+These tests check the arithmetic itself, against values worked out by hand on
+the fixture league. That it computes the *same* numbers the Advisor's candidate
+generator did is a separate claim, and it is checked separately, in
+``test_math_matches_advisor.py``, against the Advisor's own functions.
 """
 
 from decimal import Decimal
@@ -74,8 +76,32 @@ def test_a_bench_for_bench_move_is_worth_nothing() -> None:
     assert lineup_delta(startable(team), [], [spare], (snapshot.week,)) == Decimal("0.00")
 
 
-def test_a_missing_projection_makes_the_delta_unknown() -> None:
+def test_a_holding_with_no_projection_makes_the_delta_unknown() -> None:
+    """A blank projection, not the coverage percentage, is what does this.
+
+    ``fixture_snapshot`` strips the per-holding numbers along with the team
+    totals by default, and it is the missing per-holding numbers the delta
+    refuses to guess at: a lineup a man short is unknown, not smaller. The
+    coverage gate itself does nothing here -- see the sibling below.
+    """
     snapshot = fixture_snapshot(coverage_pct=Decimal("50.00"))
     team = _team(snapshot, 5)
     incoming = next(h for t in snapshot.teams for h in t.holdings if h.position == "RB")
     assert lineup_delta(startable(team), [incoming], [], (snapshot.week,)) is None
+
+
+def test_below_the_gate_with_points_intact_the_delta_is_a_number() -> None:
+    """The coverage gate is the caller's business, not this module's.
+
+    Below the gate the team totals go provisional while the per-player rows keep
+    their numbers -- the shape the real snapshot has -- and ``lineup_delta`` adds
+    up whatever rows it is handed. Per-player projections are public on the
+    league board even then, so this is not a leak; it is the contract, pinned
+    here so it stays a decision rather than an accident.
+    """
+    snapshot = fixture_snapshot(coverage_pct=Decimal("50.00"), keep_player_points=True)
+    assert not snapshot.coverage_ok()
+    team = _team(snapshot, 5)
+    incoming = next(h for t in snapshot.teams for h in t.holdings if h.position == "RB")
+    delta = lineup_delta(startable(team), [incoming], [], (snapshot.week,))
+    assert isinstance(delta, Decimal)

@@ -25,7 +25,6 @@ from ultimate_guillotine.advisor.state import (
 POSITIONS = ("QB", "RB", "WR", "TE")
 ROSTER_POSITIONS = ("QB", "RB", "RB", "WR", "WR", "TE", "FLEX", "K", "DEF")
 FLEX_SLOT = "FLEX"
-LEAGUE_TEAMS = 18
 #: The Nth-best projection at a position is what a free replacement is worth.
 #: The single FLEX is counted once, at WR, the position that in practice fills it.
 REPLACEMENT_RANK = {"QB": 18, "RB": 36, "WR": 54, "TE": 18}
@@ -46,7 +45,6 @@ def _starter_slots() -> dict[str, int]:
 STARTER_SLOTS = _starter_slots()
 
 __all__ = [
-    "LEAGUE_TEAMS",
     "NO_POINTS",
     "POINT_PRECISION",
     "POSITIONS",
@@ -119,8 +117,23 @@ def lineup_delta(
 ) -> Decimal | None:
     """What these legs do to one side's best lineup, summed over ``weeks``.
 
+    **The coverage gate is the caller's job, not this function's.** The
+    Advisor's ``_lineup_delta`` took a ``known`` flag and returned ``None``
+    below the gate; this one takes no such flag and computes from whatever
+    per-player projections it is handed -- below the gate included, where the
+    team totals go provisional while the per-player rows keep their numbers.
+    That is deliberate, not an oversight of the lift: per-player projections
+    are public on the league board even when a team total is withheld, so a
+    delta computed from them discloses nothing the board does not already show.
+    The gate belongs at the tool boundary instead, where a team total would be
+    quoted, so a caller that means to respect it must check
+    :meth:`~ultimate_guillotine.advisor.state.LeagueSnapshot.coverage_ok`
+    itself, first. ``test_below_the_gate_with_points_intact_the_delta_is_a_number``
+    pins this.
+
     ``None`` when anybody who could contest the touched slots has no projection
-    for a covered week: a lineup a man short is unknown, not smaller.
+    for a covered week: a lineup a man short is unknown, not smaller. That is
+    the *only* reason this function returns ``None``.
     """
     moving = list(incoming) + list(outgoing)
     if any(h.projected_for(week) is None for h in _contenders(roster, moving) for week in weeks):
