@@ -23,6 +23,35 @@ export function formerManagerPhrase(count: number): string {
 }
 
 /**
+ * What a placing reads as when `season_results` recorded nobody in it at all.
+ *
+ * Not "Former manager": that claims a person the sheet never named. A season whose
+ * `champion_member_id` is null is a season nobody has loaded a champion for — a hole in the
+ * data, and the one case where saying so is the honest answer.
+ */
+export const NOT_RECORDED = "Not recorded";
+
+/**
+ * The word for one of a season's placings, from its label and the id the row carried.
+ *
+ * Both facts are needed and neither is enough. `ownerLabelFor` answers `null` for an id that
+ * names nobody *and* for no id at all, so a champion line reading off the label alone cannot
+ * tell "a manager who has left" from "the sheet never recorded a champion" and prints the
+ * same word for both. The id separates them: present means a person the directory cannot
+ * name, absent means no person was recorded.
+ *
+ * Shared by the season cards and the winners strip so the two can never drift into
+ * describing the same season differently.
+ */
+export function seasonPlacingLabel(
+  label: string | null,
+  memberId: number | null,
+): string {
+  if (label !== null) return label;
+  return memberId === null ? NOT_RECORDED : FORMER_MANAGER;
+}
+
+/**
  * The public label for a member id, or `null` when no label can be honestly written.
  *
  * `null` — not a placeholder string — when the id is absent or names nobody in `members`: the

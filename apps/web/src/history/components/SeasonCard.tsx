@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 
-import { FORMER_MANAGER } from "../derive/ownerLabel";
+import { FORMER_MANAGER, seasonPlacingLabel } from "../derive/ownerLabel";
 import type { SeasonElimination, SeasonResult } from "../types";
 
 /**
@@ -58,6 +58,25 @@ function eliminationText(
   }`;
 }
 
+/**
+ * One of the placings that trail the champion, or `null` for one the season never recorded.
+ *
+ * The id decides whether the clause exists at all: a season with no runner-up on file says
+ * nothing about a runner-up, which is why these are dropped rather than printed as "Not
+ * recorded" the way the champion line is — the champion line is the card's subject and
+ * always renders, these are an aside. But a placing the sheet *did* record and the directory
+ * cannot name is a person, and dropping it would lose a fact the row is carrying; it reads
+ * "Runner-up Former manager", the same as the champion line above it.
+ */
+function placingText(
+  role: string,
+  label: string | null,
+  memberId: number | null,
+): string | null {
+  if (memberId === null) return null;
+  return `${role} ${label ?? FORMER_MANAGER}`;
+}
+
 interface Props {
   season: SeasonResult;
   labelForMember: (memberId: number | null) => string | null;
@@ -67,9 +86,13 @@ export function SeasonCard({ season, labelForMember }: Props) {
   const [open, setOpen] = useState(false);
   const panelId = useId();
   const runnerUps = [
-    season.coChampionLabel && `Co-champion ${season.coChampionLabel}`,
-    season.runnerUpLabel && `Runner-up ${season.runnerUpLabel}`,
-    season.thirdLabel && `Third ${season.thirdLabel}`,
+    placingText(
+      "Co-champion",
+      season.coChampionLabel,
+      season.coChampionMemberId,
+    ),
+    placingText("Runner-up", season.runnerUpLabel, season.runnerUpMemberId),
+    placingText("Third", season.thirdLabel, season.thirdMemberId),
     season.teamCount !== null && `${season.teamCount} teams`,
   ].filter((part): part is string => Boolean(part));
 
@@ -81,7 +104,7 @@ export function SeasonCard({ season, labelForMember }: Props) {
             Champion {season.season}
           </p>
           <p className="text-2xl font-semibold">
-            {season.championLabel ?? FORMER_MANAGER}
+            {seasonPlacingLabel(season.championLabel, season.championMemberId)}
           </p>
           {runnerUps.length > 0 && (
             <p className="text-sm text-muted-foreground">

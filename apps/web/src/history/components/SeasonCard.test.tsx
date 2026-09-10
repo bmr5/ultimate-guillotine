@@ -7,9 +7,13 @@ import { SeasonCard } from "./SeasonCard";
 const SEASON: SeasonResult = {
   season: 2024,
   championLabel: "Alpha",
+  championMemberId: 1,
   coChampionLabel: null,
+  coChampionMemberId: null,
   runnerUpLabel: null,
+  runnerUpMemberId: null,
   thirdLabel: null,
+  thirdMemberId: null,
   teamCount: 19,
   eliminations: [
     // 2024's grid states both counts; the `0` is a figure the sheet wrote, not a missing one.
@@ -59,12 +63,46 @@ describe("SeasonCard", () => {
   it("calls a champion it could not resolve a former manager", () => {
     render(
       <SeasonCard
-        season={{ ...SEASON, championLabel: null }}
+        season={{ ...SEASON, championLabel: null, championMemberId: 42 }}
         labelForMember={() => "Bravo"}
       />,
     );
     expect(screen.getByText("Former manager")).toBeInTheDocument();
     expect(screen.queryByText("Unlisted")).not.toBeInTheDocument();
+  });
+
+  // The other half of the same null label: no champion on file at all. Calling that a
+  // former manager would claim a person the sheet never named.
+  it("says a season with no champion recorded is not recorded", () => {
+    render(
+      <SeasonCard
+        season={{ ...SEASON, championLabel: null, championMemberId: null }}
+        labelForMember={() => "Bravo"}
+      />,
+    );
+    expect(screen.getByText("Not recorded")).toBeInTheDocument();
+    expect(screen.queryByText("Former manager")).not.toBeInTheDocument();
+  });
+
+  it("keeps a runner-up it could not name, and drops one never recorded", () => {
+    render(
+      <SeasonCard
+        season={{
+          ...SEASON,
+          runnerUpLabel: null,
+          runnerUpMemberId: 42,
+          thirdLabel: "Charlie",
+          thirdMemberId: 3,
+        }}
+        labelForMember={() => "Bravo"}
+      />,
+    );
+    // The row recorded a runner-up, so the clause survives with the same word the champion
+    // line uses; the co-champion the row left null says nothing at all.
+    expect(
+      screen.getByText(/Runner-up Former manager · Third Charlie · 19 teams/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Co-champion/)).not.toBeInTheDocument();
   });
 
   it("says a week the sheet named was a former manager, not a week of counts", () => {
