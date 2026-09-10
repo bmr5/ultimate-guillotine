@@ -1,9 +1,15 @@
 """Read the analyst's trade classification into rows fit for a public table.
 
 The file is private and stays private. Fields are copied through an allowlist rather
-than by deleting `notes` and `source_texts` from a copy, so a field the analyst adds
-next month is dropped by default instead of published by default -- which is the
-difference between a privacy rule and a privacy habit.
+than by deleting the private ones from a copy, so a field the analyst adds next month
+is dropped by default instead of published by default -- which is the difference
+between a privacy rule and a privacy habit.
+
+One field is now published on purpose. Ben's ruling of 2026-09-10 is that the trade
+cards are unreadable without the words that went with the deal, so `source_texts` --
+the league's own announcement of the trade -- is read into `announcement`. That is a
+decision about the *league's* text, not about the analyst's: `notes` is his commentary
+on other people's business and stays out of the allowlist, where it has always been.
 
 The file's own shape is not the table's. A record keeps its assets as parallel lists
 (`players`, `positions`, `faab`, `return_conditions`) and its date as one field holding
@@ -30,12 +36,14 @@ from ultimate_guillotine.trades.names import normalize_name
 # not reused -- see `PlayerIndex`.
 from ultimate_guillotine.trades.resolve import _match_defense
 
-#: The only keys read from a classification record. `notes` and `source_texts` are absent
-#: on purpose and adding either is a privacy regression, not a feature. `source` is absent
-#: too: it says which private artefact the analyst read, which is nobody's business but his.
+#: The only keys read from a classification record. `source_texts` is here by Ben's ruling
+#: and is the one chat-derived field the catalog publishes. `notes` is absent on purpose and
+#: adding it is a privacy regression, not a feature -- it is the analyst's commentary on the
+#: league, not the league's own words. `source` is absent too: it says which private artefact
+#: he read, which is nobody's business but his.
 CATALOG_FIELDS = (
     "id", "season", "week_or_date", "type", "structure", "parties", "assets",
-    "faab_total", "confidence",
+    "faab_total", "confidence", "source_texts",
 )
 
 #: A return condition is a label from this closed set, never prose. The database's
@@ -264,6 +272,28 @@ def _condition_assets(assets: dict[str, Any]) -> tuple[list[dict[str, Any]], int
     return built, unmapped
 
 
+#: Two messages about one trade are two paragraphs, not one run-on line. A blank line is how
+#: a reader tells them apart without the loader inventing a speaker or a timestamp for either.
+ANNOUNCEMENT_SEPARATOR = "\n\n"
+
+
+def _announcement(value: Any) -> str | None:
+    """`source_texts` -- the league's messages about the trade -- as one block, or nothing.
+
+    Strings only. An entry the analyst wrote as an object is a shape this reader does not
+    understand, and `str()` on it would publish whatever repr it happens to have rather than
+    admit the entry was unreadable -- the same rule `_player_assets` applies to a name.
+
+    A field that is not a list, an empty list, and a list of blanks all read as `None`, which
+    the card renders as nothing at all. An empty quote block would say the league said nothing,
+    when what happened is that the record carries nothing.
+    """
+    if not isinstance(value, list):
+        return None
+    messages = [text.strip() for text in value if isinstance(text, str) and text.strip()]
+    return ANNOUNCEMENT_SEPARATOR.join(messages) or None
+
+
 def read_record(
     record: dict[str, Any],
     index: dict[str, int | None],
@@ -318,6 +348,9 @@ def read_record(
             assets=assets,
             faab_total=_whole(picked["faab_total"]),
             confidence=confidence,
+            # The one field here that is the league's own words. Everything else on this row
+            # is an id, a count or a label precisely so that this can be the only one.
+            announcement=_announcement(picked["source_texts"]),
             unresolved_parties=unresolved,
             loaded_at=loaded_at,
         ),

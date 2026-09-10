@@ -40,6 +40,9 @@ def _row(**overrides) -> CatalogRow:
         "assets": [{"kind": "faab", "amount": 12, "from_party": 0, "to_party": 1}],
         "faab_total": 12,
         "confidence": "high",
+        # Synthetic, and multi-paragraph on purpose: the column has to survive the newlines
+        # the loader puts between two messages, and `to_jsonb` below compares it byte for byte.
+        "announcement": "ANNOUNCEMENT-ONE\n\nANNOUNCEMENT-TWO",
         "unresolved_parties": 2,
         "loaded_at": LOADED_AT,
     }
@@ -104,6 +107,24 @@ def test_catalog_upsert_inserts_then_updates(conn) -> None:
         assert cur.fetchone()[0] == corrected_assets
 
 
+def test_a_rerun_clears_an_announcement_the_file_no_longer_carries(conn) -> None:
+    """The file is the source of truth for this column, so the upsert overwrites it.
+
+    `season_results.notes` coalesces instead, because Ben types those on the command line
+    and a rerun passes none -- here a run that passes none means the record lost its text,
+    and a card that kept quoting text the file no longer holds would be quoting nothing.
+    """
+    repo = HistoryRepository(conn)
+    assert repo.upsert_catalog(_row(catalog_id="2099-015")) == "inserted"
+    assert repo.upsert_catalog(_row(catalog_id="2099-015", announcement=None)) == "updated"
+
+    with conn.cursor() as cur:
+        cur.execute(
+            "select announcement from public.trade_catalog where catalog_id = %s", ("2099-015",)
+        )
+        assert cur.fetchone()[0] is None
+
+
 def test_catalog_rerun_is_byte_identical(conn) -> None:
     """The idempotency claim, checked as a whole-row comparison rather than a count."""
     repo = HistoryRepository(conn)
@@ -115,6 +136,7 @@ def test_catalog_rerun_is_byte_identical(conn) -> None:
     with conn.cursor() as cur:
         cur.execute(read_back, ("2099-014",))
         first = cur.fetchone()[0]
+    assert first["announcement"] == "ANNOUNCEMENT-ONE\n\nANNOUNCEMENT-TWO"
     repo.upsert_catalog(_row(catalog_id="2099-014"))
     with conn.cursor() as cur:
         cur.execute(read_back, ("2099-014",))

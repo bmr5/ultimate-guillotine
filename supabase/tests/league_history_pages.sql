@@ -1,5 +1,5 @@
 begin;
-select plan(29);
+select plan(31);
 
 select has_table('public', 'trade_catalog', 'trade_catalog table exists');
 select has_table('public', 'season_results', 'season_results table exists');
@@ -107,6 +107,17 @@ select throws_ok(
 
 -- Neither table stores a person's name: parties and champions are public.members ids.
 select has_column('public', 'trade_catalog', 'party_member_ids', 'parties are stored as ids');
+
+-- The one chat-derived field either table carries, by Ben's decision of 2026-09-10. Nullable,
+-- because a record with no text must render as nothing rather than as a placeholder -- so the
+-- column is asserted nullable rather than merely present.
+select has_column(
+  'public', 'trade_catalog', 'announcement', 'the trade announcement has a column'
+);
+select col_is_null(
+  'public', 'trade_catalog', 'announcement',
+  'a trade the catalog has no announcement for carries none'
+);
 select has_column(
   'public', 'season_results', 'champion_member_id', 'champions are stored as ids'
 );
