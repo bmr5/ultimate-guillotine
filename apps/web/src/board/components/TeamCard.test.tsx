@@ -4,6 +4,8 @@ import { describe, expect, it, vi } from "vitest";
 import type { BoardTeam, RosterPlayer } from "../types";
 import {
   CHIP_ROW_MIN_HEIGHT_CLASS,
+  OWNER_NAME_RESERVE_ONE_CHIP_CLASS,
+  OWNER_NAME_RESERVE_TWO_CHIP_CLASS,
   SUMMARY_MIN_HEIGHT_CLASS,
   TEAM_CARD_CLASS,
   TeamCard,
@@ -123,9 +125,42 @@ const partialChip = () =>
 /** The `N starter(s) out` chip, beside the owner's name. */
 const outChip = () => screen.getByText(OUT_CHIP_TEXT).closest("[data-chip]");
 
-/** The chip row, mounted whether or not there is anything in it. */
+/** The chip row overlaid on the owner's line, mounted whether or not it holds anything. */
 const chipRow = (container: HTMLElement) =>
   container.querySelector("[data-chip-row]");
+
+/** The row below the summary line the chips fall back to, likewise always mounted. */
+const chipStack = (container: HTMLElement) =>
+  container.querySelector("[data-chip-stack]");
+
+/** The owner's name, which reserves room for whatever is overlaid on its line. */
+const ownerName = (container: HTMLElement) =>
+  container.querySelector("[data-owner-name]");
+
+/** What is in a chip row, named by state rather than by wording. */
+const chipKinds = (row: Element | null) =>
+  [...(row?.querySelectorAll("[data-chip]") ?? [])].map((chip) =>
+    chip.getAttribute("data-chip"),
+  );
+
+/** The summary's shape: its own tag and data attribute, and its children's, in order. */
+const outline = (container: HTMLElement) => {
+  const summary = container.querySelector("[data-card-summary]");
+  return [...(summary?.children ?? [])].map((child) =>
+    [
+      child.tagName,
+      child.hasAttribute("data-chip-row") ? "chip-row" : "",
+      child.hasAttribute("data-chip-stack") ? "chip-stack" : "",
+      child.getAttribute("aria-controls") === null ? "" : "toggle",
+    ].join(":"),
+  );
+};
+
+/** Every element between the card and its collapsible panel: the rows a card is made of. */
+const rowCount = (container: HTMLElement) =>
+  container.querySelectorAll(
+    `.${TEAM_CARD_CLASS} > * > div:not([hidden]):not([data-chip-row])`,
+  ).length;
 
 /** The sentence a chip is described by, read the way a screen reader would reach it. */
 const chipDescription = (chip: Element | null) => {
@@ -804,24 +839,6 @@ describe("TeamCard summary chips", () => {
  * chips in that same row, so no card carries a row its neighbour does not.
  */
 describe("TeamCard equal heights", () => {
-  /** The summary's shape: its own tag and data attribute, and its children's, in order. */
-  const outline = (container: HTMLElement) => {
-    const summary = container.querySelector("[data-card-summary]");
-    return [...(summary?.children ?? [])].map((child) =>
-      [
-        child.tagName,
-        child.hasAttribute("data-chip-row") ? "chip-row" : "",
-        child.getAttribute("aria-controls") === null ? "" : "toggle",
-      ].join(":"),
-    );
-  };
-
-  /** Every element between the card and its collapsible panel: the rows a card is made of. */
-  const rowCount = (container: HTMLElement) =>
-    container.querySelectorAll(
-      `.${TEAM_CARD_CLASS} > * > div:not([hidden]):not([data-chip-row])`,
-    ).length;
-
   const loud = () => ({
     ...outTeam(),
     isEliminated: true,
@@ -983,5 +1000,101 @@ describe("TeamCard out starters", () => {
     );
     expect(outChip()).not.toBeNull();
     expect(screen.getByText("Projection unavailable")).toBeInTheDocument();
+  });
+});
+
+/**
+ * Re-review of the fix round: `pr-24` on the owner's name was one chip's worth of room under a
+ * row that now also carries the elimination ruling and `Projection unavailable`, so two chips
+ * rendered over the name and a third clipped. The reserve follows the chips the card actually
+ * has, and past two they leave the owner's line for a row of their own.
+ */
+describe("TeamCard chip crowding", () => {
+  const options = { rosterPositions: LEAGUE_SLOTS };
+
+  /** Ben's card, eliminated: an out starter and an elimination, on one line. */
+  const twoChipTeam = (): Partial<BoardTeam> => ({
+    ...outTeam(),
+    isEliminated: true,
+    eliminatedWeek: 4,
+    eliminationSource: "adjudicator",
+  });
+
+  /** The same card with no projection row: everything this card can say at once. */
+  const threeChipTeam = (): Partial<BoardTeam> => ({
+    ...twoChipTeam(),
+    projectedPoints: null,
+  });
+
+  it("keeps the one-chip reserve on a card carrying one chip", () => {
+    const { container } = renderCard(partialTeam());
+    expect(chipKinds(chipRow(container))).toEqual(["partial"]);
+    expect(ownerName(container)?.className).toContain(
+      OWNER_NAME_RESERVE_ONE_CHIP_CLASS,
+    );
+  });
+
+  it("leaves the name its whole line when there is no chip at all", () => {
+    const { container } = renderCard();
+    expect(chipKinds(chipRow(container))).toEqual([]);
+    // Not "a narrower reserve": none. There is nothing on the line to dodge.
+    expect(ownerName(container)?.className).not.toContain("pr-");
+  });
+
+  it("widens the reserve for two chips instead of running them over the name", () => {
+    const { container } = renderCard(twoChipTeam(), options);
+    expect(chipKinds(chipRow(container))).toEqual(["out", "eliminated"]);
+    const className = ownerName(container)?.className ?? "";
+    expect(className).toContain(OWNER_NAME_RESERVE_TWO_CHIP_CLASS);
+    expect(className).not.toContain(OWNER_NAME_RESERVE_ONE_CHIP_CLASS);
+    // Still one row on the card: two chips stay on the owner's line, where Ben wants them.
+    expect(rowCount(container)).toBe(1);
+    expect(chipKinds(chipStack(container))).toEqual([]);
+  });
+
+  it("moves three chips off the owner's line into the row below the summary", () => {
+    const { container } = renderCard(threeChipTeam(), options);
+    expect(chipKinds(chipRow(container))).toEqual([]);
+    expect(chipKinds(chipStack(container))).toEqual([
+      "out",
+      "unavailable",
+      "eliminated",
+    ]);
+    // Nothing is overlaid on the name any more, so it reserves nothing.
+    expect(ownerName(container)?.className).not.toContain("pr-");
+  });
+
+  it("keeps a stacked chip a real tooltip trigger, in an inert row", async () => {
+    const { container } = renderCard(threeChipTeam(), options);
+    const row = chipStack(container);
+    expect(row?.className).toContain("pointer-events-none");
+    const chip = outChip() as HTMLElement;
+    expect(row?.contains(chip)).toBe(true);
+    expect(chip.tagName).toBe("BUTTON");
+    expect(chip.className).toContain("pointer-events-auto");
+    await tap(chip);
+    expect(screen.getByRole("tooltip")).toHaveTextContent(
+      "Out starters: Broken Tightend (Out)",
+    );
+  });
+
+  it("keeps the three-chip card the same shape and height as a plain one", () => {
+    const stacked = renderCard(threeChipTeam(), options);
+    const stackedOutline = outline(stacked.container);
+    const stackedRows = rowCount(stacked.container);
+    expect(chipStack(stacked.container)?.className).toContain(
+      CHIP_ROW_MIN_HEIGHT_CLASS,
+    );
+    stacked.unmount();
+
+    // The row is mounted, floored and empty on the card with nothing to say — which is what
+    // stops the loud card being the one card in the grid that is taller than its neighbours.
+    const plain = renderCard({}, options);
+    expect(chipStack(plain.container)?.className).toContain(
+      CHIP_ROW_MIN_HEIGHT_CLASS,
+    );
+    expect(chipKinds(chipStack(plain.container))).toEqual([]);
+    expect(outline(plain.container)).toEqual(stackedOutline);
+    expect(rowCount(plain.container)).toBe(stackedRows);
   });
 });
