@@ -248,6 +248,10 @@ def _wire(
     )
     monkeypatch.setattr(summary_cli, "find_hermes_binary", lambda: "/x/hermes" if hermes else None)
     monkeypatch.setattr(summary_cli, "SummaryRepository", lambda conn: "repo")
+    # The pre-read refresh is a no-op unless a test wires the recording fakes in.
+    monkeypatch.setattr(summary_cli, "sync_season", lambda *args, **kwargs: None)
+    monkeypatch.setattr(summary_cli, "sync_transactions", lambda *args, **kwargs: None)
+    monkeypatch.setattr(summary_cli, "season_id_for", lambda conn, year: 4)
 
     def fake_load(conn, client, now):
         if isinstance(snapshot, Exception):
