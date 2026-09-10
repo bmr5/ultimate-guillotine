@@ -270,10 +270,10 @@ def cmd_draft(args: argparse.Namespace) -> int:
 
     The season is the league's own (`SYNC_YEAR`), not the year `nfl_state` reports:
     the auction belongs to the league season it opened, and a January run must not
-    file it under the next NFL year. Before the auction is complete the sync reports
-    `skipped` and the run stays green; afterwards it writes 162 rows a day whether or
-    not they changed, so a pick Sleeper corrects reaches the board without anyone
-    remembering to run this by hand.
+    file it under the next NFL year. Run by hand once a year, after the auction (Ben,
+    2026-09-10: "drop the cron it's a waste. have this as a script that we just run once
+    a year"); before the auction is complete it reports `skipped`, and a rerun rewrites
+    the same rows, so running it twice costs nothing.
     """
     deps = build_deps()
     conn = deps.conn

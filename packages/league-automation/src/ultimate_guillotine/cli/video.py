@@ -250,8 +250,8 @@ def cmd_render(args: argparse.Namespace) -> int:
             job = prepare(req, load_assets(), ffmpeg=ffmpeg, ffprobe=ffprobe)
             print(" ".join(shlex.quote(part) for part in job.command))
             return 0
-        job = render(req, load_assets(), ffmpeg=ffmpeg, ffprobe=ffprobe)
-    except (RenderError, ToolMissing) as exc:
+        job = render(req, load_assets(), ffmpeg=ffmpeg, ffprobe=ffprobe, report=print)
+    except (RenderError, ToolMissing, hf.HiggsfieldError) as exc:
         print(f"ug video render: {exc}", file=sys.stderr)
         return 1
     print(job.composite.output)

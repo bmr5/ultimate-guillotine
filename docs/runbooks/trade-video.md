@@ -90,6 +90,22 @@ voice. The read is printed before the generation starts.
 - The voice is whatever Seedance gives the character. Nothing here clones Adam Schefter's
   actual voice from the ESPN audio; that would be a different, deliberate step.
 
+## If a generation hangs or the wait dies
+
+`render --voiced` / `--base generated` prints `higgsfield job <id> queued` as soon as the job
+exists, then polls `higgsfield generate get <id>` every 15 s for up to 30 minutes, riding out
+transient errors. A 12 s clip with audio has taken over 20 minutes. If the command still dies
+(laptop asleep, timeout), the credits are not lost: the job keeps running on Higgsfield.
+
+```bash
+higgsfield generate get <id> --json          # status and, when done, result_url
+curl -L -o data/media/generated/<name>.mp4 "<result_url>"
+uv run --project packages/league-automation python -m ultimate_guillotine.cli.main video render \
+  --trade T-2026-003 --base data/media/generated/<name>.mp4 --keep-voice --music-gain -12
+```
+
+`higgsfield generate list --json` shows recent jobs when the id was not caught.
+
 ## What the one generated clip looked like (2026-09-10)
 
 Seedance 2.5 in `omni_reference` mode with the Denzo clip as the reference produced an 8 s
