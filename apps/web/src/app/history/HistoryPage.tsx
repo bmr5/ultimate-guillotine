@@ -31,7 +31,10 @@ export function HistoryPage() {
       {seasons.length > 0 && (
         <>
           <WinnersStrip seasons={seasons} />
-          <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <ul
+            aria-label="Seasons"
+            className="grid grid-cols-1 gap-2 sm:grid-cols-2"
+          >
             {seasons.map((season) => (
               <SeasonCard
                 key={season.season}

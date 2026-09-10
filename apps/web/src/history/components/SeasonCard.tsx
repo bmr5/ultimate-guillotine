@@ -12,7 +12,7 @@ import type { SeasonElimination, SeasonResult } from "../types";
  * tie back to a member is "Unlisted" — the same word `/trades` uses for a player the directory
  * cannot name — never a blank, and never a real name pulled from `members.display_name`.
  */
-export const UNRECORDED_OWNER = "Unlisted";
+export const UNLISTED_OWNER = "Unlisted";
 
 /**
  * The focus ring every other bare `<button>` on the site carries (see `TradeCard`). This one is
@@ -77,7 +77,7 @@ export function SeasonCard({ season, labelForMember }: Props) {
             Champion {season.season}
           </p>
           <p className="text-2xl font-semibold">
-            {season.championLabel ?? UNRECORDED_OWNER}
+            {season.championLabel ?? UNLISTED_OWNER}
           </p>
           {runnerUps.length > 0 && (
             <p className="text-sm text-muted-foreground">

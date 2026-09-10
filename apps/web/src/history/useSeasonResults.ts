@@ -24,13 +24,12 @@ export interface SeasonResultsError {
 function toEliminations(value: unknown): SeasonElimination[] {
   if (!Array.isArray(value)) return [];
   return (value as Record<string, unknown>[]).map((entry, index) => ({
-    week: Number(entry.week ?? 0),
+    week: typeof entry.week === "number" ? entry.week : 0,
     order: Number(entry.order ?? index + 1),
     memberId: typeof entry.member_id === "number" ? entry.member_id : null,
     gulagOut: typeof entry.gulag_out === "number" ? entry.gulag_out : null,
     poolOut: typeof entry.pool_out === "number" ? entry.pool_out : null,
     remaining: typeof entry.remaining === "number" ? entry.remaining : null,
-    note: typeof entry.note === "string" ? entry.note : null,
   }));
 }
 

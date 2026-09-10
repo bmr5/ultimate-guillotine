@@ -72,8 +72,6 @@ export interface SeasonElimination {
   memberId: number | null;
   gulagOut: number | null;
   poolOut: number | null;
-  remaining: number | null;
-  note: string | null;
 }
 
 export interface SeasonResult {
