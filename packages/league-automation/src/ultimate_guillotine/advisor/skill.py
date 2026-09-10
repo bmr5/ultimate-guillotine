@@ -465,7 +465,7 @@ def advisor_trigger(advisor: TradeAdvisor, chat_guid: str) -> Trigger:
     call. ``chat_guid`` is the one chat the Advisor answers in -- the listener
     accepts webhooks from every registered delivery target, so without this a
     question in the production chat would be answered by a skill that is only
-    cleared for the self-test one. The ``@bot`` tag and the advice-versus-lookup
+    cleared for the self-test one. The ``@daddy`` tag and the advice-versus-lookup
     rule are :func:`~ultimate_guillotine.advisor.detect.is_advice_request`, so a
     factual question routes to the Concierge and the Advisor stays quiet. And
     the bot's own posts are excluded by their signature, which is the only

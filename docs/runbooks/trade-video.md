@@ -136,7 +136,7 @@ path uses the real segment the reference used.
 ## Asking for one from the chat
 
 Reply to a trade alert (or to the bot's "🚨 Trade T-2026-003 logged" line, or say the code)
-with **`@bot create trade video`**. The listener answers within a second:
+with **`@daddy create trade video`**. The listener answers within a second:
 
 > 🎬 On it — the video for T-2026-003 usually takes 5 to 10 minutes.
 

@@ -1,4 +1,4 @@
-"""``@bot create trade video``: the reply that asks for a video.
+"""``@daddy create trade video``: the reply that asks for a video.
 
 Ben replies to a trade alert (or to the bot's own confirmation) with a tagged
 request; the trade is read off the reply thread, a job is queued, and one line
@@ -24,7 +24,7 @@ AGENT = "trade-video"
 #: 2026-09-10, and Higgsfield's queue adds what it adds.
 ETA = "usually takes 5 to 10 minutes"
 
-_TAG = re.compile(r"@bot\b", re.IGNORECASE)
+_TAG = re.compile(r"@daddy\b", re.IGNORECASE)
 _VIDEO = re.compile(r"\bvideo\b", re.IGNORECASE)
 TRADE_CODE = re.compile(r"\b(?:TEST|T)-\d{4}-\d{3}\b")
 
@@ -53,7 +53,7 @@ def code_variants(code: str) -> list[str]:
 
 
 def is_video_request(text: str) -> bool:
-    """Tagged and about a video; every other ``@bot`` message is someone else's."""
+    """Tagged and about a video; every other ``@daddy`` message is someone else's."""
     return bool(_TAG.search(text) and _VIDEO.search(text))
 
 

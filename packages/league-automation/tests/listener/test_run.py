@@ -546,7 +546,7 @@ def _advice_request(chat_guid: str) -> InboundMessage:
         guid="g2",
         chat_guid=chat_guid,
         sender_address="+15555550100",
-        text="@bot who should I trade with for a RB",
+        text="@daddy who should I trade with for a RB",
         is_from_me=False,
         is_group=True,
         sent_at=datetime.now(UTC),
