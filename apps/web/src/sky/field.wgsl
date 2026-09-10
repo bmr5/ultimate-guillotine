@@ -77,8 +77,8 @@ fn tonemapAces(color: vec3f) -> vec3f {
     let d = density(p, params.time);
     if (d > 0.001) {
       let glow = palette(clamp(d * 0.9 + p.y * 0.3 + 0.35, 0.0, 1.0));
-      let absorb = exp(-d * stepSize * 1.8);
-      accumulated += glow * d * transmittance * stepSize * 1.6;
+      let absorb = exp(-d * stepSize * 1.4);
+      accumulated += glow * d * transmittance * stepSize * 2.4;
       transmittance *= absorb;
     }
     t += stepSize;

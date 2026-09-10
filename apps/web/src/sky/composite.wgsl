@@ -16,7 +16,9 @@ fn tonemapAces(color: vec3f) -> vec3f {
   let base = textureSampleLevel(scene, samp, uv, 0.0).rgb;
   let glow = textureSampleLevel(bloom, samp, uv, 0.0).rgb;
   let centered = uv - 0.5;
-  let vignette = 1.0 - dot(centered, centered) * 0.6;
-  let color = tonemapAces((base + glow * 0.6) * vignette);
+  // Ben (2026-09-10): the aurora at full power, not a wash behind the cards — a gentle
+  // vignette and the bloom added whole, with the scene lifted before tone mapping.
+  let vignette = 1.0 - dot(centered, centered) * 0.3;
+  let color = tonemapAces((base * 1.5 + glow * 1.0) * vignette);
   return vec4f(color, 1.0);
 }
