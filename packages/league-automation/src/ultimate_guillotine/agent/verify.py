@@ -9,20 +9,28 @@ hold are all the agent's business -- so a creative answer fails only when it
 is wrong about something.
 
 Every problem is a sentence the agent can act on, because the retry envelope
-hands the list straight back into the session.
+hands the list straight back into the session -- and the worker may copy the
+list into the ops notes verbatim, so no sentence repeats a token the model
+wrote. A player is named by his ``full_name`` and a member by their
+``member_label``, the league's one public label; a name that resolves to
+neither is described by where it sat ("the holder given for Bench 05-0")
+rather than quoted. As a last guard the fact sentences go through
+:func:`privacy_problems` themselves, and one that trips it is replaced by
+:data:`UNPUBLISHED`.
 """
 
 import re
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 
 from ultimate_guillotine.advisor.state import AdvisorTeamState, LeagueSnapshot
-from ultimate_guillotine.agent.answer import FREE_AGENT, LeagueAnswer, ProposalLeg
+from ultimate_guillotine.agent.answer import FREE_AGENT, LeagueAnswer, Proposal, ProposalLeg
 from ultimate_guillotine.agent.artifact import ARTIFACT_MAX_BYTES
 from ultimate_guillotine.agent.tools.math import holdings_by_id
 from ultimate_guillotine.agent.tools.names import (
     Ambiguous,
     PlayerInfo,
     Unknown,
+    player_pool,
     resolve_member,
     resolve_player,
 )
@@ -34,9 +42,12 @@ _EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
 _CHAT = re.compile(r"iMessage;[+-];|SMS;[+-];", re.IGNORECASE)
 _HASH = re.compile(r"\b[0-9a-f]{64}\b")
 _DUES = re.compile(r"\bdues\b", re.IGNORECASE)
+#: Possessives and contractions, which ``normalize_name`` would otherwise fuse
+#: with the word before them ("joinkey05's" -> "joinkey05s").
+_APOSTROPHES = str.maketrans({"'": " ", "’": " "})
 
-_PlayerOf = Callable[[str | None, str | None], PlayerInfo | None]
-_CheckOnRoster = Callable[[PlayerInfo, str], None]
+#: What replaces a fact sentence that would itself say something unpublished.
+UNPUBLISHED = "a check failed on a fact that named something the league does not publish"
 
 
 def privacy_problems(text: str, members: Sequence[MemberRef]) -> list[str]:
@@ -52,23 +63,30 @@ def privacy_problems(text: str, members: Sequence[MemberRef]) -> list[str]:
         problems.append("a hash")
     if _DUES.search(text):
         problems.append("dues")
-    words = set(normalize_name(text).split())
+    # A phrase match, so a multi-word key is caught whole and a possessive is
+    # caught at all. A key that is the member's public label is not a leak:
+    # the label is what the league says.
+    haystack = f" {normalize_name(text.translate(_APOSTROPHES))} "
     for member in members:
         label = member.nickname or member.sleeper_display_name or member.display_name
         key = normalize_name(member.display_name)
-        if key and key != normalize_name(label) and key in words:
+        if key and key != normalize_name(label) and f" {key} " in haystack:
             problems.append("a member's join key")
             break
     return problems
 
 
-def _same_member(
-    snapshot: LeagueSnapshot, members: Sequence[MemberRef], name: str, team: AdvisorTeamState
-) -> bool:
-    try:
-        return resolve_member(name, snapshot, members).member_id == team.member_id
-    except (Unknown, Ambiguous):
-        return False
+def _unresolved_member(subject: str, exc: Unknown | Ambiguous) -> str:
+    """The sentence for a member name that did not resolve; the name stays unsaid."""
+    if isinstance(exc, Ambiguous):
+        return f"{subject} could mean more than one member; ask which"
+    return f"{subject} matches no member; name members by their league label"
+
+
+def _unresolved_player(subject: str, exc: Unknown | Ambiguous) -> str:
+    if isinstance(exc, Ambiguous):
+        return f"{subject} could mean more than one player; ask which"
+    return f"{subject} matches no known player; name players by their full name"
 
 
 def verify(
@@ -82,34 +100,64 @@ def verify(
 ) -> list[str]:
     """Every problem with the answer, or an empty list."""
     problems: list[str] = []
-    # One roster index per call; every "who holds him" below is a lookup in it.
+    # One roster index and one player pool per call; every lookup below is in them.
     holdings = holdings_by_id(snapshot)
+    pool = player_pool(snapshot, players)
 
     def holder_of(player_id: str) -> AdvisorTeamState | None:
         held = holdings.get(player_id)
         return None if held is None else held[0]
 
-    def player_of(name: str | None, player_id: str | None) -> PlayerInfo | None:
-        token = player_id or name or ""
+    def player_of(player_id: str | None, name: str | None, subject: str) -> PlayerInfo | None:
+        """The player the id names, else the one the name resolves to, else a problem."""
+        if player_id and player_id in pool:
+            return pool[player_id]
         try:
-            if player_id and player_id in players:
-                return players[player_id]
-            return resolve_player(token, snapshot, players)
+            return resolve_player(name or player_id or "", snapshot, pool)
         except (Unknown, Ambiguous) as exc:
-            problems.append(f"{token}: {exc}")
+            problems.append(_unresolved_player(subject, exc))
             return None
 
-    def check_on_roster(info: PlayerInfo, member: str) -> None:
+    def member_of(token: str, subject: str) -> AdvisorTeamState | None:
+        try:
+            return resolve_member(token, snapshot, members)
+        except (Unknown, Ambiguous) as exc:
+            problems.append(_unresolved_member(subject, exc))
+            return None
+
+    def check_on_roster(info: PlayerInfo, member: str, subject: str) -> None:
         holder = holder_of(info.sleeper_player_id)
         if holder is None:
             problems.append(f"{info.full_name} is not on any roster")
-        elif not _same_member(snapshot, members, member, holder):
+            return
+        team = member_of(member, subject)
+        if team is not None and team.member_id != holder.member_id:
             problems.append(
-                f"{info.full_name} is on {holder.member_label}'s roster, not {member}'s"
+                f"{info.full_name} is on {holder.member_label}'s roster, "
+                f"not {team.member_label}'s"
             )
 
+    def check_leg(proposal: Proposal, leg: ProposalLeg) -> None:
+        where = f'in proposal "{proposal.title}"'
+        if leg.kind == "player":
+            info = player_of(leg.player_id, leg.player_name, f"a player {where}")
+            if info is not None:
+                subject = f"the member giving {info.full_name} {where}"
+                check_on_roster(info, leg.from_member, subject)
+        elif leg.kind in ("faab", "draft_dollars") and leg.amount is not None:
+            unit = "draft dollars" if leg.kind == "draft_dollars" else "FAAB"
+            team = member_of(leg.from_member, f"the member giving {leg.amount} {unit} {where}")
+            if team is None:
+                return
+            faab = leg.amount * 5 if leg.kind == "draft_dollars" else leg.amount
+            if faab > team.faab_remaining:
+                problems.append(
+                    f"an offer of {faab} FAAB is over {team.member_label}'s budget of "
+                    f"{team.faab_remaining}"
+                )
+
     for fact in answer.facts.players:
-        info = player_of(fact.name, fact.player_id)
+        info = player_of(fact.player_id, fact.name, "a player in the facts")
         if info is None:
             continue
         if normalize_name(fact.holder) == normalize_name(FREE_AGENT):
@@ -119,13 +167,11 @@ def verify(
                     f"{info.full_name} is not a free agent: {holder.member_label} holds him"
                 )
         else:
-            check_on_roster(info, fact.holder)
+            check_on_roster(info, fact.holder, f"the holder given for {info.full_name}")
 
     for fact in answer.facts.faab:
-        try:
-            team = resolve_member(fact.member, snapshot, members)
-        except (Unknown, Ambiguous) as exc:
-            problems.append(str(exc))
+        team = member_of(fact.member, "the member given for a FAAB figure")
+        if team is None:
             continue
         if fact.claim == "balance" and fact.amount != team.faab_remaining:
             problems.append(
@@ -139,15 +185,11 @@ def verify(
 
     for proposal in answer.facts.proposals:
         for name in proposal.counterparties:
-            try:
-                team = resolve_member(name, snapshot, members)
-            except (Unknown, Ambiguous) as exc:
-                problems.append(str(exc))
-                continue
-            if team.is_eliminated:
+            team = member_of(name, f'a counterparty in proposal "{proposal.title}"')
+            if team is not None and team.is_eliminated:
                 problems.append(f"{team.member_label} is eliminated and cannot be a counterparty")
         for leg in proposal.legs:
-            _check_leg(leg, snapshot, members, player_of, check_on_roster, problems)
+            check_leg(proposal, leg)
 
     if answer.report is not None:
         for source in answer.report.sources:
@@ -156,6 +198,10 @@ def verify(
     if artifact_bytes is not None and artifact_bytes > ARTIFACT_MAX_BYTES:
         problems.append(f"the write-up is over {ARTIFACT_MAX_BYTES} bytes")
 
+    # Belt and braces: a fact sentence can carry a title or a URL the model wrote,
+    # so one that would itself say something unpublished is replaced. The privacy
+    # findings below are exempt -- "mentions dues" is a finding, not dues.
+    problems = [UNPUBLISHED if privacy_problems(p, members) else p for p in problems]
     problems.extend(
         f"the chat text mentions {p}" for p in privacy_problems(answer.chat_text, members)
     )
@@ -164,29 +210,3 @@ def verify(
             f"the write-up mentions {p}" for p in privacy_problems(artifact_text, members)
         )
     return problems
-
-
-def _check_leg(
-    leg: ProposalLeg,
-    snapshot: LeagueSnapshot,
-    members: Sequence[MemberRef],
-    player_of: _PlayerOf,
-    check_on_roster: _CheckOnRoster,
-    problems: list[str],
-) -> None:
-    if leg.kind == "player":
-        info = player_of(leg.player_name, leg.player_id)
-        if info is not None:
-            check_on_roster(info, leg.from_member)
-    elif leg.kind in ("faab", "draft_dollars") and leg.amount is not None:
-        try:
-            team = resolve_member(leg.from_member, snapshot, members)
-        except (Unknown, Ambiguous) as exc:
-            problems.append(str(exc))
-            return
-        faab = leg.amount * 5 if leg.kind == "draft_dollars" else leg.amount
-        if faab > team.faab_remaining:
-            problems.append(
-                f"an offer of {faab} FAAB is over {team.member_label}'s budget of "
-                f"{team.faab_remaining}"
-            )

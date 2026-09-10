@@ -1,5 +1,7 @@
 """Facts are checked against the league; structure is never judged."""
 
+from dataclasses import replace
+
 from ultimate_guillotine.advisor.fixture import fixture_snapshot
 from ultimate_guillotine.agent.answer import LeagueAnswer
 from ultimate_guillotine.agent.artifact import ARTIFACT_MAX_BYTES
@@ -106,3 +108,108 @@ def test_the_privacy_scan_catches_what_may_never_be_said() -> None:
     assert _check(_answer(), artifact_text="mail ben@example.com") == [
         "the write-up mentions an email address"
     ]
+
+
+# The league's shape: a team's ``display_name`` is its join key, so the key resolves;
+# the fixture's equals its label, which is why a bare join key there does not.
+JOIN_KEYED = replace(SNAPSHOT, teams=tuple(
+    replace(t, display_name=f"joinkey{t.member_id:02d}") for t in SNAPSHOT.teams
+))
+# Two members answering to one alias: what makes a token ambiguous.
+TWINS = [replace(m, aliases=("Twin",)) if m.member_id in (2, 5) else m for m in MEMBERS]
+UNPUBLISHED = "a check failed on a fact that named something the league does not publish"
+
+
+def test_the_join_key_scan_matches_phrases_and_possessives() -> None:
+    members = [*MEMBERS, MemberRef(99, "Ben Ray", (), nickname="Other Ben")]
+    assert privacy_problems("Ben Ray is thin at RB", members) == ["a member's join key"]
+    assert privacy_problems("Other Ben is thin at RB", members) == []
+    assert privacy_problems("Ben is thin at RB", members) == []
+    assert privacy_problems("joinkey05's roster", MEMBERS) == ["a member's join key"]
+    assert privacy_problems("joinkey05’s roster", MEMBERS) == ["a member's join key"]
+    assert privacy_problems("Member05's roster", MEMBERS) == []
+
+
+def test_a_join_key_written_as_a_holder_is_never_echoed() -> None:
+    fact = {"player_id": "p05b0", "name": "Bench 05-0", "holder": "joinkey02"}
+    resolved = verify(_answer(facts={"players": [fact]}), JOIN_KEYED, MEMBERS, PLAYERS)
+    assert resolved == ["Bench 05-0 is on Member05's roster, not Member02's"]
+    unresolved = _check(_answer(facts={"players": [{**fact, "holder": "joinkey05"}]}))
+    assert unresolved == [
+        "the holder given for Bench 05-0 matches no member; name members by their league label"
+    ]
+    assert "joinkey" not in " ".join(resolved + unresolved)
+
+
+def test_an_unresolvable_holder_gets_a_token_free_sentence() -> None:
+    fact = {"player_id": "p05b0", "name": "Bench 05-0", "holder": "Nobody"}
+    assert _check(_answer(facts={"players": [fact]})) == [
+        "the holder given for Bench 05-0 matches no member; name members by their league label"
+    ]
+    twin = _answer(facts={"players": [{**fact, "holder": "Twin"}]})
+    assert verify(twin, SNAPSHOT, TWINS, PLAYERS) == [
+        "the holder given for Bench 05-0 could mean more than one member; ask which"
+    ]
+
+
+def test_every_member_slot_gets_the_same_token_free_shapes() -> None:
+    faab = _answer(facts={"faab": [{"member": "Nobody", "amount": 800, "claim": "balance"}]})
+    assert _check(faab) == [
+        "the member given for a FAAB figure matches no member; name members by their league label"
+    ]
+    proposal = {"title": "x", "counterparties": ["Nobody"],
+                "legs": [{"kind": "player", "player_name": "Bench 05-0",
+                          "from_member": "Nobody", "to_member": "Member02"},
+                         {"kind": "faab", "amount": 40,
+                          "from_member": "Nobody", "to_member": "Member02"}]}
+    assert _check(_answer(facts={"proposals": [proposal]})) == [
+        'a counterparty in proposal "x" matches no member; name members by their league label',
+        (
+            'the member giving Bench 05-0 in proposal "x" matches no member; '
+            "name members by their league label"
+        ),
+        (
+            'the member giving 40 FAAB in proposal "x" matches no member; '
+            "name members by their league label"
+        ),
+    ]
+    twins = {**proposal, "counterparties": ["Twin"],
+             "legs": [{"kind": "term", "text": "t", "from_member": "Twin",
+                       "to_member": "Member05"}]}
+    assert verify(_answer(facts={"proposals": [twins]}), SNAPSHOT, TWINS, PLAYERS) == [
+        'a counterparty in proposal "x" could mean more than one member; ask which'
+    ]
+
+
+def test_an_unresolved_player_is_not_echoed_either() -> None:
+    unknown = _answer(facts={"players": [{"name": "Nobody Special", "holder": "Member05"}]})
+    assert _check(unknown) == [
+        "a player in the facts matches no known player; name players by their full name"
+    ]
+    vague = _answer(facts={"players": [{"name": "Bench", "holder": "Member05"}]})
+    assert _check(vague) == ["a player in the facts could mean more than one player; ask which"]
+    leg = {"kind": "player", "player_name": "Nobody Special",
+           "from_member": "Member05", "to_member": "Member02"}
+    proposal = {"title": "x", "counterparties": ["Member02"], "legs": [leg]}
+    assert _check(_answer(facts={"proposals": [proposal]})) == [
+        'a player in proposal "x" matches no known player; name players by their full name'
+    ]
+
+
+def test_an_id_the_directory_lacks_is_still_found_on_a_roster() -> None:
+    thin = {k: v for k, v in PLAYERS.items() if k != "p05b0"}
+    assert verify(_answer(), SNAPSHOT, MEMBERS, thin) == []
+    renamed = {"player_id": "not-an-id", "name": "Bench 05-0", "holder": "Member05"}
+    assert _check(_answer(facts={"players": [renamed]})) == []
+
+
+def test_a_sentence_that_would_repeat_an_unpublished_token_is_replaced() -> None:
+    proposal = {"title": "ben@example.com", "counterparties": ["Nobody"],
+                "legs": [{"kind": "term", "text": "t", "from_member": "Member02",
+                          "to_member": "Member05"}]}
+    assert _check(_answer(facts={"proposals": [proposal]})) == [UNPUBLISHED]
+    report = {"title": "t", "question": "q", "html_body": "<p>x</p>",
+              "sources": [{"url": "http://ben@example.com/x", "claim": "c"}]}
+    assert _check(_answer(report=report)) == [UNPUBLISHED]
+    # The privacy findings themselves are exempt: "mentions dues" is a finding, not a leak.
+    assert _check(_answer(chat_text="dues are late")) == ["the chat text mentions dues"]
