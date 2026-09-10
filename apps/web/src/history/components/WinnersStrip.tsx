@@ -1,3 +1,5 @@
+import { REVEAL_CLASS, revealStyle } from "@/motion/reveal";
+
 import { seasonPlacingLabel } from "../derive/ownerLabel";
 import type { SeasonResult } from "../types";
 
@@ -6,7 +8,9 @@ export function WinnersStrip({ seasons }: { seasons: SeasonResult[] }) {
   return (
     <ul
       aria-label="Winners"
-      className="divide-y rounded-xl border bg-card text-sm"
+      className={`divide-y rounded-xl border bg-card text-sm ${REVEAL_CLASS}`}
+      // The first thing on the page to settle; the season cards follow it down.
+      style={revealStyle(0)}
     >
       {seasons.map((season) => (
         <li key={season.season} className="flex justify-between px-3 py-1.5">

@@ -5,6 +5,7 @@ import { ExplainedBadge } from "@/components/explained-badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
+import { REVEAL_CLASS, revealStyle } from "@/motion/reveal";
 
 import { resolveStarterAvailability } from "../derive/availability";
 import { resolveChipKinds, type ChipKind } from "../derive/chips";
@@ -437,7 +438,8 @@ export const TeamCard = memo(function TeamCard({
     .filter((chip): chip is SummaryChipProps => chip !== undefined);
 
   return (
-    <li>
+    // Its place in the cascade is its rank: the header is place 0, rank 1 settles next.
+    <li className={REVEAL_CLASS} style={revealStyle(rank)}>
       {/*
         An eliminated card is dimmed in its chrome only — a muted fill and a dashed border. The
         card carried `opacity-60` before, which faded the text along with everything else and

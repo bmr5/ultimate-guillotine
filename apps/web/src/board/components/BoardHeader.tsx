@@ -6,6 +6,7 @@ import { badgeVariants } from "@/components/ui/badge-variants";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { REVEAL_CLASS, revealStyle } from "@/motion/reveal";
 
 import {
   crossesMinuteBoundary,
@@ -199,7 +200,11 @@ export function BoardHeader({
   const stale = isStale(primaryUpdatedAt, now);
 
   return (
-    <header className="sticky top-0 z-20 -mx-4 mb-3 space-y-2 border-b bg-background/70 px-4 py-3 backdrop-blur-md sm:mx-0 sm:rounded-xl sm:border">
+    <header
+      className={`sticky top-0 z-20 -mx-4 mb-3 space-y-2 border-b bg-background/70 px-4 py-3 backdrop-blur-md sm:mx-0 sm:rounded-xl sm:border ${REVEAL_CLASS}`}
+      // The first thing on the board to settle; the cards follow it down the page.
+      style={revealStyle(0)}
+    >
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         {/* The site title lives in the layout; this header names the week only. */}
         <h2 className="text-2xl leading-none figures">

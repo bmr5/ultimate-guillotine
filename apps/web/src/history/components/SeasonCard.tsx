@@ -1,4 +1,5 @@
 import { Card, CardContent } from "@/components/ui/card";
+import { REVEAL_CLASS, revealStyle } from "@/motion/reveal";
 
 import { FORMER_MANAGER, seasonPlacingLabel } from "../derive/ownerLabel";
 import type { SeasonResult } from "../types";
@@ -24,9 +25,14 @@ function placingText(
 
 interface Props {
   season: SeasonResult;
+  /**
+   * The card's place in the page's cascade (`src/motion/reveal.ts`); the page counts it from
+   * below the winners strip. Defaulted so a card rendered on its own settles first.
+   */
+  revealIndex?: number;
 }
 
-export function SeasonCard({ season }: Props) {
+export function SeasonCard({ season, revealIndex = 0 }: Props) {
   const runnerUps = [
     placingText(
       "Co-champion",
@@ -39,7 +45,10 @@ export function SeasonCard({ season }: Props) {
   ].filter((part): part is string => Boolean(part));
 
   return (
-    <li className="list-none">
+    <li
+      className={`list-none ${REVEAL_CLASS}`}
+      style={revealStyle(revealIndex)}
+    >
       <Card>
         <CardContent className="space-y-2 p-4">
           <p className="text-xs text-muted-foreground">

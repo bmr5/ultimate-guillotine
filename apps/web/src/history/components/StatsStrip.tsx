@@ -1,4 +1,9 @@
+import { REVEAL_CLASS, revealStyle } from "@/motion/reveal";
+
 import type { TradeStats } from "../derive/stats";
+
+/** The strip's place in the trades page's cascade: right after the filter bar. */
+const AFTER_FILTER_BAR = 1;
 
 export function StatsStrip({
   stats,
@@ -16,7 +21,7 @@ export function StatsStrip({
     ["Seasons", String(stats.seasonCount)],
   ];
   return (
-    <div>
+    <div className={REVEAL_CLASS} style={revealStyle(AFTER_FILTER_BAR)}>
       <dl className="grid grid-cols-2 gap-2 rounded-xl border bg-card p-3 text-center">
         {cells.map(([label, value]) => (
           <div key={label}>

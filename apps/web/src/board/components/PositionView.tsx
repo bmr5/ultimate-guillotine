@@ -6,6 +6,7 @@ import { badgeVariants } from "@/components/ui/badge-variants";
 import { Card, CardContent } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
+import { REVEAL_CLASS, revealStyle } from "@/motion/reveal";
 
 import { injuryTag } from "../derive/availability";
 import { LIKELY_BIDDER_REASONS, type PositionRow } from "../derive/position";
@@ -83,6 +84,8 @@ interface PositionTeamRowProps {
   onToggle: (teamId: number) => void;
   highlightedPlayerIds: ReadonlySet<string>;
   rosterPositions: string[];
+  /** The row's place in the page's cascade; the header is place 0. */
+  revealIndex: number;
 }
 
 /**
@@ -97,6 +100,7 @@ const PositionTeamRow = memo(function PositionTeamRow({
   onToggle,
   highlightedPlayerIds,
   rosterPositions,
+  revealIndex,
 }: PositionTeamRowProps) {
   const panelId = useId();
   const starterSlots = useMemo(
@@ -109,7 +113,7 @@ const PositionTeamRow = memo(function PositionTeamRow({
       : `FAAB ${row.faabRemaining}`;
 
   return (
-    <li>
+    <li className={REVEAL_CLASS} style={revealStyle(revealIndex)}>
       {/* Eliminated teams are dimmed in their chrome only, never in their text. */}
       <Card
         data-eliminated={row.isEliminated || undefined}
@@ -320,10 +324,11 @@ export function PositionView({
 }: PositionViewProps) {
   return (
     <ul className={BOARD_GRID}>
-      {rows.map((row) => (
+      {rows.map((row, index) => (
         <PositionTeamRow
           key={row.teamId}
           row={row}
+          revealIndex={index + 1}
           position={position}
           isOpen={isOpen(row.teamId)}
           onToggle={onToggle}

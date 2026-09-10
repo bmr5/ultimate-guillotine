@@ -270,7 +270,11 @@ export function BoardPage() {
 
             {sorted.eliminated.length > 0 ? (
               <>
-                <EliminatedDivider count={sorted.eliminated.length} />
+                <EliminatedDivider
+                  count={sorted.eliminated.length}
+                  // The place after the last active card, so the rule settles in with the list.
+                  revealIndex={sorted.active.length + 1}
+                />
                 <ul className={BOARD_GRID}>
                   {sorted.eliminated.map((team, index) => (
                     <TeamCard

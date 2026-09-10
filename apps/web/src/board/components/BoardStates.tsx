@@ -2,6 +2,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { REVEAL_CLASS, revealStyle } from "@/motion/reveal";
 
 import { MS_PER_SECOND } from "../derive/time";
 import { BOARD_GRID } from "../layout";
@@ -10,6 +11,12 @@ import type { BoardQueryError } from "../useBoardData";
 
 /** Placeholder cards shown before the first board payload resolves. */
 const SKELETON_CARD_COUNT = 6;
+
+/**
+ * Where everything under the header sits in the page's cascade: the header is place `0`, and
+ * the banner, the errors, the empty state and the first card all follow it as place `1`.
+ */
+const BELOW_HEADER = 1;
 
 /**
  * The banner's wording quotes the poll it is describing, so the sentence cannot drift away from
@@ -24,7 +31,11 @@ export function BoardSkeleton() {
     <ul className={BOARD_GRID}>
       {Array.from({ length: SKELETON_CARD_COUNT }, (_, index) => index).map(
         (index) => (
-          <li key={index}>
+          <li
+            key={index}
+            className={REVEAL_CLASS}
+            style={revealStyle(BELOW_HEADER + index)}
+          >
             <Card>
               <CardContent className="space-y-2 p-4">
                 <Skeleton className="h-4 w-1/2" />
@@ -46,7 +57,7 @@ export function BoardSkeleton() {
  */
 export function BoardEmpty() {
   return (
-    <Card>
+    <Card className={REVEAL_CLASS} style={revealStyle(BELOW_HEADER)}>
       <CardContent className="p-6">
         <p className="font-medium">Waiting for the first sync</p>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -73,7 +84,10 @@ export function BoardErrors({
     return null;
   }
   return (
-    <div className="space-y-2">
+    <div
+      className={`space-y-2 ${REVEAL_CLASS}`}
+      style={revealStyle(BELOW_HEADER)}
+    >
       {errors.map((error) => (
         <Alert key={error.section} variant="destructive">
           <AlertTitle>{error.section} could not load</AlertTitle>
@@ -96,7 +110,10 @@ export function BoardErrors({
  */
 export function RealtimeBanner({ onRefresh }: { onRefresh: () => void }) {
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-md border bg-card px-3 py-2 text-sm text-muted-foreground">
+    <div
+      className={`flex flex-wrap items-center gap-3 rounded-md border bg-card px-3 py-2 text-sm text-muted-foreground ${REVEAL_CLASS}`}
+      style={revealStyle(BELOW_HEADER)}
+    >
       <span>{REALTIME_PAUSED_TEXT}</span>
       <Button size="sm" variant="outline" onClick={onRefresh}>
         Refresh now
@@ -105,9 +122,23 @@ export function RealtimeBanner({ onRefresh }: { onRefresh: () => void }) {
   );
 }
 
-export function EliminatedDivider({ count }: { count: number }) {
+/**
+ * The rule between the survivors and the cut. `revealIndex` is its place in the cascade — the
+ * page hands it the place after the last active card, so it settles in with the list rather
+ * than ahead of it.
+ */
+export function EliminatedDivider({
+  count,
+  revealIndex,
+}: {
+  count: number;
+  revealIndex: number;
+}) {
   return (
-    <h2 className="mt-8 border-t border-destructive/60 pt-3 text-sm font-medium text-muted-foreground">
+    <h2
+      className={`mt-8 border-t border-destructive/60 pt-3 text-sm font-medium text-muted-foreground ${REVEAL_CLASS}`}
+      style={revealStyle(revealIndex)}
+    >
       Eliminated ({count})
     </h2>
   );

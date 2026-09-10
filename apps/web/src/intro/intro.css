@@ -1,0 +1,369 @@
+/*
+ * The opening curtain (`src/intro/Intro.tsx`).
+ *
+ * Everything is laid out on a 640 × 480 stage in "units": `--u` is one unit, and the stage is as
+ * wide as the viewport comfortably allows. The cut line is `y = 300`. The stage is drawn twice —
+ * once in each half of the curtain — anchored so that its cut line sits on the half's seam, which
+ * is what lets the two halves read as one picture and then part along the cut.
+ *
+ * Every delay is a custom property the overlay sets from `INTRO_TIMELINE` (`--intro-lift`,
+ * `--intro-impact`, `--intro-curtain`, ...); nothing in here restates a number from there. The art
+ * keys off `[data-playing]` (the show has started: the font is in) and `[data-revealing]` (the
+ * curtain parts). Only opacity and transform ever animate, so the whole thing stays off the main
+ * thread while the sky's shaders compile behind it.
+ */
+
+.intro {
+  --stage-w: min(88vw, 560px, 120vh);
+  --u: calc(var(--stage-w) / 640);
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* The two halves of the curtain. */
+.intro-panel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 50%;
+  overflow: hidden;
+  background: var(--background);
+  will-change: transform;
+}
+.intro-panel-top {
+  top: 0;
+}
+.intro-panel-bottom {
+  bottom: 0;
+}
+/* The top half is hoisted away like the blade would be; the bottom half falls, and faster. */
+.intro-panel-top {
+  transition: transform var(--intro-curtain) cubic-bezier(0.7, 0, 0.3, 1);
+}
+.intro-panel-bottom {
+  transition: transform calc(var(--intro-curtain) * 0.8)
+    cubic-bezier(0.5, 0, 0.9, 0.4);
+}
+.intro[data-revealing] .intro-panel-top {
+  transform: translateY(-100%);
+}
+.intro[data-revealing] .intro-panel-bottom {
+  transform: translateY(100%);
+}
+
+/*
+ * The stage, anchored to each half's seam. In the top half its bottom edge is pushed 180 units
+ * below the seam (the part of the stage under the cut, clipped away); in the bottom half its top
+ * edge is pulled 300 units above it.
+ */
+.intro-anchor {
+  position: absolute;
+  left: 50%;
+  width: calc(640 * var(--u));
+  height: calc(480 * var(--u));
+}
+.intro-panel-top .intro-anchor {
+  bottom: 0;
+  transform: translate(-50%, calc(180 * var(--u)));
+}
+.intro-panel-bottom .intro-anchor {
+  top: 0;
+  transform: translate(-50%, calc(-300 * var(--u)));
+}
+.intro-stage {
+  position: absolute;
+  inset: 0;
+}
+.intro[data-playing] .intro-stage {
+  animation: intro-shake 220ms linear var(--intro-impact) both;
+}
+
+/* The frame: two uprights, the beam across the top, the base they stand on. */
+.intro-upright,
+.intro-crossbar,
+.intro-base {
+  position: absolute;
+  background: rgb(163 169 189 / 0.42);
+}
+.intro-upright {
+  top: calc(20 * var(--u));
+  bottom: 0;
+  width: calc(3 * var(--u));
+  transform: scaleY(0);
+  transform-origin: top;
+}
+.intro-upright-left {
+  left: calc(58.5 * var(--u));
+}
+.intro-upright-right {
+  left: calc(578.5 * var(--u));
+}
+.intro-crossbar {
+  top: calc(17 * var(--u));
+  left: calc(48 * var(--u));
+  width: calc(544 * var(--u));
+  height: calc(6 * var(--u));
+  transform: scaleX(0);
+}
+.intro-base {
+  top: calc(470 * var(--u));
+  left: calc(30 * var(--u));
+  width: calc(580 * var(--u));
+  height: calc(8 * var(--u));
+  transform: scaleX(0);
+}
+.intro[data-playing] .intro-upright {
+  animation: intro-draw-y 460ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.intro[data-playing] .intro-crossbar {
+  animation: intro-draw-x 360ms cubic-bezier(0.22, 1, 0.36, 1) 200ms both;
+}
+.intro[data-playing] .intro-base {
+  animation: intro-draw-x 360ms cubic-bezier(0.22, 1, 0.36, 1) 120ms both;
+}
+
+/* The wordmark, on the block. The em box of the big word is centred on the cut line. */
+.intro-word-small,
+.intro-word {
+  position: absolute;
+  left: 0;
+  right: 0;
+  text-align: center;
+  line-height: 1;
+  white-space: nowrap;
+  opacity: 0;
+}
+.intro-word-small {
+  top: calc(146 * var(--u));
+  font-size: calc(44 * var(--u));
+  color: var(--muted-foreground);
+}
+.intro-word {
+  top: calc(240 * var(--u));
+  font-size: calc(120 * var(--u));
+  color: var(--foreground);
+}
+/*
+ * Each half of the curtain keeps only its half of the word, clipped on the element rather than
+ * left to the panel's overflow: the severed half moves when it falls, and a panel clip would
+ * let the half it was hiding slide into view with it.
+ */
+.intro-panel-top .intro-word {
+  clip-path: inset(0 0 50% 0);
+}
+.intro-panel-bottom .intro-word {
+  clip-path: inset(50% 0 0 0);
+}
+.intro[data-playing] .intro-word-small {
+  animation: intro-fade 400ms ease-out 260ms both;
+}
+.intro[data-playing] .intro-word {
+  animation: intro-fade 420ms ease-out 180ms both;
+}
+/* The severed half. It hinges at the cut, a little left of centre, and drops out of the frame. */
+.intro[data-playing] .intro-panel-bottom .intro-word {
+  transform-origin: 22% 50%;
+  animation:
+    intro-fade 420ms ease-out 180ms both,
+    intro-fall 460ms cubic-bezier(0.45, 0, 0.85, 0.55) var(--intro-impact) both;
+}
+
+/* The blade at rest, hanging under the beam. It falls 182 units to land on the cut line. */
+.intro-blade {
+  position: absolute;
+  left: calc(90 * var(--u));
+  top: calc(30 * var(--u));
+  width: calc(460 * var(--u));
+  height: calc(88 * var(--u));
+  opacity: 0;
+  will-change: transform;
+}
+.intro-blade svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.intro[data-playing] .intro-blade {
+  animation:
+    intro-fade 300ms ease-out 320ms both,
+    intro-drop calc(var(--intro-impact) - var(--intro-lift)) linear
+      var(--intro-lift) both;
+}
+.intro-mouton {
+  fill: #0c0f17;
+  stroke: rgb(255 255 255 / 0.22);
+  stroke-width: 1.5;
+}
+.intro-bevel {
+  fill: #dfe2ec;
+  opacity: 0.8;
+}
+.intro-edge {
+  stroke: var(--primary);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+}
+.intro-edge-glow {
+  stroke: var(--primary);
+  stroke-width: 9;
+  stroke-linecap: round;
+  opacity: 0.2;
+}
+.intro[data-playing] .intro-edge-glow {
+  animation: intro-flare 520ms ease-out var(--intro-impact) both;
+}
+
+/* The moment of impact: a line of ember along the cut, and sparks off it. */
+.intro-flash {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--primary);
+  box-shadow: 0 0 22px 3px rgb(240 162 74 / 0.5);
+  opacity: 0;
+  transform: scaleX(0);
+  pointer-events: none;
+}
+.intro-panel-top .intro-flash {
+  bottom: 0;
+}
+.intro-panel-bottom .intro-flash {
+  top: 0;
+}
+.intro[data-playing] .intro-flash {
+  animation: intro-flash 640ms cubic-bezier(0.2, 0.8, 0.3, 1)
+    var(--intro-impact) both;
+}
+/* A spark is a short streak, turned to face the way it flies (`--angle`, set by the overlay). */
+.intro-spark {
+  position: absolute;
+  left: 50%;
+  top: calc(300 * var(--u));
+  width: calc(16 * var(--u));
+  height: calc(2.5 * var(--u));
+  margin: calc(-1.25 * var(--u)) 0 0 calc(-8 * var(--u));
+  border-radius: calc(2 * var(--u));
+  background: var(--primary);
+  box-shadow: 0 0 6px rgb(240 162 74 / 0.6);
+  opacity: 0;
+}
+.intro[data-playing] .intro-spark {
+  animation: intro-spark 520ms cubic-bezier(0.15, 0.7, 0.3, 1)
+    var(--intro-impact) both;
+}
+
+@keyframes intro-draw-y {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+@keyframes intro-draw-x {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+@keyframes intro-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+/* The lift is the first third; the fall is the rest, and it accelerates the whole way. */
+@keyframes intro-drop {
+  0% {
+    transform: translateY(0);
+    animation-timing-function: cubic-bezier(0.3, 0, 0.6, 1);
+  }
+  34% {
+    transform: translateY(calc(-7 * var(--u)));
+    animation-timing-function: cubic-bezier(0.6, 0, 1, 0.5);
+  }
+  100% {
+    transform: translateY(calc(182 * var(--u)));
+  }
+}
+@keyframes intro-shake {
+  0% {
+    transform: translateY(0);
+  }
+  25% {
+    transform: translateY(calc(4 * var(--u)));
+  }
+  55% {
+    transform: translateY(calc(-2.5 * var(--u)));
+  }
+  80% {
+    transform: translateY(calc(1.2 * var(--u)));
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+/* The severed half drops and tips as it goes; it only fades once it is well clear of the cut. */
+@keyframes intro-fall {
+  55% {
+    opacity: 1;
+  }
+  to {
+    transform: translateY(calc(110 * var(--u))) rotate(4deg);
+    opacity: 0;
+  }
+}
+@keyframes intro-flare {
+  0% {
+    opacity: 0.2;
+  }
+  15% {
+    opacity: 0.95;
+  }
+  100% {
+    opacity: 0.2;
+  }
+}
+@keyframes intro-flash {
+  0% {
+    transform: scaleX(0);
+    opacity: 1;
+  }
+  30% {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scaleX(1);
+    opacity: 0;
+  }
+}
+@keyframes intro-spark {
+  0% {
+    transform: translate(0, 0) rotate(var(--angle)) scaleX(0.4);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(calc(var(--sx) * var(--u)), calc(var(--sy) * var(--u)))
+      rotate(var(--angle)) scaleX(1);
+    opacity: 0;
+  }
+}
+
+/* `IntroGate` never mounts the overlay under reduced motion; this is the belt to that brace. */
+@media (prefers-reduced-motion: reduce) {
+  .intro {
+    display: none;
+  }
+}
