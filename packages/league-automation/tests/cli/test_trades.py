@@ -7,6 +7,7 @@ import pytest
 
 from ultimate_guillotine.ai.structured import AIInvalidOutput
 from ultimate_guillotine.cli import trades as trades_cli
+from ultimate_guillotine.trades.resolve import MemberRef
 
 
 def test_trades_help_lists_commands() -> None:
@@ -81,8 +82,90 @@ def test_extract_reports_a_rejected_model_answer_by_class_name(
     monkeypatch.setattr(trades_cli, "dry_run_pipeline", explode)
 
     exit_code = trades_cli.cmd_extract(
-        argparse.Namespace(text="🚨 Member01 sends Player Alpha to Member02", rosters=False)
+        argparse.Namespace(
+            text="🚨 Member01 sends Player Alpha to Member02", rosters=False, announcer=None
+        )
     )
 
     assert exit_code == 1
     assert capsys.readouterr().out == "AIInvalidOutput\n"
+
+
+MEMBERS = [MemberRef(1, "Member01", ("benny",)), MemberRef(2, "Member02", ())]
+
+
+def _extract_deps(monkeypatch: pytest.MonkeyPatch, members=MEMBERS) -> None:
+    deps = SimpleNamespace(settings=SimpleNamespace(sleeper_league_id="1"), conn=_ExplodingConn())
+    monkeypatch.setattr(trades_cli, "build_deps", lambda: deps)
+    monkeypatch.setattr(trades_cli, "build_ai", lambda _deps: None)
+    monkeypatch.setattr(
+        trades_cli, "SeasonRepository", lambda _conn: SimpleNamespace(current=lambda: 2026)
+    )
+    monkeypatch.setattr(
+        trades_cli,
+        "MemberAliasRepository",
+        lambda _conn: SimpleNamespace(all_members=lambda: members),
+    )
+    monkeypatch.setattr(
+        trades_cli, "PlayerRepository", lambda _conn: SimpleNamespace(all_active=list)
+    )
+
+
+def test_as_names_the_announcer_the_pipeline_is_given(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`--as` is how a first-person announcement is rehearsed from the terminal:
+    the listener places the sender from a handle, and a terminal has none."""
+    _extract_deps(monkeypatch)
+    seen = {}
+
+    def capture(*args, **kwargs):
+        seen.update(kwargs)
+        return trades_cli.NOT_A_TRADE
+
+    monkeypatch.setattr(trades_cli, "dry_run_pipeline", capture)
+
+    exit_code = trades_cli.cmd_extract(
+        argparse.Namespace(text="🚨 I sent Player Alpha to Member02", rosters=False,
+                           announcer="benny")
+    )
+
+    assert exit_code == 0
+    # Matched on an alias, the same spellings resolution accepts.
+    assert seen["announcer"] == MEMBERS[0]
+
+
+def test_extract_without_as_passes_no_announcer(monkeypatch: pytest.MonkeyPatch) -> None:
+    _extract_deps(monkeypatch)
+    seen = {}
+    monkeypatch.setattr(
+        trades_cli, "dry_run_pipeline",
+        lambda *args, **kwargs: (seen.update(kwargs), trades_cli.NOT_A_TRADE)[1],
+    )
+    trades_cli.cmd_extract(
+        argparse.Namespace(text="🚨 Member01 sends Player Alpha to Member02", rosters=False,
+                           announcer=None)
+    )
+    assert seen["announcer"] is None
+
+
+def test_an_unknown_as_is_refused_rather_than_ignored(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Silently dropping `--as` would print the answer for a chat with no handles
+    loaded and look like the prompt failing to read the first person."""
+    _extract_deps(monkeypatch)
+    monkeypatch.setattr(trades_cli, "dry_run_pipeline", lambda *a, **k: pytest.fail("called"))
+
+    exit_code = trades_cli.cmd_extract(
+        argparse.Namespace(text="🚨 I sent Player Alpha to Member02", rosters=False,
+                           announcer="nobody-here")
+    )
+
+    assert exit_code == 2
+    assert capsys.readouterr().out == "no league member goes by nobody-here\n"
+
+
+def test_find_member_matches_a_display_name_or_an_alias() -> None:
+    assert trades_cli.find_member(MEMBERS, "member01") is MEMBERS[0]
+    assert trades_cli.find_member(MEMBERS, "Benny") is MEMBERS[0]
+    assert trades_cli.find_member(MEMBERS, "Member02") is MEMBERS[1]
+    assert trades_cli.find_member(MEMBERS, "Member03") is None

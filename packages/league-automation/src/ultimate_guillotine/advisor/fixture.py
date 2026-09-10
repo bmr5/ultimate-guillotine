@@ -189,6 +189,7 @@ def _team(
         faab_remaining=1000 - 40 * team,
         is_eliminated=team == ELIMINATED_MEMBER_ID,
         elimination_source="adjudicator" if team == ELIMINATED_MEMBER_ID else None,
+        eliminated_week=weeks[0] - 1 if team == ELIMINATED_MEMBER_ID else None,
         week=weeks[0],
         projected_points={} if provisional else _by_week(total, weeks),
         coverage_pct=coverage_pct,

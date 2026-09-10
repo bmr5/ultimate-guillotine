@@ -1,6 +1,6 @@
 # Trade Registrar case suite (2026-09-09)
 
-72 end-to-end cases for the Trade Registrar, written to be run overnight against the real
+83 end-to-end cases for the Trade Registrar, written to be run overnight against the real
 extraction model without sending anything. Nothing here writes to the league chat: the
 runner calls `extract_trade` + `resolve_extracted` + `validate` directly, the same path
 `ug trades extract --text "<alert>"` takes.
@@ -10,7 +10,8 @@ runner calls `extract_trade` + `resolve_extracted` + `validate` directly, the sa
 - **Input** is the exact announcement. ` ⏎ ` marks a newline and long inputs are cut with `…`;
   `packages/league-automation/tests/fixtures/registrar_cases.json` holds the exact text and is
   authoritative.
-- **Kind** is what the model must return in `ExtractedTrade.kind`.
+- **Kind** is what the model must return in `ExtractedTrade.kind`. A row naming two of them is a
+  case with two honest readings, carrying `alt_kind` in the fixture; the runner accepts either.
 - **Status** is what `TradeRegistrar.handle` must return: `created`, `revised`, `duplicate`,
   `rescinded`, `clarification`, or `not_a_trade`.
 - **Reply** is what the chat message must start with, or `none` when the registrar stays
@@ -24,12 +25,39 @@ runner calls `extract_trade` + `resolve_extracted` + `validate` directly, the sa
   | `clarification` | `🚨 Trade not logged yet:` |
   | `duplicate`, `not_a_trade` | none |
 
+- **From** names the member the alert was sent by, when the case has one: the runner passes
+  that member's Sleeper username to `extract_trade` as the `Announcer:` line, standing in for
+  the handle hash the listener places a real sender by. `—` means the sender could not be
+  placed, which is a case in its own right rather than a missing field: first person then
+  names nobody. It is written into the Notes column rather than a column of its own, because
+  only a handful of cases have one.
 - **Prereq** names the case that must already be logged, in this file's order, before this one
   means anything. Cases with a prereq are skipped by the runner in isolation mode.
 
 Member names are Sleeper usernames from `public.members`; player names are rows in
 `public.players`. Nicknames used here are deliberately invented, so the alias-miss path is what
 gets exercised rather than anyone's real handle.
+
+## The synthetic league
+
+The runner builds a small league of its own -- three teams, their rosters, their FAAB, a week and
+two trades on file -- and uses it for both halves of the roster work: it is rendered into the
+context pack the model reads, and it is the `RosterIndex` deterministic resolution consults. The
+two can therefore never disagree. `SYNTHETIC_ROSTERS` in `scripts/registrar_cases.py` is the
+definition.
+
+Every team in it holds 900 FAAB. The cases were written long before there was a FAAB line to
+check them against, and the largest amount any of these three teams pays is 450 -- a team given
+less than that would answer `unclear` on a perfectly good alert and the failure would read as a
+prompt regression. Case 83 is the one case that means to trip the check.
+
+Its players are deliberately ones no other case names. The prompt's rule for a name that matches
+nobody's roster is to leave it exactly as the announcement wrote it, so the cases that predate the
+pack are unaffected by it, and no case can contradict the pack by trading away a player the pack
+puts on somebody else's roster.
+
+`--rosters` swaps the real league in instead. That measures the same cases against whatever the
+rosters happen to be tonight, which is worth doing once and is not a suite.
 
 ## Running
 
@@ -44,7 +72,7 @@ uv run --project packages/league-automation python scripts/registrar_cases.py --
 
 Results land in `docs/testing/2026-09-09-trade-registrar-results.md`.
 
-## Happy paths (16)
+## Happy paths (18)
 
 | # | Input | Kind | Status | Reply | Prereq | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -64,8 +92,10 @@ Results land in `docs/testing/2026-09-09-trade-registrar-results.md`.
 | 14 | `🚨 Trade Alert 🚨 ⏎ JRedWins sends Justin Jefferson to RylandRad for 400 FAAB with an option to buy him back for 450 FAAB before Week 10` | `permanent` | `created` | `🚨 Trade <code> logged` | — | Option term. The buy-back price must not be flattened into the headline amount. |
 | 15 | `🚨 Trade Alert 🚨 ⏎ SuperKing3 sends Sam LaPorta to realbent10 for 60 FAAB and $10` | `permanent` | `created` | `🚨 Trade <code> logged` | — | Two money units in one deal; each amount keeps its own unit. |
 | 16 | `🚨 Trade Alert 🚨 ⏎ Week 7: nfsilveira90 sends the Buffalo Bills defense and 40 FAAB to scrappyCon16 for Chase Brown` | `permanent` | `created` | `🚨 Trade <code> logged` | — | Defense named in full plus FAAB plus a player, with the week stated. |
+| 74 | `🚨 Trade Alert 🚨 ⏎ I sent Ja'Marr Chase to mdurgin for 450 FAAB` | `permanent` | `created` | `🚨 Trade <code> logged` | — | From kpbowe. The commonest real shape there is: a member announcing their own trade in the first person. `I` names the announcer, so the alert has two parties after all. Case 75 is the same text with nobody behind it. |
+| 79 | `🚨 Trade Alert 🚨 ⏎ kpbowe sends Rhamondre to mdurgin for 200 FAAB` | `permanent` | `created` | `🚨 Trade <code> logged` | — | A player named by first name alone, which is how the chat writes a familiar player -- the real message behind this was a `1 week Rhamondre rental`. No exact name, no surname, no defense, so he is only findable on the giving party's roster. |
 
-## Sloppy phrasing (20)
+## Sloppy phrasing (23)
 
 | # | Input | Kind | Status | Reply | Prereq | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -89,6 +119,9 @@ Results land in `docs/testing/2026-09-09-trade-registrar-results.md`.
 | 34 | `🚨 Trade Alert 🚨 mdurgin sends Justin Jefferson to Teranitup16 for 480 FAAB lmao enjoy the ratio` | `permanent` | `created` | `🚨 Trade <code> logged` | — | Trash talk trailing a real trade; the banter must not turn it into not_a_trade. |
 | 35 | `🚨 Trade Alert 🚨 jrayay sends Garrett Wilson to nfsilveira90 for 1,000 FAAB` | `permanent` | `created` | `🚨 Trade <code> logged` | — | Thousands separator in the amount; the recorded amount must be the integer 1000. |
 | 36 | `🚨 Trade Alert 🚨    scrappyCon16   sends   Trey McBride   to   ejcheung   for   210   FAAB   ` | `permanent` | `created` | `🚨 Trade <code> logged` | — | Ragged internal whitespace and trailing spaces. |
+| 76 | `🚨 Trade Alert 🚨 ⏎ mdurgin I'm sending you Ja'Marr Chase for 450 FAAB` | `permanent` | `created` | `🚨 Trade <code> logged` | — | From kpbowe. Both persons in one line: `I` is the announcer and `you` is the one member the announcement names besides them. |
+| 80 | `🚨 Trade Alert 🚨 ⏎ kpbowe sends Stevenson to mdurgin for 200 FAAB` | `permanent` | `created` | `🚨 Trade <code> logged` | — | A surname two active players share. Matching surnames across the whole directory asks which team, so only the giver's roster -- which holds one of them -- can answer. This is why the roster step runs before the whole-directory rule. |
+| 81 | `🚨 Trade Alert 🚨 ⏎ kpbowe sends Quentin to mdurgin for 200 FAAB` | `permanent` | `created` | `🚨 Trade <code> logged` | — | A first name on nobody's roster but the receiving team's. The giver's roster settles nothing, so every league roster is searched -- still hundreds of names rather than thousands. The step that survives a stale roster sync or a backwards announcement. |
 
 ## Revisions (4)
 
@@ -108,7 +141,7 @@ Results land in `docs/testing/2026-09-09-trade-registrar-results.md`.
 | 43 | `🚨 Trade Alert 🚨 ⏎ nickgrod sends Ja'Marr Chase to blandon for 450 FAAB.` | `permanent` | `duplicate` | none | 1 | Same alert reposted 8 days later, outside REPOST_WINDOW, so it costs a model call and is caught on the semantic trade fingerprint instead. No reply. |
 | 44 | `🚨 Trade Alert 🚨 ⏎ jrayay gets DJ Moore from chobes, 125 FAAB the other way` | `permanent` | `duplicate` | none | 11 | Same terms in different words; only the semantic fingerprint can catch this. No reply. |
 
-## Rescissions (6)
+## Rescissions (7)
 
 | # | Input | Kind | Status | Reply | Prereq | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -118,6 +151,7 @@ Results land in `docs/testing/2026-09-09-trade-registrar-results.md`.
 | 48 | `🚨 Void T-2026-006 🚨` | `rescission` | `rescinded` | `🚨 Trade <code> rescinded` | 6 | The word void with a code. Substitute the prereq's real code. |
 | 49 | `🚨 Trade Alert 🚨 ⏎ nickgrod and blandon are undoing the Chase deal` | `rescission` | `clarification` | `🚨 Trade not logged yet:` | 1 | No code and undo is not a rescission keyword, so this needs the model; the context lookup will not match and the bot must ask for the T- code. |
 | 50 | `🚨 Trade Alert 🚨 ⏎ Rescind T-2026-007. New deal: RylandRad sends Tucker Kraft to scrappyCon16 for 40 FAAB` | `rescission` | `rescinded` | `🚨 Trade <code> rescinded` | 7 | Known limitation: the coded rescission short-circuits before extraction, so the second trade in the same message is never logged and nobody is told. |
+| 78 | `🚨 Trade Alert 🚨 ⏎ I'm cancelling my trade with mdurgin` | `rescission` | `clarification` | `🚨 Trade not logged yet:` | — | From kpbowe. A rescission in the first person: `I` and `my trade` name the announcer, so both sides of the cancelled deal are known without a T- code. With nothing on file to match the bot still has to ask for the code, which is also what a dry run sees. |
 
 ## Not a trade (8)
 
@@ -132,15 +166,20 @@ Results land in `docs/testing/2026-09-09-trade-registrar-results.md`.
 | 57 | `Trade alert: chobes sends DJ Moore to jrayay for 125 FAAB` | `not_a_trade` | `not_a_trade` | none | — | No siren, so is_trade_candidate is false and no model call happens. The runner reports this as not-a-candidate, which satisfies not_a_trade. |
 | 58 | `🚨🚨🚨 FAAB 🚨🚨🚨` | `not_a_trade` | `not_a_trade` | none | — | Siren plus a bare trade word and nothing else; detection passes, the model must not. |
 
-## Unclear (5)
+## Unclear (10)
 
 | # | Input | Kind | Status | Reply | Prereq | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
 | 59 | `🚨 Trade Alert 🚨 blandon is sending Rome Odunze away for 100 FAAB` | `unclear` | `clarification` | `🚨 Trade not logged yet:` | — | One party named. The prompt requires unclear when fewer than two people are named. |
 | 60 | `🚨 Trade Alert 🚨 nickgrod and mdurgin have agreed to a deal` | `unclear` | `clarification` | `🚨 Trade not logged yet:` | — | Two parties, no asset. validate() also refuses this if the model calls it permanent. |
-| 61 | `🚨 Trade Alert 🚨 kpbowe sends me Trey McBride for 150 FAAB` | `unclear` | `clarification` | `🚨 Trade not logged yet:` | — | Ambiguous pronoun: me is not resolvable from the text, and the sender address is not part of the extraction contract. |
+| 61 | `🚨 Trade Alert 🚨 kpbowe sends me Trey McBride for 150 FAAB` | `unclear` | `clarification` | `🚨 Trade not logged yet:` | — | No announcer, so `me` names nobody and only one person is named. The same text sent by a placed member would be a two-party trade -- which is what cases 74 and 75 pin down. |
 | 62 | `🚨 Trade Alert 🚨 jrayay is renting Breece Hall from davidwiers for 200 FAAB` | `rental` | `clarification` | `🚨 Trade not logged yet:` | — | Rental with no return condition; caught by validate(), not by the model. |
 | 63 | `🚨 Trade Alert 🚨 Chase Brown and 100 FAAB between chobes and RylandRad` | `unclear` | `clarification` | `🚨 Trade not logged yet:` | — | Direction is unstated, so who gives what cannot be read confidently. |
+| 73 | `🚨 Trade Alert 🚨 Sparkplug sends Bijan Robinson to the Chairman for 200 FAAB` | `unclear` | `clarification` | `🚨 Trade not logged yet:` | — | Nobody named is a member, but the alert is not placed in another league either -- Sparkplug and the Chairman read like unregistered nicknames, so the bot asks rather than silently dropping what may be a real alert. |
+| 75 | `🚨 Trade Alert 🚨 ⏎ I sent Ja'Marr Chase to mdurgin for 450 FAAB` | `unclear` | `clarification` | `🚨 Trade not logged yet:` | — | No announcer: a sender whose handle was never loaded leaves `Announcer: unknown`, `I` names nobody, and one named party is not a trade. Case 74's text exactly, so the pair proves the announcer and not the wording is what changed the answer. |
+| 77 | `🚨 Trade Alert 🚨 ⏎ I'm sending you Ja'Marr Chase for 450 FAAB` | `unclear` | `clarification` | `🚨 Trade not logged yet:` | — | From kpbowe. A known announcer is only ever one party. The alert names no other member for `you` to mean, so the bot asks who the other side is rather than guessing at whoever was being addressed in the chat. |
+| 82 | `🚨 Trade Alert 🚨 ⏎ kpbowe sends Michael to mdurgin for 300 FAAB` | `permanent` or `unclear` | `clarification` | `🚨 Trade not logged yet:` | — | Two players on the giver's roster answer to the name, and two readings are honest: pass the fragment through and let resolution ask, or see both in the pack and ask directly. The model has answered each way on consecutive runs; both end in the same question with nothing logged, so the case carries `alt_kind`. The code path is pinned by `test_resolve.py`, with no model involved. |
+| 83 | `🚨 Trade Alert 🚨 ⏎ chobes sends 950 FAAB to kpbowe for Michael Pittman` | `unclear` | `clarification` | `🚨 Trade not logged yet:` | — | More FAAB than the payer has. `FAAB remaining` is the one part of the context pack that is a check rather than a spelling aid: an amount a team cannot cover is a question, never quietly lowered to what they can afford. Everybody in the synthetic league holds 900. |
 
 ## Privacy and injection (5)
 

@@ -212,6 +212,10 @@ def _register_trade_registrar(
 
     Test mode writes `TEST-` trade codes: a gate rehearsal must not consume the
     season's real trade numbers.
+
+    The contact repository is what lets a first-person alert name its announcer:
+    without loaded handles every sender is unplaceable, and `I sent X to Y` ends
+    in a question rather than a trade.
     """
     if chat_guid is None:
         log.warning("trade registrar disabled: no target chat for %s", settings.delivery_mode)
@@ -232,6 +236,7 @@ def _register_trade_registrar(
         PlayerRepository(conn),
         TradeRepository(conn, code_prefix_for(settings.delivery_mode)),
         CommittingRepo(RunRepository(conn), conn),
+        contacts_repo=MemberContactRepository(conn),
         sources_repo=SourceMessageRepository(conn),
         sleeper_client=SleeperClient(httpx.Client()),
     )

@@ -329,6 +329,26 @@ can clear them.
 - [ ] `ug trades list` shows the trade with status `rescinded` and
   revision 2.
 
+A member announcing their own trade writes it in the first person
+(`I sent Player Alpha to <member> for 100 FAAB`), and the Registrar can
+only read `I` as that member if the sender's handle is loaded: it places
+the sender by the hash of their Apple handle, the same lookup the
+Advisor uses for its asker. So run `ug members handles load
+data/private/member-handles.json` before the gate, and re-run it
+whenever somebody joins or changes number. With no handle on file the
+announcer is unknown, first person names nobody, and the bot answers a
+perfectly good alert by asking who the second party is. To rehearse one
+without sending anything, `ug trades extract --text '<alert>' --as
+<sleeper_username>` stands in for the sender the listener would have
+placed.
+
+Partial player names resolve from the rosters: an alert that says
+`Rhamondre` or `Wilson` rather than a full name is matched against the
+giving party's roster first, then every roster in the league, so the
+roster sync (§9b) has to be current for the shortest names to land --
+and the extraction is now given the league's rosters, FAAB and this
+season's trades as context, out of the same tables.
+
 Once every check above passes, replace the status heading with
 `Gate passed: <date>, delivery mode <test|production>`, leave the checked
 boxes as the record, and add the outcomes as notes below it. Do not

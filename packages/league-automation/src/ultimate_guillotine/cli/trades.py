@@ -10,6 +10,7 @@ contracts spreadsheet, so a prompt change can be measured against real history.
 
 import argparse
 import hashlib
+import sys
 from collections.abc import Callable, Iterable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -17,6 +18,7 @@ from pathlib import Path
 import httpx
 import openpyxl
 
+from ultimate_guillotine.advisor.state import SnapshotRepository
 from ultimate_guillotine.ai.structured import AIInvalidOutput
 from ultimate_guillotine.cli.deps import build_ai, build_delivery, build_deps
 from ultimate_guillotine.config import DeliveryMode, load_settings
@@ -29,12 +31,15 @@ from ultimate_guillotine.data.repositories import (
 from ultimate_guillotine.messages.bluebubbles import InboundMessage
 from ultimate_guillotine.sleeper.client import SleeperClient
 from ultimate_guillotine.sleeper.players import PlayerRepository
+from ultimate_guillotine.trades.context import TRADE_LIMIT, context_from_snapshot
 from ultimate_guillotine.trades.detect import ALERT, is_trade_candidate
 from ultimate_guillotine.trades.extract import PROMPT_VERSION, extract_trade
 from ultimate_guillotine.trades.models import TradeProposal
+from ultimate_guillotine.trades.names import normalize_name
 from ultimate_guillotine.trades.registrar import TradeRegistrar
 from ultimate_guillotine.trades.repository import TradeRepository, code_prefix_for
 from ultimate_guillotine.trades.resolve import (
+    MemberRef,
     RosterIndex,
     Unresolved,
     build_roster_index,
@@ -87,6 +92,13 @@ def register(subparsers) -> None:
     )
     extract.add_argument("--text", required=True, help="the announcement to extract")
     extract.add_argument(
+        "--as",
+        dest="announcer",
+        default=None,
+        metavar="SLEEPER_USERNAME",
+        help="simulate the announcer, so `I` and `me` in the text name that member",
+    )
+    extract.add_argument(
         "--rosters",
         action="store_true",
         help="fetch live Sleeper rosters to disambiguate duplicate names",
@@ -123,6 +135,8 @@ def dry_run_pipeline(
     players,
     rosters: RosterIndex,
     source_guid: str = "dry-run",
+    announcer: MemberRef | None = None,
+    context: str | None = None,
 ) -> TradeProposal | Unresolved:
     """Extract, resolve, and validate one announcement without writing or sending.
 
@@ -131,11 +145,25 @@ def dry_run_pipeline(
     question the registrar would have asked the chat. Nothing here touches the
     database or the delivery service, which is what makes it safe to point at a
     whole season of history.
+
+    ``announcer`` stands in for the member the listener would have placed from
+    the sender's handle. A replay has no sender at all, so it passes none and
+    first-person announcements read there as they read in a chat whose handles
+    were never loaded.
+
+    ``context`` is the league as it stands -- the week, the rosters, the FAAB,
+    the season's trades. `ug trades extract` builds it so a dry run sees what the
+    listener would have shown the model. A replay passes none on purpose: its
+    announcements are years old, and today's rosters would be a description of
+    the wrong league presented as fact.
     """
     member_names = [
         f"{m.display_name}: {', '.join(m.aliases) or 'no known nicknames'}" for m in members
     ]
-    extracted, usage = extract_trade(ai, text, season, None, member_names)
+    extracted, usage = extract_trade(
+        ai, text, season, None, member_names,
+        announcer.display_name if announcer else None, context,
+    )
     if extracted.kind == "not_a_trade":
         return NOT_A_TRADE
     try:
@@ -149,11 +177,48 @@ def dry_run_pipeline(
             text[:2000],
             PROMPT_VERSION,
             usage.model,
+            announcer=announcer,
         )
         validate(proposal)
     except Unresolved as exc:
         return exc
     return proposal
+
+
+def find_member(members, name: str) -> MemberRef | None:
+    """The member `--as` names, matched the way resolution matches a name.
+
+    Display name or alias, normalized both sides, so `--as` accepts the same
+    spellings the chat does. An unknown name is refused rather than quietly
+    treated as no announcer at all: a dry run that silently ignored `--as` would
+    report the behaviour of a chat with no handles loaded and look like a bug in
+    the prompt.
+    """
+    wanted = normalize_name(name)
+    for member in members:
+        if wanted in {normalize_name(member.display_name)} | {
+            normalize_name(alias) for alias in member.aliases
+        }:
+            return member
+    return None
+
+
+def league_context(conn, members) -> str | None:
+    """The context pack the listener would have put in front of this alert.
+
+    Built from the Advisor's league snapshot, the same read the registrar makes,
+    so a dry run and the real thing show the model the same league. A data layer
+    that cannot describe the league yet costs the dry run its context and
+    nothing else -- the note goes to stderr so a piped `--text` run still prints
+    only the proposal.
+    """
+    try:
+        snapshot = SnapshotRepository(conn).load()
+        trades = TradeRepository(conn).list_recent(TRADE_LIMIT)
+        return context_from_snapshot(snapshot, members, trades) or None
+    except Exception as exc:  # noqa: BLE001 - any context failure degrades the same way
+        print(f"no context pack: {exc.__class__.__name__}", file=sys.stderr)
+        return None
 
 
 def cmd_extract(args: argparse.Namespace) -> int:
@@ -170,14 +235,21 @@ def cmd_extract(args: argparse.Namespace) -> int:
         if args.rosters
         else RosterIndex.empty()
     )
+    members = MemberAliasRepository(conn).all_members()
+    announcer = find_member(members, args.announcer) if args.announcer else None
+    if args.announcer and announcer is None:
+        print(f"no league member goes by {args.announcer}")
+        return 2
     try:
         result = dry_run_pipeline(
             build_ai(deps),
             args.text,
             season,
-            MemberAliasRepository(conn).all_members(),
+            members,
             PlayerRepository(conn).all_active(),
             rosters,
+            announcer=announcer,
+            context=league_context(conn, members),
         )
     except AIInvalidOutput as exc:
         # Only the class name: the exception chains a pydantic error whose body

@@ -9,6 +9,7 @@ from ultimate_guillotine.trades.resolve import (
     MemberRef,
     RosterIndex,
     Unresolved,
+    _resolve_player_with_rosters,
     build_roster_index,
     resolve_extracted,
     validate,
@@ -408,3 +409,169 @@ def test_a_single_token_name_still_falls_back_to_the_last_name() -> None:
         e, MEMBERS, players, ROSTERS, 2026, "g1", "🚨 ...", "2026.1", "m"
     )
     assert proposal.assets[0].player_id == "p9"
+
+
+#: A first-person party name, as the model would leave it if it ignored the
+#: prompt's instruction to write the announcer's username instead.
+FIRST_PERSON = ("me", "Me", "I", "my team", "My Team", "myself")
+
+
+@pytest.mark.parametrize("pronoun", FIRST_PERSON, ids=FIRST_PERSON)
+def test_a_first_person_party_resolves_to_the_announcer(pronoun: str) -> None:
+    """The prompt asks for the username; this is the guard for when the model
+    writes the pronoun through anyway, so the trade is still logged."""
+    e = extracted(
+        parties=[ExtractedParty(name=pronoun), ExtractedParty(name="Member02")],
+        assets=[
+            ExtractedAsset(kind="player", from_party=pronoun, to_party="Member02",
+                           player_name="Player Alpha", amount=None, unit=None, description=None),
+        ],
+    )
+    proposal = resolve_extracted(
+        e, MEMBERS, PLAYERS, ROSTERS, 2026, "g1", "x", "2026.1", "m", announcer=MEMBERS[0]
+    )
+    assert [p.member_id for p in proposal.parties] == [1, 2]
+    assert proposal.assets[0].from_member_id == 1 and proposal.assets[0].to_member_id == 2
+
+
+def test_a_first_person_party_with_no_announcer_asks_the_chat() -> None:
+    """No announcer means the sender was never placed -- an unloaded handle -- so
+    `me` is a name nobody has, and the wording is the one it always was."""
+    e = extracted(parties=[ExtractedParty(name="me"), ExtractedParty(name="Member02")])
+    with pytest.raises(Unresolved) as info:
+        resolve_extracted(e, MEMBERS, PLAYERS, ROSTERS, 2026, "g1", "x", "2026.1", "m")
+    assert info.value.reason == "I don't recognize 'me' as a league member"
+
+
+def test_a_member_who_goes_by_a_first_person_word_keeps_their_name() -> None:
+    """The member index is asked before the pronoun guard: an alias really is a
+    name, and the announcer only stands in for a word nobody answers to."""
+    members = [*MEMBERS, MemberRef(5, "Member05", ("me",))]
+    e = extracted(parties=[ExtractedParty(name="me"), ExtractedParty(name="Member02")],
+                  assets=[ExtractedAsset(kind="player", from_party="me", to_party="Member02",
+                                         player_name="Player Alpha", amount=None, unit=None,
+                                         description=None)])
+    proposal = resolve_extracted(
+        e, members, PLAYERS, ROSTERS, 2026, "g1", "x", "2026.1", "m", announcer=MEMBERS[0]
+    )
+    assert [p.member_id for p in proposal.parties] == [5, 2]
+
+
+def test_the_announcer_is_not_added_to_a_trade_that_never_mentions_them() -> None:
+    """Knowing who posted an alert is not a reason to make them a party to it:
+    a member relaying two other people's trade stays out of the record."""
+    proposal = resolve_extracted(
+        extracted(), MEMBERS, PLAYERS, ROSTERS, 2026, "g1", "x", "2026.1", "m",
+        announcer=MEMBERS[3],
+    )
+    assert [p.member_id for p in proposal.parties] == [1, 2]
+
+
+# -- partial player names resolved against the parties' rosters ---------------
+#
+# The real message: "Derek sends a 1 week Rhamondre rental to Charlie". A first
+# name is not an exact match, is not a surname, and is not a defense, so the old
+# chain answered "I can't find a player named Rhamondre" about a man sitting on
+# Derek's roster. These names are synthetic and deliberately unlike anyone's.
+
+ROSTER_PLAYERS = [
+    *PLAYERS,
+    Player("p10", "Rashaan Bellwether", "RB", "NE", True),
+    Player("p11", "Michael Bellwether", "RB", "DAL", True),
+    Player("p12", "Michael Tolliver", "WR", "ARI", True),
+    Player("p13", "Gavin Tolliver", "TE", "SEA", True),
+    Player("p14", "Van Quillon", "WR", "LAR", True),
+    Player("p15", "Sam Fernsby", "QB", "GB", True),
+]
+#: Member01 gives; Member02 receives. `Sam Fernsby` is on nobody's roster, which
+#: is what a free agent or an unsynced team looks like from here.
+ROSTERED = RosterIndex(
+    {
+        1: frozenset({"p1", "p10", "p11", "p12", "p14"}),
+        2: frozenset({"p13"}),
+        3: frozenset(),
+    }
+)
+
+
+def rostered(name: str):
+    """Resolve one player asset given away by Member01, against the rosters above."""
+    e = extracted(assets=[player_asset(name)])
+    return resolve_extracted(
+        e, MEMBERS, ROSTER_PLAYERS, ROSTERED, 2026, "g1", "x", "2026.1", "m"
+    )
+
+
+def test_a_first_name_resolves_against_the_giving_party_s_roster() -> None:
+    """The message that started this: a rental announced by first name only."""
+    proposal = rostered("Rashaan")
+    assert proposal.assets[0].player_id == "p10"
+
+
+def test_a_surname_two_men_share_is_settled_by_whose_roster_he_is_on() -> None:
+    """Both Tollivers are rostered, so the old surname rule over every active
+    player would ask which team. The giver has only one of them."""
+    assert rostered("Tolliver").assets[0].player_id == "p12"
+
+
+def test_a_name_on_nobody_else_s_roster_resolves_league_wide() -> None:
+    """A giver who has already dropped him, or a name typed for the receiving
+    side: the league's rosters are still a far smaller haystack than the
+    directory, and one match in them is an answer."""
+    assert rostered("Gavin").assets[0].player_id == "p13"
+
+
+def test_two_players_on_the_giver_s_roster_answer_to_the_name_so_the_chat_is_asked() -> None:
+    """Roster evidence narrows; it never guesses. Both Bellwethers are the
+    giver's, so this is a question rather than a coin toss."""
+    with pytest.raises(Unresolved) as info:
+        rostered("Bellwether")
+    assert info.value.reason == "Two players named Bellwether on that roster; which one?"
+
+
+def test_a_name_nobody_in_the_league_answers_to_keeps_the_old_message() -> None:
+    with pytest.raises(Unresolved) as info:
+        rostered("Nonexistent Placeholder")
+    assert info.value.reason == "I can't find a player named Nonexistent Placeholder"
+
+
+def test_a_full_typed_name_is_never_swapped_for_a_different_rostered_one() -> None:
+    """`Justin Quillon` is not in the directory and `Van Quillon` is, on the
+    giver's roster. Sharing a surname is not being the same man, so this asks
+    rather than recording a trade for somebody nobody named."""
+    with pytest.raises(Unresolved) as info:
+        rostered("Justin Quillon")
+    assert info.value.reason == "I can't find a player named Justin Quillon"
+
+
+def test_an_exact_name_still_wins_before_any_roster_is_read() -> None:
+    assert (
+        rostered("Michael Tolliver").assets[0].player_id == "p12"
+    )
+
+
+def test_an_asset_with_no_giver_falls_back_to_the_old_chain() -> None:
+    """Nothing says whose roster to read, so the giver's-roster step is skipped
+    and a bare surname is answered the way it was before rosters were consulted
+    -- `Sam Fernsby` is on nobody's roster at all."""
+    assert (
+        _resolve_player_with_rosters("Fernsby", ROSTER_PLAYERS, ROSTERED, None) == "p15"
+    )
+
+
+def test_an_empty_roster_index_leaves_resolution_exactly_as_it_was() -> None:
+    """A Sleeper outage or a database-less dry run loses roster evidence and must
+    degrade to the old answers rather than to no answers."""
+    assert (
+        _resolve_player_with_rosters("Fernsby", ROSTER_PLAYERS, RosterIndex.empty(), 1) == "p15"
+    )
+    with pytest.raises(Unresolved) as info:
+        _resolve_player_with_rosters("Rashaan", ROSTER_PLAYERS, RosterIndex.empty(), 1)
+    assert info.value.reason == "I can't find a player named Rashaan"
+
+
+def test_all_players_is_every_roster_folded_together() -> None:
+    assert ROSTERED.all_players() == frozenset({"p1", "p10", "p11", "p12", "p13", "p14"})
+    assert RosterIndex.empty().all_players() == frozenset()
+    assert ROSTERED.players_for(None) == frozenset()
+    assert ROSTERED.players_for(99) == frozenset()

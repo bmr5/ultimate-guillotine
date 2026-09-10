@@ -15,6 +15,14 @@ from ultimate_guillotine.core.signature import is_signed
 
 FIXTURE = Path(__file__).parent / "fixtures" / "registrar_cases.json"
 KEYS = {"id", "category", "text", "expected_kind", "expected_status", "prereq", "notes"}
+#: `announcer` is optional and names the member the alert was sent by, as the
+#: listener would place them from the sender's handle. A case without it is a
+#: case whose sender could not be placed, which is a different answer rather
+#: than a missing field -- so the key is absent, never `null`.
+OPTIONAL_KEYS = {"announcer", "alt_kind"}
+#: `alt_kind` is a second `kind` the case accepts. It is for an announcement
+#: with two honest readings that end in the same outcome -- not for a case the
+#: model gets wrong half the time, which is a finding rather than a variant.
 KINDS = {"permanent", "rental", "payment", "rescission", "unclear", "not_a_trade"}
 STATUSES = {
     "created",
@@ -54,7 +62,15 @@ def test_every_category_is_covered() -> None:
 
 @pytest.mark.parametrize("case", CASES, ids=[str(c["id"]) for c in CASES])
 def test_case_shape(case: dict) -> None:
-    assert set(case) == KEYS
+    assert KEYS <= set(case) <= KEYS | OPTIONAL_KEYS
+    if "announcer" in case:
+        assert isinstance(case["announcer"], str) and case["announcer"].strip()
+    if "alt_kind" in case:
+        assert case["alt_kind"] in KINDS
+        # A second reading has to be a different one, and the notes have to say
+        # why both are honest -- otherwise this is a way to launder a failure.
+        assert case["alt_kind"] != case["expected_kind"]
+        assert "alt_kind" in case["notes"]
     assert case["category"] in CATEGORIES
     assert case["expected_kind"] in KINDS
     assert case["expected_status"] in STATUSES
@@ -90,3 +106,25 @@ def test_dropped_upstream_cases_are_ones_the_listener_really_drops() -> None:
     assert dropped
     for case in dropped:
         assert is_signed(case["text"]), case["id"]
+
+
+def test_the_first_person_pair_differs_only_by_its_announcer() -> None:
+    """Cases 74 and 75 are the same announcement sent by somebody and by nobody.
+    If the texts ever drift apart the pair stops proving what it exists for: that
+    the announcer, and not the wording, is what turns `I` into a party."""
+    with_announcer = next(c for c in CASES if c["id"] == 74)
+    without = next(c for c in CASES if c["id"] == 75)
+    assert with_announcer["text"] == without["text"]
+    assert "announcer" in with_announcer and "announcer" not in without
+    assert with_announcer["expected_status"] == "created"
+    assert without["expected_status"] == "clarification"
+
+
+def test_every_announcer_is_named_somewhere_the_members_list_can_reach() -> None:
+    """The runner matches the announcer against `public.members`, so a username
+    with a stray space or a display-name spelling would silently fail the case."""
+    for case in CASES:
+        announcer = case.get("announcer")
+        if announcer is not None:
+            assert announcer == announcer.strip()
+            assert " " not in announcer, case["id"]

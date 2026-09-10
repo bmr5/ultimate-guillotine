@@ -37,8 +37,12 @@ def good_extraction() -> ExtractedTrade:
 class FakeAI:
     def __init__(self, result=None, error=None):
         self.result, self.error = result, error
+        #: The user messages this client was given, so a test can assert which
+        #: context lines the registrar wrote without asserting on any text.
+        self.users = []
 
     def parse(self, system, user, schema, name):
+        self.users.append(user)
         if self.error:
             raise self.error
         return self.result, AIUsage("gen", 1, 1, "m")
@@ -83,6 +87,9 @@ class FakeTrades:
     def find_by_id(self, trade_id):
         return None
 
+    def list_recent(self, limit=10):
+        return []
+
 
 class FakeNotifier:
     def __init__(self):
@@ -98,6 +105,22 @@ class FakeNotifier:
 class FakeMembers:
     def all_members(self):
         return [MemberRef(1, "Member01", ()), MemberRef(2, "Member02", ())]
+
+
+class FakeContacts:
+    """Hashed handles to members, as `private.member_contacts` maps them.
+
+    Built with the member a hashed handle belongs to, or `None` for a handle
+    nobody has loaded. The digest is recorded so a test can prove the raw
+    address was hashed before the lookup and never used as it stands.
+    """
+
+    def __init__(self, member=None):
+        self.member, self.asked = member, []
+
+    def member_for_handle_hash(self, digest):
+        self.asked.append(digest)
+        return self.member
 
 
 class FakePlayers:
@@ -215,13 +238,14 @@ class RefusingTrades(FakeTrades):
 
 
 def build(ai, trades=None, delivery=None, conn=None, members=None, runs=None, sleeper=None,
-          sources=None, season=None):
+          sources=None, season=None, contacts=None):
     settings = Settings(database_url="postgresql://x:y@example.invalid/db", delivery_mode="test",
                         test_chat_guid=CHAT, _env_file=None)
     runs, notifier = runs or FakeRuns(), FakeNotifier()
     reg = TradeRegistrar(settings, conn, ai, delivery or FakeDelivery(), notifier,
                          members or FakeMembers(), FakePlayers(),
                          trades or FakeTrades(), runs,
+                         contacts_repo=contacts,
                          sources_repo=sources if sources is not None else FakeSources(),
                          sleeper_client=sleeper, season=season,
                          clock=lambda: datetime(2026, 9, 10, tzinfo=UTC))
@@ -236,7 +260,7 @@ def test_created_trade_sends_confirmation_and_records_run() -> None:
     assert delivery.sent[0][1].startswith("🚨 Trade T-2026-001 logged")
     assert runs.reserved == ["trade:g1"] and runs.finished[0][1] == "succeeded"
     # The run records which prompt and model produced it, and hashes what was sent.
-    assert runs.finished[0][4] == "2026.2:m"
+    assert runs.finished[0][4] == "2026.3:m"
     assert runs.finished[0][3] == hashlib.sha256(delivery.sent[0][1].encode()).hexdigest()
 
 
@@ -351,7 +375,9 @@ def test_a_sleeper_outage_degrades_to_an_empty_roster_index() -> None:
     reg, runs, notifier = build(FakeAI(good_extraction()), delivery=delivery,
                                 conn=SeasonConn([], (2026,)), sleeper=ExplodingSleeper())
     assert reg.handle(msg("🚨 Member01 sends Player Alpha to Member02 for 450 FAAB")) == "created"
-    assert notifier.ops_sent == ["Trade Registrar could not load rosters: TimeoutError"]
+    # The fake connection cannot answer the data layer either, so the context
+    # pack degrades alongside the rosters -- two independent notes, one outage.
+    assert "Trade Registrar could not load rosters: TimeoutError" in notifier.ops_sent
     assert runs.finished[0][1] == "succeeded"
 
 
@@ -441,3 +467,74 @@ def test_a_commit_failure_after_finishing_leaves_the_run_succeeded() -> None:
     assert reg.handle(msg(ALERT_TEXT)) == "failed"
     assert [f[1] for f in runs.finished] == ["succeeded"]
     assert notifier.alerts_sent == ["Trade Registrar failed on a candidate: RuntimeError"]
+
+
+def first_person_extraction() -> ExtractedTrade:
+    """What the model returns for `I sent Player Alpha to Member02 for 450`
+    when it ignored the prompt and copied the pronoun through."""
+    return ExtractedTrade(
+        kind="permanent", parties=[ExtractedParty(name="me"), ExtractedParty(name="Member02")],
+        assets=[ExtractedAsset(kind="player", from_party="me", to_party="Member02",
+                               player_name="Player Alpha", amount=None, unit=None,
+                               description=None)],
+        effective_week=None, rental_return_condition=None, special_terms=[],
+        referenced_trade_code=None, unclear_reason=None,
+    )
+
+
+def test_the_announcer_reaches_the_prompt_as_a_username() -> None:
+    """The sender is placed by the hash of their handle, and the username -- not
+    the handle, and not the digest -- is what the model is told."""
+    ai = FakeAI(good_extraction())
+    contacts = FakeContacts(MemberRef(1, "Member01", ()))
+    reg, _runs, _ = build(ai, contacts=contacts)
+    assert reg.handle(msg("🚨 I sent Player Alpha to Member02 for 450 FAAB")) == "created"
+    assert "Announcer: Member01" in ai.users[0].splitlines()
+    assert contacts.asked and contacts.asked[0] != "+15555550100"
+    assert len(contacts.asked[0]) == 64
+
+
+def test_an_unplaceable_sender_leaves_the_announcer_unknown() -> None:
+    """No contact repository at all, which is what `ug trades retry` builds."""
+    ai = FakeAI(good_extraction())
+    reg, _runs, _ = build(ai)
+    assert reg.handle(msg("🚨 Member01 sends Player Alpha to Member02 for 450 FAAB")) == "created"
+    assert "Announcer: unknown" in ai.users[0].splitlines()
+
+
+def test_a_handle_nobody_loaded_leaves_the_announcer_unknown() -> None:
+    ai = FakeAI(good_extraction())
+    reg, _runs, _ = build(ai, contacts=FakeContacts(None))
+    assert reg.handle(msg("🚨 Member01 sends Player Alpha to Member02 for 450 FAAB")) == "created"
+    assert "Announcer: unknown" in ai.users[0].splitlines()
+
+
+def test_a_message_with_no_sender_never_hashes_the_empty_string() -> None:
+    contacts = FakeContacts(MemberRef(1, "Member01", ()))
+    ai = FakeAI(good_extraction())
+    reg, _runs, _ = build(ai, contacts=contacts)
+    anonymous = msg("🚨 Member01 sends Player Alpha to Member02 for 450 FAAB").model_copy(
+        update={"sender_address": None}
+    )
+    assert reg.handle(anonymous) == "created"
+    assert contacts.asked == []
+    assert "Announcer: unknown" in ai.users[0].splitlines()
+
+
+def test_a_first_person_party_is_logged_as_the_announcer() -> None:
+    """The prompt asks for the username; when the model writes `me` anyway the
+    trade is still logged, against the member who sent the message."""
+    trades = FakeTrades()
+    reg, _runs, _ = build(
+        FakeAI(first_person_extraction()), trades=trades,
+        contacts=FakeContacts(MemberRef(1, "Member01", ())),
+    )
+    assert reg.handle(msg("🚨 I sent Player Alpha to Member02 for 450 FAAB")) == "created"
+    assert [p.member_id for p in trades.accepted[0].parties] == [1, 2]
+
+
+def test_a_first_person_party_with_no_announcer_asks_the_chat() -> None:
+    delivery = FakeDelivery()
+    reg, _runs, _ = build(FakeAI(first_person_extraction()), delivery=delivery)
+    assert reg.handle(msg("🚨 I sent Player Alpha to Member02 for 450 FAAB")) == "clarification"
+    assert "me" in delivery.sent[0][1]
