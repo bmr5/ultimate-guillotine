@@ -10,7 +10,12 @@ from typing import Any
 
 import httpx
 
-from ultimate_guillotine.sleeper.models import SleeperLeague, SleeperRoster, SleeperUser
+from ultimate_guillotine.sleeper.models import (
+    SleeperDraft,
+    SleeperLeague,
+    SleeperRoster,
+    SleeperUser,
+)
 
 BASE_URL = "https://api.sleeper.app/v1"
 
@@ -74,6 +79,29 @@ class SleeperClient:
         response = self._http.get(f"/league/{league_id}/rosters")
         response.raise_for_status()
         return [SleeperRoster.model_validate(item) for item in response.json()]
+
+    def get_draft(self, draft_id: str) -> SleeperDraft:
+        """Fetch one draft's record: type, status, start time, and dimensions."""
+        response = self._http.get(f"/draft/{draft_id}")
+        response.raise_for_status()
+        return SleeperDraft.model_validate(response.json())
+
+    def get_draft_picks(self, draft_id: str) -> list[dict[str, Any]]:
+        """Fetch every pick of a draft, raw.
+
+        Each record carries ``pick_no``, ``round``, ``draft_slot``, ``roster_id``,
+        ``player_id`` and ``metadata.amount`` (a string). Parsing lives in
+        ``sleeper/draft.py``.
+        """
+        response = self._http.get(f"/draft/{draft_id}/picks")
+        response.raise_for_status()
+        return response.json()
+
+    def get_transactions(self, league_id: str, week: int) -> list[dict[str, Any]]:
+        """Fetch the executed transaction log for one week -- Sleeper's ``leg`` -- raw."""
+        response = self._http.get(f"/league/{league_id}/transactions/{week}")
+        response.raise_for_status()
+        return response.json()
 
     def get_matchups(self, league_id: str, week: int) -> list[dict[str, Any]]:
         """Fetch raw matchup data for a given week."""

@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 from pydantic import BaseModel, ConfigDict, field_validator
 
 
@@ -11,6 +13,9 @@ class SleeperLeague(BaseModel, frozen=True):
     scoring_settings: dict[str, object] = {}
     roster_positions: list[str] = []
     settings: dict[str, object] = {}
+    #: The league's canonical draft. Listing ``/league/{id}/drafts`` is the wrong key: the
+    #: 2025 league also carries an abandoned one-pick draft.
+    draft_id: str | None = None
 
     @property
     def season_year(self) -> int:
@@ -64,3 +69,47 @@ class SleeperRoster(BaseModel, frozen=True):
     def _no_settings_is_an_empty_map(cls, value: object) -> object:
         """Sleeper sends ``null`` for an absent settings/metadata block, not ``{}``."""
         return {} if value is None else value
+
+
+class SleeperDraft(BaseModel, frozen=True):
+    """The draft record behind ``league.draft_id``: its kind, its status, its dimensions."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    draft_id: str
+    type: str
+    status: str
+    start_time: int | None = None
+    last_picked: int | None = None
+    settings: dict[str, object] = {}
+
+    @field_validator("settings", mode="before")
+    @classmethod
+    def _no_settings_is_an_empty_map(cls, value: object) -> object:
+        return {} if value is None else value
+
+    def _setting(self, key: str) -> int | None:
+        value = self.settings.get(key)
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return None
+        return int(value)
+
+    @property
+    def teams(self) -> int | None:
+        return self._setting("teams")
+
+    @property
+    def rounds(self) -> int | None:
+        return self._setting("rounds")
+
+    @property
+    def started_at(self) -> datetime | None:
+        """When the draft opened, from Sleeper's millisecond epoch.
+
+        Falls back to ``last_picked`` when Sleeper never stamped a start, so a
+        completed draft always has a date for the journey's first entry.
+        """
+        millis = self.start_time if self.start_time is not None else self.last_picked
+        if millis is None:
+            return None
+        return datetime.fromtimestamp(millis / 1000, tz=UTC)
