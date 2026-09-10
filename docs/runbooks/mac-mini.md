@@ -887,9 +887,15 @@ hermes/guillotine/install.sh
 ```
 
 Confirm with `HERMES_HOME=~/.hermes/profiles/guillotine hermes cron list` — the
-job is listed at `50 23 * * *` — and `ug ops health` prints nothing new (until
-the first fire the audit reports `Expected job guillotine-eod-summary has never
-run`, which is correct and clears at 11:50 PM).
+job is listed at `50 23 * * *` — and `ug ops health` prints nothing new: a job
+registered more recently than its own gap budget (25 hours here) is not reported
+as never run until that budget passes, so the health check simply waits for the
+first fire at 11:50 PM.
+
+Done on the mini on 2026-09-10 (job `ee83fce80c46`, first fire that night); the
+same install also registered `guillotine-sleeper-draft` and
+`guillotine-sleeper-transactions`, which were in the manifest but not yet in the
+profile.
 
 ### The safe dry runs
 

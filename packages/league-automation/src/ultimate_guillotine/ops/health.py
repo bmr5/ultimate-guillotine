@@ -34,6 +34,16 @@ def missed_runs(now: datetime, runs, expected) -> list[str]:
     for agent, job in tightest.items():
         last = runs.last_started(agent)
         if last is None:
+            # A job registered more recently than its own gap budget has not
+            # missed anything: a nightly job installed at noon has no run to
+            # show until it fires, and reporting it every five minutes until
+            # then is a page about nothing. A row with no registration time on
+            # file keeps the old reading.
+            registered = job.created_at
+            if registered is not None and now - registered <= timedelta(
+                minutes=job.max_gap_minutes
+            ):
+                continue
             problems.append(f"Expected job {job.job_name} has never run")
             continue
         age = int((now - last).total_seconds() // 60)

@@ -445,3 +445,18 @@ def test_a_delivery_target_is_never_answered_with_a_listen_only_row(conn) -> Non
 
     assert targets.get(DeliveryMode.TEST) is None
     assert targets.get(DeliveryMode.PRODUCTION) is None
+
+
+def test_expected_runs_carry_when_they_were_registered(conn) -> None:
+    """The health check reads it: a job installed today has until its gap budget
+    runs out before its silence counts as a missed run."""
+    from datetime import UTC, datetime, timedelta
+
+    from ultimate_guillotine.data.repositories import ExpectedRun, ExpectedRunRepository
+
+    repo = ExpectedRunRepository(conn)
+    repo.replace_all([ExpectedRun("guillotine-eod-summary", "eod-summary", 1500, "50 23 * * *")])
+    (row,) = repo.all()
+    assert row.created_at is not None
+    assert row.created_at.tzinfo is not None
+    assert datetime.now(UTC) - row.created_at < timedelta(minutes=5)

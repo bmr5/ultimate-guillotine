@@ -100,6 +100,10 @@ class ExpectedRun:
     agent: str
     max_gap_minutes: int
     schedule: str
+    #: When the installer registered the job -- the row's ``created_at``. The
+    #: health check reads it: a job registered more recently than its own gap
+    #: budget has not missed anything yet. ``None`` on a row built by hand.
+    created_at: datetime | None = None
 
 
 class RunRepository:
@@ -584,10 +588,11 @@ class ExpectedRunRepository:
                 )
 
     def all(self) -> list[ExpectedRun]:
-        """Return every configured expected run."""
+        """Return every configured expected run, with when each was registered."""
         with self._conn.cursor() as cur:
             cur.execute(
-                "select job_name, agent, max_gap_minutes, schedule from private.expected_runs"
+                "select job_name, agent, max_gap_minutes, schedule, created_at"
+                " from private.expected_runs"
             )
             return [ExpectedRun(*row) for row in cur.fetchall()]
 
