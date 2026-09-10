@@ -1,8 +1,15 @@
-import { useId, useState } from "react";
-import { ChevronDown } from "lucide-react";
+import { Maximize2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
 import { formerManagerPhrase } from "../derive/ownerLabel";
@@ -19,6 +26,14 @@ const FOCUS_RING_CLASS =
 
 /** The chip on a trade the league undid. */
 const RESCINDED_LABEL = "Rescinded";
+
+/**
+ * Every card is this tall, whatever it carries. Ben's ruling of 2026-09-09: "make sure all the
+ * trade cards are the same size" — a grid where one tile is a title and the next is a wall of
+ * quotation is not a grid. Room for the three header lines, a three-line quotation and a row
+ * of chips; anything longer is what the modal is for.
+ */
+const CARD_HEIGHT_CLASS = "h-44";
 
 /**
  * What sits between two owners in the title. A trade goes both ways, so the arrow does too —
@@ -90,106 +105,186 @@ function ownersTitle(trade: CatalogTrade): string {
   return segments.join(OWNER_SEPARATOR);
 }
 
+/** The two chips Ben kept, and nothing else; shared by the card and the modal. */
+function Chips({ trade }: { trade: CatalogTrade }) {
+  if (!trade.rescinded && !trade.registered) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {trade.rescinded && (
+        <Badge variant="destructive">{RESCINDED_LABEL}</Badge>
+      )}
+      {trade.registered && <Badge>{trade.sourceLabel}</Badge>}
+    </div>
+  );
+}
+
+/**
+ * The modal, which is where a reader deep-dives (Ben's ruling of 2026-09-09: "expandable into a
+ * scrollable modal view when a user wants to deep dive into it").
+ *
+ * It carries the same four things as the card — the participants, the date, the category and
+ * the exact text — with the quotation whole and scrolling inside the modal, and the players the
+ * deal moved come back here. The ruling that took the asset list off the *tile* was about the
+ * tile: "it is hard to understand these tiles". The FAAB figure stays out everywhere: "because
+ * of the dynamic nature of many deals it's most likely not useful to include the FAAB number".
+ * A FAAB-only deal therefore lists no players, and the heading goes with them.
+ */
+function TradeDetail({
+  trade,
+  title,
+  category,
+}: {
+  trade: CatalogTrade;
+  title: string;
+  category: string;
+}) {
+  const players = trade.assets.filter((asset) => asset.kind === "player");
+  const conditions = trade.assets.filter((asset) => asset.kind === "condition");
+  const description = [category, tradeDateLine(trade)]
+    .filter((line) => line !== "")
+    .join(" · ");
+  return (
+    <DialogContent>
+      <DialogHeader>
+        <DialogTitle className={cn(trade.rescinded && "line-through")}>
+          {title}
+        </DialogTitle>
+        <DialogDescription>{description}</DialogDescription>
+      </DialogHeader>
+
+      {/* The one child allowed to scroll: `min-h-0` lets the flex column hand it whatever
+          height is left under the header and above the chips, instead of it sizing to the
+          quotation and pushing the rest off the screen. */}
+      <div className="min-h-0 space-y-4 overflow-y-auto">
+        {trade.announcement !== null && (
+          <blockquote className="border-l-2 pl-3 text-sm whitespace-pre-line text-muted-foreground">
+            {trade.announcement}
+          </blockquote>
+        )}
+        {players.length > 0 && (
+          <section>
+            <h3 className="text-xs font-medium text-muted-foreground">
+              Players
+            </h3>
+            <ul className="mt-1 space-y-0.5 text-sm">
+              {players.map((asset, index) => (
+                <li key={`${asset.playerId ?? asset.name}-${index}`}>
+                  {asset.name}
+                  {asset.position !== null && (
+                    <span className="text-muted-foreground">
+                      {" "}
+                      · {asset.position}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+        {conditions.length > 0 && (
+          <section>
+            <h3 className="text-xs font-medium text-muted-foreground">
+              Conditions
+            </h3>
+            <ul className="mt-1 space-y-0.5 text-sm">
+              {conditions.map((asset, index) => (
+                <li key={index}>{words(asset.label)}</li>
+              ))}
+            </ul>
+          </section>
+        )}
+      </div>
+
+      <Chips trade={trade} />
+    </DialogContent>
+  );
+}
+
 export function TradeCard({ trade }: { trade: CatalogTrade }) {
-  const [open, setOpen] = useState(false);
-  const panelId = useId();
   const category = categoryLabel(trade);
   const owners = ownersTitle(trade);
-  // The trade code is the registered row's own name for itself. A catalog row's `sourceLabel`
-  // is the literal `catalog`, which Ben's ruling leaves off the card: it says where the page
-  // read the deal, not anything about the deal.
-  const chips = trade.rescinded || trade.registered;
+  // A trade whose parties were never recorded has no owners to be named between, so it keeps
+  // the heading the card used to carry rather than an empty one — and then the sublabel below
+  // would only repeat it.
+  const title = owners === "" ? category : owners;
 
   return (
     <li data-rescinded={trade.rescinded} className="list-none">
-      <Card className={cn(trade.rescinded && "opacity-60")}>
-        <CardContent className="p-3">
-          {/* A real <button>, not a Radix trigger, so the card owns its `aria-controls`. */}
-          <button
-            type="button"
-            onClick={() => setOpen((value) => !value)}
-            aria-expanded={open}
-            aria-controls={panelId}
-            className={cn(
-              "flex w-full items-start justify-between gap-2 text-left",
-              FOCUS_RING_CLASS,
-            )}
-          >
-            <span className="min-w-0">
-              <span
+      <Dialog>
+        {/* `relative` so the trigger's stretched hit area below is the card and not the page. */}
+        <Card
+          className={cn(
+            "relative flex flex-col",
+            CARD_HEIGHT_CLASS,
+            trade.rescinded && "opacity-60",
+          )}
+        >
+          <CardContent className="flex min-h-0 flex-1 flex-col overflow-hidden p-3">
+            {/*
+              The header is the trigger, and its `after:` pseudo-element is stretched over the
+              whole card so the quotation below is clickable too — without the quotation being
+              *inside* the button, where a <blockquote> is not valid markup and somebody else's
+              words would become part of the toggle's accessible name.
+            */}
+            <DialogTrigger asChild>
+              <button
+                type="button"
                 className={cn(
-                  "block truncate text-sm font-medium",
-                  trade.rescinded && "line-through",
+                  "flex w-full items-start justify-between gap-2 text-left after:absolute after:inset-0 after:rounded-xl",
+                  FOCUS_RING_CLASS,
                 )}
               >
-                {/* A trade whose parties were never recorded has no owners to be named
-                    between, so it keeps the heading the card used to carry rather than an
-                    empty one — and then the sublabel below would only repeat it. */}
-                {owners === "" ? category : owners}
-              </span>
-              {owners !== "" && category !== "" && (
-                <span className="block text-xs text-muted-foreground">
-                  {category}
+                <span className="min-w-0">
+                  <span
+                    className={cn(
+                      "block truncate text-sm font-medium",
+                      trade.rescinded && "line-through",
+                    )}
+                  >
+                    {title}
+                  </span>
+                  {owners !== "" && category !== "" && (
+                    <span className="block truncate text-xs text-muted-foreground">
+                      {category}
+                    </span>
+                  )}
+                  <span className="block truncate text-xs text-muted-foreground">
+                    {tradeDateLine(trade)}
+                  </span>
                 </span>
-              )}
-              <span className="block text-xs text-muted-foreground">
-                {tradeDateLine(trade)}
-              </span>
-            </span>
-            <ChevronDown
-              aria-hidden
-              className={cn(
-                "mt-1 h-4 w-4 shrink-0 transition-transform",
-                open && "rotate-180",
-              )}
-            />
-          </button>
+                <Maximize2
+                  aria-hidden
+                  className="mt-1 h-4 w-4 shrink-0 text-muted-foreground"
+                />
+              </button>
+            </DialogTrigger>
 
-          {/*
-            The panel the toggle above controls, and the whole of it: Ben's ruling of 2026-09-09
-            took the asset list off the expanded card, so opening a card is now exactly "show me
-            the rest of what was said". The wrapper is rendered unconditionally rather than with
-            the quotation inside it, so `aria-controls` always resolves to a real element — the
-            same guarantee the force-mounted collapsible used to give, without the collapsible.
+            {/*
+              The quotation: a <blockquote>, because it is somebody else's words and not the
+              page's, and `whitespace-pre-line` so two messages stay two paragraphs — the loader
+              joined them with a blank line for exactly that. Clamped to three lines so a long
+              announcement cannot turn one card in a grid of them into a wall of text; the whole
+              of it is in the modal.
 
-            The quotation itself: a <blockquote>, because it is somebody else's words and not the
-            page's, and `whitespace-pre-line` so two messages stay two paragraphs — the loader
-            joined them with a blank line for exactly that. Clamped to four lines while the card
-            is collapsed and whole once it is open, so a long announcement cannot turn one card
-            in a grid of them into a wall of text.
-
-            It sits outside the button on purpose: a quotation is not part of the toggle's
-            accessible name, and a <blockquote> inside a <button> is not valid markup either.
-
-            `null` renders nothing at all. An empty quote block would say the league said
-            nothing, when what happened is that this row carries nothing.
-          */}
-          <div id={panelId}>
+              `null` renders nothing at all. An empty quote block would say the league said
+              nothing, when what happened is that this row carries nothing.
+            */}
             {trade.announcement !== null && (
-              <blockquote
-                className={cn(
-                  "mt-2 border-l-2 pl-2 text-xs whitespace-pre-line text-muted-foreground",
-                  !open && "line-clamp-4",
-                )}
-              >
+              <blockquote className="mt-2 line-clamp-3 border-l-2 pl-2 text-xs whitespace-pre-line text-muted-foreground">
                 {trade.announcement}
               </blockquote>
             )}
-          </div>
 
-          {/* The two chips Ben kept, and nothing else. The owners are the title now; the FAAB
-              total and the analyst's confidence are both gone — "because of the dynamic nature
-              of many deals it's most likely not useful to include the FAAB number here". */}
-          {chips && (
-            <div className="mt-2 flex flex-wrap items-center gap-1.5">
-              {trade.rescinded && (
-                <Badge variant="destructive">{RESCINDED_LABEL}</Badge>
-              )}
-              {trade.registered && <Badge>{trade.sourceLabel}</Badge>}
+            {/* Pinned to the bottom, so a card without a quotation keeps its chips where every
+                other card has them. */}
+            <div className="mt-auto pt-2 empty:hidden">
+              <Chips trade={trade} />
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+
+        <TradeDetail trade={trade} title={title} category={category} />
+      </Dialog>
     </li>
   );
 }

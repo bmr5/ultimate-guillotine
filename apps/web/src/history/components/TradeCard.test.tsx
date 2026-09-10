@@ -209,7 +209,7 @@ describe("TradeCard", () => {
 
   // Ben's ruling: "include the actual text of the trade to give more context, it is hard to
   // understand these tiles". Every announcement in these fixtures is invented.
-  it("quotes the announcement, clamped until the card is opened", () => {
+  it("quotes the announcement on the card, clamped so every card stays one height", () => {
     render(
       <TradeCard
         trade={{
@@ -222,13 +222,26 @@ describe("TradeCard", () => {
     expect(quote.tagName).toBe("BLOCKQUOTE");
     // Two messages stay two paragraphs rather than running together.
     expect(quote).toHaveClass("whitespace-pre-line");
-    expect(quote).toHaveClass("line-clamp-4");
+    expect(quote).toHaveClass("line-clamp-3");
     expect(quote).toHaveTextContent("ANNOUNCEMENT-TWO");
+  });
 
-    fireEvent.click(screen.getByRole("button", { name: /alpha/i }));
-    expect(screen.getByText(/ANNOUNCEMENT-ONE/)).not.toHaveClass(
-      "line-clamp-4",
+  // Ben's ruling of 2026-09-09: "make sure all the trade cards are the same size". A card with
+  // no quotation and no chips is as tall as one with both, so the grid stays a grid.
+  it("gives every card the same fixed height", () => {
+    render(
+      <>
+        <TradeCard trade={TRADE} />
+        <TradeCard
+          trade={{ ...REGISTERED, announcement: "ANNOUNCEMENT-ONE" }}
+        />
+      </>,
     );
+    const cards = screen
+      .getAllByRole("listitem")
+      .map((item) => item.querySelector("[data-slot=card]"));
+    expect(cards).toHaveLength(2);
+    for (const card of cards) expect(card).toHaveClass("h-44");
   });
 
   it("renders nothing at all for a trade with no announcement", () => {
@@ -249,34 +262,59 @@ describe("TradeCard", () => {
     ).not.toHaveTextContent("ANNOUNCEMENT-ONE");
   });
 
-  // Ben's ruling of 2026-09-09 took the asset list off the expanded card. Opening one is now
-  // exactly "show me the rest of what was said", so the panel holds the announcement and there
-  // is no list of players and amounts under it.
-  it("expands to the whole announcement and to no asset list", () => {
+  // The same ruling's other half: "expandable into a scrollable modal view when a user wants
+  // to deep dive into it". The card is the log; the modal is the whole of what was said.
+  it("opens a modal named for the trade with the whole announcement", () => {
     render(
-      <TradeCard trade={{ ...TRADE, announcement: "ANNOUNCEMENT-ONE" }} />,
+      <TradeCard
+        trade={{
+          ...TRADE,
+          announcement: "ANNOUNCEMENT-ONE\n\nANNOUNCEMENT-TWO",
+        }}
+      />,
     );
-    const toggle = screen.getByRole("button", { name: /alpha/i });
-    expect(toggle).toHaveAttribute("aria-expanded", "false");
-    fireEvent.click(toggle);
-    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /alpha/i }));
 
-    expect(screen.queryByRole("list")).not.toBeInTheDocument();
-    expect(screen.queryByText(/A Player/)).not.toBeInTheDocument();
+    const dialog = screen.getByRole("dialog", {
+      name: "Alpha ↔ a former manager",
+    });
+    expect(dialog).toHaveTextContent("Rental");
+    expect(dialog).toHaveTextContent("Season 2024 · Week 3");
+    const quotes = screen.getAllByText(/ANNOUNCEMENT-ONE/);
+    const inModal = quotes.find((quote) => dialog.contains(quote));
+    expect(inModal).toBeDefined();
+    expect(inModal).not.toHaveClass("line-clamp-3");
+    // A long announcement scrolls inside the modal rather than growing it past the screen.
+    expect(inModal?.closest(".overflow-y-auto")).not.toBeNull();
   });
 
-  // The panel the toggle names has to exist even when the row carries nothing to put in it, or
-  // `aria-controls` points at nothing and a screen reader is told about a region it cannot find.
-  it("always points aria-controls at a real element", () => {
-    const { container } = render(
-      <TradeCard trade={{ ...TRADE, announcement: null }} />,
-    );
-    const panelId = screen
-      .getByRole("button", { name: /alpha/i })
-      .getAttribute("aria-controls");
-    expect(panelId).not.toBeNull();
-    expect(
-      container.querySelector(`#${CSS.escape(panelId ?? "")}`),
-    ).not.toBeNull();
+  // The deep dive is where the players come back: the card's ruling took them off the tile,
+  // not off the record. The FAAB figure stays out everywhere — "because of the dynamic nature
+  // of many deals it's most likely not useful to include the FAAB number".
+  it("lists the players moved in the modal, and still no FAAB figure", () => {
+    render(<TradeCard trade={TRADE} />);
+    expect(screen.queryByText(/A Player/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /alpha/i }));
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveTextContent("A Player");
+    expect(dialog).toHaveTextContent("RB");
+    expect(dialog).not.toHaveTextContent(/FAAB/i);
+    expect(dialog).not.toHaveTextContent("12");
+  });
+
+  it("shows the chips in the modal too", () => {
+    render(<TradeCard trade={{ ...REGISTERED, rescinded: true }} />);
+    fireEvent.click(screen.getByRole("button", { name: /alpha/i }));
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveTextContent("T-2026-014");
+    expect(dialog).toHaveTextContent("Rescinded");
+  });
+
+  it("closes the modal from its close button", () => {
+    render(<TradeCard trade={TRADE} />);
+    fireEvent.click(screen.getByRole("button", { name: /alpha/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 });
