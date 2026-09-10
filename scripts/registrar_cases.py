@@ -44,14 +44,18 @@ from ultimate_guillotine.cli.deps import build_ai, build_deps
 from ultimate_guillotine.data.repositories import MemberAliasRepository, SeasonRepository
 from ultimate_guillotine.sleeper.client import SleeperClient
 from ultimate_guillotine.sleeper.players import PlayerRepository
+from ultimate_guillotine.advisor.state import SnapshotRepository
 from ultimate_guillotine.trades.context import (
+    TRADE_LIMIT,
     ContextPlayer,
     ContextTeam,
     build_registrar_context,
+    context_from_snapshot,
 )
 from ultimate_guillotine.trades.detect import is_trade_candidate
 from ultimate_guillotine.trades.extract import PROMPT_VERSION, extract_trade
 from ultimate_guillotine.trades.models import ExtractedAsset, ExtractedParty, ExtractedTrade
+from ultimate_guillotine.trades.repository import TradeRepository
 from ultimate_guillotine.trades.names import normalize_name
 from ultimate_guillotine.trades.resolve import (
     RosterIndex,
@@ -466,13 +470,18 @@ def main() -> int:
     members = MemberAliasRepository(conn).all_members()
     players = PlayerRepository(conn).all_active()
     # The synthetic league is the default: the roster cases turn on it, and the
-    # pack the model reads has to be the rosters resolution consults. `--rosters`
-    # swaps in the real league, which measures the same cases against whatever
-    # the rosters happen to be tonight -- useful once, not a suite.
+    # pack the model reads has to describe the rosters resolution consults or the
+    # two halves of the same answer disagree. `--rosters` swaps in the real
+    # league -- both halves of it, index and pack -- which measures the same
+    # cases against whatever the rosters happen to be tonight: useful once, not
+    # a suite.
     rosters, context = synthetic_league(members, players)
     if args.rosters:
         rosters = build_roster_index(
             SleeperClient(httpx.Client()), conn, deps.settings.sleeper_league_id, season
+        )
+        context = context_from_snapshot(
+            SnapshotRepository(conn).load(), members, TradeRepository(conn).list_recent(TRADE_LIMIT)
         )
     if args.dry_run_fakes and len(members) < 2:
         print("need at least two members in public.members to build fake extractions")
