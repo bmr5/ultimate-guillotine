@@ -1,7 +1,8 @@
 import { memo, useId, useMemo } from "react";
 import { ChevronDown } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
+import { ExplainedBadge } from "@/components/explained-badge";
+import { badgeVariants } from "@/components/ui/badge-variants";
 import { Card, CardContent } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
@@ -15,6 +16,14 @@ import { RosterPanel } from "./RosterPanel";
 
 /** The badge a team likely to bid on this position carries; also what the tests assert on. */
 export const LIKELY_BIDDER_LABEL = "likely bidder";
+
+/**
+ * The sentence behind the badge when the derivation flagged a team without saying which of its
+ * reasons fired. `derivePositionRows` always sets one today, so this is the honest fallback
+ * rather than an empty tooltip.
+ */
+const LIKELY_BIDDER_FALLBACK_DESCRIPTION =
+  "This team looks thin at the position and may bid on a replacement";
 
 /** Decimals a player projection is shown with, matching every other number on the board. */
 const PLAYER_PROJECTION_DECIMALS = 1;
@@ -242,19 +251,27 @@ const PositionTeamRow = memo(function PositionTeamRow({
             />
           </button>
 
+          {/* Ben's ruling of 2026-09-09: "I filtered by TE and a likely bidder showed up but I
+              have no idea why". The reason used to be a native `title`, which never opens on a
+              tap; now the badge is a real tooltip trigger with the reason behind it. */}
           {row.likelyBidder ? (
             <div className="flex flex-wrap gap-2 px-4 pb-3">
-              <Badge
-                variant="outline"
+              {/* The button is the 44px tap target every control in this view sits on; the
+                  pill inside it is the badge a reader sees. The negative margin keeps the row
+                  the height the pill alone would make it, so the floor costs no card height. */}
+              <ExplainedBadge
                 data-bidder-reason={row.likelyBidderReason ?? undefined}
-                title={
+                description={
                   row.likelyBidderReason === null
-                    ? undefined
+                    ? LIKELY_BIDDER_FALLBACK_DESCRIPTION
                     : LIKELY_BIDDER_REASONS[row.likelyBidderReason]
                 }
+                className="-my-2.5 inline-flex min-h-[44px] items-center rounded-md"
               >
-                {LIKELY_BIDDER_LABEL}
-              </Badge>
+                <span className={badgeVariants({ variant: "outline" })}>
+                  {LIKELY_BIDDER_LABEL}
+                </span>
+              </ExplainedBadge>
             </div>
           ) : null}
 

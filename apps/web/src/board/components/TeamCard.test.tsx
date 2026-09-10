@@ -253,8 +253,8 @@ const outAndPartialTeam = (): Partial<BoardTeam> => {
             projectedPoints: null,
           })
         : index === 3
-        ? player({ ...entry, projectedPoints: null })
-        : entry,
+          ? player({ ...entry, projectedPoints: null })
+          : entry,
     ),
     startersProjected: LEAGUE_SLOTS.length - 2,
     starterSlots: LEAGUE_SLOTS.length,
@@ -613,7 +613,10 @@ describe("TeamCard", () => {
       .getByText("Projection unavailable")
       .closest("[data-chip]");
     expect(chip).not.toHaveAttribute("title");
-    expect(chipDescription(chip)).toBeNull();
+    // Ben's ruling of 2026-09-09 put a reason behind every badge, so the chip does explain
+    // itself now — but there is still no instant to date it by.
+    expect(chipDescription(chip)).toMatch(/no number to show/);
+    expect(chipDescription(chip)).not.toMatch(/Computed /);
     expect(screen.queryByText(/Computed /)).toBeNull();
   });
 });

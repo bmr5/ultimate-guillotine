@@ -1,6 +1,7 @@
 import { Maximize2 } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
+import { ExplainedBadge } from "@/components/explained-badge";
+import { badgeVariants } from "@/components/ui/badge-variants";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog,
@@ -24,8 +25,14 @@ import type { CatalogTrade } from "../types";
 const FOCUS_RING_CLASS =
   "ring-offset-background focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
 
-/** The chip on a trade the league undid. */
+/** The chip on a trade the league undid, and the sentence behind it. */
 const RESCINDED_LABEL = "Rescinded";
+const RESCINDED_DESCRIPTION =
+  "The league undid this trade after it was recorded; it is kept for the record";
+
+/** The sentence behind a registered trade's code. */
+const TRADE_CODE_DESCRIPTION =
+  "The Registrar's code for this trade, as it was recorded from the league chat";
 
 /**
  * Every card is this tall, whatever it carries. Ben's ruling of 2026-09-09: "make sure all the
@@ -105,15 +112,31 @@ function ownersTitle(trade: CatalogTrade): string {
   return segments.join(OWNER_SEPARATOR);
 }
 
-/** The two chips Ben kept, and nothing else; shared by the card and the modal. */
+/**
+ * The two chips Ben kept, and nothing else; shared by the card and the modal. Each one says why
+ * it is there (Ben's ruling of 2026-09-09: a tooltip on every badge). `relative z-10` lifts the
+ * row above the card trigger's stretched hit area, or a tap on a chip would open the modal.
+ */
 function Chips({ trade }: { trade: CatalogTrade }) {
   if (!trade.rescinded && !trade.registered) return null;
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
+    <div className="relative z-10 flex flex-wrap items-center gap-1.5">
       {trade.rescinded && (
-        <Badge variant="destructive">{RESCINDED_LABEL}</Badge>
+        <ExplainedBadge
+          description={RESCINDED_DESCRIPTION}
+          className={badgeVariants({ variant: "destructive" })}
+        >
+          {RESCINDED_LABEL}
+        </ExplainedBadge>
       )}
-      {trade.registered && <Badge>{trade.sourceLabel}</Badge>}
+      {trade.registered && (
+        <ExplainedBadge
+          description={TRADE_CODE_DESCRIPTION}
+          className={badgeVariants({ variant: "default" })}
+        >
+          {trade.sourceLabel}
+        </ExplainedBadge>
+      )}
     </div>
   );
 }

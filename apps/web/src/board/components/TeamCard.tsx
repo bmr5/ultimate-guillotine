@@ -1,14 +1,9 @@
-import { memo, useId, useMemo, useRef, useState } from "react";
+import { memo, useId, useMemo } from "react";
 import { ChevronDown } from "lucide-react";
 
+import { ExplainedBadge } from "@/components/explained-badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 import { resolveStarterAvailability } from "../derive/availability";
@@ -60,18 +55,6 @@ const FAAB_UNKNOWN_TEXT = "FAAB —";
  */
 const FOCUS_RING_CLASS =
   "ring-offset-background focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
-
-/**
- * The same ring for a chip, drawn *inside* the chip instead of around it.
- *
- * The chip line is `h-6 overflow-hidden`, and a chip fills it: an offset ring is drawn two
- * pixels outside the chip's own box, which is two pixels outside the line, so the clipping that
- * keeps the line to 24px was cutting the focus ring off the one control on the card that is
- * hardest to see. `ring-inset` puts it on the chip's own border instead, where nothing clips it,
- * and `ring-offset-background` goes with the offset it no longer has.
- */
-const CHIP_FOCUS_RING_CLASS =
-  "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring";
 
 /** The short, visible form of the below-gate caveat; the full label rides along for readers. */
 const PARTIAL_BADGE_TEXT = "partial";
@@ -163,6 +146,13 @@ const FIGURE_SECONDARY_CLASS =
 /** Label for a team eliminated in a week the data layer does not know yet. */
 const ELIMINATED_LABEL = "Eliminated";
 
+/**
+ * Why a card shows an em dash instead of a projection. Ben's ruling of 2026-09-09 put a reason
+ * behind every badge; this is the one the `unavailable` chip had been carrying nowhere.
+ */
+const PROJECTION_UNAVAILABLE_DESCRIPTION =
+  "Sleeper has projected none of this lineup's starters yet, so there is no number to show";
+
 /** The tooltip a Sleeper-inferred elimination carries; the label itself stays plain. */
 const PROVISIONAL_ELIMINATION_TITLE =
   "Provisional: inferred from Sleeper, not yet ruled by the Adjudicator";
@@ -213,27 +203,15 @@ interface SummaryChipProps {
  * Ben asked for the badge "by the owner's name". The chips are a *sibling* of the summary
  * toggle, on the summary grid's second row rather than nested inside the button — a control
  * inside a `<button>` is invalid HTML, and it was what cost the card its whole-card tap target
- * the last time. Outside it, a chip can be a real Radix tooltip trigger, which is the point: the
+ * the last time. Outside it, a chip can be a real tooltip trigger, which is the point: the
  * native `title` this replaced never opened on a tap, and a phone is where this board is read.
+ * The trigger itself — tap, hover, focus, and the spoken description — is `ExplainedBadge`,
+ * shared with every other badge on the site.
  *
  * They sat *on* the owner's line through rounds 1–3, overlaid from outside the button and dodged
  * by a reserve on the name. Round 3 measured that on a 375px card: 141px of name field against
  * 139px of chips, and no reserve fixes it. A line of their own costs 28px of card and gives the
  * name its whole width back.
- *
- * The tooltip is controlled rather than left to Radix's hover-and-focus default, because Radix
- * suppresses tooltips opened by touch. Hover and keyboard focus still open it through
- * `onOpenChange`; the click handler adds tap. The sentence is also mounted as visually hidden
- * text and named by `aria-describedby`, so a screen reader gets it whether or not the tooltip
- * is open.
- *
- * The tap toggle reads a latched copy of `open` rather than the current state, because by the
- * time `onClick` runs the state is no longer the one the reader tapped: the open tooltip's
- * dismissable layer closes on the `pointerdown` that starts the second tap, and Radix's own
- * trigger closes again on the click. A plain `!open` therefore resolves against a just-set
- * `false` and re-opens the tooltip the tap was meant to dismiss. `onPointerDownCapture` runs
- * before either close — capture, at the trigger, beats a document-level listener — so it records
- * what the reader actually saw, and the click toggles against that.
  */
 const SummaryChip = memo(function SummaryChip({
   kind,
@@ -243,12 +221,6 @@ const SummaryChip = memo(function SummaryChip({
   computedText,
   tone,
 }: SummaryChipProps) {
-  const [open, setOpen] = useState(false);
-  // What the tooltip was doing when the tap began. False is the right resting value: a click with
-  // no pointerdown before it is a keyboard activation, and focus has already opened the tooltip.
-  const openAtPointerDown = useRef(false);
-  const descriptionId = useId();
-
   // A chip whose label is its own wording says it once: two copies of `Eliminated week 4`, one
   // hidden from sight and one from assistive technology, is a duplicate for anybody reading with
   // both. Only the short forms — `partial`, which is not a sentence a reader can act on — carry
@@ -286,46 +258,20 @@ const SummaryChip = memo(function SummaryChip({
   }
 
   return (
-    <TooltipProvider>
-      <Tooltip open={open} onOpenChange={setOpen}>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            data-chip={kind}
-            aria-describedby={descriptionId}
-            onPointerDownCapture={() => {
-              openAtPointerDown.current = open;
-            }}
-            onClick={() => {
-              const wasOpen = openAtPointerDown.current;
-              openAtPointerDown.current = false;
-              setOpen(!wasOpen);
-            }}
-            className={cn(
-              // The chip covers nothing now, so it needs no `pointer-events-auto` to take its
-              // own taps back and no 44px target to keep the card's line reachable around it.
-              "inline-flex shrink-0 items-center rounded-md whitespace-nowrap",
-              CHIP_ROW_HEIGHT_CLASS,
-              CHIP_TEXT_CLASS[tone],
-              CHIP_FOCUS_RING_CLASS,
-            )}
-          >
-            {face}
-          </button>
-        </TooltipTrigger>
-        <TooltipContent className="max-w-[16rem] text-left whitespace-pre-line">
-          <span className="block">{description}</span>
-          {computedText === undefined ? null : (
-            <span className="mt-1 block text-xs text-muted-foreground">
-              {computedText}
-            </span>
-          )}
-        </TooltipContent>
-      </Tooltip>
-      <span id={descriptionId} className="sr-only">
-        {description}
-      </span>
-    </TooltipProvider>
+    <ExplainedBadge
+      data-chip={kind}
+      description={description}
+      secondary={computedText}
+      className={cn(
+        // The chip covers nothing now, so it needs no `pointer-events-auto` to take its own
+        // taps back and no 44px target to keep the card's line reachable around it.
+        "inline-flex shrink-0 items-center rounded-md whitespace-nowrap",
+        CHIP_ROW_HEIGHT_CLASS,
+        CHIP_TEXT_CLASS[tone],
+      )}
+    >
+      {face}
+    </ExplainedBadge>
   );
 });
 
@@ -457,13 +403,14 @@ export const TeamCard = memo(function TeamCard({
       computedText,
     };
   }
-  // The em dash state: there is no number, and no sentence to add to that.
+  // The em dash state: there is no number, and the chip says why there is none.
   if (projection.caveat === "unavailable" && projection.caveatLabel !== null) {
     chipCopy.unavailable = {
       kind: "unavailable",
       tone: "muted",
       text: projection.caveatLabel,
       label: projection.caveatLabel,
+      description: PROJECTION_UNAVAILABLE_DESCRIPTION,
     };
   }
   chipCopy.eliminated = {

@@ -195,11 +195,20 @@ describe("PositionView", () => {
     });
     const badge = screen
       .getAllByText(LIKELY_BIDDER_LABEL)
-      .find((element) => element.closest("li")?.textContent?.includes("hurt"));
+      .find((element) => element.closest("li")?.textContent?.includes("hurt"))
+      ?.closest("button");
     expect(badge).toBeDefined();
     expect(badge).toHaveAttribute("data-bidder-reason", "starter out");
-    expect(badge).toHaveAttribute(
-      "title",
+    // A real tooltip, not a native `title` — a title never opens on a tap, and Ben's ruling of
+    // 2026-09-09 was made from the phone: "a likely bidder showed up but I have no idea why".
+    expect(badge).not.toHaveAttribute("title");
+    const describedBy = badge?.getAttribute("aria-describedby") ?? "";
+    expect(document.getElementById(describedBy)).toHaveTextContent(
+      LIKELY_BIDDER_REASONS["starter out"],
+    );
+    fireEvent.pointerDown(badge as Element);
+    fireEvent.click(badge as Element);
+    expect(screen.getByRole("tooltip")).toHaveTextContent(
       LIKELY_BIDDER_REASONS["starter out"],
     );
     // The row itself carries the tag, so the reason is visible without the tooltip.

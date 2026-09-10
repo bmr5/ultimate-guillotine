@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
+import { ExplainedBadge } from "@/components/explained-badge";
+import { badgeVariants } from "@/components/ui/badge-variants";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -12,8 +13,10 @@ import {
   formatUpdatedAt,
   formatUpdatedTitle,
   isStale,
+  MS_PER_MINUTE,
   PROJECTIONS_PULLED_LABEL,
   SCORES_UPDATED_LABEL,
+  STALE_AFTER_MS,
   TICK_INTERVAL_MS,
 } from "../derive/time";
 import {
@@ -76,6 +79,25 @@ const UNKNOWN_WEEK_LABEL = "Week —";
 function seasonFallbackLabel(season: number | null): string {
   return season === null ? "Final season" : `Season ${season} (final)`;
 }
+
+/**
+ * Why the season badge is on the header, for its tooltip. `nfl_state` names a season the league
+ * has no rows for, so the board is showing the last one it has — which is a finished season,
+ * not this week's.
+ */
+const SEASON_FALLBACK_DESCRIPTION =
+  "Sleeper has moved on to a season the league has no data for yet, so this is the last season's final table";
+
+/**
+ * Why the stale badge is on the header, for its tooltip, with the threshold read from the one
+ * constant the data layer defines it by rather than restated as a number.
+ */
+const STALE_DESCRIPTION = `Nothing has been pulled from Sleeper for over ${
+  STALE_AFTER_MS / MS_PER_MINUTE
+} minutes, so these figures may be behind`;
+
+/** Both header badges wear the outline badge face; `ExplainedBadge` supplies the button. */
+const HEADER_BADGE_CLASS = badgeVariants({ variant: "outline" });
 
 /** The header's own label for a dropped socket, beside the week. */
 const RECONNECTING_LABEL = "reconnecting";
@@ -203,9 +225,21 @@ export function BoardHeader({
           {formatUpdatedAgo(primaryUpdatedAt, now)}
         </span>
         {isSeasonFallback ? (
-          <Badge variant="outline">{seasonFallbackLabel(season)}</Badge>
+          <ExplainedBadge
+            description={SEASON_FALLBACK_DESCRIPTION}
+            className={HEADER_BADGE_CLASS}
+          >
+            {seasonFallbackLabel(season)}
+          </ExplainedBadge>
         ) : null}
-        {stale ? <Badge variant="outline">Stale data</Badge> : null}
+        {stale ? (
+          <ExplainedBadge
+            description={STALE_DESCRIPTION}
+            className={HEADER_BADGE_CLASS}
+          >
+            Stale data
+          </ExplainedBadge>
+        ) : null}
         {isReconnecting ? (
           <span className="text-xs text-muted-foreground">
             {RECONNECTING_LABEL}
