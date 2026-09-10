@@ -46,7 +46,7 @@ requirements) plus `data/media/reference/README.md` (the archived inputs and the
 - [x] **Step 1: Archive the inputs** — Denzo's TikTok (24 s, 1080x1080), its audio, the DIEAGAIN track from YouTube `8_wnIISchzQ` (229 s m4a), ESPN's Schefter upload YouTube `tMgvUrwtaiw` (127 s, 1280x720), the Neighborhood Podcast sound and its source video.
 - [x] **Step 2: Measure what the reference does** — audio cross-correlation: the music starts at 0.0 s of the track (score 0.91), the footage's own audio is absent; frame correlation: Denzo's cut starts ~2.5 s into the ESPN upload.
 - [x] **Step 3: Write the provenance README and update the reference doc; ignore `data/media/{renders,generated,work}`.**
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit** (d0c9594)
 
 ```bash
 git add data/media/reference docs/references/meme-video-reference.md .gitignore docs/superpowers/plans/2026-09-10-trade-announcement-video-pipeline.md
@@ -1708,3 +1708,22 @@ When Ben says "video T-2026-003" in `#guillotine-ops`, Hermes should run `ug vid
 - **Spec coverage:** (1) music saved — Task 1; (2) footage without the caption — Task 1 (ESPN upload) plus `--base source`; (3) reference-driven Higgsfield generation on demand — Tasks 6 and 7 (`--base generated`, omni_reference with the Denzo clip); (4) trade text overlay — Tasks 3 and 4; (5) the dramatic track under it — Task 5 (`music_offset` 0.0, `keep_voice` off by default like the reference). Posting to TikTok stays manual, as in the Monke pipeline.
 - **Placeholders:** none; every step has its command or code.
 - **Type consistency:** `Layout.for_footage(w, h, aspect)`, `render_card(copy, layout, out)`, `Composite(...)`, `ff.command(c, w, h, ffmpeg)`, `ff.probe(path, ffprobe=, run=)`, `hf.GenerateRequest(prompt, reference_video, duration, resolution, aspect_ratio)`, `hf.generate_clip(req, dest, binary=, runner=, fetch=)`, `prepare(req, assets, *, ffmpeg, ffprobe, probe=, generate=, now=)`, `render(req, assets, *, run=, **prepare_kwargs)` are used with the same names in every task.
+
+## Execution notes (2026-09-10, the night it was written)
+
+Tasks 2 through 7 were implemented in one pass and committed as `feat(video): ug video render`
+(2158454), with the plan's tests plus a few extra ones (`ug video assets` green path, a refused
+`--dry-run --base generated`, a missing-footage path, vertical footage on 9:16). Two things
+changed on seeing the first real render:
+
+- **9:16 layout.** Fitting 16:9 footage by width left it a thin strip in the middle of the
+  canvas. `Layout.for_footage` and `video_filter` now show wide footage as its centre square,
+  1080x1080 in the middle of 1080x1920, which is how TikTok shows the 1:1 reference. Vertical
+  (generated) footage still fills the canvas.
+- **Lower third.** ESPN's own banner peeked out around a bar with side margins and behind a
+  narrow tag, and a four-line caption ran into the tag. The bar is now edge to edge, the tag has
+  a minimum width, and the caption block is pushed up to stay clear of the tag.
+
+`prepare()` resolves its `probe`/`generate`/`now` collaborators at call time (``None`` defaults)
+so monkeypatching the modules in tests takes effect. Task 8's first renders and the single
+generated clip are in `data/media/renders/`; the runbook is `docs/runbooks/trade-video.md`.
