@@ -156,7 +156,7 @@ def context_from_snapshot(snapshot, members, trades: Sequence[Mapping]) -> str:
                 ContextPlayer(h.player_name, h.position) for h in team.holdings
             ),
             is_eliminated=team.is_eliminated,
-            eliminated_week=getattr(team, "eliminated_week", None),
+            eliminated_week=team.eliminated_week,
         )
         for team in snapshot.teams
     )
