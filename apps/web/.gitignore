@@ -1,0 +1,4 @@
+.vercel
+
+# detect-gpu's benchmark tables, copied from node_modules by `pnpm benchmarks`
+public/gpu-benchmarks/

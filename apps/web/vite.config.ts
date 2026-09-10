@@ -1,4 +1,5 @@
 import tailwindcss from "@tailwindcss/vite";
+import { wgslVitePlugin } from "@vgpu/wgsl/loader-vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
@@ -9,5 +10,5 @@ export default defineConfig({
     alias: appAliases(import.meta.dirname),
   },
 
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), wgslVitePlugin({ minify: true })],
 });
