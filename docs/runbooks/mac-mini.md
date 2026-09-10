@@ -342,6 +342,13 @@ without sending anything, `ug trades extract --text '<alert>' --as
 <sleeper_username>` stands in for the sender the listener would have
 placed.
 
+Partial player names resolve from the rosters: an alert that says
+`Rhamondre` or `Wilson` rather than a full name is matched against the
+giving party's roster first, then every roster in the league, so the
+roster sync (§9b) has to be current for the shortest names to land --
+and the extraction is now given the league's rosters, FAAB and this
+season's trades as context, out of the same tables.
+
 Once every check above passes, replace the status heading with
 `Gate passed: <date>, delivery mode <test|production>`, leave the checked
 boxes as the record, and add the outcomes as notes below it. Do not

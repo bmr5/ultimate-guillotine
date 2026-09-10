@@ -705,6 +705,42 @@
       "prereq": null,
       "announcer": "kpbowe",
       "notes": "A rescission written in the first person: `I` and `my trade` name the announcer, so the two sides of the cancelled deal are known even though no T- code is given. With nothing on file to match, the registrar asks for the code -- which is also what a dry run sees, since an uncoded rescission carries no assets to validate."
+    },
+    {
+      "id": 79,
+      "category": "happy",
+      "text": "🚨 Trade Alert 🚨\nkpbowe sends Rhamondre to mdurgin for 200 FAAB",
+      "expected_kind": "permanent",
+      "expected_status": "created",
+      "prereq": null,
+      "notes": "A player named by first name alone, which is how the chat actually writes a familiar player -- the real message that prompted this was a `1 week Rhamondre rental`. No exact name, no surname, no defense, so resolution has to read the giving party's roster to find him. The runner's synthetic league puts him on kpbowe's, and the context pack shows the model the same roster."
+    },
+    {
+      "id": 80,
+      "category": "sloppy",
+      "text": "🚨 Trade Alert 🚨\nkpbowe sends Stevenson to mdurgin for 200 FAAB",
+      "expected_kind": "permanent",
+      "expected_status": "created",
+      "prereq": null,
+      "notes": "A surname two active players share. Matching surnames across the whole directory asks which team, so this is only answerable from the giver's roster -- which holds exactly one of them. The giver's roster is consulted before the whole-directory rule for precisely this reason."
+    },
+    {
+      "id": 81,
+      "category": "sloppy",
+      "text": "🚨 Trade Alert 🚨\nkpbowe sends Quentin to mdurgin for 200 FAAB",
+      "expected_kind": "permanent",
+      "expected_status": "created",
+      "prereq": null,
+      "notes": "A first name on nobody's roster but the receiving team's. The giver's roster settles nothing, so the league's rosters as a whole are searched -- still a couple of hundred names rather than the directory's thousands -- and one match is an answer. This is the step that survives a roster sync that has gone stale or an announcement that has the direction backwards."
+    },
+    {
+      "id": 82,
+      "category": "unclear",
+      "text": "🚨 Trade Alert 🚨\nkpbowe sends Michael to mdurgin for 300 FAAB",
+      "expected_kind": "permanent",
+      "expected_status": "clarification",
+      "prereq": null,
+      "notes": "Two players on the giver's roster answer to the name. Roster evidence narrows; it never guesses, so this has to stay a question -- the pair exists so a future change that makes the roster step pick a winner fails here rather than in the league chat. The model reads it as an ordinary trade; resolution is what asks."
     }
   ]
 }

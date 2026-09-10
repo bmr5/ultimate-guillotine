@@ -44,6 +44,11 @@ from ultimate_guillotine.cli.deps import build_ai, build_deps
 from ultimate_guillotine.data.repositories import MemberAliasRepository, SeasonRepository
 from ultimate_guillotine.sleeper.client import SleeperClient
 from ultimate_guillotine.sleeper.players import PlayerRepository
+from ultimate_guillotine.trades.context import (
+    ContextPlayer,
+    ContextTeam,
+    build_registrar_context,
+)
 from ultimate_guillotine.trades.detect import is_trade_candidate
 from ultimate_guillotine.trades.extract import PROMPT_VERSION, extract_trade
 from ultimate_guillotine.trades.models import ExtractedAsset, ExtractedParty, ExtractedTrade
@@ -83,6 +88,71 @@ DROPPED_UPSTREAM = "dropped_upstream"
 #: A name no row in `public.players` can match, used by the fake client to force
 #: the resolution failure a clarification case expects.
 UNRESOLVABLE = "Nonexistent Placeholder Player"
+
+#: The synthetic league the cases are read against: three teams, their rosters,
+#: their FAAB, a week, and two trades on file. It is what the context pack is
+#: built from and what the roster-aware player resolution reads, so a case
+#: exercises the same rendering and the same resolution production does.
+#:
+#: Deliberately small, and deliberately made of players no other case names. The
+#: prompt's rule for a name that matches nobody's roster is to leave it exactly
+#: as the announcement wrote it, so the sixty-odd cases that predate the pack are
+#: unaffected by it -- and no case can contradict the pack by having somebody
+#: trade away a player the pack says is on another team's roster.
+#:
+#: Each roster is built for one question. `Rhamondre` is a first name only its
+#: owner answers to; `Stevenson` is a surname two active players share, so the
+#: old whole-directory rule asks which team and only the giver's roster settles
+#: it; `Michael` is two men on one roster, which has to stay a question;
+#: `Quentin` is on nobody's roster but mdurgin's, which is the league-wide step.
+SYNTHETIC_WEEK = 4
+SYNTHETIC_ROSTERS: dict[str, tuple[str, ...]] = {
+    "kpbowe": ("Rhamondre Stevenson", "Michael Pittman", "Michael Wilson"),
+    "mdurgin": ("Quentin Johnston", "Khalil Shakir"),
+    "chobes": ("Zay Flowers", "Courtland Sutton"),
+}
+SYNTHETIC_FAAB = {"kpbowe": 480, "mdurgin": 260, "chobes": 55}
+#: Two trades in `TradeRepository.list_recent` shape, so the pack's
+#: `Trades this season` section is rendered the way production renders it. The
+#: terms agree with the rosters above: kpbowe holds Michael Pittman because
+#: T-2026-002 is how he got him.
+SYNTHETIC_TRADES = [
+    {
+        "trade_code": "T-2026-002",
+        "status": "accepted",
+        "effective_week": 3,
+        "terms": {
+            "parties": [
+                {"member_id": 1, "display_name": "chobes"},
+                {"member_id": 2, "display_name": "kpbowe"},
+            ],
+            "assets": [
+                {"kind": "player", "from_member_id": 1, "to_member_id": 2,
+                 "player_name": "Michael Pittman", "player_id": None,
+                 "amount": None, "unit": None, "description": None},
+                {"kind": "faab", "from_member_id": 2, "to_member_id": 1,
+                 "player_name": None, "player_id": None,
+                 "amount": 120, "unit": "faab", "description": None},
+            ],
+        },
+    },
+    {
+        "trade_code": "T-2026-001",
+        "status": "rescinded",
+        "effective_week": 2,
+        "terms": {
+            "parties": [
+                {"member_id": 3, "display_name": "mdurgin"},
+                {"member_id": 1, "display_name": "chobes"},
+            ],
+            "assets": [
+                {"kind": "faab", "from_member_id": 3, "to_member_id": 1,
+                 "player_name": None, "player_id": None,
+                 "amount": 40, "unit": "faab", "description": None},
+            ],
+        },
+    },
+]
 
 
 @dataclass(frozen=True)
@@ -172,7 +242,43 @@ def find_announcer(members: list, username: str):
     return None
 
 
-def run_case(case: dict, ai, members, players, rosters: RosterIndex, season: int) -> Result:
+def synthetic_league(members: list, players: list) -> tuple[RosterIndex, str]:
+    """The rosters and the context pack the cases are read against.
+
+    Returns the index resolution consults and the pack the prompt reads, built
+    from the same three teams so the two can never disagree -- a case that
+    resolves a first name off the giver's roster is reading the roster the model
+    was shown.
+
+    A member `SYNTHETIC_ROSTERS` names but `public.members` does not have, or a
+    player `public.players` does not have, is skipped rather than guessed at: the
+    resulting pack is smaller and the case that needed him fails, which is the
+    honest report.
+    """
+    by_name = {normalize_name(p.full_name): p for p in players}
+    holdings: dict[int, frozenset[str]] = {}
+    teams: list[ContextTeam] = []
+    for member in members:
+        names = SYNTHETIC_ROSTERS.get(member.display_name)
+        if not names:
+            continue
+        rows = [by_name[n] for n in (normalize_name(x) for x in names) if n in by_name]
+        holdings[member.member_id] = frozenset(p.sleeper_player_id for p in rows)
+        teams.append(
+            ContextTeam(
+                username=member.display_name,
+                aliases=tuple(member.aliases),
+                faab_remaining=SYNTHETIC_FAAB.get(member.display_name, 100),
+                players=tuple(ContextPlayer(p.full_name, p.position) for p in rows),
+            )
+        )
+    pack = build_registrar_context(SYNTHETIC_WEEK, teams, SYNTHETIC_TRADES)
+    return RosterIndex(holdings), pack
+
+
+def run_case(
+    case: dict, ai, members, players, rosters: RosterIndex, season: int, context: str | None = None
+) -> Result:
     """Extract, resolve, and validate one case, and say whether it matched.
 
     Failures are reported structurally -- a kind, an outcome, an exception class
@@ -200,6 +306,7 @@ def run_case(case: dict, ai, members, players, rosters: RosterIndex, season: int
                 None,
                 [_member_line(m) for m in members],
                 announcer.display_name if announcer else None,
+                context,
             )
         except Exception as exc:  # noqa: BLE001 - any model failure is reported the same way
             return _result(case, "-", f"error:{exc.__class__.__name__}", False, "model call failed")
@@ -338,7 +445,7 @@ def main() -> int:
     parser.add_argument(
         "--rosters",
         action="store_true",
-        help="fetch live Sleeper rosters so duplicate member names can be settled",
+        help="use the league's live Sleeper rosters instead of the synthetic ones",
     )
     parser.add_argument(
         "--dry-run-fakes",
@@ -358,13 +465,15 @@ def main() -> int:
     season = SeasonRepository(conn).current() or datetime.now(UTC).year
     members = MemberAliasRepository(conn).all_members()
     players = PlayerRepository(conn).all_active()
-    rosters = (
-        build_roster_index(
+    # The synthetic league is the default: the roster cases turn on it, and the
+    # pack the model reads has to be the rosters resolution consults. `--rosters`
+    # swaps in the real league, which measures the same cases against whatever
+    # the rosters happen to be tonight -- useful once, not a suite.
+    rosters, context = synthetic_league(members, players)
+    if args.rosters:
+        rosters = build_roster_index(
             SleeperClient(httpx.Client()), conn, deps.settings.sleeper_league_id, season
         )
-        if args.rosters
-        else RosterIndex.empty()
-    )
     if args.dry_run_fakes and len(members) < 2:
         print("need at least two members in public.members to build fake extractions")
         return 2
@@ -379,6 +488,7 @@ def main() -> int:
             players,
             rosters,
             season,
+            context,
         )
         for case in runnable
     ]
