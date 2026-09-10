@@ -66,13 +66,22 @@ export function parseNumberParam(value: string | null): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+/**
+ * One week's row of a season's elimination grid.
+ *
+ * Two counts and no third: the loader (`history/records.py`, `_entry`) writes `week`, `order`,
+ * `member_id`, `gulag_out`, `pool_out` and `note`, and nothing else. There is no surviving-team
+ * figure to carry — both workbook grids hold that column as an uncached formula, so the reader
+ * never sees a number for it — and a season without a general pool (2023) has no `pool_out`
+ * cell at all. Every figure is therefore nullable, and `null` means "the sheet never said",
+ * which is not `0`.
+ */
 export interface SeasonElimination {
   week: number;
   order: number;
   memberId: number | null;
   gulagOut: number | null;
   poolOut: number | null;
-  remaining: number | null;
 }
 
 export interface SeasonResult {

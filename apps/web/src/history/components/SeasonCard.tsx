@@ -25,9 +25,17 @@ const FOCUS_RING_CLASS =
 /**
  * One elimination line.
  *
- * A week the sheet recorded by name reads as the name. Otherwise it reads as the three counts,
- * and a count the sheet never carried says "not recorded" in words: a `0` there would claim
- * nobody went out that week, which is a different — and often wrong — fact.
+ * A week the sheet recorded by name reads as the name. Otherwise it reads as the figures the
+ * sheet actually wrote down, and only those: a `null` count contributes no clause at all.
+ *
+ * That is not the same as saying so per figure. Most weeks are missing one of the two for a
+ * structural reason rather than a gap in the file — 2023 ran without a general pool, so its
+ * grid has no pool column and every one of its rows would otherwise end "pool not recorded" —
+ * and a caveat that fires on every line stops being read as one. What a line never does is
+ * print a `0` for a missing figure (that would claim nobody went out, a different and usually
+ * wrong fact) or a dash in its place (which reads as the number itself).
+ *
+ * A week that recorded neither figure has nothing to report, and says exactly that.
  */
 function eliminationText(
   entry: SeasonElimination,
@@ -39,19 +47,14 @@ function eliminationText(
   const named = entry.memberId === null ? null : labelForMember(entry.memberId);
   if (named !== null) return `Week ${entry.week} · ${named} eliminated`;
   const parts = [
-    entry.gulagOut === null
-      ? "gulag not recorded"
-      : `${entry.gulagOut} out of the gulag`,
-    entry.poolOut === null
-      ? "pool not recorded"
-      : `${entry.poolOut} from the pool`,
-    entry.remaining === null
-      ? "remaining not recorded"
-      : `${entry.remaining} remaining`,
-  ];
-  // The site's own separator, and deliberately not a dash: a dash between a label and a
-  // missing number reads as the number itself, which is the misreading "not recorded" avoids.
-  return `Week ${entry.week} · ${parts.join(", ")}`;
+    entry.gulagOut === null ? null : `${entry.gulagOut} out of the gulag`,
+    entry.poolOut === null ? null : `${entry.poolOut} from the pool`,
+  ].filter((part): part is string => part !== null);
+  // `·` is the site's own separator, and deliberately not a dash: a dash before a missing
+  // figure reads as the figure itself, which is the misreading this whole function avoids.
+  return `Week ${entry.week} · ${
+    parts.length === 0 ? "not recorded" : parts.join(", ")
+  }`;
 }
 
 interface Props {

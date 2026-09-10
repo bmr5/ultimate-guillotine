@@ -2,8 +2,9 @@ import { useCallback, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { boardClient } from "@/board/boardClient";
-import { resolveOwnerLabel } from "@/board/derive/join";
 
+import { isRecord } from "./derive/json";
+import { ownerLabelFor } from "./derive/ownerLabel";
 import { fetchHistoryMembers, fetchSeasonResults } from "./fetchers";
 import { historyKeys } from "./queryKeys";
 import type { SeasonElimination, SeasonResult } from "./types";
@@ -20,17 +21,30 @@ export interface SeasonResultsError {
  * is read defensively: an entry that is missing a figure keeps it as `null` rather than
  * defaulting to `0`. The two are different facts — "nobody went out that week" and "the sheet
  * never recorded it" — and `SeasonCard` says which one it is looking at.
+ *
+ * The array's own elements are narrowed through `isRecord` first, the check every reader of a
+ * `jsonb` array here shares: the column's constraint does not forbid a `null` or a bare string
+ * inside the array, and reading `.week` off one throws — which would cost the whole page rather
+ * than the one malformed week. A dropped element takes its `order` with it, so the numbering
+ * the card keys on comes from the document, never from the surviving elements' positions.
  */
 function toEliminations(value: unknown): SeasonElimination[] {
   if (!Array.isArray(value)) return [];
-  return (value as Record<string, unknown>[]).map((entry, index) => ({
-    week: typeof entry.week === "number" ? entry.week : 0,
-    order: Number(entry.order ?? index + 1),
-    memberId: typeof entry.member_id === "number" ? entry.member_id : null,
-    gulagOut: typeof entry.gulag_out === "number" ? entry.gulag_out : null,
-    poolOut: typeof entry.pool_out === "number" ? entry.pool_out : null,
-    remaining: typeof entry.remaining === "number" ? entry.remaining : null,
-  }));
+  return (value as unknown[]).flatMap((entry, index) =>
+    !isRecord(entry)
+      ? []
+      : [
+          {
+            week: typeof entry.week === "number" ? entry.week : 0,
+            order: Number(entry.order ?? index + 1),
+            memberId:
+              typeof entry.member_id === "number" ? entry.member_id : null,
+            gulagOut:
+              typeof entry.gulag_out === "number" ? entry.gulag_out : null,
+            poolOut: typeof entry.pool_out === "number" ? entry.pool_out : null,
+          },
+        ],
+  );
 }
 
 export function useSeasonResults() {
@@ -46,21 +60,13 @@ export function useSeasonResults() {
   });
 
   /**
-   * `null`, not a placeholder string, when the id is absent or names nobody in `members`: the
-   * card decides how an unresolved owner reads, and only the card knows whether it is writing
-   * a champion line or an elimination line.
-   *
-   * The label itself is `resolveOwnerLabel`'s — nickname first, then the Sleeper display name.
-   * `members.display_name` is a real name and never reaches a public page.
+   * Wrapped rather than called inline so the identity is stable across renders: it is a
+   * dependency of the `seasons` memo below, and a fresh closure each render would rebuild
+   * every season object on every render.
    */
   const labelForMember = useCallback(
-    (memberId: number | null): string | null => {
-      if (memberId === null) return null;
-      const member = (members.data ?? []).find(
-        (candidate) => candidate.id === memberId,
-      );
-      return member === undefined ? null : resolveOwnerLabel(member);
-    },
+    (memberId: number | null): string | null =>
+      ownerLabelFor(memberId, members.data ?? []),
     [members.data],
   );
 
