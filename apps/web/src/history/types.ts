@@ -75,6 +75,8 @@ export interface CatalogTrade {
    * data layer, decides the viewer's timezone and locale.
    */
   registeredAt: string | null;
+  /** Who posted the announcement, by the board's owner label; null when unknown or catalog. */
+  announcedBy: string | null;
   /** The trade code for a registered row, the literal `catalog` for a catalog row. */
   sourceLabel: string;
   registered: boolean;

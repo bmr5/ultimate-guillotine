@@ -252,6 +252,8 @@ export interface Database {
           created_at: string;
           /** When the announcement was posted in the chat; the card's date when present. */
           announced_at: string | null;
+          /** The member who posted the announcement, when the sender could be placed. */
+          announced_by: number | null;
           season_id: number;
           trade_code: string;
           current_revision_id: number | null;

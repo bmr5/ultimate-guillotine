@@ -28,6 +28,7 @@ const TRADE: CatalogTrade = {
   announcement: null,
   confidence: "low",
   registeredAt: null,
+  announcedBy: null,
   sourceLabel: "catalog",
   registered: false,
   rescinded: false,
@@ -40,6 +41,7 @@ const REGISTERED: CatalogTrade = {
   key: "registered:5",
   confidence: "high",
   registeredAt: "2026-09-10T01:12:00Z",
+  announcedBy: null,
   sourceLabel: "T-2026-014",
   registered: true,
 };

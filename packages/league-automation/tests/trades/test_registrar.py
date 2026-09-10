@@ -107,9 +107,10 @@ class FakeTrades:
     def __init__(self, status="created"):
         self.status, self.accepted, self.rescinded = status, [], []
 
-    def accept(self, proposal, announced_at=None):
+    def accept(self, proposal, announced_at=None, announced_by=None):
         self.accepted.append(proposal)
         self.announced_at = announced_at
+        self.announced_by = announced_by
         return TradeAcceptance(
             self.status,
             7,

@@ -92,6 +92,7 @@ export function normalizeCatalogTrade(
     // The catalog is a reading of a spreadsheet: it knows a season and a week, never an
     // instant, so a catalog card is dated by those and this stays null.
     registeredAt: null,
+    announcedBy: null,
     sourceLabel: CATALOG_SOURCE_LABEL,
     registered: false,
     rescinded: false,
@@ -186,6 +187,12 @@ export function normalizeRegisteredTrade(
     // The chat's own time when we have it (Ben, 2026-09-10: the log was dating
     // cards by the scrape, not the message); the registration time otherwise.
     registeredAt: trade.announced_at ?? trade.created_at,
+    // Ben (2026-09-10): "write the announcer of the trade too." The member id the
+    // registrar placed the sender as, rendered by the same label rule as the parties.
+    announcedBy:
+      trade.announced_by === null
+        ? null
+        : ownerLabelFor(trade.announced_by, members),
     sourceLabel: trade.trade_code,
     registered: true,
     rescinded: trade.status === "rescinded",

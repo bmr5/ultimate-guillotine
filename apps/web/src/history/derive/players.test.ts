@@ -26,6 +26,7 @@ function tradeWith(assets: CatalogTrade["assets"]): CatalogTrade {
     confidence: "high",
     announcement: null,
     registeredAt: "2025-10-01T18:00:00Z",
+    announcedBy: null,
     sourceLabel: "T-2025-014",
     registered: true,
     rescinded: false,

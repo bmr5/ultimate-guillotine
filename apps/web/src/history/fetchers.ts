@@ -55,6 +55,8 @@ export interface RegisteredTradeRow {
   created_at: string;
   /** When the alert was posted in the chat; null for rows logged before it was recorded. */
   announced_at: string | null;
+  /** The member who posted the announcement; null when the sender was not placed. */
+  announced_by: number | null;
   trade_code: string;
   status: "accepted" | "rescinded";
   current_revision_id: number | null;
@@ -136,7 +138,7 @@ export function fetchRegisteredTrades(
     client
       .from("trades")
       .select(
-        "id, created_at, announced_at, trade_code, status, current_revision_id, seasons ( year )",
+        "id, created_at, announced_at, announced_by, trade_code, status, current_revision_id, seasons ( year )",
       )
       .order("id", { ascending: false }),
     "trades",

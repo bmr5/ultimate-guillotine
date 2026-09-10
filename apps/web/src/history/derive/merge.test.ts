@@ -40,6 +40,7 @@ const REGISTERED = {
   id: 5,
   created_at: "2026-09-09T21:12:00Z",
   announced_at: null,
+  announced_by: null,
   trade_code: "T-2025-014",
   status: "accepted" as const,
   current_revision_id: 50,
@@ -357,10 +358,25 @@ describe("a registered trade's date", () => {
     const withChatTime = {
       ...REGISTERED,
       announced_at: "2026-09-08T00:32:00Z",
+      announced_by: null,
     };
     const dated = normalizeRegisteredTrade(withChatTime, REVISION, MEMBERS);
     expect(dated.registeredAt).toBe("2026-09-08T00:32:00Z");
     const undated = normalizeRegisteredTrade(REGISTERED, REVISION, MEMBERS);
     expect(undated.registeredAt).toBe("2026-09-09T21:12:00Z");
+  });
+});
+
+describe("a registered trade's announcer", () => {
+  it("is the board label of the member the registrar placed, else nothing", () => {
+    const announced = normalizeRegisteredTrade(
+      { ...REGISTERED, announced_by: 2 },
+      REVISION,
+      MEMBERS,
+    );
+    expect(announced.announcedBy).toBe("Bravo Display");
+    expect(
+      normalizeRegisteredTrade(REGISTERED, REVISION, MEMBERS).announcedBy,
+    ).toBeNull();
   });
 });

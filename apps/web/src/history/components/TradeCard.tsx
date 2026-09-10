@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
+import { announcedByLine } from "../derive/announcedBy";
 import { formerManagerPhrase } from "../derive/ownerLabel";
 import { tradeDateLine } from "../derive/tradeDate";
 import type { CatalogTrade } from "../types";
@@ -163,7 +164,7 @@ function TradeDetail({
 }) {
   const players = trade.assets.filter((asset) => asset.kind === "player");
   const conditions = trade.assets.filter((asset) => asset.kind === "condition");
-  const description = [category, tradeDateLine(trade)]
+  const description = [category, tradeDateLine(trade), announcedByLine(trade)]
     .filter((line) => line !== "")
     .join(" · ");
   return (
@@ -272,7 +273,9 @@ export function TradeCard({ trade }: { trade: CatalogTrade }) {
                     </span>
                   )}
                   <span className="block truncate text-xs text-muted-foreground">
-                    {tradeDateLine(trade)}
+                    {[tradeDateLine(trade), announcedByLine(trade)]
+                      .filter((line) => line !== "")
+                      .join(" · ")}
                   </span>
                 </span>
                 <Maximize2

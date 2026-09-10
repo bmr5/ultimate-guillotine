@@ -269,7 +269,11 @@ class TradeRegistrar:
         except Unresolved as exc:
             return self._clarify(run_id, exc.reason, input_version)
 
-        acceptance = self._trades.accept(proposal, announced_at=msg.sent_at)
+        acceptance = self._trades.accept(
+            proposal,
+            announced_at=msg.sent_at,
+            announced_by=announcer.member_id if announcer else None,
+        )
         self._commit()
         if acceptance.status == "duplicate":
             # The same terms are already on file; re-posting them would be noise.

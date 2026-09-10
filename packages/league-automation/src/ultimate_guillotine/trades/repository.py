@@ -83,7 +83,10 @@ class TradeRepository:
         self._code_prefix = code_prefix
 
     def accept(
-        self, proposal: TradeProposal, announced_at: datetime | None = None
+        self,
+        proposal: TradeProposal,
+        announced_at: datetime | None = None,
+        announced_by: int | None = None,
     ) -> TradeAcceptance:
         """Record ``proposal``, reporting whether it created, duplicated, or
         revised a trade.
@@ -95,7 +98,7 @@ class TradeRepository:
         terms = proposal.model_dump(mode="json")
         try:
             with self._conn.transaction():
-                return self._accept(proposal, fingerprint, context, terms, announced_at)
+                return self._accept(proposal, fingerprint, context, terms, announced_at, announced_by)
         except psycopg.errors.UniqueViolation:
             # A concurrent writer recorded this fingerprint between our lookup
             # and our insert. The failed transaction is rolled back by now, so
@@ -210,6 +213,7 @@ class TradeRepository:
         context: str,
         terms: dict[str, Any],
         announced_at: datetime | None = None,
+        announced_by: int | None = None,
     ) -> TradeAcceptance:
         with self._conn.cursor() as cur:
             cur.execute("select id from public.seasons where year = %s", (proposal.season,))
@@ -246,11 +250,12 @@ class TradeRepository:
             trade_code = f"{self._code_prefix}-{proposal.season}-{sequence:03d}"
             cur.execute(
                 """
-                insert into public.trades (season_id, trade_code, context_key, announced_at)
-                values (%s, %s, %s, %s)
+                insert into public.trades
+                    (season_id, trade_code, context_key, announced_at, announced_by)
+                values (%s, %s, %s, %s, %s)
                 returning id
                 """,
-                (season_id, trade_code, context, announced_at),
+                (season_id, trade_code, context, announced_at, announced_by),
             )
             trade_id = cur.fetchone()[0]
             revision = self._insert_revision(cur, trade_id, terms, fingerprint, proposal)

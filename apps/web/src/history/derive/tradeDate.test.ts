@@ -25,6 +25,7 @@ const CATALOG: CatalogTrade = {
   confidence: "high",
   announcement: null,
   registeredAt: null,
+  announcedBy: null,
   sourceLabel: "catalog",
   registered: false,
   rescinded: false,
