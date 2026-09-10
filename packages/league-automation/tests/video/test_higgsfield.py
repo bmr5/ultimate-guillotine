@@ -51,10 +51,19 @@ def test_parse_job_tolerates_control_characters_in_the_quoted_prompt() -> None:
     assert hf.parse_job(raw) == hf.Job("j4", "in_progress", None)
 
 
-def test_parse_job_falls_back_to_an_mp4_url_and_rejects_junk() -> None:
-    assert hf.parse_job('{"id": "j3", "status": "done", "note": "https://cdn/y.mp4"}') == (
-        hf.Job("j3", "done", "https://cdn/y.mp4")
-    )
+def test_parse_job_never_mistakes_an_input_media_url_for_the_result() -> None:
+    """While a job runs, its document lists the uploaded reference with its URL;
+    that is not a result (the pipeline composited the reference itself once)."""
+    running = {
+        "id": "j3",
+        "status": "in_progress",
+        "result_url": None,
+        "params": {"medias": [{"role": "video", "data": {"url": "https://cdn/reference.mp4"}}]},
+    }
+    assert hf.parse_job(json.dumps(running)) == hf.Job("j3", "in_progress", None)
+
+
+def test_parse_job_rejects_junk() -> None:
     with pytest.raises(hf.HiggsfieldError):
         hf.parse_job("not json")
     with pytest.raises(hf.HiggsfieldError):

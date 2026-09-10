@@ -40,7 +40,8 @@ DEFAULT_RENTAL_WEEKS = 2
 
 POSITIONS = ("QB", "RB", "WR", "TE")
 
-BOT_TAG = re.compile(r"@\s*(?:bot|guillotinebot)\b", re.IGNORECASE)
+#: Ben (2026-09-10): the bot is Daddy, and `@daddy` is how you call it.
+BOT_TAG = re.compile(r"@\s*daddy\b", re.IGNORECASE)
 
 #: Curly apostrophes, folded to the ASCII one first so every rule below can be
 #: written with a single quote character.

@@ -26,6 +26,11 @@ SOURCE_VIDEO = "source/espn-tMgvUrwtaiw-schefter-parsons-breaking-news.mp4"
 #: Frame correlation against the reference put Denzo's cut 2.5 s into the ESPN
 #: upload (measured 2026-09-10). The scene is static, so any window reads the same.
 SOURCE_CLIP_START = 2.5
+#: What Seedance is shown as its reference: 12 s of that ESPN footage cropped to a
+#: square above the lower third, so the reference carries no text at all. Given the
+#: Denzo clip instead, Seedance reproduced its caption and banner under our overlay
+#: (the first request from the chat, 2026-09-10).
+GENERATION_REFERENCE = "source/espn-schefter-clean-1024.mp4"
 #: The music: YouTube 8_wnIISchzQ, "DIEAGAIN (SLOWED + Reverb)", 229 s.
 MUSIC = "youtube-8_wnIISchzQ-dieagain-slowed-reverb.m4a"
 #: Audio cross-correlation of the reference against the track peaks at 0.07 s
@@ -74,6 +79,10 @@ class Assets:
         return self.root / "reference" / SOURCE_VIDEO
 
     @property
+    def generation_reference(self) -> Path:
+        return self.root / "reference" / GENERATION_REFERENCE
+
+    @property
     def music(self) -> Path:
         return self.root / "reference" / MUSIC
 
@@ -92,7 +101,7 @@ class Assets:
     def missing(self) -> list[Path]:
         """The reference files that are not on disk, so `ug video assets` can
         say which download to redo (the README in the folder has the recipe)."""
-        wanted = (self.reference_video, self.source_video, self.music)
+        wanted = (self.reference_video, self.source_video, self.generation_reference, self.music)
         return [path for path in wanted if not path.exists()]
 
 

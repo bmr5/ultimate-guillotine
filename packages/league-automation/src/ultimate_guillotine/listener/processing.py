@@ -92,7 +92,7 @@ class InboundProcessor:
 def ping_trigger(delivery, test_chat_guid: str) -> Trigger:
     def matches(msg: InboundMessage) -> bool:
         # Ben's own unsigned messages count too; signed bot posts are dropped upstream.
-        return msg.chat_guid == test_chat_guid and msg.text.strip().lower() == "@bot ping"
+        return msg.chat_guid == test_chat_guid and msg.text.strip().lower() == "@daddy ping"
 
     def handle(msg: InboundMessage) -> None:
         delivery.deliver(None, "ping", f"pong {datetime.now(UTC).isoformat(timespec='seconds')}")
