@@ -5,8 +5,18 @@ import type { Database, TableRow } from "@/board/types";
 
 export type HistoryClient = SupabaseClient<Database>;
 
-export type TradeCatalogRow = TableRow<"trade_catalog">;
-export type SeasonResultRow = TableRow<"season_results">;
+/**
+ * Both row types name exactly the columns their select asks for, and no more — the rule
+ * `HistoryPlayerRow` states below. `trade_catalog.source` says whether the analyst read the
+ * deal from the Registrar or from the chat, which the page answers from `sourceLabel` instead;
+ * `season_results.unresolved_names` is a loader diagnostic no page renders. Neither is
+ * requested, so neither is in the type: a field the fetch never returns must not typecheck.
+ */
+export type TradeCatalogRow = Omit<TableRow<"trade_catalog">, "source">;
+export type SeasonResultRow = Omit<
+  TableRow<"season_results">,
+  "unresolved_names"
+>;
 export type HistoryMemberRow = Pick<
   TableRow<"members">,
   "id" | "sleeper_display_name" | "nickname"
@@ -73,11 +83,11 @@ async function unwrap<T>(
  * returns `GenericStringError` and silently costs the fetcher its typed result.
  */
 const CATALOG_COLUMNS =
-  "id, catalog_id, season, week, occurred_on, trade_type, structure, party_member_ids, party_count, assets, faab_total, confidence, source, unresolved_parties, loaded_at";
+  "id, catalog_id, season, week, occurred_on, trade_type, structure, party_member_ids, party_count, assets, faab_total, confidence, unresolved_parties, loaded_at";
 
 /** Also one literal, for the reason `CATALOG_COLUMNS` is. */
 const SEASON_RESULT_COLUMNS =
-  "id, season, champion_member_id, co_champion_member_id, runner_up_member_id, third_member_id, team_count, eliminations, notes, unresolved_names, loaded_at";
+  "id, season, champion_member_id, co_champion_member_id, runner_up_member_id, third_member_id, team_count, eliminations, notes, loaded_at";
 
 export function fetchTradeCatalog(
   client: HistoryClient,

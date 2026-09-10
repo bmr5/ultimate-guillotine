@@ -42,7 +42,6 @@ function catalogRow(
     ],
     faab_total: null,
     confidence: "high",
-    source: "catalog",
     unresolved_parties: 0,
     loaded_at: loadedAt,
   };

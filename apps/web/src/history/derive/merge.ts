@@ -1,4 +1,4 @@
-import { resolveOwnerLabel } from "@/board/derive/join";
+import { UNKNOWN_OWNER } from "@/board/derive/join";
 
 import type {
   HistoryMemberRow,
@@ -7,20 +7,10 @@ import type {
   TradeCatalogRow,
 } from "../fetchers";
 import type { CatalogTrade, TradeAsset, TradeParty } from "../types";
+import { isRecord } from "./json";
+import { ownerLabelFor } from "./ownerLabel";
 
 export const CATALOG_SOURCE_LABEL = "catalog";
-
-/**
- * Whether a `jsonb` array element is worth reading at all.
- *
- * Neither `trade_catalog.assets` nor `trade_revisions.terms` forbids a `null` or a bare string
- * inside its arrays, and reading `.kind` off either throws. Every loop below narrows through
- * this first and drops what it cannot use, so a malformed element costs that one asset and not
- * the whole page.
- */
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
 
 /** A `jsonb` string field, or `null` when it is absent or some other type. */
 function optionalText(value: unknown): string | null {
@@ -35,12 +25,15 @@ function optionalIndex(value: unknown): number | null {
   return Number.isInteger(value) ? (value as number) : null;
 }
 
-function labelFor(memberId: number, members: HistoryMemberRow[]): TradeParty {
-  // `resolveOwnerLabel` takes `OwnerLabelSource | undefined` and answers "Unknown owner" for a
-  // member it cannot label, so `find` returning undefined is already the right input.
+/**
+ * A trade party, named. A member id the directory does not carry is still a party to the deal,
+ * so it keeps its place on the card under `UNKNOWN_OWNER` rather than being dropped — the row
+ * would otherwise read as a smaller trade than it was.
+ */
+function tradeParty(memberId: number, members: HistoryMemberRow[]): TradeParty {
   return {
     memberId,
-    label: resolveOwnerLabel(members.find((m) => m.id === memberId)),
+    label: ownerLabelFor(memberId, members) ?? UNKNOWN_OWNER,
   };
 }
 
@@ -85,7 +78,7 @@ export function normalizeCatalogTrade(
     occurredOn: row.occurred_on,
     tradeType: row.trade_type,
     structure: row.structure,
-    parties: row.party_member_ids.map((id) => labelFor(id, members)),
+    parties: row.party_member_ids.map((id) => tradeParty(id, members)),
     partyCount: row.party_count,
     assets: catalogAssets(row.assets),
     faabTotal: row.faab_total,
@@ -174,7 +167,7 @@ export function normalizeRegisteredTrade(
     occurredOn: null,
     tradeType: revision?.kind ?? "trade",
     structure: `${memberIds.length}-team`,
-    parties: memberIds.map((id) => labelFor(id, members)),
+    parties: memberIds.map((id) => tradeParty(id, members)),
     partyCount: rawParties.length,
     assets,
     faabTotal,

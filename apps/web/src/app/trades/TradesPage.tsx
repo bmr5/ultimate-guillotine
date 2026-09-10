@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 
+import { UNKNOWN_OWNER } from "@/board/derive/join";
 import { formatUpdatedAt } from "@/board/derive/time";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -14,6 +15,7 @@ import {
   seasonOptions,
   typeOptions,
 } from "@/history/derive/filter";
+import { ownerLabelFor } from "@/history/derive/ownerLabel";
 import { tradeStats } from "@/history/derive/stats";
 import { parseNumberParam, type TradeFilters } from "@/history/types";
 import { useTradeCatalog } from "@/history/useTradeCatalog";
@@ -71,14 +73,23 @@ export function TradesPage() {
     [trades, filters],
   );
   const stats = useMemo(() => tradeStats(visible), [visible]);
-  const memberIds = useMemo(
-    () => [
+  // Sorted by the label the `<option>` will carry, not by member id: the id is an internal
+  // number, so ordering by it puts the owners in what reads as no order at all. The sort key is
+  // `ownerLabelFor`'s answer — the same call the filter bar renders — so the order on screen
+  // always matches the text on screen. `localeCompare`, not `<`, so the nicknames sort the way
+  // a reader expects rather than by code point.
+  const memberIds = useMemo(() => {
+    const ids = [
       ...new Set(
         trades.flatMap((trade) => trade.parties.map((p) => p.memberId)),
       ),
-    ],
-    [trades],
-  );
+    ];
+    return ids.sort((a, b) =>
+      (ownerLabelFor(a, members) ?? UNKNOWN_OWNER).localeCompare(
+        ownerLabelFor(b, members) ?? UNKNOWN_OWNER,
+      ),
+    );
+  }, [trades, members]);
 
   return (
     <section className="space-y-3">
@@ -131,7 +142,10 @@ export function TradesPage() {
         </div>
       )}
 
-      <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+      {/* Named for the same reason `/history` names its season list: a screen reader announces
+          an unlabelled list by its length alone, and an expanded card puts a second list — its
+          assets — inside this one, so "list, 2 items" could mean either. */}
+      <ul aria-label="Trades" className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         {visible.map((trade) => (
           <TradeCard key={trade.key} trade={trade} />
         ))}

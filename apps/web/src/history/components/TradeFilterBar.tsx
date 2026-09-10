@@ -1,8 +1,9 @@
-import { resolveOwnerLabel } from "@/board/derive/join";
+import { UNKNOWN_OWNER } from "@/board/derive/join";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
+import { ownerLabelFor } from "../derive/ownerLabel";
 import type { HistoryMemberRow } from "../fetchers";
 import type { TradeFilters } from "../types";
 
@@ -116,17 +117,19 @@ export function TradeFilterBar(props: Props) {
           }
         >
           <option value="">Any owner</option>
+          {/* An owner the directory cannot name is still an owner some trade on screen has,
+              so the option is offered under `UNKNOWN_OWNER` rather than left out — without it
+              the filter would silently have no way to reach those trades. The order is the
+              caller's; `TradesPage` sorts these by label. */}
           {memberIds.map((id) => (
             <option key={id} value={id}>
-              {resolveOwnerLabel(members.find((member) => member.id === id))}
+              {ownerLabelFor(id, members) ?? UNKNOWN_OWNER}
             </option>
           ))}
           {filters.memberId !== null &&
             !memberIds.includes(filters.memberId) && (
               <option value={filters.memberId} disabled>
-                {resolveOwnerLabel(
-                  members.find((member) => member.id === filters.memberId),
-                )}
+                {ownerLabelFor(filters.memberId, members) ?? UNKNOWN_OWNER}
               </option>
             )}
         </select>

@@ -12,7 +12,12 @@ vi.mock("@/history/useTradeCatalog", () => ({
     trades: trades.value,
     replacedByBackfill: 1,
     loadedAt: Date.parse("2026-09-09T12:00:00Z"),
-    members: [{ id: 1, nickname: "Alpha", sleeper_display_name: null }],
+    // Deliberately not in label order, and not in id order either: the page has to sort the
+    // owner options itself for the test below to mean anything.
+    members: [
+      { id: 1, nickname: "Zulu", sleeper_display_name: null },
+      { id: 2, nickname: "Alpha", sleeper_display_name: null },
+    ],
     isPending: false,
     errors: [],
   }),
@@ -50,8 +55,11 @@ beforeEach(() => {
       occurredOn: null,
       tradeType: "trade",
       structure: "1-for-1",
-      parties: [{ memberId: 1, label: "Alpha" }],
-      partyCount: 1,
+      parties: [
+        { memberId: 1, label: "Zulu" },
+        { memberId: 2, label: "Alpha" },
+      ],
+      partyCount: 2,
       assets: [
         {
           kind: "player",
@@ -148,6 +156,23 @@ describe("TradesPage", () => {
     );
     expect(currentSearch()).toBe("");
     expect(screen.getAllByRole("listitem")).toHaveLength(2);
+  });
+
+  it("names the trade list", () => {
+    renderPage();
+    // An expanded card nests its own asset list inside this one, so an unnamed trades list is
+    // announced as "list, 2 items" and so is the card's.
+    expect(screen.getByRole("list", { name: "Trades" })).toBeInTheDocument();
+  });
+
+  it("sorts the owner options by label, not by member id", () => {
+    renderPage();
+    const owners = screen.getByLabelText("Owner");
+    expect(
+      [...owners.querySelectorAll("option")].map(
+        (option) => option.textContent,
+      ),
+    ).toEqual(["Any owner", "Alpha", "Zulu"]);
   });
 
   it("shows a URL filter the loaded trades do not offer", () => {

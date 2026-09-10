@@ -26,7 +26,6 @@ const CATALOG_2024 = {
   assets: [{ kind: "faab", amount: 5, from_party: 0, to_party: 1 }],
   faab_total: 5,
   confidence: "high" as const,
-  source: "catalog" as const,
   unresolved_parties: 0,
   loaded_at: "2026-09-09T12:00:00Z",
 };

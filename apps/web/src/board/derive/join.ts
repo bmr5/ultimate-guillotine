@@ -13,6 +13,9 @@ export type OwnerLabelSource = Pick<
   "sleeper_display_name" | "nickname"
 >;
 
+/** What a member with no public label reads as, here and anywhere else that needs the word. */
+export const UNKNOWN_OWNER = "Unknown owner";
+
 /**
  * Ben's decision 4: the nickname from `public.members.nickname` when there is one, otherwise
  * `public.members.sleeper_display_name`. `members.display_name` — the bare Sleeper username —
