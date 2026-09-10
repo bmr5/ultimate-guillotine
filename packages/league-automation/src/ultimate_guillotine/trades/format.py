@@ -15,6 +15,7 @@ __all__ = [
     "format_terms",
     "format_updated",
     "party_labels",
+    "party_receives",
 ]
 
 # A member id -> the label the board shows for that owner (nickname, else the
@@ -73,6 +74,13 @@ def _receives(proposal: TradeProposal, member_id: int) -> str:
             others.append(part)
     parts = players + amounts + others
     return " + ".join(parts) if parts else "nothing"
+
+
+def party_receives(proposal: TradeProposal, member_id: int) -> str:
+    """What one party gets, as chat text: players, then amounts, then other
+    terms, or ``nothing``. Public because the trade video's lower third says
+    the same thing the chat does."""
+    return _receives(proposal, member_id)
 
 
 def _unassigned(proposal: TradeProposal) -> list[str]:
