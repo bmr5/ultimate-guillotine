@@ -117,8 +117,9 @@ describe("injury status vocabulary", () => {
   });
 
   it("tags an unknown status by its own spelling rather than dropping it", () => {
-    // The column is check-constrained, so this cannot come from the sync — but a stale
-    // build reading a newer row should still say something rather than nothing.
+    // The sync maps a status outside Sleeper's known vocabulary to null rather than storing
+    // it, so this cannot come from a current row — but a stale bundle reading a row a newer
+    // build wrote should still say something rather than nothing.
     expect(injuryTag("Sprained")).toMatchObject({
       tag: "Sprained",
       title: "Sprained",
@@ -155,12 +156,16 @@ describe("outStarters", () => {
         fullName: "Shelved Back",
         status: "IR",
         title: "Injured reserve",
+        // Sleeper is still publishing a number for him; the caller has to know, because that
+        // number is inside `starters_projected` and is not coverage of a lineup he is not in.
+        projectedPoints: 9.4,
       },
       {
         sleeperPlayerId: "te",
         fullName: "Broken Tightend",
         status: "Out",
         title: "Out",
+        projectedPoints: null,
       },
     ]);
   });
@@ -196,6 +201,16 @@ const outTe = () =>
     slotIndex: 5,
     injuryStatus: "Out",
     projectedPoints: null,
+  });
+
+/** An out TE Sleeper is publishing a number for anyway. */
+const projectedOutTe = () =>
+  filled("TE", {
+    sleeperPlayerId: "te",
+    fullName: "Broken Tightend",
+    slotIndex: 5,
+    injuryStatus: "Out",
+    projectedPoints: 4.2,
   });
 
 /** A fit starter Sleeper simply has no number for. */
@@ -245,6 +260,27 @@ const AVAILABILITY_CASES: AvailabilityCase[] = [
         unprojectedStarter(),
       ),
       startersProjected: 8,
+      starterSlots: 10,
+      emptySlots: 0,
+    },
+    outCount: 1,
+    outChipText: "1 starter out",
+    isPartial: true,
+    adjustedCoveragePct: 88.9,
+  },
+  {
+    // Sleeper keeps projecting some players it has already flagged. Taking the out starter out
+    // of the denominator while leaving his number in the numerator credited the team for a
+    // projection nobody will score: ten slots, nine projected, one of those nine a player who
+    // is out and one fit starter with no number at all, and the card read 100 percent covered.
+    name: "an out starter Sleeper still projects: he leaves the numerator too",
+    input: {
+      starterRows: withRow(
+        withRow(healthyLineup(), 5, projectedOutTe()),
+        3,
+        unprojectedStarter(),
+      ),
+      startersProjected: 9,
       starterSlots: 10,
       emptySlots: 0,
     },

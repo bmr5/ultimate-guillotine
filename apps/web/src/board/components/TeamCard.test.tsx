@@ -1,8 +1,21 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { BoardTeam, RosterPlayer } from "../types";
-import { TEAM_CARD_CLASS, TeamCard } from "./TeamCard";
+import {
+  CHIP_ROW_MIN_HEIGHT_CLASS,
+  SUMMARY_MIN_HEIGHT_CLASS,
+  TEAM_CARD_CLASS,
+  TeamCard,
+} from "./TeamCard";
+
+/**
+ * One turn of the macrotask queue. Radix registers the open tooltip's outside-pointerdown
+ * listener from a `setTimeout(0)`, so a tap fired in the same tick as the open is not the tap a
+ * reader makes — the layer that closes on pointerdown is not listening yet.
+ */
+const settle = () =>
+  act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
 
 /** The chip's visible wording, spelled once. */
 const PARTIAL_BADGE_TEXT = "partial";
@@ -113,6 +126,21 @@ const outChip = () => screen.getByText(OUT_CHIP_TEXT).closest("[data-chip]");
 /** The chip row, mounted whether or not there is anything in it. */
 const chipRow = (container: HTMLElement) =>
   container.querySelector("[data-chip-row]");
+
+/** The sentence a chip is described by, read the way a screen reader would reach it. */
+const chipDescription = (chip: Element | null) => {
+  const id = chip?.getAttribute("aria-describedby");
+  return id === null || id === undefined
+    ? null
+    : document.getElementById(id)?.textContent;
+};
+
+/** A tap: `pointerdown`, then `click`, then the turn of the queue Radix waits for. */
+const tap = async (element: Element) => {
+  fireEvent.pointerDown(element);
+  fireEvent.click(element);
+  await settle();
+};
 
 /** A lineup with one out tight end and everyone else fit and projected — Ben's own card. */
 const outTeam = (): Partial<BoardTeam> => {
@@ -435,16 +463,19 @@ describe("TeamCard", () => {
     expect(screen.queryByText(/Eliminated/)).not.toBeInTheDocument();
   });
 
-  it("puts a provisional ruling in a tooltip, not in the label", () => {
+  it("puts a provisional ruling in a tooltip, not in the label", async () => {
     renderCard({
       isEliminated: true,
       eliminatedWeek: 4,
       eliminationSource: "sleeper_inferred",
     });
-    expect(screen.getByText("Eliminated week 4")).toHaveAttribute(
-      "title",
-      expect.stringContaining("Provisional"),
-    );
+    const chip = screen.getByText("Eliminated week 4").closest("[data-chip]");
+    // The label stays the plain ruling; the qualification is one tap away, like every other
+    // chip on the line — a native `title` never opened on the phone this board is read on.
+    expect(chip).not.toHaveAttribute("title");
+    expect(chipDescription(chip)).toContain("Provisional");
+    await tap(chip as Element);
+    expect(screen.getByRole("tooltip")).toHaveTextContent(/Provisional/);
   });
 
   it("leaves an adjudicator ruling untooltipped and still expandable", () => {
@@ -458,7 +489,12 @@ describe("TeamCard", () => {
       { open: true },
     );
     expect(toggleButton()).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByText("Eliminated week 4")).not.toHaveAttribute("title");
+    const chip = screen.getByText("Eliminated week 4").closest("[data-chip]");
+    expect(chip).not.toHaveAttribute("title");
+    // Nothing to explain, so the chip is a plain span rather than a trigger for an empty
+    // tooltip: an adjudicated elimination is simply the fact.
+    expect(chip?.tagName).toBe("SPAN");
+    expect(chipDescription(chip)).toBeNull();
     expect(screen.getByText("Patrick Mahomes")).toBeInTheDocument();
   });
 
@@ -468,9 +504,12 @@ describe("TeamCard", () => {
       coveragePct: null,
       isProvisional: true,
     });
-    expect(screen.getByText("Projection unavailable")).not.toHaveAttribute(
-      "title",
-    );
+    const chip = screen
+      .getByText("Projection unavailable")
+      .closest("[data-chip]");
+    expect(chip).not.toHaveAttribute("title");
+    expect(chipDescription(chip)).toBeNull();
+    expect(screen.queryByText(/Computed /)).toBeNull();
   });
 });
 
@@ -605,79 +644,127 @@ describe("TeamCard injury tags", () => {
  * chip row is always mounted, and the summary carries a fixed height.
  */
 describe("TeamCard summary chips", () => {
-  it("puts the partial chip on the owner's line, inside the toggle", () => {
+  it("puts the partial chip on the owner's line, outside the toggle", () => {
     const { container } = renderCard(partialTeam());
     const chip = partialChip();
     expect(chip).not.toBeNull();
     expect(chip).toHaveAttribute("data-chip", "partial");
-    expect(chipRow(container)?.contains(chip as Node)).toBe(true);
-    // The owner's name is in the same line box as the chip row.
-    expect(screen.getByText("benray").parentElement).toBe(
-      chipRow(container)?.parentElement,
+    const row = chipRow(container);
+    expect(row?.contains(chip as Node)).toBe(true);
+    // On the owner's line: the row and the toggle share the summary grid's first cell.
+    expect(row?.className).toContain("col-start-1");
+    expect(row?.className).toContain("row-start-1");
+    expect(row?.className).toContain("justify-self-end");
+    expect(row?.parentElement).toBe(
+      container.querySelector("[data-card-summary]"),
     );
-    // And the whole line is still inside the one toggle, so the card taps as one thing.
-    expect(toggleButton().contains(chip as Node)).toBe(true);
+    // And *not* inside the button, which is what lets a chip be a tooltip trigger at all.
+    expect(toggleButton().contains(row as Node)).toBe(false);
+    expect((row as Element).closest("button[aria-controls]")).toBeNull();
   });
 
-  it("explains the partial chip in its title and to a screen reader", () => {
+  it("explains the partial chip on a tap, and to a screen reader without one", async () => {
     renderCard(partialTeam());
     const chip = partialChip();
-    expect(chip?.getAttribute("title")).toContain(COVERAGE_SENTENCE);
+    // The sentence reaches a screen reader whether or not the tooltip is open.
+    expect(chipDescription(chip)).toBe(COVERAGE_SENTENCE);
+    expect(screen.queryByRole("tooltip")).toBeNull();
+
+    await tap(chip as Element);
+    const tooltip = screen.getByRole("tooltip");
+    expect(tooltip).toHaveTextContent(COVERAGE_SENTENCE);
     // Dated in words, never as an ISO string (see `derive/time`).
-    expect(chip?.getAttribute("title")).toMatch(/Computed /);
-    expect(chip?.getAttribute("title") ?? "").not.toMatch(/\d{4}-\d{2}-\d{2}T/);
-    const spoken = chip?.querySelector(".sr-only");
-    expect(spoken?.textContent).toContain("Partial projection coverage");
-    expect(spoken?.textContent).toContain(COVERAGE_SENTENCE);
+    expect(tooltip).toHaveTextContent(/Computed /);
+    expect(tooltip.textContent ?? "").not.toMatch(/\d{4}-\d{2}-\d{2}T/);
   });
 
-  it("falls back to the plain label when the week has no starter counts", () => {
+  it("opens the chip's tooltip on keyboard focus as well as on tap", () => {
+    renderCard(partialTeam());
+    const chip = partialChip() as HTMLElement;
+    chip.focus();
+    expect(chip).toHaveFocus();
+    fireEvent.focus(chip);
+    expect(screen.getByRole("tooltip")).toHaveTextContent(COVERAGE_SENTENCE);
+  });
+
+  it("closes the chip's tooltip on a second tap", async () => {
+    renderCard(partialTeam());
+    const chip = partialChip() as Element;
+    await tap(chip);
+    expect(screen.getByRole("tooltip")).toHaveTextContent(COVERAGE_SENTENCE);
+    await tap(chip);
+    expect(screen.queryByRole("tooltip")).toBeNull();
+    await tap(chip);
+    expect(screen.getByRole("tooltip")).toHaveTextContent(COVERAGE_SENTENCE);
+  });
+
+  it("keeps a 44px target and the shared focus ring on a chip that opens", () => {
+    renderCard(partialTeam());
+    const className = (partialChip() as Element).className;
+    expect(className).toContain(CHIP_ROW_MIN_HEIGHT_CLASS);
+    expect(className).toContain("focus-visible:ring-2");
+  });
+
+  /**
+   * Availability may only *suppress* the data layer's caveat, never stand in for it. With no
+   * starter counts there is no adjusted coverage to measure, so there is nothing to suppress
+   * with and the caveat stands — under the plain label, because the two figures behind the
+   * sentence are exactly what the week's row is missing.
+   */
+  it("keeps the chip, under the plain label, when the week has no starter counts", () => {
     renderCard({
       ...partialTeam(),
       startersProjected: null,
       starterSlots: null,
     });
-    // No counts means no adjusted coverage to measure, so there is no partial claim at all.
-    expect(screen.queryByText(PARTIAL_BADGE_TEXT)).toBeNull();
+    const chip = partialChip();
+    expect(chip).not.toBeNull();
+    expect(chipDescription(chip)).toBe("Partial projection coverage");
+    expect(screen.queryByText(/starters have a projection/)).toBeNull();
+  });
+
+  it("keeps the chip on a two-thirds-covered card with nobody out", () => {
+    // 6 of 9 is 66.7 percent, the lineup is full and fit, and no arithmetic explains it away.
+    const roster = fullLineup();
+    renderCard(
+      {
+        ...partialTeam(),
+        roster: roster.map((entry, index) =>
+          index < 3 ? player({ ...entry, projectedPoints: null }) : entry,
+        ),
+        emptySlots: 0,
+      },
+      { rosterPositions: LEAGUE_SLOTS },
+    );
+    expect(partialChip()).not.toBeNull();
+    expect(chipDescription(partialChip())).toContain("(66.7%)");
+    expect(screen.queryByText(/starters? out/)).toBeNull();
+  });
+
+  /**
+   * A row can be provisional because the *league-wide* run was short rather than because this
+   * team's own coverage is (`is_provisional` is `coverage_pct < 95 or run_coverage_pct < 95`).
+   * No injury explains that, so a full-coverage provisional card keeps its chip.
+   */
+  it("keeps the chip on a provisional card whose own coverage is full", () => {
+    renderCard(
+      {
+        coveragePct: 100,
+        isProvisional: true,
+        startersProjected: 9,
+        starterSlots: 9,
+        roster: fullLineup(),
+        emptySlots: 0,
+      },
+      { rosterPositions: LEAGUE_SLOTS },
+    );
+    expect(partialChip()).not.toBeNull();
   });
 
   it("puts no chip on a card whose projection clears the gate", () => {
     const { container } = renderCard();
     expect(screen.queryByText(PARTIAL_BADGE_TEXT)).toBeNull();
     expect(container.querySelector("[data-chip]")).toBeNull();
-  });
-
-  /**
-   * The height fix. The chip row is a real element on every card, chips or not, so the summary
-   * has one structure rather than two — an element that appears and disappears is what was
-   * changing the card's height in the first place.
-   */
-  it("renders the same summary structure with and without chips", () => {
-    const withChips = renderCard(outTeam(), {
-      rosterPositions: LEAGUE_SLOTS,
-    });
-    const chipRowWith = chipRow(withChips.container);
-    expect(chipRowWith).not.toBeNull();
-    expect(chipRowWith?.querySelectorAll("[data-chip]").length).toBeGreaterThan(
-      0,
-    );
-    const summaryWith = withChips.container.querySelector(
-      "[data-card-summary]",
-    );
-    withChips.unmount();
-
-    const without = renderCard({}, { rosterPositions: LEAGUE_SLOTS });
-    const chipRowWithout = chipRow(without.container);
-    expect(chipRowWithout).not.toBeNull();
-    expect(chipRowWithout?.querySelectorAll("[data-chip]")).toHaveLength(0);
-    const summaryWithout = without.container.querySelector(
-      "[data-card-summary]",
-    );
-
-    // The same box, with the same fixed height, in both branches.
-    expect(summaryWith?.className).toBe(summaryWithout?.className);
-    expect(summaryWithout?.className).toContain("min-h-");
-    expect(chipRowWith?.className).toBe(chipRowWithout?.className);
   });
 
   it("keeps the chip row on one line so no chip can grow the card", () => {
@@ -692,11 +779,98 @@ describe("TeamCard summary chips", () => {
     }
   });
 
-  // A control inside a <button> is invalid HTML. The chips are spans precisely so they can
-  // live on the owner's line without splitting the summary's tap target again.
+  // An empty row spans the end of the owner's line on every card; if it took pointer events it
+  // would eat the taps that used to open the card there.
+  it("leaves the row itself inert so it never swallows a tap on the card", () => {
+    const onToggle = vi.fn();
+    const { container } = renderCard({}, { onToggle });
+    expect(chipRow(container)?.className).toContain("pointer-events-none");
+    fireEvent.click(screen.getByText("benray"));
+    expect(onToggle).toHaveBeenCalledWith(7);
+  });
+
+  // A control inside a <button> is invalid HTML, and it cost the card its whole-card tap
+  // target the last time. The chips are siblings of the toggle, laid over its first row.
   it("nests no control inside the summary button", () => {
     renderCard(outTeam(), { rosterPositions: LEAGUE_SLOTS });
     expect(toggleButton().querySelector("button, a, input, select")).toBeNull();
+  });
+});
+
+/**
+ * Ben's addendum: "make every card the same height — the badge currently changes card height."
+ * The chip row is mounted on every card with a floor of its own, and the badges that used to
+ * sit in a row *below* the summary — the elimination ruling and `Projection unavailable` — are
+ * chips in that same row, so no card carries a row its neighbour does not.
+ */
+describe("TeamCard equal heights", () => {
+  /** The summary's shape: its own tag and data attribute, and its children's, in order. */
+  const outline = (container: HTMLElement) => {
+    const summary = container.querySelector("[data-card-summary]");
+    return [...(summary?.children ?? [])].map((child) =>
+      [
+        child.tagName,
+        child.hasAttribute("data-chip-row") ? "chip-row" : "",
+        child.getAttribute("aria-controls") === null ? "" : "toggle",
+      ].join(":"),
+    );
+  };
+
+  /** Every element between the card and its collapsible panel: the rows a card is made of. */
+  const rowCount = (container: HTMLElement) =>
+    container.querySelectorAll(
+      `.${TEAM_CARD_CLASS} > * > div:not([hidden]):not([data-chip-row])`,
+    ).length;
+
+  const loud = () => ({
+    ...outTeam(),
+    isEliminated: true,
+    eliminatedWeek: 4,
+    eliminationSource: "sleeper_inferred" as const,
+  });
+
+  it("gives an eliminated card and a live one the same summary structure", () => {
+    const eliminated = renderCard(loud(), { rosterPositions: LEAGUE_SLOTS });
+    const eliminatedOutline = outline(eliminated.container);
+    const eliminatedRows = rowCount(eliminated.container);
+    // One visible row on the loudest card there is: the summary. A second one — the badge row
+    // this replaced — is exactly the extra height Ben was looking at.
+    expect(eliminatedRows).toBe(1);
+    // The loud card really is loud: the elimination ruling is a chip in the row, not a row.
+    expect(
+      chipRow(eliminated.container)?.querySelectorAll("[data-chip]").length,
+    ).toBeGreaterThan(1);
+    expect(
+      screen.getByText("Eliminated week 4").closest("[data-chip-row]"),
+    ).not.toBeNull();
+    eliminated.unmount();
+
+    const live = renderCard({}, { rosterPositions: LEAGUE_SLOTS });
+    expect(
+      chipRow(live.container)?.querySelectorAll("[data-chip]"),
+    ).toHaveLength(0);
+    // Same boxes, in the same order, and the same number of rows in the card: the only
+    // difference between the two cards is what is *inside* the chip row.
+    expect(outline(live.container)).toEqual(eliminatedOutline);
+    expect(rowCount(live.container)).toBe(eliminatedRows);
+  });
+
+  it("floors the summary and the chip row on every card, chips or not", () => {
+    const eliminated = renderCard(loud(), { rosterPositions: LEAGUE_SLOTS });
+    const summary = eliminated.container.querySelector("[data-card-summary]");
+    expect(summary?.className).toContain(SUMMARY_MIN_HEIGHT_CLASS);
+    expect(chipRow(eliminated.container)?.className).toContain(
+      CHIP_ROW_MIN_HEIGHT_CLASS,
+    );
+    eliminated.unmount();
+
+    const live = renderCard({}, { rosterPositions: LEAGUE_SLOTS });
+    expect(
+      live.container.querySelector("[data-card-summary]")?.className,
+    ).toContain(SUMMARY_MIN_HEIGHT_CLASS);
+    expect(chipRow(live.container)?.className).toContain(
+      CHIP_ROW_MIN_HEIGHT_CLASS,
+    );
   });
 });
 
@@ -716,14 +890,16 @@ describe("TeamCard out starters", () => {
     expect(screen.queryByText(PARTIAL_BADGE_TEXT)).toBeNull();
   });
 
-  it("names the out starters and their statuses in the chip's tooltip", () => {
+  it("names the out starters and their statuses on a tap", async () => {
     renderCard(outTeam(), options);
-    expect(outChip()).toHaveAttribute(
-      "title",
+    // The names reach a screen reader without the tooltip being opened at all…
+    expect(chipDescription(outChip())).toBe(
       "Out starters: Broken Tightend (Out)",
     );
-    expect(outChip()?.querySelector(".sr-only")?.textContent).toContain(
-      "Broken Tightend (Out)",
+    // …and a thumb, which a native `title` never gave them, opens the same sentence.
+    await tap(outChip() as Element);
+    expect(screen.getByRole("tooltip")).toHaveTextContent(
+      "Out starters: Broken Tightend (Out)",
     );
   });
 

@@ -87,9 +87,10 @@ export interface Database {
         active: boolean;
         /**
          * Sleeper's own injury flag, verbatim, or null when the feed carries none — which is
-         * the normal case. The column is pinned by a check constraint to the nine strings
-         * Sleeper emits (`Questionable`, `Doubtful`, `Out`, `IR`, `PUP`, `Sus`, `NA`, `COV`,
-         * `DNR`), so `derive/availability` can match on them rather than guessing.
+         * the normal case. The sync writes only the nine strings Sleeper is known to emit
+         * (`Questionable`, `Doubtful`, `Out`, `IR`, `PUP`, `Sus`, `NA`, `COV`, `DNR`) and
+         * stores a tenth as null rather than failing the run, so `derive/availability` can
+         * match on them — and still spells an unrecognised one out rather than dropping it.
          */
         injury_status: string | null;
         synced_at: string;

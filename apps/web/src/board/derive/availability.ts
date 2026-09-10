@@ -100,10 +100,11 @@ export interface InjuryTag {
 /**
  * The tag a roster row carries for a status, or null when there is nothing to say.
  *
- * A status this build does not recognise is shown as its own spelling rather than dropped: the
- * column is constrained to nine values, so this can only happen when an older bundle is reading
- * a row a newer sync wrote, and "something is flagged" is more useful than silence. It is not
- * treated as unavailable, because guessing a player out of a lineup is the worse error.
+ * A status this build does not recognise is shown as its own spelling rather than dropped:
+ * "something is flagged" is more useful than silence. It is not treated as unavailable, because
+ * guessing a player out of a lineup is the worse error. The sync maps a status outside Sleeper's
+ * known vocabulary to null rather than storing it (see `KNOWN_INJURY_STATUSES` in `players.py`),
+ * so in practice this only fires for a stale bundle reading a row a newer build wrote.
  */
 export function injuryTag(raw: string | null | undefined): InjuryTag | null {
   const status = normalizeInjuryStatus(raw);
@@ -125,6 +126,15 @@ export interface OutStarter {
   status: string;
   /** The same status in words, for the chip's tooltip. */
   title: string;
+  /**
+   * The projection this out starter carries, if any.
+   *
+   * Sleeper keeps publishing a number for some players it has already flagged, so an out starter
+   * can be inside `starters_projected`. Taking him out of the coverage denominator while leaving
+   * him in the numerator would credit the team for a projection nobody is going to score, which
+   * is how a lineup with a genuine hole in it read as 100 percent covered.
+   */
+  projectedPoints: number | null;
 }
 
 /**
@@ -148,6 +158,7 @@ export function outStarters(rows: readonly StarterSlotRow[]): OutStarter[] {
       fullName: row.player.fullName,
       status: tag.status,
       title: tag.title,
+      projectedPoints: row.player.projectedPoints,
     });
   }
   return out;
@@ -170,8 +181,9 @@ export interface StarterAvailability {
   outCount: number;
   /**
    * Coverage over the slots anybody could have projected — the lineup less the out starters
-   * and the empty slots. null when the week has no projection row, in which case there is no
-   * coverage claim to make either way.
+   * and the empty slots, and the numerator less any projection an out starter still carries.
+   * null when the week has no projection row, in which case there is no coverage claim to make
+   * either way.
    */
   adjustedCoveragePct: number | null;
   /** True when coverage is short of the gate for a reason other than an out starter. */
@@ -187,12 +199,17 @@ export interface StarterAvailability {
  *
  * The rule Ben asked for. An out starter is *reported as out*, not counted as missing data:
  * nobody can project a player who is not playing, so he leaves the coverage denominator the
- * same way an empty slot already did. What is left — `starters_projected` over the slots that
+ * same way an empty slot already did — and, if Sleeper published a number for him anyway, the
+ * numerator too, because a projection for a player who is not on the field is not coverage of
+ * the lineup that is. What is left — the projections of the fit starters over the slots that
  * had a fit player in them — is measured against the same 95 percent gate the data layer and
  * Game Pulse use, and only that decides the `partial` chip.
  *
- * The adjusted figure is never below the row's own `coverage_pct`, because the denominator only
- * ever shrinks, so this can silence a `partial` chip but never raise one the data layer did not.
+ * The adjusted figure can land either side of the row's own `coverage_pct` — the denominator
+ * shrinks by every out starter, the numerator by the ones Sleeper projected anyway — so this is
+ * not a strictly kinder reading of the week. It is still only ever a *suppressor* on the card:
+ * `TeamCard` shows the chip when the data layer's own caveat is set and this does not explain it
+ * away, so availability can silence a `partial` the data layer raised but never raise its own.
  *
  * Pure: reads its input and returns fresh objects.
  */
@@ -203,15 +220,24 @@ export function resolveStarterAvailability(
   const out = outStarters(starterRows);
   const outCount = out.length;
 
+  // An out starter Sleeper still publishes a number for is counted in `starters_projected`.
+  // He leaves the numerator with the denominator, so the figure describes the players who are
+  // actually going to play; otherwise a lineup with one out starter and one unprojected fit one
+  // read as fully covered.
+  const projectedWhileOut = out.filter(
+    (starter) => starter.projectedPoints !== null,
+  ).length;
+
   let adjustedCoveragePct: number | null = null;
   if (startersProjected !== null && starterSlots !== null) {
     const coverable = starterSlots - outCount - emptySlots;
+    const covered = Math.max(0, startersProjected - projectedWhileOut);
     // Nothing left to cover is full coverage, not zero: a lineup that is entirely out or
     // entirely empty has no missing projection to complain about.
     adjustedCoveragePct =
       coverable <= 0
         ? 100
-        : Math.min(100, Math.max(0, (startersProjected / coverable) * 100));
+        : Math.min(100, Math.max(0, (covered / coverable) * 100));
   }
 
   return {
