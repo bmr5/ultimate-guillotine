@@ -916,6 +916,13 @@ at 8:15 AM); the same install also registered `guillotine-sleeper-draft` and
 profile. The draft job was removed again later that day (`hermes cron` delete of
 `6f210b46919c`) on Ben's ruling that the auction is synced by hand once a year.
 
+**A schedule edited minutes before it fires can skip that fire.** On 2026-09-10 the
+waiver-day row was edited to `12 10 * * 4,6` at 10:09; the 10:12 occurrence passed
+with no execution recorded and the next run moved to Saturday. `hermes cron run
+<id>` ran it on the spot and it posted normally. After any schedule change, read
+`hermes cron list` and, if the next occurrence is close, expect to trigger it by
+hand once; occurrences after the first behave like every other job's.
+
 ### The safe dry runs
 
 Three commands, none of which writes, sends, or records a run:
