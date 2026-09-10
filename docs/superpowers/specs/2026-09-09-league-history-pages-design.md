@@ -188,7 +188,7 @@ table, and Ben has reviewed the Vercel preview at 375 px in light and dark.
 
 ## Decisions from Ben (2026-09-09)
 
-- Answering question 2: a champion who has left the league gets a member profile that is not tied to Sleeper (`ug members former add`, keyed `former:<slug>` with the name as the nickname), and because the rest of the catalog's old nicknames will not be mapped one by one, every party these pages still cannot name reads as "a former manager" — on the trade cards, on the champion line and on a named elimination line — rather than as "unidentified owner" or "Unlisted"; the owner filter leaves them out entirely, since one such option would stand for every unmapped party at once.
+- Answering question 2: a champion who has left the league gets a member profile that is not tied to Sleeper (`ug members former add`, keyed `former:<slug>` with the name as the nickname), and because the rest of the catalog's old nicknames will not be mapped one by one, every party these pages still cannot name reads as "a former manager" — on the trade cards, on the champion line and on a named elimination line — rather than as "unidentified owner" or "Unlisted"; the owner filter leaves them out entirely, since one such option would stand for every unmapped party at once. A placing `season_results` never recorded at all is a different fact and reads "Not recorded": "former manager" is for somebody the sheet named and the directory cannot, and a season with no champion on file named nobody.
 
 ## Decisions from Ben (2026-09-10)
 

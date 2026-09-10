@@ -94,12 +94,25 @@ export interface SeasonElimination {
   poolOut: number | null;
 }
 
+/**
+ * One season's finish.
+ *
+ * Every placing carries both the label and the id it was resolved from, because a `null`
+ * label answers two different questions with the same word: the row named somebody the
+ * members directory cannot name (a manager who has left), or the row named nobody at all
+ * (a champion never recorded). `seasonPlacingLabel` is the one place that tells them apart,
+ * and it needs the id to do it.
+ */
 export interface SeasonResult {
   season: number;
   championLabel: string | null;
+  championMemberId: number | null;
   coChampionLabel: string | null;
+  coChampionMemberId: number | null;
   runnerUpLabel: string | null;
+  runnerUpMemberId: number | null;
   thirdLabel: string | null;
+  thirdMemberId: number | null;
   teamCount: number | null;
   eliminations: SeasonElimination[];
   notes: string | null;

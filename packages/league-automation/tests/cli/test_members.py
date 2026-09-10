@@ -427,9 +427,10 @@ def test_former_add_is_idempotent_and_updates_the_aliases(
     assert row is not None
     member_id, nickname, _ = row
     # The nickname follows the spelling of the latest run: it is the first alias, the way
-    # every other member's is.
-    assert nickname == "sentinel   former"
-    assert _aliases_of(conn, member_id) == ["sentinel   former", "Sentinel Other"]
+    # every other member's is. Case is the operator's, but the run's stray whitespace is
+    # not published -- the slug already ignores it, so the label has to as well.
+    assert nickname == "sentinel former"
+    assert _aliases_of(conn, member_id) == ["sentinel former", "Sentinel Other"]
 
 
 def test_former_add_rejects_a_name_that_is_only_punctuation(

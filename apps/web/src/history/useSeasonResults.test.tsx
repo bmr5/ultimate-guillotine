@@ -91,10 +91,24 @@ describe("useSeasonResults", () => {
 
     const season = result.current.seasons[0];
     expect(season.championLabel).toBe("Alpha");
-    // Id 99 is nobody in `members`, and the card renders that as "Unlisted" — the hook does
-    // not guess a label for it.
+    // Id 99 is nobody in `members`, and the card renders that as "Former manager" — the
+    // hook does not guess a label for it.
     expect(season.runnerUpLabel).toBeNull();
     expect(season.coChampionLabel).toBeNull();
+  });
+
+  it("carries each placing's id beside its label", async () => {
+    // Both unresolved placings label as `null`, so the ids are the only thing separating
+    // "a runner-up the directory cannot name" from "no co-champion was recorded".
+    vi.mocked(fetchers.fetchSeasonResults).mockResolvedValue([seasonRow([])]);
+    const { result } = renderSeasons();
+    await waitFor(() => expect(result.current.isPending).toBe(false));
+
+    const season = result.current.seasons[0];
+    expect(season.championMemberId).toBe(1);
+    expect(season.runnerUpMemberId).toBe(99);
+    expect(season.coChampionMemberId).toBeNull();
+    expect(season.thirdMemberId).toBeNull();
   });
 
   it("names every failed source and keeps the others", async () => {

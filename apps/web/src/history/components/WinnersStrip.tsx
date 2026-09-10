@@ -1,4 +1,4 @@
-import { FORMER_MANAGER } from "../derive/ownerLabel";
+import { seasonPlacingLabel } from "../derive/ownerLabel";
 import type { SeasonResult } from "../types";
 
 /** Every season's champion in one scannable column — the answer most people open `/history` for. */
@@ -11,8 +11,10 @@ export function WinnersStrip({ seasons }: { seasons: SeasonResult[] }) {
       {seasons.map((season) => (
         <li key={season.season} className="flex justify-between px-3 py-1.5">
           <span className="text-muted-foreground">{season.season}</span>
+          {/* The same call the season card makes, so a season cannot be a former manager
+              in one place and not recorded in the other. */}
           <span className="font-medium">
-            {season.championLabel ?? FORMER_MANAGER}
+            {seasonPlacingLabel(season.championLabel, season.championMemberId)}
           </span>
         </li>
       ))}
