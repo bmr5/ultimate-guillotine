@@ -418,7 +418,7 @@ def test_trigger_matches_alerts_and_ignores_signed_bot_text() -> None:
     assert trigger.matches(msg("🚨 Trade alert 🚨 Member01 sends Player Alpha to Member02"))
     assert not trigger.matches(
         msg(
-            "🚨 Trade T-2026-001 logged\nMember02 receives: Player Alpha\n— 🍼 Daddy",
+            "🚨 Trade T-2026-001 logged\nMember02 receives: Player Alpha\n— Daddy 🍼",
             from_me=True,
         )
     )

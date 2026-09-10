@@ -32,7 +32,7 @@ _VIDEO = re.compile(r"\bvideo\b", re.IGNORECASE)
 TRADE_CODE = re.compile(r"\b(?:TEST|T)-\d{4}-\d{3}\b")
 
 HELP = (
-    "Reply to the trade alert you mean, or include its code (like T-2026-003), "
+    "Kitten, reply to the trade alert you mean, or include its code (like T-2026-003), "
     "and I'll make the video."
 )
 #: How many recent trades an alert with no trade behind it is matched against.
@@ -122,7 +122,7 @@ def help_text(recent: list[dict], labels: dict[int, str]) -> str:
     if not lines:
         return HELP
     return (
-        "I couldn't tie that to a logged trade. Recent: "
+        "I couldn't tie that to a logged trade, kitten. Recent: "
         + "; ".join(lines)
         + ". Reply with the code and I'll make the video."
     )
@@ -216,7 +216,10 @@ class VideoRequests:
         code = trade["trade_code"]
         if trade["status"] != "accepted":
             self._delivery.deliver(
-                None, AGENT, f"{code} was rescinded, so no video for it.", reply_to=msg.chat_guid
+                None,
+                AGENT,
+                f"{code} was rescinded, kitten, so no video for it.",
+                reply_to=msg.chat_guid,
             )
             return
         _job_id, created = self._jobs.enqueue(trade["trade_id"], code, msg.guid, msg.chat_guid)
@@ -225,7 +228,7 @@ class VideoRequests:
             # Ben (2026-09-10): exactly this, no emoji, no code, no range.
             text = ACKNOWLEDGEMENT
         else:
-            text = f"The video for {code} is already in the works."
+            text = f"Patience, kitten, the video for {code} is already in the works."
         self._delivery.deliver(None, AGENT, text, reply_to=msg.chat_guid)
 
 

@@ -176,9 +176,10 @@ def format_confirmation(code: str, proposal: TradeProposal, labels: Labels | Non
 
     Ben (2026-09-10): "I'd like the bot only to respond with confirmation that
     the trade has been logged, nothing else." The terms are stored in full and
-    read back by ``format_terms`` for the operator, never by the chat.
+    read back by ``format_terms`` for the operator, never by the chat. Later that
+    day: the league loves the kitten voice, so every line addresses them.
     """
-    return f"🚨 Trade {code} logged · {_parties_line(proposal, labels)}"
+    return f"🚨 Trade {code} logged, kittens · {_parties_line(proposal, labels)}"
 
 
 def format_updated(
@@ -193,7 +194,7 @@ def format_updated(
     for ``format_terms``; the chat no longer sees a ``Was:`` line.
     """
     del previous_terms
-    return f"🚨 Trade {code} updated · {_parties_line(proposal, labels)}"
+    return f"🚨 Trade {code} updated, kittens · {_parties_line(proposal, labels)}"
 
 
 def format_terms(proposal: TradeProposal, previous_terms: dict[str, Any] | None = None) -> str:
@@ -212,11 +213,11 @@ def format_terms(proposal: TradeProposal, previous_terms: dict[str, Any] | None 
 
 
 def format_rescinded(code: str) -> str:
-    return f"🚨 Trade {code} rescinded"
+    return f"🚨 Trade {code} rescinded, kittens"
 
 
 def format_clarification(reason: str) -> str:
-    return f"🚨 Trade not logged yet: {reason} Reply with a corrected 🚨 Trade alert 🚨."
+    return f"🚨 Trade not logged yet, kitten: {reason} Reply with a corrected 🚨 Trade alert 🚨."
 
 
 def format_not_a_trade() -> str:

@@ -143,7 +143,7 @@ def test_a_rescinded_trade_gets_no_video() -> None:
         msg("@daddy create trade video", thread="alert-2")
     )
     assert jobs.enqueued == []
-    assert delivery.sent == [(AGENT, "T-2026-004 was rescinded, so no video for it.")]
+    assert delivery.sent == [(AGENT, "T-2026-004 was rescinded, kitten, so no video for it.")]
 
 
 def test_asking_twice_does_not_queue_twice() -> None:
@@ -151,7 +151,9 @@ def test_asking_twice_does_not_queue_twice() -> None:
     requests(FakeTrades(by_guid={"alert-1": TRADE}), jobs, delivery).handle(
         msg("@daddy create trade video", thread="alert-1")
     )
-    assert delivery.sent == [(AGENT, "The video for T-2026-003 is already in the works.")]
+    assert delivery.sent == [
+        (AGENT, "Patience, kitten, the video for T-2026-003 is already in the works.")
+    ]
 
 
 def test_the_trigger_listens_only_in_the_alert_chats_and_ignores_its_own_posts() -> None:
@@ -266,7 +268,7 @@ def test_a_reply_to_a_reposted_alert_resolves_by_its_wording() -> None:
 def test_the_help_names_the_recent_trades_when_nothing_matched() -> None:
     labels = {1: "Derek", 2: "Charlie", 3: "Ryland", 4: "Ben R"}
     assert help_text([RENTAL, OTHER], labels) == (
-        "I couldn't tie that to a logged trade. Recent: T-2026-002 (Derek ↔ Charlie); "
+        "I couldn't tie that to a logged trade, kitten. Recent: T-2026-002 (Derek ↔ Charlie); "
         "T-2026-001 (Ryland ↔ Ben R). Reply with the code and I'll make the video."
     )
     assert help_text([], labels) == HELP
@@ -276,5 +278,5 @@ def test_the_help_names_the_recent_trades_when_nothing_matched() -> None:
         FakeTrades(recent=[RENTAL, OTHER]), FakeJobs(), delivery, FakeConn(), members=members
     ).handle(msg("@bot create trade video"))
     assert delivery.sent[0][1].startswith(
-        "I couldn't tie that to a logged trade. Recent: T-2026-002 (Derek ↔ Charlie)"
+        "I couldn't tie that to a logged trade, kitten. Recent: T-2026-002 (Derek ↔ Charlie)"
     )

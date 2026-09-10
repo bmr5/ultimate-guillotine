@@ -141,7 +141,7 @@ for there is delivered there. So the full loop, without the league seeing anythi
 
 1. Post a trade alert in the self-test chat, siren and all:
    `Trade alert 🚨 Derek sends Rhamondre to Charlie for Michael Wilson and 20 FAAB`
-2. Wait for `🚨 Trade TEST-2026-001 logged · Derek ↔ Charlie`.
+2. Wait for `🚨 Trade TEST-2026-001 logged, kittens · Derek ↔ Charlie`.
 3. Reply to either message with `@daddy create trade video`.
 4. Read `🎬 On it — the video for TEST-2026-001 usually takes 5 to 10 minutes.`, then the clip.
 

@@ -47,20 +47,20 @@ NOT_COMPUTED = "could not be computed"
 #: own line, not the rejection fallback: there is no "few minutes" in which a
 #: passed deadline becomes a trade. See
 #: :data:`~ultimate_guillotine.advisor.verify.TRADE_DEADLINE_WEEK`.
-DEADLINE_PASSED = "The trade deadline has passed, so I can't suggest trades."
+DEADLINE_PASSED = "The trade deadline has passed, kitten, so I can't suggest trades."
 
 #: What the league sees when validation rejected the answer. Fixed, because the
 #: real reason names ids and amounts from a response nobody should trust, and it
 #: goes to the ops log instead -- see
 #: :attr:`~ultimate_guillotine.advisor.verify.Rejected.reason`.
-FALLBACK = "I can't put advice together yet — try again in a few minutes."
+FALLBACK = "I can't put advice together yet, kitten — try again in a few minutes."
 
 #: What the league sees when there is simply no trade to make: the candidate
 #: generator found nothing honest, or the model was handed a set and had nothing
 #: to say about it. Named here because two callers must say it identically --
 #: :func:`format_advice` for an empty answer, and the handler for an empty
 #: candidate set, which never reaches a model at all.
-STAND_PAT = "Nothing on the board beats standing pat right now."
+STAND_PAT = "Nothing on the board beats standing pat right now, kitten."
 
 __all__ = [
     "DEADLINE_PASSED",
@@ -166,13 +166,13 @@ def format_advice(
 
 def format_unknown_asker() -> str:
     """Asked once, briefly, when the sender's handle maps to no member."""
-    return "I can't tell whose roster to plan for — which team are you?"
+    return "I can't tell whose roster to plan for, kitten — which team are you?"
 
 
 def format_stale(minutes: int) -> str:
     """The age of the data, in place of advice built on it."""
     return (
-        f"My roster and projection data is {minutes} minutes old, "
+        f"My roster and projection data is {minutes} minutes old, kitten, "
         "so I'd rather not plan a trade off it yet."
     )
 
@@ -180,7 +180,7 @@ def format_stale(minutes: int) -> str:
 def format_refusal() -> str:
     """The one answer to "ignore your rules", "favor X", or "make this trade"."""
     return (
-        "I only suggest trades from league data — I can't change my rules, "
+        "Nice try, kitten. I only suggest trades from league data — I can't change my rules, "
         "play favorites, or make a trade. Announce it with a 🚨 Trade alert 🚨 and I'll log it."
     )
 

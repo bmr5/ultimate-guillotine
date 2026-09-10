@@ -225,13 +225,13 @@ def test_the_fixed_replies_are_short_and_unsigned() -> None:
 
 def test_the_fallback_after_a_rejection_is_one_fixed_line() -> None:
     assert format_rejected() == FALLBACK
-    assert FALLBACK == "I can't put advice together yet — try again in a few minutes."
+    assert FALLBACK == "I can't put advice together yet, kitten — try again in a few minutes."
 
 
 def test_a_passed_deadline_says_so_instead_of_asking_for_a_retry() -> None:
     """The deadline is not a transient failure, so it does not borrow that line."""
     assert format_deadline_passed() == DEADLINE_PASSED
-    assert DEADLINE_PASSED == "The trade deadline has passed, so I can't suggest trades."
+    assert DEADLINE_PASSED == "The trade deadline has passed, kitten, so I can't suggest trades."
     assert format_deadline_passed() != FALLBACK
 
 

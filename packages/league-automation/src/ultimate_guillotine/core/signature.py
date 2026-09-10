@@ -1,9 +1,10 @@
-#: Ben (2026-09-10): the bot is "Daddy", and the bottle is its mark.
+#: Ben (2026-09-10): the bot is "Daddy", and the bottle is its mark -- after the
+#: name, since that afternoon ("move the squirt bottle emoji to after Daddy").
 BOT_NAME = "Daddy"
-BOT_SIGNATURE = "— 🍼 Daddy"
-#: Earlier posts in the chat carry the old mark; they are still the bot's own and must
+BOT_SIGNATURE = "— Daddy 🍼"
+#: Earlier posts in the chat carry the old marks; they are still the bot's own and must
 #: never be read as a member's message.
-LEGACY_SIGNATURES = ("— 🤖 Guillotine Bot",)
+LEGACY_SIGNATURES = ("— 🍼 Daddy", "— 🤖 Guillotine Bot")
 
 
 def is_signed(text: str) -> bool:
