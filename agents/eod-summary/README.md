@@ -43,9 +43,10 @@ message and nothing else.
 
 ## Schedule and failure behaviour
 
-`guillotine-eod-summary`, `15 8 * * 0,1,3,4,5` Mac mini local time (8:15 AM Wednesday,
-Thursday, Friday, Sunday and Monday -- Ben's cadence), agent `eod-summary`, one status line to
-`#guillotine-ops`, gap budget 3000 minutes. The league sees it as the Guillotine Daily. Off-season and post-final weeks are a
+`guillotine-eod-summary` at `15 8 * * 0,1,3,5` and `guillotine-eod-summary-thursday` at
+`15 11 * * 4`, Mac mini local time (8:15 AM Wednesday, Friday, Sunday and Monday; 11:15 AM
+Thursday -- Ben's cadence), both agent `eod-summary`, one status line to `#guillotine-ops`, gap
+budget 3000 minutes. The league sees it as the Guillotine Daily. Off-season and post-final weeks are a
 no-op. A schedule outage or projection coverage under 95 percent of the starters still to
 play posts a factual message with no percentages and says why. A night already posted is
 left alone; `--force` overrides for rehearsal. Full table in the design.

@@ -23,16 +23,21 @@ game-window Game Pulse post is a second schedule of the same command, not a seco
 
 ## Trigger and Cadence
 
-One script-only Hermes cron job, `guillotine-eod-summary`, at `15 8 * * 0,1,3,4,5` in the Mac
-mini's local time (Central): 8:15 AM on Wednesday, Thursday, Friday, Sunday and Monday. Ben's
-cadence (2026-09-10, after the first dry run): "I would take a break on this on Tuesdays. Wed
+Two script-only Hermes cron rows under one agent, in the Mac mini's local time (Central):
+`guillotine-eod-summary` at `15 8 * * 0,1,3,5` (8:15 AM Wednesday, Friday, Sunday, Monday) and
+`guillotine-eod-summary-thursday` at `15 11 * * 4` (11:15 AM Thursday). Ben's cadence
+(2026-09-10, after the first dry run): "I would take a break on this on Tuesdays. Wed
 it could be useful before auctions close. Thursday auctions clear it could be useful after
 that, Thursday games happen so it's definitely useful Friday morning. Then a lot of FA happens
 Saturday, it could be most useful Sunday morning and Monday morning." The first waiver round
 closes Thursday 2 AM and the second Saturday 11 AM, so Wednesday's post is the outlook before
 the bids, Thursday's shows the claims that cleared, Friday's follows the Thursday game,
 Sunday's follows Saturday's free agency, and Monday's shows the block heading into Monday night.
-8:15 AM is after the 8 AM players sync; the time is one line in the manifest.
+8:15 AM is after the 8 AM players sync; the times are one line each in the manifest. Ben later
+moved Thursday to 11:15 AM, putting waivers clearing at "11 CST". Sleeper's league setting is
+`daily_waivers_hour: 8` UTC -- 3 AM Central in daylight time, 2 AM CST in winter, which is what
+the rules document says -- so 8:15 AM was already after the Thursday clear; the 11 AM CST close
+is the Saturday round. The Thursday row is kept as he asked and is one line to revert.
 
 The league sees it as **the Guillotine Daily** -- the header and the file are named so. The
 agent, the command and the cron job keep the `eod` codename they were born with, because the

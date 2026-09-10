@@ -866,8 +866,8 @@ ingests messages without answering any of them.
 
 ## 11. The Guillotine Daily (EOD Summary) rollout
 
-The Daily posts on five mornings a week, at 8:15 AM Mac mini time -- Wednesday,
-Thursday, Friday, Sunday and Monday, Ben's cadence: a break on Tuesdays, Wednesday
+The Daily posts on five mornings a week in Mac mini time -- 8:15 AM Wednesday,
+Friday, Sunday and Monday, and 11:15 AM Thursday -- Ben's cadence: a break on Tuesdays, Wednesday
 before waivers close, Thursday after they clear, Friday after the Thursday game,
 Sunday and Monday after Saturday's free agency and Sunday's games. Each post is a
 short signed text and an HTML file: every live team's score and projected finish,
@@ -894,7 +894,8 @@ hermes/guillotine/install.sh
 ```
 
 Confirm with `HERMES_HOME=~/.hermes/profiles/guillotine hermes cron list` — the
-job is listed at `15 8 * * 0,1,3,4,5` — and `ug ops health` prints nothing new: a
+two rows are listed at `15 8 * * 0,1,3,5` and `15 11 * * 4` — and `ug ops health`
+prints nothing new: a
 job registered more recently than its own gap budget (50 hours here) is not
 reported as never run until that budget passes, so the health check simply waits
 for the first fire.
@@ -977,7 +978,7 @@ message text here.
 - [ ] 2. `ug summary eod --json` shows every starter in the right state for the
   night (Thursday: one game `done`; Sunday: Monday's players `remaining`).
   _date:_ · _outcome:_
-- [ ] 3. The 8:15 AM run lands in `#guillotine-drafts` and the self-test chat
+- [ ] 3. The morning run lands in `#guillotine-drafts` and the self-test chat
   as a signed text followed by the HTML file; `#guillotine-feed` shows both. Tap
   the file on an iPhone: Quick Look opens the board.
   _date:_ · _outcome:_
