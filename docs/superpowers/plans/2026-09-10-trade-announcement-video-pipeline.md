@@ -1727,3 +1727,14 @@ changed on seeing the first real render:
 `prepare()` resolves its `probe`/`generate`/`now` collaborators at call time (``None`` defaults)
 so monkeypatching the modules in tests takes effect. Task 8's first renders and the single
 generated clip are in `data/media/renders/`; the runbook is `docs/runbooks/trade-video.md`.
+
+### Added after the first review (2026-09-10, morning)
+
+Ben asked for an AI-voiced insider and a script generator. Built as `video/script.py`
+(`Script`/`Beat` pydantic models, `generate_script` through the repo's `StructuredOutputClient`
+on Hermes with a one-shot retry when the read runs over the 2.6 words/second budget,
+`template_script` as the no-model fallback, `script_from_text` for a typed read),
+`prompt.voiced_prompt` (beats as timed quoted dialogue, audio on), `RenderRequest.voiced`
+(Seedance `generate_audio`, the generated voice kept under the music via `keep_voice`, which now
+depends on `Probe.has_audio`), and `ug video script` / `render --voiced` / `cost --voiced`.
+Commit 9bf15e3, 66 video tests.
