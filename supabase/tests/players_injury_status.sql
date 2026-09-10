@@ -1,5 +1,5 @@
 begin;
-select plan(4);
+select plan(5);
 
 -- Ben's addendum: an injured starter with no projection was reading as missing data. The
 -- board can only tell the two apart if the directory carries Sleeper's own injury flag.
@@ -22,16 +22,24 @@ select lives_ok(
   'a status Sleeper actually reports is accepted'
 );
 
--- The constraint is the contract with the sync: the only strings that reach this column
--- are the nine the players feed emits. A free-text injury note landing here would show up
--- on a card as an unreadable tag, so it is refused at the door.
-select throws_ok(
+-- A tenth Sleeper status must not break the sync. The vocabulary is enforced in
+-- `sleeper/players.py` (`KNOWN_INJURY_STATUSES`), which reads an unknown value as no flag
+-- and counts it into the run's report; the column itself takes whatever it is given, so a
+-- value nobody has seen before can never freeze the whole directory on the last good rows.
+select lives_ok(
   $$insert into public.players
       (sleeper_player_id, full_name, position, team, active, injury_status, synced_at)
-    values ('pgtap-injury-bad', 'pgTAP Sprained', 'TE', 'KC', true, 'Sprained ankle', now())$$,
-  '23514'::char(5),
-  null,
-  'a status outside Sleeper''s own values violates the check constraint'
+    values ('pgtap-injury-new', 'pgTAP Novel', 'TE', 'KC', true, 'Sprained ankle', now())$$,
+  'a status this build has never seen is stored rather than refused'
+);
+
+-- And the vocabulary is still written down where a reader of the schema will find it.
+select matches(
+  (select col_description('public.players'::regclass, attnum)
+     from pg_attribute
+    where attrelid = 'public.players'::regclass and attname = 'injury_status'),
+  'Questionable, Doubtful, Out, IR, PUP, Sus, NA, COV, DNR',
+  'the column comment records the statuses Sleeper emits'
 );
 
 select * from finish();

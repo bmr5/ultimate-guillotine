@@ -65,6 +65,15 @@
     "team": "KC",
     "active": true
   },
+  "2468": {
+    "full_name": "Novel Status",
+    "first_name": "Novel",
+    "last_name": "Status",
+    "position": "RB",
+    "team": "SEA",
+    "active": true,
+    "injury_status": "Limited"
+  },
   "7777": {
     "full_name": "Broken Tightend",
     "first_name": "Broken",

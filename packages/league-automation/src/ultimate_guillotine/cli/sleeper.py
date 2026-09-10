@@ -100,9 +100,23 @@ def cmd_players(args: argparse.Namespace) -> int:
     now = datetime.now(UTC)
 
     def action(run_id: int) -> int:
-        written = sync_players(SleeperClient(httpx.Client()), conn, now)
+        report = sync_players(SleeperClient(httpx.Client()), conn, now)
         if not args.quiet:
-            print(f"players sync: {written} players")
+            print(f"players sync: {report.written} players")
+        if report.unknown_statuses:
+            # A tenth Sleeper status is not an outage -- those players are simply
+            # carrying no flag on the board until it is added -- but it is the one
+            # thing about a players run somebody has to go and look at, so it is
+            # said once, in the same channel the verdicts land in.
+            note = (
+                f"players sync: Sleeper reported {report.unknown_statuses} "
+                f"injury status(es) this build does not know "
+                f"({', '.join(report.unknown_values)}); those players read as unflagged "
+                f"until `KNOWN_INJURY_STATUSES` learns them."
+            )
+            if not args.quiet:
+                print(note)
+            post_ops(deps.notifier, note)
         return 0
 
     return run_scheduled(conn, "players-sync", now, action)

@@ -7,25 +7,23 @@
 -- 731 of 12,227 records and nothing at all on the other 11,496.
 alter table public.players add column if not exists injury_status text;
 
--- Sleeper's own vocabulary, and nothing else. Counted off the live feed on 2026-09-09
--- (`curl -s https://api.sleeper.app/v1/players/nfl`): Questionable 362, IR 198, NA 95,
+-- No check constraint on this column, deliberately. Sleeper's vocabulary on 2026-09-09
+-- (`curl -s https://api.sleeper.app/v1/players/nfl`) was Questionable 362, IR 198, NA 95,
 -- PUP 38, Out 21, Sus 11, COV 2, DNR 2, Doubtful 1 -- plus one record carrying an empty
--- string, which the sync normalises to null rather than storing.
+-- string, which the sync normalises to null rather than storing. But Sleeper can add a
+-- tenth value on any Tuesday, and a constraint would turn that into a failed
+-- `ug sleeper players`: the whole directory frozen on the last good rows over one string.
+-- The vocabulary is enforced in the sync instead (`KNOWN_INJURY_STATUSES` in
+-- `sleeper/players.py`), which reads an unknown value as *no flag*, counts it, and says so
+-- in `#guillotine-ops`. The comment below is the record of what the column is for.
 --
--- The constraint is the contract with `ug sleeper players`: a free-text injury note reaching
--- this column would surface on a card as an unreadable tag and, worse, would be silently
--- treated as "not one of the unavailable statuses" by the board. If Sleeper ever adds a tenth
--- value the sync fails loudly inside its own transaction, the last good rows survive, and the
--- value gets added here deliberately.
+-- Dropped rather than merely omitted: an earlier revision of this migration added the
+-- constraint, so a database that applied that revision locally still carries it.
 alter table public.players
-  add constraint players_injury_status_check
-  check (
-    injury_status is null
-    or injury_status in ('Questionable', 'Doubtful', 'Out', 'IR', 'PUP', 'Sus', 'NA', 'COV', 'DNR')
-  );
+  drop constraint if exists players_injury_status_check;
 
 -- No grant or policy changes: the column rides the table's existing ones -- select for
 -- anon/authenticated, insert/update for automation_worker -- and this is public Sleeper data
 -- every league member can already read in the Sleeper app.
 comment on column public.players.injury_status is
-  'Sleeper''s injury flag, verbatim; null when the feed carries none. Out/IR/PUP/Sus/COV/DNR mean the player is not playing.';
+  'Sleeper''s injury flag, verbatim; null when the feed carries none, or carries a value the sync does not know. Vocabulary as of 2026-09-09: Questionable, Doubtful, Out, IR, PUP, Sus, NA, COV, DNR. Out/IR/PUP/Sus/COV/DNR mean the player is not playing. Not check-constrained: see KNOWN_INJURY_STATUSES in sleeper/players.py.';
