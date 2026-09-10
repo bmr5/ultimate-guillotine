@@ -72,3 +72,15 @@ def test_a_long_caption_stays_clear_of_the_tag(tmp_path: Path) -> None:
     # The rows just above the tag carry no caption pixels.
     gap = img.crop((0, bar_top - 56, 1080, bar_top - 44))
     assert gap.getbbox() is None
+
+
+def test_vertical_footage_gets_the_same_sized_bar_at_the_bottom(tmp_path: Path) -> None:
+    layout = Layout.for_footage(720, 1280, "9:16")
+    out = render_card(COPY, layout, tmp_path / "card.png")
+    img = Image.open(out)
+    # The bar is 21% of the square side (227 px), ending 43 px above the bottom.
+    assert img.getpixel((10, 1920 - 60))[:3] == (255, 255, 255)
+    assert img.getpixel((10, 1920 - 43 - 227 - 10))[3] == 0 or img.getpixel(
+        (10, 1920 - 43 - 227 - 10)
+    )[:3] != (255, 255, 255)
+    assert img.getpixel((10, 1920 - 20))[3] == 0

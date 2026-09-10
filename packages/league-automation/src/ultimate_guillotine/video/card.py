@@ -137,9 +137,12 @@ def render_card(copy, layout: Layout, out: Path, fonts: Fonts = DEFAULT_FONTS) -
     margin, pad = round(MARGIN * scale), round(PAD * scale)
 
     # Where the lower third goes: across the bottom of the footage, edge to edge,
-    # so ESPN's own banner in the source clip is covered completely.
-    bar_top = layout.video_top + round(layout.video_height * BANNER_TOP_SHARE)
-    bar_bottom = layout.video_top + round(layout.video_height * BANNER_BOTTOM_SHARE)
+    # so ESPN's own banner in the source clip is covered completely. Its size
+    # follows the square side, so vertical footage gets the same bar as the
+    # reference's square rather than one scaled to a 1920-tall frame.
+    unit = min(layout.video_height, layout.width)
+    bar_bottom = layout.video_bottom - round(unit * (1 - BANNER_BOTTOM_SHARE))
+    bar_top = bar_bottom - round(unit * (BANNER_BOTTOM_SHARE - BANNER_TOP_SHARE))
     tag_font = _font(fonts.headline, round(TAG_SIZE * scale))
     tag_h = round(TAG_SIZE * scale * 1.7)
     tag_top = bar_top - tag_h + round(6 * scale)
