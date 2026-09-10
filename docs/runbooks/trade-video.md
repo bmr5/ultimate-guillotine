@@ -69,6 +69,27 @@ login (`higgsfield account status`). Do not loop on generation to tune the promp
 52 credits. The generated clip is kept in `data/media/generated/`, so a re-render with different
 words is `--base data/media/generated/<file>.mp4` and costs nothing.
 
+## Voiced clips: the insider says the trade
+
+```bash
+uv run --project packages/league-automation python -m ultimate_guillotine.cli.main video script --trade T-2026-003 --generate-seconds 12
+uv run --project packages/league-automation python -m ultimate_guillotine.cli.main video render --trade T-2026-003 --voiced --generate-seconds 12
+```
+
+`script` writes the on-air read through Hermes (the league's model backend) in the cadence of
+an ESPN breaking-news hit, as timed beats with delivery directions, and prints it without
+spending anything. `render --voiced` writes the read the same way, puts it into the Seedance
+prompt as quoted dialogue with `generate_audio` on, and mixes the music at -12 dB under the
+voice. The read is printed before the generation starts.
+
+- Seedance holds about 2.6 spoken words a second: 12 s is 31 words, 8 s is 20. Hermes gets
+  the limit and is sent back once if it runs long; a read that still runs long desyncs the lips.
+- `--script "…"` uses your own words verbatim; `--no-ai` uses the template read
+  ("Breaking news. Sources tell ESPN: … The whole league is shaking.") with no model call.
+- A 12 s 720p voiced clip is 78 credits; check with `video cost --voiced --duration 12`.
+- The voice is whatever Seedance gives the character. Nothing here clones Adam Schefter's
+  actual voice from the ESPN audio; that would be a different, deliberate step.
+
 ## What the one generated clip looked like (2026-09-10)
 
 Seedance 2.5 in `omni_reference` mode with the Denzo clip as the reference produced an 8 s

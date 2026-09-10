@@ -78,7 +78,7 @@ def test_probe_reads_the_first_video_stream_and_the_duration() -> None:
         )
         return subprocess.CompletedProcess(cmd, 0, stdout=stdout)
 
-    assert ff.probe(Path("f.mp4"), run=fake_run) == ff.Probe(1280, 720, 127.22)
+    assert ff.probe(Path("f.mp4"), run=fake_run) == ff.Probe(1280, 720, 127.22, has_audio=True)
 
 
 def test_run_turns_a_failed_encode_into_a_plain_error() -> None:

@@ -20,7 +20,9 @@ def now() -> datetime:
 
 
 def fake_probe(path, ffprobe="ffprobe", run=None):
-    return ff.Probe(1280, 720, 127.2) if "espn" in str(path) else ff.Probe(720, 1280, 8.0)
+    if "espn" in str(path):
+        return ff.Probe(1280, 720, 127.2, has_audio=True)
+    return ff.Probe(720, 1280, 8.0, has_audio="voiced" in Path(path).name)
 
 
 @pytest.fixture
@@ -126,3 +128,46 @@ def test_render_runs_the_command(assets: Assets) -> None:
         now=now,
     )
     assert ran == [job.command]
+
+
+def test_voiced_render_puts_the_read_in_the_prompt_and_keeps_the_voice(assets: Assets) -> None:
+    seen = {}
+
+    def fake_generate(req, dest):
+        seen["req"] = req
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(b"")
+        return dest
+
+    job = prepare(
+        RenderRequest(COPY, base="generated", name="voiced", voiced=True, music_gain_db=-12),
+        assets,
+        ffmpeg="ffmpeg",
+        ffprobe="ffprobe",
+        probe=fake_probe,
+        generate=fake_generate,
+        now=now,
+    )
+    req = seen["req"]
+    assert req.generate_audio is True
+    assert '"Breaking news."' in req.prompt and "his own voice" in req.prompt
+    assert job.composite.keep_voice is True and job.composite.music_gain_db == -12
+    assert "amix=inputs=2" in " ".join(job.command)
+
+
+def test_voiced_render_over_silent_footage_does_not_try_to_mix_a_voice(assets: Assets) -> None:
+    def fake_generate(req, dest):
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(b"")
+        return dest
+
+    job = prepare(
+        RenderRequest(COPY, base="generated", name="silent", voiced=True),
+        assets,
+        ffmpeg="ffmpeg",
+        ffprobe="ffprobe",
+        probe=fake_probe,
+        generate=fake_generate,
+        now=now,
+    )
+    assert job.composite.keep_voice is False
