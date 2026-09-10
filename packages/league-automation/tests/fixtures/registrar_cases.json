@@ -701,10 +701,10 @@
       "category": "rescission",
       "text": "🚨 Trade Alert 🚨\nI'm cancelling my trade with mdurgin",
       "expected_kind": "rescission",
-      "expected_status": "clarification",
+      "expected_status": "rescinded",
       "prereq": null,
       "announcer": "kpbowe",
-      "notes": "A rescission written in the first person: `I` and `my trade` name the announcer, so the two sides of the cancelled deal are known even though no T- code is given. With nothing on file to match, the registrar asks for the code -- which is also what a dry run sees, since an uncoded rescission carries no assets to validate."
+      "notes": "A rescission written in the first person: `I` and `my trade` name the announcer, so the two sides are known without a code and the open trade between them on file is the one cancelled. With nothing on file it asks for the code instead."
     },
     {
       "id": 79,

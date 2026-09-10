@@ -24,6 +24,14 @@ def register(subparsers) -> None:
         "gap-fill", help="replay missed messages through the trigger pipeline"
     )
     gap_fill.add_argument("--since-minutes", type=int, default=DEFAULT_SINCE_MINUTES)
+    gap_fill.add_argument(
+        "--reprocess",
+        action="store_true",
+        help=(
+            "replay messages the listener already received (fresh receipt ids); "
+            "for backfilling a chat that was registered after its messages arrived"
+        ),
+    )
     gap_fill.set_defaults(handler=cmd_gap_fill)
 
 
@@ -47,7 +55,13 @@ def cmd_gap_fill(args: argparse.Namespace) -> int:
             for _page in range(MAX_GAP_FILL_PAGES):
                 batch = deps.client.messages_after(guid, cursor, limit=GAP_FILL_PAGE_SIZE)
                 for msg in batch:
-                    outcome = processor.process(msg, msg.guid)
+                    # A receipt from before a chat was registered masks the message from
+                    # a plain replay; --reprocess gives it a fresh id (source_messages still
+                    # dedupes the trigger, so nothing logs twice).
+                    event_id = (
+                        f"reprocess:{now.isoformat()}:{msg.guid}" if args.reprocess else msg.guid
+                    )
+                    outcome = processor.process(msg, event_id)
                     total += 1
                     if outcome.startswith("handled"):
                         handled += 1
