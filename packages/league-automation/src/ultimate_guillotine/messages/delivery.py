@@ -28,6 +28,10 @@ def content_hash(text: str) -> str:
     return hashlib.sha256(sign(text).encode()).hexdigest()
 
 
+def attachment_hash(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
 def _normalized(text: str) -> str:
     return " ".join(text.split())
 
@@ -123,5 +127,44 @@ class DeliveryService:
         self._notifier.feed(
             f"[{agent}] [{self._settings.delivery_mode}] "
             f"outbound #{outbound_id}\n{signed}"
+        )
+        return DeliveryResult("sent", outbound_id, guid)
+
+    def deliver_attachment(
+        self, run_id: int | None, agent: str, filename: str, data: bytes
+    ) -> DeliveryResult:
+        """Send one file to the configured chat, effectively once.
+
+        The same reserve → commit → send → mark path as ``deliver``. The outbound
+        row's content is ``attachment:<filename>`` and its hash is over the bytes,
+        so a redelivery of the same file is the same reservation. A crashed send
+        is reconciled by file name among the bot's own recent messages, which is
+        the only thing about an attachment that iMessage hands back.
+        """
+        target = self._resolve_target()
+        digest = attachment_hash(data)
+        content = f"attachment:{filename}"
+        pending = self._outbound.pending_sending(target.id, digest)
+        if pending is not None:
+            since = pending.reserved_at - timedelta(minutes=1)
+            for msg in self._client.messages_after(target.chat_guid, since):
+                if msg.is_from_me and filename in msg.attachment_names:
+                    self._outbound.set_state(pending.id, "reconciled", bluebubbles_guid=msg.guid)
+                    self._notifier.feed(
+                        f"[{agent}] [{self._settings.delivery_mode}] "
+                        f"outbound #{pending.id} (reconciled after crash) {content}"
+                    )
+                    return DeliveryResult("reconciled", pending.id, msg.guid)
+            self._outbound.set_state(pending.id, "failed", error="unreconciled send; retrying")
+        outbound_id = self._outbound.reserve(run_id, target.id, content, digest)
+        self._persist()
+        self._outbound.set_state(outbound_id, "sending")
+        self._persist()
+        guid = self._client.send_attachment(target.chat_guid, filename, data)
+        if self._crash_after_send:
+            raise RuntimeError("simulated crash after send")
+        self._outbound.set_state(outbound_id, "sent", bluebubbles_guid=guid)
+        self._notifier.feed(
+            f"[{agent}] [{self._settings.delivery_mode}] outbound #{outbound_id} {content}"
         )
         return DeliveryResult("sent", outbound_id, guid)

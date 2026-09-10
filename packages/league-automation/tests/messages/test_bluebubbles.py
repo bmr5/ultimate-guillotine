@@ -63,6 +63,9 @@ def test_messages_after_uses_ms_and_parses() -> None:
     out = client.messages_after("iMessage;+;chat-test", datetime(2026, 9, 8, tzinfo=UTC))
     assert route.calls.last.request.url.params["after"] == "1788825600000"
     assert route.calls.last.request.url.params["sort"] == "ASC"
+    # BlueBubbles only returns attachments on a message query that asks for them,
+    # and a crashed attachment send is reconciled by the file's name.
+    assert "attachment" in route.calls.last.request.url.params["with"]
     assert out[0].guid == "p:0/ABC"
 
 
@@ -130,3 +133,31 @@ def test_a_plain_message_has_no_thread_and_no_attachments() -> None:
     msg = parse_webhook(json.loads(FIXTURE.read_text()))
     assert msg.thread_originator_guid is None
     assert msg.attachment_names == ()
+
+
+@respx.mock
+def test_send_attachment_posts_multipart_and_returns_guid() -> None:
+    route = respx.post("http://bb.local/api/v1/message/attachment").mock(
+        return_value=httpx.Response(200, json={"status": 200, "data": {"guid": "att-1"}})
+    )
+    client = BlueBubblesClient("http://bb.local", "pw", httpx.Client())
+    guid = client.send_attachment("iMessage;+;chat-test", "report.html", b"<p>hi</p>")
+    assert guid == "att-1"
+    request = route.calls.last.request
+    assert request.headers["content-type"].startswith("multipart/form-data")
+    body = request.content
+    assert b'name="chatGuid"' in body and b"iMessage;+;chat-test" in body
+    assert b'name="name"' in body and b"report.html" in body
+    assert b'name="attachment"' in body and b"<p>hi</p>" in body
+    assert b'name="tempGuid"' in body
+    assert request.url.params["password"] == "pw"
+
+
+@respx.mock
+def test_send_attachment_raises_without_a_guid() -> None:
+    respx.post("http://bb.local/api/v1/message/attachment").mock(
+        return_value=httpx.Response(200, json={"status": 200, "data": {}})
+    )
+    client = BlueBubblesClient("http://bb.local", "pw", httpx.Client())
+    with pytest.raises(BlueBubblesError):
+        client.send_attachment("iMessage;+;chat-test", "report.html", b"x")

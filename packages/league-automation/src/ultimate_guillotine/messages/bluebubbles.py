@@ -124,7 +124,9 @@ class BlueBubblesClient:
             "after": str(int(after.timestamp() * 1000)),
             "sort": "ASC",
             "limit": str(limit),
-            "with": "handle",
+            # A message query carries attachments only when it asks for them, and
+            # a crashed attachment send is reconciled by the file's name.
+            "with": "handle,attachment",
         }
         data = (
             self._request(
@@ -146,6 +148,28 @@ class BlueBubblesClient:
         guid = data.get("guid")
         if not guid:
             raise BlueBubblesError("send returned no message guid")
+        return guid
+
+    def send_attachment(
+        self, chat_guid: str, filename: str, data: bytes, mime: str = "text/html"
+    ) -> str:
+        """Send one file to a chat. Multipart, and no Private API needed.
+
+        The `name` form field is what iMessage shows as the file's name, so it
+        is the artifact's own name and never a temp name.
+        """
+        fields = {
+            "chatGuid": chat_guid,
+            "tempGuid": uuid.uuid4().hex,
+            "name": filename,
+        }
+        files = {"attachment": (filename, data, mime)}
+        data_out = self._request(
+            "POST", "/api/v1/message/attachment", data=fields, files=files
+        ).get("data") or {}
+        guid = data_out.get("guid")
+        if not guid:
+            raise BlueBubblesError("attachment send returned no message guid")
         return guid
 
     def ensure_webhook(self, url: str) -> None:
