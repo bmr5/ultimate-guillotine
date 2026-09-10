@@ -10,6 +10,7 @@ import sys
 
 from ultimate_guillotine.cli import (
     advisor,
+    agent,
     history,
     ingest,
     listener,
@@ -35,6 +36,7 @@ def build_parser() -> argparse.ArgumentParser:
         trades,
         members,
         advisor,
+        agent,
         history,
         summary,
         video,
