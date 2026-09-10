@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { REVEAL_CLASS, revealStyle } from "@/motion/reveal";
 
 import { injuryTag } from "../derive/availability";
+import { FAAB_LABEL, formatFaab } from "../derive/faab";
 import { LIKELY_BIDDER_REASONS, type PositionRow } from "../derive/position";
 import { layoutStarters } from "../derive/roster";
 import { BOARD_GRID } from "../layout";
@@ -43,9 +44,6 @@ const NO_PROJECTION_TEXT = "—";
 const LIVE_POINTS_SEPARATOR = "/";
 const LIVE_POINTS_LABEL = "scored";
 const PROJECTED_LABEL = "projected";
-
-/** Shown in place of the FAAB figure when the team has no `team_season_state` row. */
-const FAAB_UNKNOWN_TEXT = "FAAB —";
 
 /** The mark a starter carries inline, and what a screen reader hears in its place. */
 const STARTER_MARK = "★";
@@ -107,10 +105,7 @@ const PositionTeamRow = memo(function PositionTeamRow({
     () => layoutStarters(rosterPositions, row.team.roster),
     [rosterPositions, row.team.roster],
   );
-  const faab =
-    row.faabRemaining === null
-      ? FAAB_UNKNOWN_TEXT
-      : `FAAB ${row.faabRemaining}`;
+  const faab = formatFaab(row.faabRemaining);
 
   return (
     <li className={REVEAL_CLASS} style={revealStyle(revealIndex)}>
@@ -149,7 +144,7 @@ const PositionTeamRow = memo(function PositionTeamRow({
                     {`${NO_PLAYER_PREFIX} ${position}`}
                   </span>
                 ) : (
-                  row.players.map((player, index) => (
+                  row.players.map((player) => (
                     <span
                       key={player.sleeperPlayerId}
                       data-player={player.sleeperPlayerId}
@@ -158,8 +153,9 @@ const PositionTeamRow = memo(function PositionTeamRow({
                         highlightedPlayerIds.has(player.sleeperPlayerId) ||
                         undefined
                       }
+                      // One player per line (Ben, 2026-09-10): a list, not a run of prose.
                       className={cn(
-                        "mr-1 inline-block",
+                        "block",
                         highlightedPlayerIds.has(player.sleeperPlayerId) &&
                           "rounded bg-accent px-1 text-accent-foreground",
                       )}
@@ -225,9 +221,6 @@ const PositionTeamRow = memo(function PositionTeamRow({
                           <span className="sr-only">{` ${STARTER_LABEL}`}</span>
                         </>
                       ) : null}
-                      {index < row.players.length - 1 ? (
-                        <span aria-hidden="true">,</span>
-                      ) : null}
                     </span>
                   ))
                 )}
@@ -235,7 +228,9 @@ const PositionTeamRow = memo(function PositionTeamRow({
             </span>
             <span className="shrink-0 text-right">
               <span className="block text-2xl leading-none figures text-foreground">
-                {faab}
+                {/* `$715` alone could be a price of anything: the sr-only copy names it. */}
+                <span aria-hidden="true">{faab}</span>
+                <span className="sr-only">{`${FAAB_LABEL} ${faab}`}</span>
               </span>
               {row.emptySlots > 0 ? (
                 <span className="mt-1 block text-xs font-medium text-destructive">

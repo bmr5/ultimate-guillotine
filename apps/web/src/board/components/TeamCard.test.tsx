@@ -401,9 +401,16 @@ describe("TeamCard", () => {
     expect(screen.getByText("112.4")).toBeInTheDocument();
     // Ben's card change 1: the total leads the line, and FAAB follows it.
     expect(screen.getByText("Total 301.5")).toBeInTheDocument();
-    // FAAB is a Sleeper waiver budget, not money: no dollar sign anywhere on the card.
-    expect(screen.getByText(/\b75 FAAB\b/)).toBeInTheDocument();
-    expect(screen.queryByText(/\$/)).toBeNull();
+    // Ben (2026-09-10): the figure is a dollar amount — `$75`, not `75 FAAB`. A review pass
+    // of 2026-09-09 had taken the sign off as "not money"; the word is sr-only copy now.
+    expect(screen.getByText("$75")).toBeInTheDocument();
+    expect(screen.getByText("$75").getAttribute("aria-hidden")).toBe("true");
+    expect(screen.queryByText(/\bFAAB\b/)?.className).toContain("sr-only");
+  });
+
+  it("names the FAAB figure for a reader who cannot see the line", () => {
+    renderCard();
+    expect(screen.getByText("FAAB $75").className).toContain("sr-only");
   });
 
   it("names the total in full for a reader who cannot see the line", () => {
