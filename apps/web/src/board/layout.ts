@@ -18,3 +18,10 @@ export const BOARD_GRID = "grid grid-cols-1 gap-3";
  * `<main>` rather than to each list, so the header's controls stay flush with the cards below.
  */
 export const BOARD_WIDTH = "mx-auto w-full max-w-2xl";
+
+/**
+ * A live score that has moved is a solid pill (Ben, 2026-09-10: "highlight the actual scores
+ * a little more with a solid color"). Zero before kickoff stays muted: it is a fact, not news.
+ */
+export const LIVE_SCORE_PILL_CLASS =
+  "rounded bg-primary px-1.5 py-0.5 font-semibold text-primary-foreground";
