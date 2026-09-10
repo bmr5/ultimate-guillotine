@@ -40,6 +40,12 @@ def test_parse_job_reads_the_document_or_the_first_of_a_list() -> None:
     )
 
 
+def test_parse_job_reads_the_bare_id_list_that_create_prints() -> None:
+    assert hf.parse_job('[\n  "1892fe48-2475-4cd2-9b4e-b00d01a950cd"\n]\n') == hf.Job(
+        "1892fe48-2475-4cd2-9b4e-b00d01a950cd", "", None
+    )
+
+
 def test_parse_job_tolerates_control_characters_in_the_quoted_prompt() -> None:
     raw = '{"id": "j4", "status": "in_progress", "params": {"prompt": "line one\x01\ttab"}}'
     assert hf.parse_job(raw) == hf.Job("j4", "in_progress", None)
@@ -130,7 +136,7 @@ def test_generate_clip_creates_reports_waits_and_fetches(tmp_path: Path) -> None
     seen: dict = {"reports": []}
     answers = iter(
         [
-            json.dumps([{"id": "j9", "status": "queued", "result_url": None}]),
+            '["j9"]',  # what `generate create --json` really prints
             json.dumps({"id": "j9", "status": "completed", "result_url": "https://cdn/q.mp4"}),
         ]
     )
@@ -157,4 +163,4 @@ def test_generate_clip_creates_reports_waits_and_fetches(tmp_path: Path) -> None
     assert seen["cmds"][0][1:3] == ["generate", "create"]
     assert seen["cmds"][0][seen["cmds"][0].index("--prompt") + 1] == "p"
     assert seen["cmds"][1] == ["higgsfield", "generate", "get", "j9", "--json"]
-    assert seen["reports"] == ["higgsfield job j9 queued"]
+    assert seen["reports"] == ["higgsfield job j9 created"]

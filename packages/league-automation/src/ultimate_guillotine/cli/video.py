@@ -10,11 +10,12 @@ reference, or over a clip Ben points at.
 import argparse
 import shlex
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 from ultimate_guillotine.ai.hermes import HermesStructuredClient
 from ultimate_guillotine.ai.structured import StructuredOutputClient
-from ultimate_guillotine.cli.deps import build_delivery, build_deps
+from ultimate_guillotine.cli.deps import build_delivery, build_deps, run_scheduled
 from ultimate_guillotine.config import load_settings
 from ultimate_guillotine.core.hermes_cli import find_hermes_binary
 from ultimate_guillotine.data.repositories import MemberAliasRepository, RunRepository
@@ -279,8 +280,11 @@ def cmd_render(args: argparse.Namespace) -> int:
     return 0
 
 
-def build_worker(args: argparse.Namespace) -> Worker:
-    deps = build_deps()
+SCHEDULED_AGENT = "video-jobs"
+
+
+def build_worker(args: argparse.Namespace, deps=None) -> Worker:
+    deps = deps or build_deps()
     return Worker(
         conn=deps.conn,
         jobs=VideoJobRepository(deps.conn),
@@ -315,15 +319,26 @@ def cmd_jobs_list(args: argparse.Namespace) -> int:
 
 
 def cmd_jobs_run(args: argparse.Namespace) -> int:
-    """One pass, quiet when idle: under cron, empty output means nothing to report."""
+    """One pass, quiet when idle: under cron, empty output means nothing to report.
+
+    The pass is recorded as a scheduled run of ``video-jobs`` so `ug ops audit-runs`
+    can tell a quiet queue from a worker that stopped firing.
+    """
+    deps = build_deps()
     try:
-        outcome = build_worker(args).run_once()
+        worker = build_worker(args, deps)
     except ToolMissing as exc:
         print(f"ug video jobs run: {exc}", file=sys.stderr)
         return 1
-    if outcome.status != "idle" or args.verbose:
-        print(outcome)
-    return 1 if outcome.status == "failed" else 0
+
+    def action(_run_id: int) -> int:
+        outcome = worker.run_once()
+        if outcome.status != "idle" or args.verbose:
+            print(outcome)
+        return 1 if outcome.status == "failed" else 0
+
+    exit_code = run_scheduled(deps.conn, SCHEDULED_AGENT, datetime.now(UTC), action)
+    return 0 if exit_code is None else exit_code
 
 
 def cmd_jobs_watch(args: argparse.Namespace) -> int:

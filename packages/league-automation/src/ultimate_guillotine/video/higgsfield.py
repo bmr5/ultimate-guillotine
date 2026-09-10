@@ -105,7 +105,8 @@ def _find(obj, key: str):
 
 
 def parse_job(stdout: str) -> Job:
-    """The job document the CLI prints (``create`` may print a list of them).
+    """The job the CLI printed: a document (``get``), or the bare id list that
+    ``create --json`` answers with.
 
     ``result_url`` is read from the document, or as a fallback any .mp4 URL in
     the output, the way an older CLI printed it.
@@ -120,6 +121,9 @@ def parse_job(stdout: str) -> Job:
         if not doc:
             raise HiggsfieldError("higgsfield printed an empty job list")
         doc = doc[0]
+    if isinstance(doc, str):
+        # `generate create --json` answers with just the ids: ["<uuid>"].
+        return Job(id=doc, status="", result_url=None)
     job_id = _find(doc, "id")
     if not job_id:
         raise HiggsfieldError("higgsfield job document has no id")
