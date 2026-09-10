@@ -28,6 +28,8 @@ const player = (
   projectedPoints: null,
   injuryStatus: null,
   livePoints: null,
+  draft: null,
+  draftedHere: false,
   ...over,
 });
 

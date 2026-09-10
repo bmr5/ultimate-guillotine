@@ -1,3 +1,4 @@
+import type { DraftPickRow } from "../fetchers";
 import type {
   BoardTeam,
   FinalRosterHolding,
@@ -5,6 +6,7 @@ import type {
   RosterSlot,
   TableRow,
 } from "../types";
+import { draftedHere, indexDraftPicks } from "./draft";
 import { summarizeWeeklyResults, type WeeklyResultRow } from "./records";
 import { orderRoster } from "./roster";
 
@@ -82,6 +84,8 @@ export interface BoardRawData {
     TableRow<"final_rosters">,
     "team_id" | "eliminated_week" | "holdings" | "frozen_at"
   >[];
+  /** The season's auction, one row per pick. Empty before the draft or the first sync. */
+  draftPicks: DraftPickRow[];
 }
 
 /**
@@ -190,6 +194,7 @@ export function joinBoardTeams(raw: BoardRawData): BoardTeam[] {
     raw.playerProjections.map((p) => [p.sleeper_player_id, p.league_points]),
   );
   const summaryByTeamId = summarizeWeeklyResults(raw.weeklyResults);
+  const draftByPlayerId = indexDraftPicks(raw.draftPicks);
 
   // roster_holdings has no FK to players on purpose: Sleeper rosters can carry ids the
   // filtered skill-position directory drops. Those still get a row on the board. The same
@@ -202,6 +207,7 @@ export function joinBoardTeams(raw: BoardRawData): BoardTeam[] {
     const livePoints = livePointsByTeamAndPlayer
       .get(teamId)
       ?.get(holding.sleeper_player_id);
+    const draft = draftByPlayerId.get(holding.sleeper_player_id) ?? null;
     return {
       sleeperPlayerId: holding.sleeper_player_id,
       fullName:
@@ -220,6 +226,8 @@ export function joinBoardTeams(raw: BoardRawData): BoardTeam[] {
       // known", which is exactly what an unmatched id means, and the card reads it as
       // available rather than inventing an injury.
       injuryStatus: player?.injury_status ?? null,
+      draft,
+      draftedHere: draftedHere(draft, teamId),
     };
   };
 

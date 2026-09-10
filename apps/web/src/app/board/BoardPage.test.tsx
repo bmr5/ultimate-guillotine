@@ -75,6 +75,8 @@ const player = (
   projectedPoints: 22.5,
   injuryStatus: null,
   livePoints: null,
+  draft: null,
+  draftedHere: false,
   ...over,
 });
 
@@ -87,6 +89,8 @@ const result = (over: Partial<BoardDataResult> = {}): BoardDataResult => ({
   seasonId: 1,
   // No lineup unless a case is about one: every starter renders and no slot reads empty.
   rosterPositions: [],
+  draftPicks: [],
+  memberIdByTeamId: new Map(),
   teams: [],
   isPending: false,
   isEmpty: false,

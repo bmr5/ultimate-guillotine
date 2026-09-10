@@ -1,6 +1,7 @@
 import {
   DEFAULT_POSITION_SORT_MODE,
   type BoardTeam,
+  type DraftPickInfo,
   type PositionFilter,
   type RosterPlayer,
   type SortMode,
@@ -57,6 +58,9 @@ export interface PositionPlayer {
   slotLabel: string;
   /** `players.injury_status`, so the row can tag him and the flag below can read him. */
   injuryStatus: string | null;
+  /** The pick and the rule, exactly as the roster row carries them. */
+  draft: DraftPickInfo | null;
+  draftedHere: boolean;
 }
 
 /**
@@ -253,6 +257,8 @@ function toPositionPlayer(player: RosterPlayer): PositionPlayer {
     isStarter: player.slot === "starter",
     slotLabel: slotLabelFor(player),
     injuryStatus: player.injuryStatus,
+    draft: player.draft,
+    draftedHere: player.draftedHere,
   };
 }
 
