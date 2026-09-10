@@ -59,8 +59,49 @@ def test_only_the_projections_baseline_delivers_to_the_ops_channel() -> None:
 def test_the_scheduled_agents_are_the_ones_the_cli_records() -> None:
     assert {job["agent"] for job in JOBS} == {
         "health", "gap-fill", "sleeper-sync", "run-audit", "players-sync",
-        "nfl-state", "projections-sync",
+        "nfl-state", "projections-sync", "scores-sync",
     }
+
+
+def test_the_scores_jobs_all_record_the_same_agent() -> None:
+    """Same arrangement as the projections rows, and for the same reason: a baseline plus
+    three game-window bursts, one agent, so the baseline keeps the health check green on a
+    Tuesday and an overlapping fire is a same-minute duplicate rather than a second run."""
+    scores = [j for j in JOBS if j["script"] == "guillotine_sleeper_scores.sh"]
+    assert len(scores) == 4
+    assert {j["agent"] for j in scores} == {"scores-sync"}
+
+
+def test_the_scores_jobs_fire_every_minute_in_a_game_window() -> None:
+    """Ben: "it should always be realtime!". A five-minute score is not that, so the three
+    game-window rows carry a bare `*` in the minute field. The windows are the projections'
+    own -- Thursday and Monday nights, Sunday afternoon and evening, mini local time."""
+    schedules = {
+        job["name"]: job["schedule"]
+        for job in JOBS
+        if job["script"] == "guillotine_sleeper_scores.sh"
+    }
+    assert schedules == {
+        "guillotine-sleeper-scores": "*/15 * * * *",
+        "guillotine-sleeper-scores-thursday": "* 20-23 * * 4",
+        "guillotine-sleeper-scores-sunday": "* 13-23 * * 0",
+        "guillotine-sleeper-scores-monday": "* 20-23 * * 1",
+    }
+    # The gap budget has to clear the *baseline*, not the burst: outside a game window the
+    # */15 row is the only thing firing, and a budget under it would alarm every Tuesday.
+    for job in JOBS:
+        if job["script"] == "guillotine_sleeper_scores.sh":
+            assert int(job["max_gap_minutes"]) > 15
+
+
+def test_every_scores_job_stays_off_the_ops_channel() -> None:
+    """A job that fires once a minute cannot route its failures to Discord: an outage would
+    post the same line sixty times an hour. The baseline is local too — at */15 it is still
+    four an hour — and `run_scheduled_with_notes` posts the one note that matters, on the
+    edge, while `ug ops health` is the standing answer in between."""
+    assert {
+        job["deliver"] for job in JOBS if job["script"] == "guillotine_sleeper_scores.sh"
+    } == {"local"}
 
 
 def test_every_script_template_is_used_by_a_job() -> None:

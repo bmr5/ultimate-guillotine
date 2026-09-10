@@ -424,6 +424,7 @@ the Concierge, the Trade Advisor, and Game Pulse all read into Supabase rows.
 | `public.team_season_state` | per team: FAAB budget and used, record, points for and against, and the elimination flag with its source |
 | `public.player_projections` | one row per player per NFL week: Sleeper's raw stat line plus the points it scores under this league's settings |
 | `public.team_week_projections` | one row per team per week: the summed starter projection, slot counts, and the coverage behind it |
+| `public.team_week_scores` | one row per team per week: the live score, the per-player points behind it, and the lineup Sleeper reports |
 | `public.final_rosters` | the holdings a team was eliminated with, written once and never rewritten |
 
 `public.members` also carries `sleeper_display_name` and `nickname` (the first alias),
@@ -448,6 +449,10 @@ null. Rerunning the same name updates that one row. `ug members former list` cou
 | `guillotine-sleeper-projections-thursday` | `*/5 20-23 * * 4` | local only |
 | `guillotine-sleeper-projections-sunday` | `*/5 13-23 * * 0` | local only |
 | `guillotine-sleeper-projections-monday` | `*/5 20-23 * * 1` | local only |
+| `guillotine-sleeper-scores` | `*/15 * * * *` | local only |
+| `guillotine-sleeper-scores-thursday` | `* 20-23 * * 4` | local only |
+| `guillotine-sleeper-scores-sunday` | `* 13-23 * * 0` | local only |
+| `guillotine-sleeper-scores-monday` | `* 20-23 * * 1` | local only |
 
 `guillotine-players-sync` runs every four hours rather than nightly because
 `public.players.injury_status` is the one column on it that changes mid-week: an `Out`
@@ -461,6 +466,22 @@ so the per-agent, per-minute key absorbs an overlap. They stay local on purpose:
 five-minute job would post the same outage twelve times an hour, and the half-hourly
 baseline says it in the channel anyway.
 
+The four `guillotine-sleeper-scores` rows are the same arrangement one gear faster, and
+they are what makes the board's `Scores updated` stamp mean anything: they run
+`ug sleeper scores`, which writes `public.team_week_scores` from Sleeper's matchups feed
+and moves `synced_at` on every run, score or no score. Every minute inside a game window
+— Ben asked for the current score beside the projection and for it to be realtime, and a
+five-minute score is not that — and `*/15` the rest of the week, which keeps the row warm
+without asking Sleeper 1,440 times a day for a number that has not moved. All four share
+the agent `scores-sync` and all four deliver `local`, the baseline included: at once a
+minute an outage would post sixty identical lines an hour, so the run history on the mini
+is where these live. One note still reaches `#guillotine-ops` on each edge — the first
+failure and the recovery — and `ug ops health` carries the standing answer in between.
+An empty matchups payload refuses rather than writing zeros: a `0.0` beside a projection
+reads as "they have scored nothing", not as "the feed is down". Outside the regular
+season it prints `scores: skipped, season_type=pre` and exits 0, exactly like the
+projections job.
+
 ### 9c. First run after a fresh deploy
 
 Run these once, in this order — the rest read the week state writes:
@@ -469,6 +490,7 @@ Run these once, in this order — the rest read the week state writes:
 uv run --project packages/league-automation ug sleeper state
 uv run --project packages/league-automation ug sleeper sync
 uv run --project packages/league-automation ug sleeper projections
+uv run --project packages/league-automation ug sleeper scores
 uv run --project packages/league-automation ug members aliases load data/private/member-aliases.json
 ```
 
@@ -533,12 +555,19 @@ select 'roster_holdings' as tbl, count(*) from public.roster_holdings
 union all select 'team_season_state', count(*) from public.team_season_state
 union all select 'final_rosters', count(*) from public.final_rosters
 union all select 'player_projections', count(*) from public.player_projections
-union all select 'team_week_projections', count(*) from public.team_week_projections;
+union all select 'team_week_projections', count(*) from public.team_week_projections
+union all select 'team_week_scores', count(*) from public.team_week_scores;
 
 select season, season_type, week, synced_at from public.nfl_state;
 select count(*) as teams, count(*) filter (where is_provisional) as provisional,
        min(coverage_pct) as worst
 from public.team_week_projections
+where week = (select week from public.nfl_state);
+
+-- The live scores, and how stale the board's stamp is. In a game window `age` should be
+-- under a minute; outside one, under fifteen.
+select count(*) as teams, max(points) as high, now() - max(synced_at) as age
+from public.team_week_scores
 where week = (select week from public.nfl_state);
 ```
 
