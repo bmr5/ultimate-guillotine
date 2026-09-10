@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 
 import { resolveStarterAvailability } from "../derive/availability";
 import { resolveChipKinds, type ChipKind } from "../derive/chips";
+import { FAAB_LABEL, formatFaab } from "../derive/faab";
 import {
   COVERAGE_GATE_PCT,
   partialCoverageExplanation,
@@ -43,9 +44,6 @@ const TOTAL_POINTS_DECIMALS = 1;
  */
 const TOTAL_POINTS_TEXT = "Total";
 const TOTAL_POINTS_LABEL = "Total points";
-
-/** Shown in place of the FAAB figure when the team has no `team_season_state` row. */
-const FAAB_UNKNOWN_TEXT = "FAAB —";
 
 /**
  * The focus ring the header's toggles, buttons and search box all carry (see
@@ -325,10 +323,7 @@ export const TeamCard = memo(function TeamCard({
   const scoreText = formatScore(team.score);
   const scoreIsEmphasized = emphasis === "score";
   const totalPoints = team.pointsFor.toFixed(TOTAL_POINTS_DECIMALS);
-  const faab =
-    team.faabRemaining === null
-      ? FAAB_UNKNOWN_TEXT
-      : `${team.faabRemaining} FAAB`;
+  const faab = formatFaab(team.faabRemaining);
 
   // Ben's addendum: an out starter is reported as out, not counted as missing data. This is
   // what decides both chips — the out one from the roster, the partial one from what coverage
@@ -508,7 +503,14 @@ export const TeamCard = memo(function TeamCard({
                   */}
                   <span aria-hidden="true">{`${TOTAL_POINTS_TEXT} ${totalPoints}`}</span>
                   <span className="sr-only">{`${TOTAL_POINTS_LABEL} ${totalPoints}`}</span>
-                  {` · ${faab}`}
+                  {/*
+                    Ben (2026-09-10): "just put the number and $". The figure is `$75`; the
+                    word FAAB survives in the sr-only copy alone, for the same reason the
+                    total is named in full above. See `formatFaab`.
+                  */}
+                  {" · "}
+                  <span aria-hidden="true">{faab}</span>
+                  <span className="sr-only">{`${FAAB_LABEL} ${faab}`}</span>
                 </span>
               </span>
 

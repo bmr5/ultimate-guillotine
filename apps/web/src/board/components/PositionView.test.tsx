@@ -124,7 +124,7 @@ describe("PositionView", () => {
     renderView();
     expect(screen.getAllByRole("listitem")).toHaveLength(2);
     expect(screen.getByText("Nick R")).toBeInTheDocument();
-    expect(screen.getByText("FAAB 715")).toBeInTheDocument();
+    expect(screen.getByText("$715")).toBeInTheDocument();
     expect(screen.getByText("Travis Kelce")).toBeInTheDocument();
     expect(screen.getByText("Sam LaPorta")).toBeInTheDocument();
     expect(screen.getByText("14.1")).toBeInTheDocument();
@@ -273,10 +273,15 @@ describe("PositionView", () => {
     ).not.toHaveAttribute("data-highlighted");
   });
 
-  it("says FAAB — rather than a zero for a team with no state row", () => {
+  it("names the FAAB figure for a reader who cannot see the row", () => {
+    renderView();
+    expect(screen.getByText("FAAB $715").className).toContain("sr-only");
+  });
+
+  it("says $— rather than a zero for a team with no state row", () => {
     renderView({
       teams: [team({ teamId: 4, ownerName: "stateless", faabRemaining: null })],
     });
-    expect(screen.getByText("FAAB —")).toBeInTheDocument();
+    expect(screen.getByText("$—")).toBeInTheDocument();
   });
 });

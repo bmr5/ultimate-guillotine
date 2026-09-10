@@ -632,7 +632,7 @@ describe("BoardPage position quick view", () => {
 
   it("renders the position view for ?pos=TE, not the team grid", () => {
     renderPage("/?pos=TE");
-    expect(screen.getByText("FAAB 715")).toBeInTheDocument();
+    expect(screen.getByText("$715")).toBeInTheDocument();
     expect(screen.getByText("Travis Kelce")).toBeInTheDocument();
     // The team card's own projection line is not on screen: this is the other view.
     expect(screen.getByText("no TE")).toBeInTheDocument();
@@ -641,18 +641,20 @@ describe("BoardPage position quick view", () => {
 
   it("reads a lower-case parameter as the same position", () => {
     renderPage("/?pos=te");
-    expect(screen.getByText("FAAB 715")).toBeInTheDocument();
+    expect(screen.getByText("no TE")).toBeInTheDocument();
   });
 
   it("round-trips the segmented control through the URL", async () => {
     renderPage();
-    expect(screen.queryByText("FAAB 715")).toBeNull();
+    // `no TE` is the position view's own line: the team card's FAAB figure reads `$715` as
+    // well, so the figure no longer says which view is on screen.
+    expect(screen.queryByText("no TE")).toBeNull();
 
     fireEvent.click(screen.getByRole("radio", { name: "TE" }));
     await waitFor(() => {
       expect(screen.getByTestId("location")).toHaveTextContent("/?pos=TE");
     });
-    expect(screen.getByText("FAAB 715")).toBeInTheDocument();
+    expect(screen.getByText("no TE")).toBeInTheDocument();
 
     // Back to All: the parameter goes away rather than becoming `?pos=all`.
     fireEvent.click(screen.getByRole("radio", { name: "All positions" }));
@@ -660,7 +662,7 @@ describe("BoardPage position quick view", () => {
       expect(screen.getByTestId("location")).toHaveTextContent("/");
     });
     expect(screen.getByTestId("location")).not.toHaveTextContent("pos=");
-    expect(screen.queryByText("FAAB 715")).toBeNull();
+    expect(screen.queryByText("no TE")).toBeNull();
   });
 
   it("offers FAAB and projection only while a position is selected", () => {
