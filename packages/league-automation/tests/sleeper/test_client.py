@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 import httpx
+import pytest
 import respx
 
 from ultimate_guillotine.sleeper.client import SleeperClient
@@ -126,3 +127,30 @@ def test_the_league_fixture_names_its_draft() -> None:
         json.loads((FIXTURES / "league_2026.json").read_text())
     )
     assert league.draft_id == "1389372259260452865"
+
+
+@respx.mock
+def test_get_schedule_reads_the_public_schedule_feed_off_the_versioned_api() -> None:
+    """The schedule sits outside `/v1` like the projections, so it is an absolute URL:
+    a relative path would resolve under the pinned base and 404."""
+    route = respx.get("https://api.sleeper.app/schedule/nfl/regular/2026").mock(
+        return_value=httpx.Response(
+            200,
+            json=[{"status": "pre_game", "date": "2026-09-13", "home": "CAR", "week": 1,
+                   "game_id": "202610105", "away": "CHI"}],
+        )
+    )
+    client = SleeperClient(httpx.Client())
+    games = client.get_schedule(2026)
+    assert route.called
+    assert games[0]["home"] == "CAR"
+
+
+@respx.mock
+def test_get_schedule_refuses_a_body_that_is_not_a_list() -> None:
+    respx.get("https://api.sleeper.app/schedule/nfl/regular/2026").mock(
+        return_value=httpx.Response(200, json={"error": "nope"})
+    )
+    client = SleeperClient(httpx.Client())
+    with pytest.raises(ValueError, match="not a list"):
+        client.get_schedule(2026)

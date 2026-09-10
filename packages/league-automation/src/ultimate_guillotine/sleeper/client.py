@@ -23,6 +23,10 @@ BASE_URL = "https://api.sleeper.app/v1"
 #: absolute URL instead of the client's pinned ``base_url``. Verified 2026-09-09.
 PROJECTIONS_URL = "https://api.sleeper.app/projections/nfl/{season}/{week}"
 
+#: The NFL schedule sits outside ``/v1`` too: one object per game with ``week``,
+#: ``date``, ``home``, ``away``, ``status`` and ``game_id``. Verified 2026-09-10.
+SCHEDULE_URL = "https://api.sleeper.app/schedule/nfl/regular/{season}"
+
 TIMEOUT = 10.0
 
 #: How much of a projections payload may be malformed before the payload itself is
@@ -169,3 +173,17 @@ class SleeperClient:
                 f"of {len(payload)}"
             )
         return rows
+
+    def get_schedule(self, season: int) -> list[dict[str, Any]]:
+        """Fetch the regular-season schedule for ``season``, raw.
+
+        The one source of "has this game been played" the EOD summary's odds rest
+        on. Parsing lives in ``summary/schedule.py``; this only refuses a body that
+        is not the list the feed has always answered with.
+        """
+        response = self._http.get(SCHEDULE_URL.format(season=season), timeout=20.0)
+        response.raise_for_status()
+        payload: Any = response.json()
+        if not isinstance(payload, list):
+            raise ValueError("sleeper schedule payload is not a list")  # noqa: TRY004
+        return payload
