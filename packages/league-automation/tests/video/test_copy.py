@@ -99,8 +99,10 @@ def test_an_obligation_reads_on_the_bar_as_the_announcer_put_it() -> None:
 def test_the_facts_start_with_the_announcement_and_say_who_owes_whom() -> None:
     copy = trade_copy(gulag_trade(), labels={11: "the Commish", 12: "Max"})
     assert copy.facts == (
-        "Announced in the league chat as: 🚨 Trade alert 🚨 Max agrees to go to gulag for Ben "
-        "in exchange for $200",
+        (
+            "Announced in the league chat as: 🚨 Trade alert 🚨 Max agrees to go to gulag for Ben "
+            "in exchange for $200"
+        ),
         "Max owes the Commish: go to gulag for Ben (an obligation, not a player or money)",
         "the Commish gives Max: $200",
         "Special term, in the announcer's words: Max agrees to go to gulag for Ben",
