@@ -16,6 +16,7 @@ import {
   fetchTeams,
   fetchTeamSeasonState,
   fetchTeamWeekProjections,
+  fetchTeamWeekScores,
   fetchWeeklyResults,
   IN_CHUNK_SIZE,
 } from "./fetchers";
@@ -203,6 +204,30 @@ describe("state, projection and roster fetchers", () => {
       ["season_id", 1],
       ["week", 3],
     ]);
+  });
+
+  it("reads team_week_scores for the season and week", async () => {
+    const { client, calls } = createFakeClient({ team_week_scores: [] });
+    await fetchTeamWeekScores(client, 1, 3);
+    expect(calls[0].table).toBe("team_week_scores");
+    expect(calls[0].columns).toContain("points");
+    expect(calls[0].columns).toContain("players_points");
+    expect(calls[0].columns).toContain("starters");
+    // `synced_at`, not `computed_at`: this is the stamp the header leads with, and it moves
+    // on every run of the sync rather than only when a projection is recomputed.
+    expect(calls[0].columns).toContain("synced_at");
+    expect(calls[0].filters).toEqual([
+      ["season_id", 1],
+      ["week", 3],
+    ]);
+  });
+
+  it("reads the week's scores in one request, not one per chunk of ids", async () => {
+    // The chunking rule is about `.in(...)` id lists, which travel in the query string. This
+    // is two equality filters over a table holding one row per team per week.
+    const { client, calls } = createFakeClient({ team_week_scores: [] });
+    await fetchTeamWeekScores(client, 1, 3);
+    expect(calls).toHaveLength(1);
   });
 
   it("reads roster_holdings for the season", async () => {

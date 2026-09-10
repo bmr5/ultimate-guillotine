@@ -15,11 +15,12 @@ import {
 } from "./realtime";
 
 describe("realtime constants", () => {
-  it("subscribes only to the four published tables", () => {
+  it("subscribes only to the five published tables", () => {
     expect([...BOARD_REALTIME_TABLES]).toEqual([
       "roster_holdings",
       "team_season_state",
       "team_week_projections",
+      "team_week_scores",
       "nfl_state",
     ]);
   });
@@ -121,6 +122,25 @@ describe("keysForTable", () => {
     expect(keysForTable("team_week_projections", context)).toEqual([
       boardKeys.teamWeekProjections(1, 3),
     ]);
+  });
+
+  it("maps a score change to the week's score query and nothing else", () => {
+    // The reason the table is published: Ben asked for the score to be realtime. A run writes
+    // one row per team, and eighteen events debounce into this one invalidation rather than
+    // dragging the whole board — including the id-fingerprinted player directory — with them.
+    expect(keysForTable("team_week_scores", context)).toEqual([
+      boardKeys.teamWeekScores(1, 3),
+    ]);
+  });
+
+  it("falls back to the whole board for a score event before the context resolves", () => {
+    expect(
+      keysForTable("team_week_scores", {
+        seasonId: null,
+        season: null,
+        week: null,
+      }),
+    ).toEqual([boardKeys.all]);
   });
 
   it("maps an nfl_state change to the nfl_state query alone", () => {

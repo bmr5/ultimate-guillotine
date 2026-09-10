@@ -12,6 +12,7 @@ import {
 import { PositionView } from "@/board/components/PositionView";
 import { TeamCard } from "@/board/components/TeamCard";
 import { positionView } from "@/board/derive/position";
+import { resolveCardEmphasis } from "@/board/derive/score";
 import { filterTeams } from "@/board/derive/search";
 import { selectEffectiveSortMode, sortBoardTeams } from "@/board/derive/sort";
 import { REALTIME_POLL_MS } from "@/board/realtime";
@@ -128,6 +129,18 @@ export function BoardPage() {
     [filtered.teams, positionFilter, board.rosterPositions, requestedSort],
   );
 
+  /**
+   * Which figure the cards emphasise, decided once for the whole board rather than per card.
+   *
+   * Off `board.teams`, not `filtered.teams`: a search that narrows the board to one scoreless
+   * team must not flip every visible card back to projection emphasis mid-Sunday. The question
+   * is what the week is doing, and that does not change because somebody typed a name.
+   */
+  const emphasis = useMemo(
+    () => resolveCardEmphasis(board.teams),
+    [board.teams],
+  );
+
   const autoExpanded = useMemo(
     () => new Set(filtered.autoExpandTeamIds),
     [filtered.autoExpandTeamIds],
@@ -212,6 +225,7 @@ export function BoardPage() {
         searchTerm={rawSearch}
         onSearchTermChange={setRawSearch}
         projectionsUpdatedAt={board.projectionsUpdatedAt}
+        scoresUpdatedAt={board.scoresUpdatedAt}
         isReconnecting={isReconnecting}
       />
 
@@ -250,6 +264,7 @@ export function BoardPage() {
                   onToggle={handleToggle}
                   highlightedPlayerIds={filtered.matchedPlayerIds}
                   rosterPositions={board.rosterPositions}
+                  emphasis={emphasis}
                 />
               ))}
             </ul>
@@ -267,6 +282,7 @@ export function BoardPage() {
                       onToggle={handleToggle}
                       highlightedPlayerIds={filtered.matchedPlayerIds}
                       rosterPositions={board.rosterPositions}
+                      emphasis={emphasis}
                     />
                   ))}
                 </ul>

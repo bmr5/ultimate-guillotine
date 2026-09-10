@@ -21,6 +21,8 @@ const team = (over: Partial<BoardTeam> & { teamId: number }): BoardTeam => ({
   teamName: `Team ${over.teamId}`,
   ownerName: `Owner ${over.teamId}`,
   sleeperRosterId: over.teamId,
+  score: null,
+  scoreSyncedAt: null,
   projectedPoints: 100,
   coveragePct: 100,
   isProvisional: false,
@@ -56,6 +58,13 @@ const SORT_MODE_CASES: SortModeCase[] = [
     withKey: (teamId, value) => team({ teamId, projectedPoints: value }),
     withoutKey: (teamId) =>
       team({ teamId, projectedPoints: null, coveragePct: null }),
+  },
+  {
+    mode: "score",
+    withKey: (teamId, value) => team({ teamId, score: value }),
+    // No score row for the week at all. Not coerced to zero: eighteen teams with nothing to
+    // sort by is not eighteen teams tied on nothing, and they fall to the same tie-breaks.
+    withoutKey: (teamId) => team({ teamId, score: null }),
   },
   {
     mode: "faab",

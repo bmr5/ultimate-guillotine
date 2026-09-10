@@ -19,6 +19,14 @@ import {
   resolveProjectionDisplay,
 } from "../derive/projection";
 import { layoutStarters, resolveEmptySlotCount } from "../derive/roster";
+import {
+  formatScore,
+  PROJECTION_CAPTION,
+  PROJECTION_LABEL,
+  SCORE_CAPTION,
+  SCORE_LABEL,
+  type CardEmphasis,
+} from "../derive/score";
 import { formatComputedTitle } from "../derive/time";
 import type { BoardTeam } from "../types";
 import { RosterPanel } from "./RosterPanel";
@@ -79,15 +87,21 @@ const PARTIAL_BADGE_TEXT = "partial";
  *
  * - row 1, the owner block: name 24px (inherited 1rem/1.5) + team name 20px (`text-sm`) +
  *   `mt-1` 4px + total line 16px (`text-xs`) = **64px**;
- * - row 1, the projection block beside it: 32px (`text-2xl`) + `proj` 16px + `mt-1` 4px +
- *   empty-slot count 16px = **68px**, which is the taller of the two and so the row;
+ * - row 1, the figures block beside it: 28px (`text-xl`, the emphasised figure) + its caption
+ *   16px + `mt-1` 4px + empty-slot count 16px = **64px**, level with the owner block. It was
+ *   68px when the block held one `text-2xl` projection; two figures side by side step the
+ *   emphasised one down to `text-xl`, so this row got *shorter*, not taller, and the floor
+ *   below still binds on every card;
  * - row 2, the chip line: `mt-1` 4px + `h-6` 24px = **28px**;
  * - the card's own `p-4`: 32px.
  *
- * 32 + 68 + 28 = **128px = 8rem**. The ruling estimated 7.75rem from the owner block alone; the
- * extra quarter-rem is the `N empty` line under `proj`, which is the taller column whenever a
- * lineup has a hole in it, and a floor that did not clear it would let exactly those cards grow.
- * The toggle's own `min-h-[44px]` is well under the row it sits in and never binds.
+ * 32 + 64 + 28 = **124px**, and the floor stays at **128px = 8rem** rather than following it
+ * down: the figures block was the tall column, so lowering the floor to its new height would
+ * hand the whole grid back to whatever the owner block happens to measure. The ruling estimated
+ * 7.75rem from the owner block alone; the extra quarter-rem is the `N empty` line under the
+ * captions, which is the taller column whenever a lineup has a hole in it, and a floor that did
+ * not clear it would let exactly those cards grow. The toggle's own `min-h-[44px]` is well under
+ * the row it sits in and never binds.
  */
 export const SUMMARY_MIN_HEIGHT_CLASS = "min-h-32";
 
@@ -110,14 +124,43 @@ export const CHIP_ROW_HEIGHT_CLASS = "h-6";
 export const CHIP_ROW_INDENT_CLASS = "pl-8";
 
 /**
- * The projection block's width. Fixed so the numbers line up down the grid.
+ * The figures block's width. Fixed so the numbers line up down the grid.
  *
  * It used to do a second job — the chip row overlaid on the owner's line reserved exactly this
  * much plus the toggle's `gap-3`, so a chip never landed on the number. Round 3 measured that
  * geometry on a 375px card and it does not fit: the name field is 141px and a two-chip set is
  * 139px. The chips have their own line now, and nothing reserves against this any more.
+ *
+ * Widened from `w-18` (72px) to hold two figures rather than one — Ben: "the team cards on the
+ * board should show their current score right next to their projected". 112px is the two fixed
+ * figure columns below plus the `gap-1` between them: 64 + 4 + 44. On a 375px card that leaves
+ * the owner's name 147px (375 − 32 card padding − 20 rank − 12 `gap-3` − 112 − 8 `gap-x-2` −
+ * 44 chevron), which is wider than the 141px round 3 measured, and the name no longer has to
+ * share that field with anything.
  */
-const PROJECTION_WIDTH_CLASS = "w-18";
+const PROJECTION_WIDTH_CLASS = "w-28";
+
+/**
+ * The two figure columns, sized rather than left to the text, so `Score` and `Proj` line up
+ * down the whole grid instead of only when both happen to have the same number of digits.
+ *
+ * 64px holds `199.9` at `text-xl` with `tabular-nums`; 44px holds it at `text-sm`. The
+ * emphasis — and therefore which column gets which width — is a board-wide decision, so every
+ * card in the grid sizes them the same way at the same time.
+ */
+const FIGURE_EMPHASIZED_WIDTH_CLASS = "w-16";
+const FIGURE_SECONDARY_WIDTH_CLASS = "w-11";
+
+/**
+ * The type sizes of the two figures.
+ *
+ * The single projection was `text-2xl`. Two numbers cannot both be that and still leave a
+ * 375px card a readable owner name, so the emphasised one steps down to `text-xl` and the
+ * quiet one sits at `text-sm` beside it. The pair is still the loudest thing on the card, and
+ * it is still what a thumb lands on — the whole block stays inside the summary's one button.
+ */
+const FIGURE_EMPHASIZED_CLASS = "text-xl font-semibold text-foreground";
+const FIGURE_SECONDARY_CLASS = "text-sm font-medium text-muted-foreground";
 
 /** Label for a team eliminated in a week the data layer does not know yet. */
 const ELIMINATED_LABEL = "Eliminated";
@@ -296,6 +339,13 @@ interface TeamCardProps {
   highlightedPlayerIds: ReadonlySet<string>;
   /** The league's lineup — `seasons.roster_positions` — which the empty slots are counted against. */
   rosterPositions: string[];
+  /**
+   * Which of the two figures is the large one, decided once for the whole board by
+   * `resolveCardEmphasis` and handed down so every card in the grid agrees — that is what keeps
+   * the two figure columns the same width down the page. Defaults to the projection, which is
+   * the state the board is in until somebody scores.
+   */
+  emphasis?: CardEmphasis;
 }
 
 /**
@@ -313,6 +363,7 @@ export const TeamCard = memo(function TeamCard({
   onToggle,
   highlightedPlayerIds,
   rosterPositions,
+  emphasis = "projection",
 }: TeamCardProps) {
   const panelId = useId();
   // Laid out once per card rather than once per open card: the count below the projection and
@@ -324,6 +375,10 @@ export const TeamCard = memo(function TeamCard({
   );
   const emptySlots = resolveEmptySlotCount(team.emptySlots, starterRows);
   const projection = resolveProjectionDisplay(team);
+  // Never an em dash: a team that has not scored has scored `0.0`, and before kickoff that is
+  // true of everybody. See `SCORE_ZERO_TEXT` for why this differs from the projection beside it.
+  const scoreText = formatScore(team.score);
+  const scoreIsEmphasized = emphasis === "score";
   const totalPoints = team.pointsFor.toFixed(TOTAL_POINTS_DECIMALS);
   const faab =
     team.faabRemaining === null
@@ -512,19 +567,75 @@ export const TeamCard = memo(function TeamCard({
               </span>
 
               {/*
-                The projection and what qualifies it: the number, its caption and the empty-slot
-                count. A lineup with a hole in it has to be visible without expanding the card.
-                Spans, not a <div>, because this block lives inside the toggle button.
+                Ben's ruling: "the team cards on the board should show their current score right
+                next to their projected." Two figures side by side — the live score on the left,
+                the projection on the right — with the empty-slot count under them, because a
+                lineup with a hole in it has to be visible without expanding the card.
+
+                The positions never move; only the emphasis does, and it moves for the whole
+                board at once (see `resolveCardEmphasis`). A reader looking for the projection
+                finds it in the same place on Saturday morning and Sunday afternoon.
+
+                Spans, not <div>s, because this block lives inside the toggle button.
               */}
               <span
                 data-projection
                 className={cn("shrink-0 text-right", PROJECTION_WIDTH_CLASS)}
               >
-                <span className="block text-2xl font-semibold tabular-nums text-foreground">
-                  {projection.text}
+                <span className="flex items-baseline justify-end gap-1">
+                  <span
+                    data-figure="score"
+                    data-emphasized={scoreIsEmphasized || undefined}
+                    className={cn(
+                      "block text-right tabular-nums",
+                      scoreIsEmphasized
+                        ? `${FIGURE_EMPHASIZED_CLASS} ${FIGURE_EMPHASIZED_WIDTH_CLASS}`
+                        : `${FIGURE_SECONDARY_CLASS} ${FIGURE_SECONDARY_WIDTH_CLASS}`,
+                    )}
+                  >
+                    {scoreText}
+                  </span>
+                  <span
+                    data-figure="projection"
+                    data-emphasized={!scoreIsEmphasized || undefined}
+                    className={cn(
+                      "block text-right tabular-nums",
+                      scoreIsEmphasized
+                        ? `${FIGURE_SECONDARY_CLASS} ${FIGURE_SECONDARY_WIDTH_CLASS}`
+                        : `${FIGURE_EMPHASIZED_CLASS} ${FIGURE_EMPHASIZED_WIDTH_CLASS}`,
+                    )}
+                  >
+                    {projection.text}
+                  </span>
                 </span>
-                <span className="block text-xs text-muted-foreground">
-                  proj
+                {/*
+                  The captions, on the same two columns. `Score` and `Proj` are the short visible
+                  words; the sr-only copies name each figure in full, because `84.2` read out
+                  after `Score` could be a score of anything.
+                */}
+                <span className="flex items-baseline justify-end gap-1 text-xs text-muted-foreground">
+                  <span
+                    className={cn(
+                      "block text-right",
+                      scoreIsEmphasized
+                        ? FIGURE_EMPHASIZED_WIDTH_CLASS
+                        : FIGURE_SECONDARY_WIDTH_CLASS,
+                    )}
+                  >
+                    <span aria-hidden="true">{SCORE_CAPTION}</span>
+                    <span className="sr-only">{`${SCORE_LABEL} ${scoreText}`}</span>
+                  </span>
+                  <span
+                    className={cn(
+                      "block text-right",
+                      scoreIsEmphasized
+                        ? FIGURE_SECONDARY_WIDTH_CLASS
+                        : FIGURE_EMPHASIZED_WIDTH_CLASS,
+                    )}
+                  >
+                    <span aria-hidden="true">{PROJECTION_CAPTION}</span>
+                    <span className="sr-only">{`${PROJECTION_LABEL} ${projection.text}`}</span>
+                  </span>
                 </span>
                 {emptySlots > 0 ? (
                   <span className="mt-1 block text-xs font-medium text-destructive">

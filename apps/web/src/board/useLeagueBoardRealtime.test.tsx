@@ -118,6 +118,7 @@ describe("useLeagueBoardRealtime", () => {
       "roster_holdings",
       "team_season_state",
       "team_week_projections",
+      "team_week_scores",
       "nfl_state",
     ]);
   });

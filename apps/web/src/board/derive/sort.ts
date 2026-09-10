@@ -20,6 +20,12 @@ export function sortValue(team: BoardTeam, mode: SortMode): number | null {
   if (mode === "points_for") {
     return team.pointsFor;
   }
+  if (mode === "score") {
+    // Not coerced from null: a week with no score row at all is not a board of eighteen teams
+    // tied on zero, it is eighteen teams with nothing to sort by, and they fall to the same
+    // tie-breaks every other incomparable key does.
+    return team.score;
+  }
   const display = resolveProjectionDisplay(team);
   return display.kind === "value" ? display.points : null;
 }

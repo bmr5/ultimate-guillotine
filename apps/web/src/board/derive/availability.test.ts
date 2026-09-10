@@ -34,6 +34,7 @@ const player = (
   lineupPosition: "TE",
   projectedPoints: 9.4,
   injuryStatus: null,
+  livePoints: null,
   ...over,
 });
 

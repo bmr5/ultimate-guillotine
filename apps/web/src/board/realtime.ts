@@ -1,7 +1,7 @@
 import { boardKeys } from "./queryKeys";
 
 /**
- * The published tables the board subscribes to. The data layer also publishes
+ * The five published tables the board subscribes to. The data layer also publishes
  * `final_rosters`, which the board deliberately leaves off this list (Spec issue 11): a
  * snapshot lands in the same transaction as the `team_season_state` change that flips
  * `is_eliminated`, and `keysForTable` already invalidates the snapshot query from there.
@@ -12,6 +12,7 @@ export const BOARD_REALTIME_TABLES = [
   "roster_holdings",
   "team_season_state",
   "team_week_projections",
+  "team_week_scores",
   "nfl_state",
 ] as const;
 
@@ -91,6 +92,13 @@ export function keysForTable(
   }
   if (table === "team_week_projections") {
     return [boardKeys.teamWeekProjections(seasonId, week)];
+  }
+  if (table === "team_week_scores") {
+    // The reason this table is published at all: Ben asked for the score to be realtime, and
+    // a run writes one row per team a minute through a game window. Eighteen rows is exactly
+    // `REALTIME_MAX_EVENTS_PER_BURST`, so a run's events debounce into this one invalidation
+    // rather than tipping the burst ceiling into a whole-board refetch.
+    return [boardKeys.teamWeekScores(seasonId, week)];
   }
   // A roster change also changes which player projections the board needs. The static player
   // directory is deliberately not invalidated: it is keyed on a fingerprint of the held ids, so

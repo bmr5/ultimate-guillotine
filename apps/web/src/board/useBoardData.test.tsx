@@ -19,6 +19,7 @@ vi.mock("./fetchers", () => ({
   fetchSeasonByYear: vi.fn(),
   fetchTeamSeasonState: vi.fn(),
   fetchTeamWeekProjections: vi.fn(),
+  fetchTeamWeekScores: vi.fn(),
   fetchTeams: vi.fn(),
   fetchWeeklyResults: vi.fn(),
 }));
@@ -58,6 +59,7 @@ function stubFetchers(): void {
   vi.mocked(fetchers.fetchMembers).mockResolvedValue([]);
   vi.mocked(fetchers.fetchTeamSeasonState).mockResolvedValue([]);
   vi.mocked(fetchers.fetchTeamWeekProjections).mockResolvedValue([]);
+  vi.mocked(fetchers.fetchTeamWeekScores).mockResolvedValue([]);
   vi.mocked(fetchers.fetchRosterHoldings).mockResolvedValue([]);
   vi.mocked(fetchers.fetchWeeklyResults).mockResolvedValue([]);
   vi.mocked(fetchers.fetchFinalRosters).mockResolvedValue([]);
@@ -229,6 +231,90 @@ describe("useBoardData", () => {
       expect(result.current.isPending).toBe(false);
     });
     expect(result.current.projectionsUpdatedAt).toBeNull();
+  });
+
+  it("scopes the score query to the same season and week as the projections", async () => {
+    const { result } = renderBoardData();
+    await waitFor(() => {
+      expect(vi.mocked(fetchers.fetchTeamWeekScores)).toHaveBeenCalled();
+    });
+    expect(
+      vi.mocked(fetchers.fetchTeamWeekScores).mock.calls[0].slice(1),
+    ).toEqual([7, 3]);
+    expect(result.current.errors).toEqual([]);
+  });
+
+  it("joins the week's score onto the team and hangs live points off the roster", async () => {
+    vi.mocked(fetchers.fetchRosterHoldings).mockResolvedValue([
+      {
+        team_id: 11,
+        sleeper_player_id: "4046",
+        slot: "starter",
+        slot_index: 0,
+        lineup_position: "QB",
+      },
+    ]);
+    vi.mocked(fetchers.fetchTeamWeekScores).mockResolvedValue([
+      {
+        season_id: 7,
+        team_id: 11,
+        week: 3,
+        points: 84.24,
+        players_points: { "4046": 12.4 },
+        starters: ["4046"],
+        synced_at: "2026-09-13T17:30:00Z",
+      },
+    ]);
+    const { result } = renderBoardData();
+    await waitFor(() => {
+      expect(result.current.teams[0]?.score).toBe(84.24);
+    });
+    expect(result.current.teams[0]?.roster[0]?.livePoints).toBe(12.4);
+  });
+
+  it("reports the newest score sync as the stamp the header leads with", async () => {
+    // The "why does it show that it updated at 9:30PM" half of Ben's complaint: `synced_at`
+    // moves on every run of the sync, unlike `computed_at`, which only moves on a recompute.
+    vi.mocked(fetchers.fetchTeamWeekScores).mockResolvedValue([
+      {
+        season_id: 7,
+        team_id: 11,
+        week: 3,
+        points: 84.24,
+        players_points: {},
+        starters: [],
+        synced_at: "2026-09-13T17:30:00Z",
+      },
+      {
+        season_id: 7,
+        team_id: 12,
+        week: 3,
+        points: 0,
+        players_points: {},
+        starters: [],
+        synced_at: "2026-09-13T17:31:00Z",
+      },
+    ]);
+    const { result } = renderBoardData();
+    await waitFor(() => {
+      expect(result.current.scoresUpdatedAt).not.toBeNull();
+    });
+    // Only team 11 is on the board, so only its stamp counts: the fold runs over the joined
+    // teams, and cannot name a time belonging to a team nobody can see.
+    expect(result.current.scoresUpdatedAt).toBe(
+      Date.parse("2026-09-13T17:30:00Z"),
+    );
+  });
+
+  it("has no score stamp before the week's first sync lands", async () => {
+    const { result } = renderBoardData();
+    await waitFor(() => {
+      expect(vi.mocked(fetchers.fetchTeamWeekScores)).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(result.current.isPending).toBe(false);
+    });
+    expect(result.current.scoresUpdatedAt).toBeNull();
   });
 
   it("is not empty when nfl_state fails, and says which section broke", async () => {

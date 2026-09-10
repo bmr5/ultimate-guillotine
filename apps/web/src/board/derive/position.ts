@@ -41,6 +41,11 @@ export interface PositionPlayer {
   fullName: string;
   /** null means "no projection", never zero. */
   projectedPoints: number | null;
+  /**
+   * What he has actually scored this week, or null when the week has no score row. Unlike
+   * `projectedPoints`, zero here is ordinary — it is what every player reads before kickoff.
+   */
+  livePoints: number | null;
   /** True for a player in the lineup, so the row can mark him. */
   isStarter: boolean;
   /** `players.injury_status`, so the row can tag him and the flag below can read him. */
@@ -161,6 +166,7 @@ function toPositionPlayer(player: RosterPlayer): PositionPlayer {
     sleeperPlayerId: player.sleeperPlayerId,
     fullName: player.fullName,
     projectedPoints: player.projectedPoints,
+    livePoints: player.livePoints,
     isStarter: player.slot === "starter",
     injuryStatus: player.injuryStatus,
   };
