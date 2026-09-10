@@ -29,6 +29,7 @@ __all__ = [
     "RosterIndex",
     "Unresolved",
     "build_roster_index",
+    "find_member",
     "normalize_name",
     "resolve_extracted",
     "validate",
@@ -74,6 +75,11 @@ _NFL_TEAMS: dict[str, tuple[str, ...]] = {
 }
 #: Asset kinds that carry a number, and are their own unit when none is given.
 _MONEY_KINDS = {"faab", "usd", "draft_dollars"}
+#: The league's own exchange rate, from the rules document: "Every $1 left
+#: unspent in your draft budget becomes $5 FAAB during the season." So a price
+#: quoted in draft dollars is a FAAB price divided by five, and the two are the
+#: same money written two ways.
+DRAFT_DOLLAR_FAAB = 5
 #: Asset kinds that are a term rather than a quantity, whatever number the
 #: model attached to them.
 _TERM_KINDS = {"protection", "other"}
@@ -298,7 +304,9 @@ def _last_name(norm: str) -> str | None:
     return base.split(" ")[-1] if base else None
 
 
-def _money(kind: str, amount: int | None, unit: str | None) -> tuple[str, int | None, str | None]:
+def _money(
+    kind: str, amount: int | None, unit: str | None, currency: str = "faab"
+) -> tuple[str, int | None, str | None]:
     """Settle an asset's ``(kind, amount, unit)`` before it is recorded.
 
     The unit is the more specific field and wins: a ``usd`` asset measured in
@@ -306,14 +314,29 @@ def _money(kind: str, amount: int | None, unit: str | None) -> tuple[str, int | 
     own unit. ``protection`` and ``other`` are terms rather than quantities, so
     they keep their description and lose any number the model attached -- a bare
     ``1`` next to "gulag protection" reads as nonsense in the chat.
+
+    ``currency`` is the league's second budget. `$13 draft` and `$65 FAAB` are
+    one price written two ways, so an amount the model marked ``draft`` is
+    multiplied by five and recorded as FAAB: the trade log holds one currency,
+    and `13` sitting in a FAAB column would read as a fifth of what was paid.
+    The prompt asks the model to convert and write the FAAB figure itself, and
+    this is what happens when it writes the draft figure instead -- so it fires
+    on ``currency`` alone and never on the *word* draft, which is why an asset
+    whose description says `($13 draft)` beside a converted `65` is left as it
+    is. It is also why nothing is converted twice.
+
+    ``usd`` is untouched: real money is not either budget, and $13 cash is $13.
     """
     if kind in _TERM_KINDS:
         return kind, None, None
     if kind in _MONEY_KINDS:
         if unit is None:
-            return kind, amount, kind
-        if unit != kind:
-            return unit, amount, unit
+            unit = kind
+        elif unit != kind:
+            kind = unit
+        if currency == "draft" and unit != "usd" and amount is not None:
+            return "faab", amount * DRAFT_DOLLAR_FAAB, "faab"
+        return kind, amount, unit
     return kind, amount, unit
 
 
@@ -323,6 +346,33 @@ def _is_single_token(norm: str) -> bool:
     ``harrison`` and ``harrison jr`` are; ``justin jefferson`` is not.
     """
     return len(_without_suffix(norm).split()) == 1
+
+
+def find_member(members, name: str) -> MemberRef | None:
+    """The member ``name`` refers to, matched the way resolution matches a name.
+
+    Display name or alias, normalized on both sides, so a name typed at a
+    terminal or written into a fixture is accepted in exactly the spellings the
+    chat is accepted in. ``None`` for a name nobody answers to, which every
+    caller has to refuse rather than treat as "no member named": a `--as` or an
+    `announcer` that was silently dropped would report the behaviour of a chat
+    with no handles loaded and read as a bug somewhere else.
+
+    Deliberately *not* the resolver the pipeline uses. ``resolve_extracted``
+    disambiguates duplicate names with roster evidence and raises rather than
+    guessing; this answers "which member did the operator mean", where a
+    duplicate is the operator's problem and the first match is as good an answer
+    as an exception. It lives here so the CLI and the case runner share one
+    implementation of the matching rule rather than two that can drift.
+    """
+    wanted = normalize_name(name)
+    for member in members:
+        names = {normalize_name(member.display_name)} | {
+            normalize_name(alias) for alias in member.aliases
+        }
+        if wanted in names:
+            return member
+    return None
 
 
 def _resolve_player(name: str, players: list[Player]) -> str:
@@ -439,6 +489,7 @@ def _resolve_player_with_rosters(
     players: list[Player],
     rosters: RosterIndex,
     giver_member_id: int | None,
+    by_id: dict[str, Player] | None = None,
 ) -> str:
     """Resolve a player name with roster evidence between the certain matches
     and the surname fallback.
@@ -454,11 +505,18 @@ def _resolve_player_with_rosters(
     ``giver_member_id`` is ``None`` when the asset names no giver, or one nobody
     could place; the giver's-roster step is simply skipped and the rest of the
     chain runs as it always did.
+
+    ``by_id`` is the active directory keyed by Sleeper id, which the roster steps
+    look every holding up in. A caller resolving several assets against the same
+    directory builds it once and passes it -- it is the whole player table, and
+    rebuilding it per asset is the one avoidable cost in this chain. Left
+    ``None`` it is built here, so the single-asset callers stay one call.
     """
     found = _match_exactly(name, players)
     if found is not None:
         return found
-    by_id = {p.sleeper_player_id: p for p in players}
+    if by_id is None:
+        by_id = {p.sleeper_player_id: p for p in players}
 
     def rostered(ids: frozenset[str]) -> list[Player]:
         return [by_id[i] for i in sorted(ids) if i in by_id]
@@ -471,6 +529,54 @@ def _resolve_player_with_rosters(
     if found is None:
         raise Unresolved(f"I can't find a player named {name}")
     return found
+
+
+def _reconcile_draft_quotes(
+    extracted: ExtractedTrade,
+    sides: list[tuple[int | None, int | None]],
+    assets: list[TradeAsset],
+) -> list[TradeAsset]:
+    """Collapse one price written twice, or ask which of the two is right.
+
+    An alert that says `$65 FAAB ($13 draft FAAB)` states one payment in both of
+    the league's currencies. The prompt asks for one asset carrying the FAAB
+    figure, but the plainest thing a model can do with two numbers is write two
+    assets -- and two FAAB assets on the same leg are added up, so the same
+    trade would be logged as 130 FAAB paid instead of 65.
+
+    So: on any leg where more than one FAAB asset appears and at least one of
+    them was quoted in draft dollars, the quotes are the same money if they agree
+    once converted, and the leg keeps one of them -- the one the model already
+    wrote in FAAB, so the recorded asset is the one whose description carries the
+    announcement's own words. If they do not agree, the announcement states two
+    different prices and nobody here can pick: that is a question for the chat.
+
+    Every other leg is untouched, and so is a leg with two FAAB assets and no
+    draft quote between them -- `50 FAAB now and 50 more after Week 4` is two
+    payments, not one written twice, and collapsing it would silently halve it.
+    """
+    drafted = {
+        i for i, asset in enumerate(extracted.assets) if asset.currency == "draft"
+    }
+    if not drafted:
+        return assets
+    legs: dict[tuple[int | None, int | None], list[int]] = {}
+    for i, asset in enumerate(assets):
+        if asset.unit == "faab" and asset.amount is not None:
+            legs.setdefault(sides[i], []).append(i)
+    dropped: set[int] = set()
+    for indexes in legs.values():
+        if len(indexes) < 2 or not drafted.intersection(indexes):
+            continue
+        amounts = {assets[i].amount for i in indexes}
+        if len(amounts) > 1:
+            stated = ", ".join(str(a) for a in sorted(amounts))
+            raise Unresolved(
+                f"That says {stated} FAAB for the same thing; which is it?"
+            )
+        keep = next((i for i in indexes if i not in drafted), indexes[0])
+        dropped.update(i for i in indexes if i != keep)
+    return [asset for i, asset in enumerate(assets) if i not in dropped]
 
 
 def resolve_extracted(
@@ -612,16 +718,17 @@ def resolve_extracted(
     # recorded comes from one chain: `Rhamondre` reaches Rhamondre Stevenson on
     # the giver's roster, and a name the first pass placed by exact match is
     # placed by exact match here too, since that step comes first either way.
+    players_by_id = {p.sleeper_player_id: p for p in players}
     for i, asset in enumerate(extracted.assets):
         if asset.kind == "player" and asset.player_name:
             resolved_players[i] = _resolve_player_with_rosters(
-                asset.player_name, players, rosters, sides[i][0]
+                asset.player_name, players, rosters, sides[i][0], players_by_id
             )
 
     trade_assets: list[TradeAsset] = []
     for i, asset in enumerate(extracted.assets):
         from_id, to_id = sides[i]
-        kind, amount, unit = _money(asset.kind, asset.amount, asset.unit)
+        kind, amount, unit = _money(asset.kind, asset.amount, asset.unit, asset.currency)
         trade_assets.append(
             TradeAsset(
                 kind=kind,
@@ -634,6 +741,8 @@ def resolve_extracted(
                 description=asset.description,
             )
         )
+
+    trade_assets = _reconcile_draft_quotes(extracted, sides, trade_assets)
 
     return TradeProposal(
         season=season,

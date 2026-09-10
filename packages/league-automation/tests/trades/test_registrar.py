@@ -8,10 +8,14 @@ delivers, and how it finishes the run -- rather than any storage detail.
 import hashlib
 from datetime import UTC, datetime
 
+import pytest
+
 from ultimate_guillotine.ai.structured import AIUnavailable, AIUsage
 from ultimate_guillotine.config import Settings
+from ultimate_guillotine.data.repositories import chat_guid_hash
 from ultimate_guillotine.messages.bluebubbles import InboundMessage
 from ultimate_guillotine.sleeper.players import Player
+from ultimate_guillotine.trades import registrar as registrar_module
 from ultimate_guillotine.trades.models import ExtractedAsset, ExtractedParty, ExtractedTrade
 from ultimate_guillotine.trades.registrar import TradeRegistrar, trade_trigger
 from ultimate_guillotine.trades.repository import TradeAcceptance
@@ -287,6 +291,7 @@ def build(
     season=None,
     contacts=None,
     commissioner=None,
+    shadow=frozenset(),
 ):
     settings = Settings(
         database_url="postgresql://x:y@example.invalid/db",
@@ -310,6 +315,7 @@ def build(
         sources_repo=sources if sources is not None else FakeSources(),
         sleeper_client=sleeper,
         season=season,
+        shadow_chat_hashes=shadow,
         clock=lambda: datetime(2026, 9, 10, tzinfo=UTC),
     )
     return reg, runs, notifier
@@ -323,7 +329,7 @@ def test_created_trade_sends_confirmation_and_records_run() -> None:
     assert delivery.sent[0][1].startswith("🚨 Trade T-2026-001 logged")
     assert runs.reserved == ["trade:g1"] and runs.finished[0][1] == "succeeded"
     # The run records which prompt and model produced it, and hashes what was sent.
-    assert runs.finished[0][4] == "2026.3:m"
+    assert runs.finished[0][4] == "2026.4:m"
     assert runs.finished[0][3] == hashlib.sha256(delivery.sent[0][1].encode()).hexdigest()
 
 
@@ -686,3 +692,95 @@ def test_a_first_person_party_with_no_announcer_asks_the_chat() -> None:
     reg, _runs, _ = build(FakeAI(first_person_extraction()), delivery=delivery)
     assert reg.handle(msg("🚨 I sent Player Alpha to Member02 for 450 FAAB")) == "clarification"
     assert "me" in delivery.sent[0][1]
+
+
+class FakeHolding:
+    """One rostered player, carrying the two fields the pack reads off him."""
+
+    def __init__(self, player_name: str, position: str | None = None) -> None:
+        self.player_name, self.position = player_name, position
+
+
+class FakeTeamState:
+    """One team on the snapshot, carrying only what `context_from_snapshot` reads."""
+
+    def __init__(self, member_id: int, display_name: str, faab: int, holdings) -> None:
+        self.member_id, self.display_name = member_id, display_name
+        self.faab_remaining, self.holdings = faab, holdings
+        self.is_eliminated, self.eliminated_week = False, None
+
+
+class FakeSnapshot:
+    """A league of one team -- enough to render every section of the pack."""
+
+    week = 4
+    teams = (FakeTeamState(1, "Member01", 300, [FakeHolding("Player Alpha", "WR")]),)
+
+
+class FakeSnapshotRepository:
+    """Stands in for the Advisor's six-query read with a league already in hand."""
+
+    def __init__(self, conn) -> None:
+        self.conn = conn
+
+    def load(self) -> FakeSnapshot:
+        return FakeSnapshot()
+
+
+def test_the_context_pack_reaches_the_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The league the registrar builds is the league the model is shown.
+
+    `trades/test_context.py` proves the rendering and `trades/test_extract.py`
+    proves the user message carries a pack it is handed; this is the one
+    assertion that the registrar joins them -- that `_context` runs per alert and
+    its output reaches `extract_trade` rather than each half being right alone.
+    """
+    monkeypatch.setattr(registrar_module, "SnapshotRepository", FakeSnapshotRepository)
+    ai = FakeAI(good_extraction())
+    reg, _runs, notifier = build(ai, conn=SeasonConn([], (2026,)))
+
+    assert reg.handle(msg("🚨 Member01 sends Player Alpha to Member02 for 450 FAAB")) == "created"
+
+    assert "Rosters:" in ai.users[0]
+    assert "Current NFL week: 4" in ai.users[0]
+    # A pack that was built is a pack that did not degrade: no ops note about it.
+    assert not [note for note in notifier.ops_sent if "context pack" in note]
+
+
+def test_a_candidate_from_a_listen_only_chat_is_reported_as_shadow() -> None:
+    """The answer to a league alert appears in a different chat, so ops is the
+    only place the pickup is visible. The note carries the outcome and the word
+    `shadow` -- never the chat, the announcement, or who sent it."""
+    reg, _runs, notifier = build(
+        FakeAI(good_extraction()), shadow={chat_guid_hash(CHAT)}
+    )
+
+    assert reg.handle(msg("🚨 Member01 sends Player Alpha to Member02 for 450 FAAB")) == "created"
+
+    assert notifier.ops_sent == ["Trade Registrar: shadow candidate -> created"]
+
+
+def test_a_candidate_from_the_delivery_chat_is_not_reported_as_shadow() -> None:
+    """The self-test chat is where the bot already answers: a note there would be
+    a second copy of something Ben is looking straight at."""
+    reg, _runs, notifier = build(
+        FakeAI(good_extraction()), shadow={chat_guid_hash("iMessage;+;chat-league")}
+    )
+
+    assert reg.handle(msg("🚨 Member01 sends Player Alpha to Member02 for 450 FAAB")) == "created"
+
+    assert notifier.ops_sent == []
+
+
+def test_the_trigger_reads_every_chat_it_is_given() -> None:
+    """Shadow mode at the trigger: one registrar, two chats it reads alerts in."""
+    reg, _, _ = build(FakeAI(error=AssertionError("model must not be called")))
+    trigger = trade_trigger(reg, frozenset({CHAT, "iMessage;+;chat-league"}))
+
+    assert trigger.matches(msg("🚨 Member01 sends Player Alpha to Member02"))
+    assert trigger.matches(
+        msg("🚨 Member01 sends Player Alpha to Member02", chat="iMessage;+;chat-league")
+    )
+    assert not trigger.matches(
+        msg("🚨 Member01 sends Player Alpha to Member02", chat="iMessage;+;chat-elsewhere")
+    )

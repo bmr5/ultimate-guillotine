@@ -35,6 +35,7 @@ from ultimate_guillotine.advisor.scoring import score_league
 from ultimate_guillotine.ai.structured import AIUsage
 from ultimate_guillotine.config import Settings
 from ultimate_guillotine.core.hermes_cli import find_hermes_binary
+from ultimate_guillotine.trades.context import league_rules
 
 ASK = Ask(("RB",), "acquire", None, False, (), False)
 RENTAL_ASK = Ask(("RB",), "acquire", 3, True, (), False)
@@ -378,3 +379,27 @@ def test_live_advice_ranks_only_the_candidates_it_was_handed(
     for proposal in result.proposals:
         assert 1 <= proposal.candidate_index <= len(candidates)
         assert proposal.counterparties[0] in {c.counterparty for c in candidates}
+
+
+def test_the_advisor_and_the_registrar_read_the_same_league_rules() -> None:
+    """One file, two agents. Two copies of "draft dollars are FAAB at five to one"
+    would eventually be two different rates, and an Advisor that does not know a
+    rental or an option is ordinary here will propose neither."""
+    prompt = load_prompt()
+
+    assert "## League rules" in prompt
+    assert league_rules() in prompt
+    assert "becomes $5 FAAB" in prompt
+
+
+def test_the_rules_are_in_the_prompt_and_not_in_the_facts() -> None:
+    """The facts block is the privacy boundary and is built field by field from
+    this league tonight. The rules are the same on every call -- part of what the
+    model is, not part of what it is being told, and paying for them twice per
+    call would be paying twice for the same sentences."""
+    snapshot, scores, candidates = _setup()
+
+    facts = build_facts(snapshot, scores, ASKER, ASK, candidates, [])
+
+    assert "League rules" not in facts
+    assert "becomes $5 FAAB" not in facts

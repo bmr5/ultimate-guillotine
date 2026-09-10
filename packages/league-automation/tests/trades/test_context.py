@@ -1,10 +1,12 @@
 """The context pack: what it says, what it must never say, and how big it gets."""
 
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 
 from ultimate_guillotine.advisor.state import AdvisorHolding, AdvisorTeamState, LeagueSnapshot
+from ultimate_guillotine.trades import context as context_module
 from ultimate_guillotine.trades.context import (
     CONTEXT_CHAR_BUDGET,
     TRADE_LIMIT,
@@ -12,6 +14,7 @@ from ultimate_guillotine.trades.context import (
     ContextTeam,
     build_registrar_context,
     context_from_snapshot,
+    league_rules,
 )
 from ultimate_guillotine.trades.models import MemberRef
 
@@ -270,3 +273,46 @@ def _snapshot() -> LeagueSnapshot:
 
 def _line(pack: str, starts_with: str) -> str:
     return next(line for line in pack.splitlines() if line.startswith(starts_with))
+
+
+def test_the_pack_carries_the_league_rules() -> None:
+    """The rules are what make the numbers mean anything -- that draft dollars are
+    FAAB at five to one, that a rental is an ordinary trade here. They go last,
+    because every other section is this league tonight and these are the same on
+    every call."""
+    pack = build_registrar_context(4, TEAMS, [])
+
+    assert "League rules:" in pack
+    assert "becomes $5 FAAB" in pack
+    assert pack.index("Rosters:") < pack.index("League rules:")
+
+
+def test_a_pack_with_no_league_in_it_carries_no_rules_either() -> None:
+    """The rules would otherwise be the one section that renders for a league the
+    data layer cannot describe at all, which is a pack of rules about nobody."""
+    assert build_registrar_context(None, (), []) == ""
+
+
+def test_the_rules_file_names_nobody_and_stays_short() -> None:
+    """It is read into every extraction, so its size is a per-alert cost; and it
+    is a public document about the league, not about its members."""
+    rules = league_rules()
+
+    assert rules
+    assert len(rules.splitlines()) <= 70
+    assert "@" not in rules
+    for member in ("kpbowe", "mdurgin", "chobes", "benray"):
+        assert member not in rules
+
+
+def test_a_missing_rules_file_leaves_the_section_out(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An empty `League rules:` heading would be a claim that the league has none."""
+    league_rules.cache_clear()
+    monkeypatch.setattr(
+        context_module, "LEAGUE_RULES_PATH", Path("/nonexistent/league-rules.md")
+    )
+    try:
+        assert league_rules() == ""
+        assert "League rules:" not in build_registrar_context(4, TEAMS, [])
+    finally:
+        league_rules.cache_clear()

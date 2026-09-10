@@ -88,6 +88,14 @@ class TradeRegistrar:
     ``None`` -- or a sender whose handle has never been loaded -- means no
     announcer, and a first-person alert ends in a question, which is what
     happened before there was an announcer at all.
+
+    ``shadow_chat_hashes`` are the hashed GUIDs of the listen-only chats -- the
+    league chat, while the answers still go to the self-test chat. A candidate
+    from one of them is reported to ops as ``shadow``, so a rehearsal against the
+    real league is distinguishable from a message somebody sent to the bot on
+    purpose. Hashes rather than GUIDs, because marking a note is not a reason to
+    hand an agent a raw chat id, and the hash is what the source-message rows
+    already record.
     """
 
     def __init__(
@@ -105,6 +113,7 @@ class TradeRegistrar:
         sources_repo=None,
         sleeper_client=None,
         season: int | None = None,
+        shadow_chat_hashes: frozenset[str] = frozenset(),
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         self._settings = settings
@@ -120,6 +129,7 @@ class TradeRegistrar:
         self._sources = sources_repo
         self._sleeper = sleeper_client
         self._season = season
+        self._shadow = shadow_chat_hashes
         self._clock = clock
         #: The last run this registrar finished. A failure after that finish --
         #: a commit on a connection that died, say -- must not overwrite a
@@ -153,10 +163,28 @@ class TradeRegistrar:
         # could start a second extraction of the same message.
         self._commit()
         try:
-            return self._process(run_id, msg)
+            status = self._process(run_id, msg)
         except Exception as exc:  # noqa: BLE001 - every failure is reported the same way
             self._fail(run_id, exc.__class__.__name__)
             return "failed"
+        self._note_shadow(msg, status)
+        return status
+
+    def _note_shadow(self, msg: InboundMessage, status: str) -> None:
+        """Say in ops that this candidate came from a chat we only listen in.
+
+        Shadow mode is the whole reason the registrar can see the league chat at
+        all, and the answer to a league alert appears somewhere else -- the
+        self-test chat -- so without this the only trace that a real alert was
+        picked up is a run row nobody is watching. The note carries the outcome
+        and the word `shadow`; never the chat, its hash, the announcement, or who
+        sent it. A note that cannot be delivered is not a reason to fail a
+        candidate that has already been answered.
+        """
+        if not self._shadow or chat_guid_hash(msg.chat_guid) not in self._shadow:
+            return
+        with contextlib.suppress(Exception):
+            self._notifier.ops(f"Trade Registrar: shadow candidate -> {status}")
 
     # -- internals ------------------------------------------------------
 
@@ -448,23 +476,32 @@ def _member_line(member) -> str:
     return f"{member.display_name}: {', '.join(member.aliases) or 'no known nicknames'}"
 
 
-def trade_trigger(registrar: TradeRegistrar, chat_guid: str) -> Trigger:
-    """Register the registrar on every unsigned 🚨 alert in one chat.
+def trade_trigger(registrar: TradeRegistrar, chat_guids: str | frozenset[str]) -> Trigger:
+    """Register the registrar on every unsigned 🚨 alert in the chats it reads.
 
-    ``chat_guid`` is the chat the registrar answers in -- the test chat in test
-    mode, the production target in production. The listener accepts webhooks
-    from both, so without this an alert in the test chat would be logged and
-    announced into the league (or the other way round).
+    ``chat_guids`` is every chat trade alerts are read in: the mode's delivery
+    chat, plus any listen-only chats. The listener accepts webhooks from more
+    conversations than any one agent should answer, so without this gate an alert
+    in one chat could be logged on behalf of another. A single GUID is accepted
+    for the callers that have exactly one -- the tests, and `ug trades retry`'s
+    rehearsals -- so a chat is never accidentally read as a set of characters.
+
+    Where an alert is *read* and where the answer is *posted* are two different
+    questions: the answer goes through ``DeliveryService``, which resolves its
+    destination from ``DELIVERY_MODE`` and has never heard of this set.
 
     Ben's own alerts count: he announces trades in the chat like everyone else,
     so ``is_from_me`` is not a reason to skip. The bot's own posts are excluded
     by their signature instead, which is the only reliable marker -- and the
     processor drops signed outbound messages before a trigger ever sees them.
     """
+    allowed = frozenset({chat_guids}) if isinstance(chat_guids, str) else frozenset(chat_guids)
 
     def matches(msg: InboundMessage) -> bool:
         return (
-            msg.chat_guid == chat_guid and is_trade_candidate(msg.text) and not is_signed(msg.text)
+            msg.chat_guid in allowed
+            and is_trade_candidate(msg.text)
+            and not is_signed(msg.text)
         )
 
     def handle(msg: InboundMessage) -> None:

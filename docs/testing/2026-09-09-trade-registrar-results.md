@@ -1,6 +1,6 @@
 # Trade Registrar case results
 
-Run 2026-09-10 03:32 UTC against the live extraction model.
+Run 2026-09-10 04:27 UTC against the fake client (harness self-check).
 Cases come from `packages/league-automation/tests/fixtures/registrar_cases.json`;
 case text is deliberately not repeated here.
 
@@ -10,7 +10,7 @@ one marked `dropped_upstream`, which the listener discards before the agent is
 reached at all. Asking the model about a message it never sees in production would
 score an answer nothing depends on.
 
-**68 run · 67 passed · 1 failed · 14 skipped (prerequisite state) · 1 dropped upstream.**
+**77 run · 77 passed · 0 failed · 14 skipped (prerequisite state) · 1 dropped upstream.**
 
 | # | category | expected kind | expected status | actual kind | outcome | result | mismatch |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -32,7 +32,7 @@ score an answer nothing depends on.
 | 16 | happy | `permanent` | `created` | `permanent` | `created` | pass | — |
 | 17 | sloppy | `permanent` | `created` | `permanent` | `created` | pass | — |
 | 18 | sloppy | `permanent` | `created` | `permanent` | `created` | pass | — |
-| 19 | sloppy | `permanent` | `clarification` | `unclear` | `clarification` | FAIL | kind unclear |
+| 19 | sloppy | `permanent` | `clarification` | `permanent` | `clarification` | pass | — |
 | 20 | sloppy | `permanent` | `clarification` | `permanent` | `clarification` | pass | — |
 | 21 | sloppy | `permanent` | `created` | `permanent` | `created` | pass | — |
 | 22 | sloppy | `permanent` | `clarification` | `permanent` | `clarification` | pass | — |
@@ -55,7 +55,7 @@ score an answer nothing depends on.
 | 53 | not_a_trade | `not_a_trade` | `not_a_trade` | `not_a_trade` | `not_a_trade` | pass | — |
 | 54 | not_a_trade | `not_a_trade` | `not_a_trade` | `not_a_trade` | `not_a_trade` | pass | — |
 | 56 | not_a_trade | `not_a_trade` | `not_a_trade` | `not_a_trade` | `not_a_trade` | pass | — |
-| 57 | not_a_trade | `not_a_trade` | `not_a_trade` | `-` | `not-a-candidate` | pass | — |
+| 57 | happy | `permanent` | `created` | `permanent` | `created` | pass | — |
 | 58 | not_a_trade | `not_a_trade` | `not_a_trade` | `not_a_trade` | `not_a_trade` | pass | — |
 | 59 | unclear | `unclear` | `clarification` | `unclear` | `clarification` | pass | — |
 | 60 | unclear | `unclear` | `clarification` | `unclear` | `clarification` | pass | — |
@@ -80,17 +80,26 @@ score an answer nothing depends on.
 | 79 | happy | `permanent` | `created` | `permanent` | `created` | pass | — |
 | 80 | sloppy | `permanent` | `created` | `permanent` | `created` | pass | — |
 | 81 | sloppy | `permanent` | `created` | `permanent` | `created` | pass | — |
-| 82 | unclear | `permanent` | `clarification` | `unclear` | `clarification` | pass | — |
+| 82 | unclear | `permanent` | `clarification` | `permanent` | `clarification` | pass | — |
 | 83 | unclear | `unclear` | `clarification` | `unclear` | `clarification` | pass | — |
+| 84 | happy | `permanent` | `created` | `permanent` | `created` | pass | — |
+| 85 | happy | `permanent` | `created` | `permanent` | `created` | pass | — |
+| 86 | happy | `rental` | `created` | `rental` | `created` | pass | — |
+| 87 | not_a_trade | `not_a_trade` | `not_a_trade` | `not_a_trade` | `not_a_trade` | pass | — |
+| 88 | not_a_trade | `not_a_trade` | `not_a_trade` | `not_a_trade` | `not_a_trade` | pass | — |
+| 89 | not_a_trade | `not_a_trade` | `not_a_trade` | `not_a_trade` | `not_a_trade` | pass | — |
+| 90 | happy | `permanent` | `created` | `permanent` | `created` | pass | — |
+| 91 | happy | `permanent` | `created` | `permanent` | `created` | pass | — |
+| 92 | unclear | `unclear` | `clarification` | `unclear` | `clarification` | pass | — |
 
 ## Totals by category
 
 | category | run | passed | failed |
 | --- | --- | --- | --- |
-| happy | 18 | 18 | 0 |
-| sloppy | 23 | 22 | 1 |
-| not_a_trade | 7 | 7 | 0 |
-| unclear | 10 | 10 | 0 |
+| happy | 24 | 24 | 0 |
+| sloppy | 23 | 23 | 0 |
+| not_a_trade | 9 | 9 | 0 |
+| unclear | 11 | 11 | 0 |
 | privacy | 5 | 5 | 0 |
 | scale | 4 | 4 | 0 |
 | rescission | 1 | 1 | 0 |

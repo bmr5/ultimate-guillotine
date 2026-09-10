@@ -45,6 +45,7 @@ from ultimate_guillotine.advisor.scoring import POSITIONS, TeamScore
 from ultimate_guillotine.advisor.state import LeagueSnapshot
 from ultimate_guillotine.ai.hermes import HermesStructuredClient
 from ultimate_guillotine.ai.structured import AIUsage, StructuredOutputClient
+from ultimate_guillotine.trades.context import league_rules
 
 PROMPT_VERSION = "2026.1"
 SCHEMA_NAME = "TradeAdviceResponse"
@@ -73,7 +74,23 @@ ADVICE_TIMEOUT_SECONDS = 60.0
 
 @lru_cache(maxsize=1)
 def load_prompt() -> str:
-    return _PROMPT_PATH.read_text(encoding="utf-8")
+    """The Advisor's prompt, with the league's own rules appended.
+
+    The same curated file the Registrar puts in its context pack
+    (`agents/trade-registrar/league-rules.md`), read through
+    :func:`~ultimate_guillotine.trades.context.league_rules`. One file for both
+    agents, because two copies of "draft dollars are FAAB at five to one" would
+    eventually be two different rates -- and because an Advisor that does not
+    know a rental or an option is ordinary here will propose neither.
+
+    Appended to the system prompt rather than to the facts block: the facts are
+    this league tonight, built field by field and checked; the rules are the same
+    on every call and are part of what the model is, not part of what it is being
+    told. A missing file leaves the prompt exactly as it was.
+    """
+    prompt = _PROMPT_PATH.read_text(encoding="utf-8")
+    rules = league_rules()
+    return f"{prompt}\n\n## League rules\n\n{rules}\n" if rules else prompt
 
 
 def advisor_client(
