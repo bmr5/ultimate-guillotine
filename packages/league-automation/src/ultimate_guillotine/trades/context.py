@@ -9,13 +9,23 @@ in front of it has no way to know that `Rhamondre` is the Rhamondre Stevenson on
 Derek's roster -- so it copies the fragment through, code cannot find a player by
 that name, and the chat gets a question instead of a trade.
 
-So the user message now carries four sections, rendered by
+So the user message now carries five sections, rendered by
 :func:`build_registrar_context`: the current NFL week, every team's roster with
-positions, every team's remaining FAAB, and this season's trades. The prompt's
-rules read them: spell each player the way `Rosters` spells him, resolving a
-partial name against the *giving* party's roster; name the trade a rescission
-refers to out of `Trades this season`; flag an amount a team cannot pay rather
-than silently changing it; date a rental's return from the current week.
+positions, every team's remaining FAAB, this season's trades, and the league's
+own rules. The prompt's rules read them: spell each player the way `Rosters`
+spells him, resolving a partial name against the *giving* party's roster; name
+the trade a rescission refers to out of `Trades this season`; flag an amount a
+team cannot pay rather than silently changing it; date a rental's return from
+the current week.
+
+`League rules:` is the odd one out and is deliberately last. Every other section
+is this league tonight; the rules are the same on every call and are what makes
+the numbers mean anything -- that draft dollars are FAAB at five to one, that a
+rental and an option are ordinary trades here rather than something strange,
+that eliminated teams still hold tradeable players. It is a curated file
+(`agents/trade-registrar/league-rules.md`), not the whole document, and the
+Advisor appends the same file to its own prompt so the two agents cannot come to
+disagree about what the league allows.
 
 Two things this module is careful about.
 
@@ -37,16 +47,29 @@ does.
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from functools import lru_cache
+from pathlib import Path
 
 __all__ = [
     "CONTEXT_CHAR_BUDGET",
+    "LEAGUE_RULES_PATH",
     "POSITION_ORDER",
     "TRADE_LIMIT",
     "ContextPlayer",
     "ContextTeam",
     "build_registrar_context",
     "context_from_snapshot",
+    "league_rules",
 ]
+
+#: The curated trade-bearing rules, extracted from
+#: `docs/rules/ultimate-guillotine-gulag-league-rules.docx`. A file rather than a
+#: string in this module because both agents read it: the Registrar puts it in
+#: the pack, the Advisor appends it to its own prompt, and a rule that lived in
+#: one of them would eventually disagree with the other.
+LEAGUE_RULES_PATH = (
+    Path(__file__).resolve().parents[5] / "agents" / "trade-registrar" / "league-rules.md"
+)
 
 #: Roster order. Fantasy managers read a roster this way, and a stable order
 #: means two runs of the same league produce the same prompt -- which is what
@@ -102,6 +125,21 @@ class ContextTeam:
     eliminated_week: int | None = None
 
 
+@lru_cache(maxsize=1)
+def league_rules() -> str:
+    """The league's trade-bearing rules, or ``""`` if the file is missing.
+
+    Read once per process. An empty answer leaves the section out of the pack
+    entirely rather than writing `League rules:` over nothing -- the same rule
+    every other section follows, and for the same reason: an empty list of facts
+    is a claim.
+    """
+    try:
+        return LEAGUE_RULES_PATH.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
 def build_registrar_context(
     week: int | None,
     teams: Sequence[ContextTeam],
@@ -134,6 +172,13 @@ def build_registrar_context(
     lines = [line for line in (_trade_line(t) for t in trades[:trade_limit]) if line]
     if lines:
         sections.append("Trades this season:\n" + "\n".join(lines))
+    # Last, and only when there is a league to apply them to. The rules are the
+    # only section that is the same on every call, so putting them after the
+    # facts keeps the changing part of the pack together, and a pack of rules
+    # over no rosters would describe a league the model has not been shown.
+    rules = league_rules()
+    if sections and rules:
+        sections.append("League rules:\n" + rules)
     return "\n\n".join(sections)
 
 

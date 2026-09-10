@@ -56,6 +56,11 @@ nobody's roster is to leave it exactly as the announcement wrote it, so the case
 pack are unaffected by it, and no case can contradict the pack by trading away a player the pack
 puts on somebody else's roster.
 
+The pack's fifth section, `League rules:`, is the same on every run and is not synthetic: it is
+`agents/trade-registrar/league-rules.md`, curated from the league's own rules document, and the
+Advisor appends the same file to its own prompt. It is why a price in draft dollars means
+anything at all.
+
 Roster matching is a token subset, never a fuzzy match: every word typed has to be one of the
 candidate's words, so `Rhamondre` reaches Rhamondre Stevenson but a truncated `Rhamon` reaches
 nobody, and `Justin Jefferson` is never answered with Van Jefferson.

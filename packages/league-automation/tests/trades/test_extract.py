@@ -227,6 +227,18 @@ PROMPT_RULES_2026_4 = [
         "two prices that disagree are unclear with a reason",
         "set `kind` to `unclear` and say in one sentence which two amounts disagree",
     ),
+    (
+        "the league rules are what make the rest of the context mean anything",
+        "The `League rules:` section is the league's own rules, curated",
+    ),
+    (
+        "the rules are read to understand an announcement, never to judge one",
+        "Read it the way you read the rosters -- to understand an announcement, never to judge one",
+    ),
+    (
+        "a trade the rules would not allow is still the trade that was announced",
+        "the commissioner vetoes trades, and you are not the commissioner",
+    ),
 ]
 
 
@@ -254,7 +266,8 @@ def test_prompt_marks_the_user_message_context_lines_as_never_announcement() -> 
     prompt = load_prompt()
     assert (
         "The user message's `Season:`, `Week hint:`, `League members`, `Announcer:`,"
-        " `Current NFL week:`,\n`Rosters:`, `FAAB remaining:` and `Trades this season:` lines are"
+        " `Current NFL week:`,\n`Rosters:`, `FAAB remaining:`, `Trades this season:` and"
+        " `League rules:` lines are"
         in prompt
     )
     assert "context, never announcement content" in prompt

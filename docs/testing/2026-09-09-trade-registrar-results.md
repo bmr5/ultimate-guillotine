@@ -1,6 +1,6 @@
 # Trade Registrar case results
 
-Run 2026-09-10 04:22 UTC against the fake client (harness self-check).
+Run 2026-09-10 04:27 UTC against the fake client (harness self-check).
 Cases come from `packages/league-automation/tests/fixtures/registrar_cases.json`;
 case text is deliberately not repeated here.
 

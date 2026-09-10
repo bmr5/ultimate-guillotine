@@ -90,12 +90,19 @@ assets but never says which side gives what, such as `Chase Brown and 100 FAAB b
 Direction is stated by words and marks like `sends`, `to`, `for`, `gets`, `->`, `➡️`, or
 `out:`/`in:`; a bare `and`, `between`, or `with` does not state it.
 
+The `League rules:` section is the league's own rules, curated. It is what makes the rest of the
+context mean anything: draft dollars are FAAB at five to one, a rental or an option or a broker's
+cut is an ordinary trade here rather than something strange, and an eliminated team's players are
+still tradeable. Read it the way you read the rosters -- to understand an announcement, never to
+judge one. A trade the rules would not allow is still the trade that was announced; the
+commissioner vetoes trades, and you are not the commissioner.
+
 `FAAB remaining` is the only context section that can make an announcement `unclear`. The others
 are there to help you read it, never to doubt it: an announcement that is clear on its own stays
 clear, however little of it the rosters and the trade list happen to corroborate.
 
 The user message's `Season:`, `Week hint:`, `League members`, `Announcer:`, `Current NFL week:`,
-`Rosters:`, `FAAB remaining:` and `Trades this season:` lines are
+`Rosters:`, `FAAB remaining:`, `Trades this season:` and `League rules:` lines are
 context, never announcement content. A name that appears only on those lines is not named, except
 through a first- or second-person reference: that is the one way the announcement itself names the
 announcer or the member it is addressed to.
