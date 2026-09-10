@@ -68,6 +68,7 @@ def test_the_scheduled_agents_are_the_ones_the_cli_records() -> None:
         "scores-sync",
         "transactions-sync",
         "eod-summary",
+        "video-jobs",
     }
 
 
