@@ -7,6 +7,12 @@ outcome are compared with what the case expects. Nothing touches
 `public.trades`, `private.outbound_messages`, or the delivery service, so the
 suite is safe to leave running overnight against the league chat's real model.
 
+A case may name an `announcer`: the Sleeper username of the member who sent the
+alert, which is what the listener works out from the sender's hashed handle and
+what first-person announcements ("I sent X to Y") name. A case with no
+`announcer` is one whose sender could not be placed, which is a different
+question to put to the model rather than a missing field.
+
 Cases that only mean something after another case is on file (a revision, a
 repost, a rescission) name that case in `prereq` and are skipped: a dry run has
 no database state to revise or rescind. A case whose `expected_status` is
@@ -41,6 +47,7 @@ from ultimate_guillotine.sleeper.players import PlayerRepository
 from ultimate_guillotine.trades.detect import is_trade_candidate
 from ultimate_guillotine.trades.extract import PROMPT_VERSION, extract_trade
 from ultimate_guillotine.trades.models import ExtractedAsset, ExtractedParty, ExtractedTrade
+from ultimate_guillotine.trades.names import normalize_name
 from ultimate_guillotine.trades.resolve import (
     RosterIndex,
     Unresolved,
@@ -153,6 +160,18 @@ def select(cases: list[dict], ids: str | None, category: str | None, limit: int 
     return cases
 
 
+def find_announcer(members: list, username: str):
+    """The member a case's `announcer` names, matched on display name or alias."""
+    wanted = normalize_name(username)
+    for member in members:
+        names = {normalize_name(member.display_name)} | {
+            normalize_name(alias) for alias in member.aliases
+        }
+        if wanted in names:
+            return member
+    return None
+
+
 def run_case(case: dict, ai, members, players, rosters: RosterIndex, season: int) -> Result:
     """Extract, resolve, and validate one case, and say whether it matched.
 
@@ -162,13 +181,25 @@ def run_case(case: dict, ai, members, players, rosters: RosterIndex, season: int
     """
     expected_kind = case["expected_kind"]
     expected_outcome = EXPECTED_OUTCOME[case["expected_status"]]
+    announcer = None
+    if case.get("announcer"):
+        announcer = find_announcer(members, case["announcer"])
+        if announcer is None:
+            # Running it anyway would put the unplaceable-sender question to the
+            # model and score the answer against the placed-sender expectation.
+            return _result(case, "-", "no-announcer", False, "announcer is not a member")
     kind, outcome = "-", ""
     if not is_trade_candidate(case["text"]):
         outcome = NOT_A_CANDIDATE
     else:
         try:
             extracted, usage = extract_trade(
-                ai, case["text"], season, None, [_member_line(m) for m in members]
+                ai,
+                case["text"],
+                season,
+                None,
+                [_member_line(m) for m in members],
+                announcer.display_name if announcer else None,
             )
         except Exception as exc:  # noqa: BLE001 - any model failure is reported the same way
             return _result(case, "-", f"error:{exc.__class__.__name__}", False, "model call failed")
@@ -187,6 +218,7 @@ def run_case(case: dict, ai, members, players, rosters: RosterIndex, season: int
                     case["text"][:2000],
                     PROMPT_VERSION,
                     usage.model,
+                    announcer=announcer,
                 )
                 validate(proposal)
                 outcome = "created"

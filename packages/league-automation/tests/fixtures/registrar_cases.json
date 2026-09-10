@@ -651,11 +651,60 @@
     {
       "id": 73,
       "category": "unclear",
-      "text": "\ud83d\udea8 Trade Alert \ud83d\udea8 Sparkplug sends Bijan Robinson to the Chairman for 200 FAAB",
+      "text": "🚨 Trade Alert 🚨 Sparkplug sends Bijan Robinson to the Chairman for 200 FAAB",
       "expected_kind": "unclear",
       "expected_status": "clarification",
       "prereq": null,
       "notes": "Nobody named is on the member list, but the trade is not placed in another league either -- Sparkplug and the Chairman read like nicknames nobody has registered. 2026.2 answers unclear here rather than not_a_trade, so the bot asks who is meant instead of silently dropping a real alert."
+    },
+    {
+      "id": 74,
+      "category": "happy",
+      "text": "🚨 Trade Alert 🚨\nI sent Ja'Marr Chase to mdurgin for 450 FAAB",
+      "expected_kind": "permanent",
+      "expected_status": "created",
+      "prereq": null,
+      "announcer": "kpbowe",
+      "notes": "A member announcing their own trade in the first person, which is how most alerts are actually written. The announcer is placed from the sender's hashed handle, so `I` names them and the trade has two parties."
+    },
+    {
+      "id": 75,
+      "category": "unclear",
+      "text": "🚨 Trade Alert 🚨\nI sent Ja'Marr Chase to mdurgin for 450 FAAB",
+      "expected_kind": "unclear",
+      "expected_status": "clarification",
+      "prereq": null,
+      "notes": "Case 74's text with nobody behind it: a sender whose handle was never loaded leaves `Announcer: unknown`, `I` names nobody, and one named party is not a trade. This is the pair that proves the announcer is what changed the answer, not the wording."
+    },
+    {
+      "id": 76,
+      "category": "sloppy",
+      "text": "🚨 Trade Alert 🚨\nmdurgin I'm sending you Ja'Marr Chase for 450 FAAB",
+      "expected_kind": "permanent",
+      "expected_status": "created",
+      "prereq": null,
+      "announcer": "kpbowe",
+      "notes": "Both persons in one line: `I` is the announcer and `you` is the one member the announcement names besides them, so the alert names two people after all."
+    },
+    {
+      "id": 77,
+      "category": "unclear",
+      "text": "🚨 Trade Alert 🚨\nI'm sending you Ja'Marr Chase for 450 FAAB",
+      "expected_kind": "unclear",
+      "expected_status": "clarification",
+      "prereq": null,
+      "announcer": "kpbowe",
+      "notes": "A known announcer is only ever one party. `you` names nobody here -- the alert names no other member for it to mean -- so the bot has to ask who the other side is rather than guess at whoever was being addressed in the chat."
+    },
+    {
+      "id": 78,
+      "category": "rescission",
+      "text": "🚨 Trade Alert 🚨\nI'm cancelling my trade with mdurgin",
+      "expected_kind": "rescission",
+      "expected_status": "clarification",
+      "prereq": null,
+      "announcer": "kpbowe",
+      "notes": "A rescission written in the first person: `I` and `my trade` name the announcer, so the two sides of the cancelled deal are known even though no T- code is given. With nothing on file to match, the registrar asks for the code -- which is also what a dry run sees, since an uncoded rescission carries no assets to validate."
     }
   ]
 }
