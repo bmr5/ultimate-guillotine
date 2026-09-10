@@ -875,8 +875,9 @@ the gulag pair and the two teams on the block with their odds, the roster proble
 worth fixing before the next kickoff, and the moves since the previous post. The
 agent's codename is `eod-summary` and the command is `ug summary eod`. Spec:
 `docs/superpowers/specs/2026-09-10-eod-summary-agent-design.md`. The odds are
-Monte Carlo estimates over Sleeper's projections and the footer says so on every
-post; nothing here is a ruling.
+Monte Carlo estimates over Sleeper's projections -- the footer reads `Monte Carlo
+projections as of <time> CST` and nothing else, by Ben's ruling -- and nothing
+here is a ruling.
 
 Ben asked for it on 2026-09-10 and was not available to answer questions, so the
 design section "Decisions Taken Without Ben" lists every call made in his absence

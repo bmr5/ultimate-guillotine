@@ -139,7 +139,8 @@ odds and a snapshot can be replayed exactly; `--seed` overrides it. Probabilitie
 four places and rounded to whole percentages only in the renderer, with `<1%` and `>99%` for the
 tails and `locked` when nobody has a player left.
 
-These are estimates, never rulings. The footer says so on every post.
+These are estimates, never rulings; the footer names them as Monte Carlo projections and the
+runbook and this spec carry the caveat, since Ben asked the post itself to carry no commentary.
 
 ## The Message
 
@@ -174,8 +175,9 @@ written over and checked against, and what the recap's facts hash covers. In ord
 6. **Moves since the last post** — adds, drops and trades executed since the previous post
    went out (a day back when there is none; never more than four days), at most six lines in
    the text, all of them in the file. The heading names the window: `MOVES SINCE FRI 8:15 AM`.
-7. **Footer** — `Odds from 10,000 sims on Sleeper projections · scores as of 11:50 PM CT ·
-   estimates, not rulings`, or in factual mode the reason no odds were posted.
+7. **Footer** — `Monte Carlo projections as of 9:20 AM CST` and nothing else (Ben's ruling,
+   2026-09-10: "no further commentary"); in factual mode `No Monte Carlo odds: <reason> · data
+   as of <time>`. The time is the newest input sync, written as CST all season as the rules do.
 
 Members are named by their public label (`coalesce(nickname, sleeper_display_name,
 display_name)`) exactly as the board does; the join key is never rendered. Every string comes

@@ -82,7 +82,7 @@ def test_a_fixture_run_prints_the_chat_text_writes_the_artifact_and_touches_noth
     assert "⚰️ ON THE BLOCK · bottom 2 enter the Week 7 gulag" in result.stdout
     assert "Full board attached" in result.stdout
     assert "📊 THE BOARD" not in result.stdout
-    assert "estimates, not rulings" in result.stdout
+    assert "Monte Carlo projections as of" in result.stdout
     artifact = tmp_path / "guillotine-daily-week-6-2026-10-11.html"
     assert lines[-1] == f"artifact: {artifact}"
     html = artifact.read_text()

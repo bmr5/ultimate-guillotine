@@ -286,11 +286,11 @@ def test_a_moves_window_nobody_recorded_is_called_recent() -> None:
 # -- footer and factual mode ---------------------------------------------
 
 
-def test_the_footer_names_the_sims_the_stamp_and_the_caveat() -> None:
+def test_the_footer_is_one_line_monte_carlo_projections_as_of() -> None:
+    """Ben (2026-09-10): "instead of 10k sims right just write Monte Carlo projections
+    as of X CST. no further commentary"."""
     text = render(_packet(_entry_week()), None, NOW)
-    assert text.splitlines()[-1] == (
-        "200 sims on Sleeper projections · scores as of 11:50 PM CT · estimates, not rulings"
-    )
+    assert text.splitlines()[-1] == "Monte Carlo projections as of 11:50 PM CST"
 
 
 def test_factual_mode_carries_no_percentage_and_says_why() -> None:
@@ -299,7 +299,9 @@ def test_factual_mode_carries_no_percentage_and_says_why() -> None:
     text = render(_packet(snapshot(teams), odds=False, reason="coverage 50% of remaining"
                                                                 " starters"), None, NOW)
     assert "%" not in text.replace("coverage 50%", "")
-    assert "No odds tonight: coverage 50% of remaining starters" in text.splitlines()[-1]
+    assert text.splitlines()[-1] == (
+        "No Monte Carlo odds: coverage 50% of remaining starters · data as of 11:50 PM CST"
+    )
     assert "⚰️ ON THE BLOCK · bottom 2 enter the Week 2 gulag" in text
     block = text.split("⚰️ ON THE BLOCK · bottom 2 enter the Week 2 gulag\n", 1)[1]
     assert block.splitlines()[0] == "Member04 · actual 45.0 · 1 left"
@@ -332,7 +334,7 @@ def test_the_facts_text_is_the_middle_sections_only() -> None:
     facts = facts_text(packet)
     assert facts.startswith("⚰️ ON THE BLOCK")
     assert "GUILLOTINE DAILY" not in facts
-    assert "estimates, not rulings" not in facts
+    assert "Monte Carlo" not in facts
     assert "📊 THE BOARD" in facts
 
 
@@ -353,5 +355,5 @@ def test_the_fixture_message_names_every_live_team_and_fits_a_phone() -> None:
 def test_the_time_is_written_in_central_time() -> None:
     noon_utc = datetime(2026, 9, 13, 17, 0, tzinfo=UTC)
     text = render(_packet(_entry_week()), None, noon_utc)
-    assert "scores as of 11:50 PM CT" in text  # the stamp is the scores' own, not now
+    assert "as of 11:50 PM CST" in text  # the stamp is the data's own, not now
     assert text.splitlines()[0].endswith("· Sunday")

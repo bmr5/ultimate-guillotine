@@ -61,7 +61,7 @@ def test_the_page_carries_every_section_and_every_live_team() -> None:
         assert heading in html
     assert "Week 6" in html
     assert "Member17" in html and "wk 5" in html
-    assert "estimates, not rulings" in html
+    assert "Monte Carlo projections as of" in html
 
 
 def test_model_and_member_text_is_escaped() -> None:
@@ -89,7 +89,7 @@ def test_factual_mode_shows_no_percentages_and_says_why() -> None:
     html = render_html(_packet(snapshot(teams), odds=False, reason="no schedule"), None, NOW)
     body = html.split("</style>", 1)[1]
     assert "%" not in body
-    assert "No odds tonight: no schedule" in body
+    assert "No Monte Carlo odds: no schedule" in body
 
 
 def test_the_outlook_page_shows_projections_not_zero_scores() -> None:
@@ -131,7 +131,8 @@ def test_the_short_text_is_the_header_the_gulag_the_block_the_sweating_and_the_f
     assert "📊 THE BOARD" not in text
     assert "🩹" not in text
     assert "moves since Sat 11:50 PM" in text
-    assert text.rstrip().endswith("estimates, not rulings")
+    assert text.rstrip().endswith(" CST")
+    assert "sims" not in text and "rulings" not in text
     assert len(text) < 1000
 
 

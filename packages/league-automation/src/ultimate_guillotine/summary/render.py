@@ -62,7 +62,8 @@ def plural(count: int, singular: str, plural_form: str) -> str:
 
 
 def clock(stamp: datetime) -> str:
-    return stamp.astimezone(LOCAL_TZ).strftime("%-I:%M %p") + " CT"
+    """``9:20 AM CST``: the league writes Central time as CST all season, as its rules do."""
+    return stamp.astimezone(LOCAL_TZ).strftime("%-I:%M %p") + " CST"
 
 
 def window_stamp(stamp: datetime) -> str:
@@ -246,25 +247,30 @@ class View:
                 notes.append((team.label, f"{starter.name} has no projection"))
         return notes
 
-    def footer_parts(self) -> list[str]:
+    def data_stamp(self) -> datetime:
+        """When the newest input was synced: the odds are as of this moment."""
         snap = self.snap
+        if snap.scores_synced_at is None:
+            return snap.data_synced_at
+        return max(snap.data_synced_at, snap.scores_synced_at)
+
+    def footer_parts(self) -> list[str]:
+        """Ben (2026-09-10): "just write Monte Carlo projections as of X CST. no further
+        commentary." Factual mode still has to say why there are no odds, and a team
+        with no score on file is a data warning, not commentary."""
+        stamp = clock(self.data_stamp())
         parts: list[str] = []
         if self.result is not None:
-            parts.append(f"{self.result.simulations:,} sims on Sleeper projections")
+            parts.append(f"Monte Carlo projections as of {stamp}")
         else:
-            parts.append(f"No odds tonight: {self.packet.no_odds_reason}")
-        parts.append(
-            f"scores as of {clock(snap.scores_synced_at)}"
-            if snap.scores_synced_at is not None
-            else "no scores on file"
-        )
+            parts.append(f"No Monte Carlo odds: {self.packet.no_odds_reason}")
+            parts.append(f"data as of {stamp}")
         missing = sum(1 for t in self.live if not t.has_score_row)
         if missing:
             parts.append(
                 f"{missing} {plural(missing, 'team', 'teams')} "
                 f"{plural(missing, 'has', 'have')} no score on file"
             )
-        parts.append("estimates, not rulings")
         return parts
 
     # -- one line of text ----------------------------------------------------
