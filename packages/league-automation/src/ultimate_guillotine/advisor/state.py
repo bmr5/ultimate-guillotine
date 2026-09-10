@@ -154,6 +154,11 @@ class AdvisorTeamState:
     coverage_pct: Decimal
     is_provisional: bool
     holdings: tuple[AdvisorHolding, ...]
+    #: The week the team went out, when the league recorded one. A
+    #: provisional elimination inferred from Sleeper may not carry a week,
+    #: so ``None`` on an eliminated team means the week is unrecorded rather
+    #: than that the team is still in -- read ``is_eliminated`` for that.
+    eliminated_week: int | None = None
 
     @property
     def projected_now(self) -> Decimal | None:
@@ -238,7 +243,7 @@ select t.id, t.member_id, m.display_name,
        coalesce(m.nickname, m.sleeper_display_name, m.display_name),
        t.team_name, t.sleeper_roster_id,
        s.faab_remaining, coalesce(s.is_eliminated, false),
-       s.elimination_source, s.synced_at
+       s.elimination_source, s.synced_at, s.eliminated_week
 from public.teams t
 join public.members m on m.id = t.member_id
 left join public.team_season_state s on s.team_id = t.id and s.season_id = t.season_id
@@ -439,6 +444,7 @@ class SnapshotRepository:
                     faab_remaining=int(row[6]),
                     is_eliminated=bool(row[7]),
                     elimination_source=row[8],
+                    eliminated_week=row[10],
                     week=week,
                     projected_points=MappingProxyType(projected) if projected else _NO_POINTS,
                     coverage_pct=current[1],
