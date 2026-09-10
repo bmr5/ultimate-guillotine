@@ -1,6 +1,7 @@
 from ultimate_guillotine.trades.format import (
     format_clarification,
     format_confirmation,
+    format_not_a_trade,
     format_rescinded,
     format_terms,
     format_updated,
@@ -209,3 +210,7 @@ def test_the_was_line_ignores_assets_that_are_not_amounts() -> None:
     )
     text = format_terms(current, previous.model_dump(mode="json"))
     assert "Was:" not in text
+
+
+def test_the_joke_answer_is_bens_line() -> None:
+    assert format_not_a_trade() == "Sorry kitten, this isn't a real trade."

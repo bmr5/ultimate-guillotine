@@ -217,3 +217,12 @@ def format_rescinded(code: str) -> str:
 
 def format_clarification(reason: str) -> str:
     return f"🚨 Trade not logged yet: {reason} Reply with a corrected 🚨 Trade alert 🚨."
+
+
+def format_not_a_trade() -> str:
+    """The answer to a message wearing the header that the model calls a joke.
+
+    Ben (2026-09-10): "if a joke is detected say something funny" -- this is his
+    line. The delivery service signs it like every other reply.
+    """
+    return "Sorry kitten, this isn't a real trade."

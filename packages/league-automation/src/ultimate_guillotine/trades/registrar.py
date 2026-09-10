@@ -41,6 +41,7 @@ from ultimate_guillotine.trades.fingerprint import message_fingerprint
 from ultimate_guillotine.trades.format import (
     format_clarification,
     format_confirmation,
+    format_not_a_trade,
     format_updated,
     party_labels,
 )
@@ -239,9 +240,13 @@ class TradeRegistrar:
         input_version = f"{PROMPT_VERSION}:{usage.model}"
 
         if extracted.kind == "not_a_trade":
-            # A joke in the chat is a normal outcome, not a failure: record the
-            # run so the candidate is auditable and say nothing.
-            self._finish(run_id, "succeeded", input_version=input_version)
+            # A joke in the chat is a normal outcome, not a failure. Ben
+            # (2026-09-10): say something funny back -- his line, signed like
+            # every other reply -- and record the run so the candidate is
+            # auditable.
+            content = format_not_a_trade()
+            self._deliver(run_id, content)
+            self._finish(run_id, "succeeded", content=content, input_version=input_version)
             return "not_a_trade"
 
         try:
@@ -261,7 +266,8 @@ class TradeRegistrar:
             if extracted.kind == "rescission":
                 # Ben (2026-09-10): nothing in the chat cancels a trade. A wrong
                 # log is a manual review (`ug trades rescind`), so a cancellation
-                # message is recorded like a joke and answered with nothing.
+                # message is recorded and answered with nothing (it is no joke,
+                # so it gets no joke line either).
                 self._finish(run_id, "succeeded", input_version=input_version)
                 return "not_a_trade"
             validate(proposal)

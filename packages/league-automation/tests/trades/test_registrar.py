@@ -378,14 +378,18 @@ def test_unclear_sends_clarification_and_logs_no_trade() -> None:
     assert runs.finished[0][1] == "succeeded"
 
 
-def test_not_a_trade_stays_silent() -> None:
+def test_a_joke_is_answered_with_the_kitten_line() -> None:
+    """Ben (2026-09-10): "if a joke is detected say something funny", signed
+    with the Daddy signature. The delivery service signs; the registrar sends
+    his line and logs nothing."""
     delivery, trades = FakeDelivery(), FakeTrades()
     joke = good_extraction().model_copy(update={"kind": "not_a_trade", "parties": [], "assets": []})
     reg, runs, _ = build(FakeAI(joke), trades=trades, delivery=delivery)
     assert (
         reg.handle(msg("🚨 Trade Alert 🚨 jk nobody is trading Member01 anything")) == "not_a_trade"
     )
-    assert delivery.sent == [] and trades.accepted == [] and runs.finished[0][1] == "succeeded"
+    assert delivery.sent == [("trade-registrar", "Sorry kitten, this isn't a real trade.")]
+    assert trades.accepted == [] and runs.finished[0][1] == "succeeded"
 
 
 def test_ai_unavailable_alerts_and_fails_run_without_sending() -> None:

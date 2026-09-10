@@ -25,7 +25,8 @@ runner calls `extract_trade` + `resolve_extracted` + `validate` directly, the sa
   | `revised` | `🚨 Trade <code> updated` |
   | `rescinded` | `🚨 Trade <code> rescinded` |
   | `clarification` | `🚨 Trade not logged yet:` |
-  | `duplicate`, `not_a_trade`, `dropped_upstream` | none |
+  | `duplicate`, `dropped_upstream` | none |
+  | `not_a_trade` | `Sorry kitten, this isn't a real trade.` (Ben, 2026-09-10; silence before that) |
 
 - **From** names the member the alert was sent by, when the case has one: the runner passes
   that member's Sleeper username to `extract_trade` as the `Announcer:` line, standing in for
@@ -174,16 +175,16 @@ Results land in `docs/testing/2026-09-09-trade-registrar-results.md`.
 
 | # | Input | Kind | Status | Reply | Prereq | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
-| 51 | `🚨 Trade Alert 🚨 I'm trading my sanity for a win this week 😂` | `not_a_trade` | `not_a_trade` | none | — | Joke wearing the header. Run recorded, nothing posted. |
-| 52 | `🚨 anyone want to trade for a RB? I have three good ones` | `not_a_trade` | `not_a_trade` | none | — | A question about trading, not an announcement. |
-| 53 | `did y'all see this one 🚨 Trade Alert 🚨 nickgrod sends Ja'Marr Chase to blandon for 450 FAAB — wild overpay` | `not_a_trade` | `not_a_trade` | none | — | Hardest case in the suite: quoting someone else's alert. If the model reads it as an announcement the semantic fingerprint should still make it a duplicate rather than a second trade, so a duplicate here is a soft failure and a created is a hard one. |
-| 54 | `🚨 whoever traded for Tyreek Hill sold their whole season 🚨` | `not_a_trade` | `not_a_trade` | none | — | Trash talk containing a trade word and a player name. |
+| 51 | `🚨 Trade Alert 🚨 I'm trading my sanity for a win this week 😂` | `not_a_trade` | `not_a_trade` | `Sorry kitten` | — | Joke wearing the header. Run recorded, nothing posted. |
+| 52 | `🚨 anyone want to trade for a RB? I have three good ones` | `not_a_trade` | `not_a_trade` | `Sorry kitten` | — | A question about trading, not an announcement. |
+| 53 | `did y'all see this one 🚨 Trade Alert 🚨 nickgrod sends Ja'Marr Chase to blandon for 450 FAAB — wild overpay` | `not_a_trade` | `not_a_trade` | `Sorry kitten` | — | Hardest case in the suite: quoting someone else's alert. If the model reads it as an announcement the semantic fingerprint should still make it a duplicate rather than a second trade, so a duplicate here is a soft failure and a created is a hard one. |
+| 54 | `🚨 whoever traded for Tyreek Hill sold their whole season 🚨` | `not_a_trade` | `not_a_trade` | `Sorry kitten` | — | Trash talk containing a trade word and a player name. |
 | 55 | `🚨 Trade T-2026-001 logged ⏎ blandon receives: Ja'Marr Chase ⏎ Week ? · Permanent ⏎ — 🍼 Daddy` | `not_a_trade` | `dropped_upstream` | none | — | The bot's own confirmation echoed back. The listener drops signed text before the trigger runs, so this must never reach extraction at all. |
 | 56 | `🚨 Trade Alert 🚨 Over in the dynasty league, Barnaby sends CMC to Quill for 300 FAAB` | `permanent` | `clarification` | `🚨 Trade not logged yet:` | — | Known false positive: an alert about another league. Neither name is a member, so the bot asks the chat a pointless question instead of staying quiet. |
 | 58 | `🚨🚨🚨 FAAB 🚨🚨🚨` | `not_a_trade` | `dropped_upstream` | none | — | Sirens with no word *trade* beside them: the listener drops it before any model call (Ben, 2026-09-10). |
-| 87 | `that trade was highway robbery, he gave up a whole rental for nothing` | `not_a_trade` | `not_a_trade` | none | — | Trash talk that clears the wider detector on `for` and `rental` and has to be stopped by the model. The detector was widened on purpose to let messages like this through rather than risk holding a real alert out. |
-| 88 | `anyone trading a WR? I'll pay 200 FAAB for the right one` | `not_a_trade` | `not_a_trade` | none | — | An offer, not an announcement: nobody is on the other side and nothing has happened. Clears the detector on `for` and `FAAB`. |
-| 89 | `thanks for the draft advice last night, saved my whole season` | `not_a_trade` | `not_a_trade` | none | — | A `for` sentence that is not a trade. `for` plus `draft` is exactly the pair the wider rule accepts, which makes this the cheapest false positive the detector can produce: one model call, one silent run row, nothing in the chat. |
+| 87 | `that trade was highway robbery, he gave up a whole rental for nothing` | `not_a_trade` | `not_a_trade` | `Sorry kitten` | — | Trash talk that clears the wider detector on `for` and `rental` and has to be stopped by the model. The detector was widened on purpose to let messages like this through rather than risk holding a real alert out. |
+| 88 | `anyone trading a WR? I'll pay 200 FAAB for the right one` | `not_a_trade` | `not_a_trade` | `Sorry kitten` | — | An offer, not an announcement: nobody is on the other side and nothing has happened. Clears the detector on `for` and `FAAB`. |
+| 89 | `thanks for the draft advice last night, saved my whole season` | `not_a_trade` | `not_a_trade` | `Sorry kitten` | — | A `for` sentence that is not a trade. `for` plus `draft` is exactly the pair the wider rule accepts, which makes this the cheapest false positive the detector can produce: one model call, one silent run row, nothing in the chat. |
 
 ## Unclear (11)
 
