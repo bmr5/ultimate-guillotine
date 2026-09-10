@@ -144,8 +144,8 @@ def test_the_transactions_job_is_pinned_and_the_draft_has_none() -> None:
 
 
 def test_the_summary_posts_on_the_mornings_ben_named() -> None:
-    """Ben (2026-09-10): a break on Tuesdays; 8:15 AM Wednesday, Friday, Sunday and
-    Monday; 11:15 AM Thursday and Saturday, after each waiver round -- the Saturday
+    """Ben (2026-09-10): a break on Tuesdays and Fridays; 8:15 AM Wednesday, Sunday
+    and Monday; 11:15 AM Thursday and Saturday, after each waiver round -- the Saturday
     round closes 11 AM CST by the rules. Two rows, one agent, like the projections
     jobs: the per-agent run key and the health check both see one job. The gap
     budget clears the Monday-to-Wednesday gap."""
@@ -153,6 +153,6 @@ def test_the_summary_posts_on_the_mornings_ben_named() -> None:
     assert set(rows) == {"guillotine-eod-summary", "guillotine-eod-summary-waivers"}
     assert {j["script"] for j in rows.values()} == {"guillotine_eod_summary.sh"}
     assert {j["deliver"] for j in rows.values()} == {"discord:#guillotine-ops"}
-    assert rows["guillotine-eod-summary"]["schedule"] == "15 8 * * 0,1,3,5"
+    assert rows["guillotine-eod-summary"]["schedule"] == "15 8 * * 0,1,3"
     assert rows["guillotine-eod-summary-waivers"]["schedule"] == "15 11 * * 4,6"
     assert all(int(j["max_gap_minutes"]) > 48 * 60 for j in rows.values())

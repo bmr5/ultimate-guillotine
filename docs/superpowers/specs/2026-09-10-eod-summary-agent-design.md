@@ -24,7 +24,7 @@ game-window Game Pulse post is a second schedule of the same command, not a seco
 ## Trigger and Cadence
 
 Two script-only Hermes cron rows under one agent, in the Mac mini's local time (Central):
-`guillotine-eod-summary` at `15 8 * * 0,1,3,5` (8:15 AM Wednesday, Friday, Sunday, Monday) and
+`guillotine-eod-summary` at `15 8 * * 0,1,3` (8:15 AM Wednesday, Sunday, Monday) and
 `guillotine-eod-summary-waivers` at `15 11 * * 4,6` (11:15 AM Thursday and Saturday, after each
 waiver round). Ben's cadence (2026-09-10, after the first dry run): "I would take a break on this on Tuesdays. Wed
 it could be useful before auctions close. Thursday auctions clear it could be useful after
@@ -38,7 +38,8 @@ moved Thursday to 11:15 AM, putting waivers clearing at "11 CST", and added Satu
 after its round. Sleeper's league setting is `daily_waivers_hour: 8` UTC -- 3 AM Central in
 daylight time, 2 AM CST in winter, which is what the rules document says for Thursday -- so the
 Thursday clear is earlier than his 11; the 11 AM CST close is the Saturday round. Both are his
-call and one line to move. The Tuesday break is deliberate; "today" is therefore the wrong moves
+call and one line to move. He then dropped Friday as well. The Tuesday and Friday breaks are
+deliberate; "today" is therefore the wrong moves
 window, which is why moves run since the previous post.
 
 The league sees it as **the Guillotine Daily** -- the header and the file are named so. The

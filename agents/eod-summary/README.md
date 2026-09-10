@@ -5,7 +5,7 @@ Design: `docs/superpowers/specs/2026-09-10-eod-summary-agent-design.md`. Runbook
 
 ## Purpose and owner
 
-One signed post to the league chat on six mornings a week: every live team's
+One signed post to the league chat on five mornings a week: every live team's
 score and projected finish, the two teams on the block (or the gulag pair), a Monte Carlo
 estimate of each team's odds of the week's adverse event, the roster problems worth fixing,
 and the moves since the previous post. Owner: the commissioner, through `#guillotine-drafts`
@@ -43,9 +43,9 @@ message and nothing else.
 
 ## Schedule and failure behaviour
 
-`guillotine-eod-summary` at `15 8 * * 0,1,3,5` and `guillotine-eod-summary-waivers` at
-`15 11 * * 4,6`, Mac mini local time (8:15 AM Wednesday, Friday, Sunday and Monday; 11:15 AM
-Thursday and Saturday after each waiver round -- Ben's cadence), both agent `eod-summary`, one
+`guillotine-eod-summary` at `15 8 * * 0,1,3` and `guillotine-eod-summary-waivers` at
+`15 11 * * 4,6`, Mac mini local time (8:15 AM Wednesday, Sunday and Monday; 11:15 AM Thursday
+and Saturday after each waiver round; Tuesday and Friday off -- Ben's cadence), both agent `eod-summary`, one
 status line to `#guillotine-ops`, gap budget 3000 minutes. The league sees it as the Guillotine Daily. Off-season and post-final weeks are a
 no-op. A schedule outage or projection coverage under 95 percent of the starters still to
 play posts a factual message with no percentages and says why. A night already posted is
