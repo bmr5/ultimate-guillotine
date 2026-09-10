@@ -705,7 +705,10 @@ export const TeamCard = memo(function TeamCard({
           */}
           <CollapsibleContent id={panelId} forceMount hidden={!isOpen}>
             {isOpen ? (
-              <CardContent className="border-t pt-4">
+              /* `px-3 sm:px-4` overrides CardContent's own `px-4` so the roster lines up with
+                 the summary row above it on a phone; `pb-4` mirrors the `pt-4` under the divider,
+                 without which the last player sits on the card's bottom border. */
+              <CardContent className="border-t px-3 pt-4 pb-4 sm:px-4">
                 {team.isRosterFrozen ? (
                   <p className="mb-2 text-xs text-muted-foreground">
                     {FROZEN_ROSTER_LABEL}
