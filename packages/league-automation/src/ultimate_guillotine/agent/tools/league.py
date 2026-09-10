@@ -2,11 +2,12 @@
 
 Every function takes a :class:`~ultimate_guillotine.agent.tools.source.LeagueSource`
 and returns a JSON-able dict. Numbers are floats (two decimals in, two out),
-names are public labels, and every result carries ``as_of``, ``newest_sync``
-and ``age_minutes`` so the agent can say how fresh its answer is. A name that does
-not resolve, or a league that cannot be read, is an ``error`` key rather than
-an exception: the model reads the reason and asks, rather than the tool call
-failing with nothing to relay.
+names are public labels, and every result read off the snapshot carries
+``as_of``, ``newest_sync`` and ``age_minutes`` so the agent can say how fresh
+its answer is; ``rules`` and ``history`` read a file and finished seasons, and
+carry no stamp. A name that does not resolve, or a league that cannot be read,
+is an ``error`` key rather than an exception: the model reads the reason and
+asks, rather than the tool call failing with nothing to relay.
 """
 
 from collections.abc import Callable, Sequence
@@ -15,11 +16,23 @@ from decimal import Decimal
 from functools import wraps
 from typing import Any
 
+from ultimate_guillotine.advisor.pricing import (
+    COMPARABLE_KINDS,
+    comparables_for,
+    median_faab,
+    price_points,
+)
 from ultimate_guillotine.advisor.state import (
     AdvisorHolding,
     AdvisorTeamState,
     LeagueSnapshot,
     SnapshotUnavailable,
+)
+from ultimate_guillotine.agent.tools.math import (
+    holdings_by_id,
+    lineup_delta,
+    replacement_levels,
+    startable,
 )
 from ultimate_guillotine.agent.tools.names import (
     Ambiguous,
@@ -228,3 +241,270 @@ def projections(
         ],
         **_stamp(snapshot, now),
     }
+
+
+def _labels(snapshot: LeagueSnapshot) -> dict[int, str]:
+    return {t.member_id: t.member_label for t in snapshot.teams}
+
+
+def _positions(snapshot: LeagueSnapshot, source: LeagueSource) -> dict[str, str | None]:
+    """Sleeper id to position for every player the league knows of."""
+    return {
+        p.sleeper_player_id: p.position
+        for p in player_pool(snapshot, source.players()).values()
+    }
+
+
+def _asset(asset: dict, labels: dict[int, str], positions: dict[str, str | None]) -> dict:
+    player_id = asset.get("player_id")
+    return {
+        "kind": asset.get("kind"),
+        "player": asset.get("player_name"),
+        "player_id": player_id,
+        "position": positions.get(player_id) if player_id else None,
+        "amount": asset.get("amount"),
+        "unit": asset.get("unit"),
+        "from": labels.get(asset.get("from_member_id"), "former member"),
+        "to": labels.get(asset.get("to_member_id"), "former member"),
+    }
+
+
+@tool
+def trades(
+    source: LeagueSource,
+    season: int | None = None,
+    member: str | None = None,
+    limit: int = 25,
+    *,
+    now: datetime | None = None,
+) -> dict:
+    snapshot = source.snapshot()
+    labels = _labels(snapshot)
+    positions = _positions(snapshot, source)
+    wanted = None
+    if member:
+        wanted = resolve_member(member, snapshot, source.members()).member_id
+    rendered = []
+    for row in source.trades([season or snapshot.season]):
+        terms = row.get("terms") or {}
+        assets = terms.get("assets") or []
+        parties = {a.get("from_member_id") for a in assets}
+        parties |= {a.get("to_member_id") for a in assets}
+        if wanted is not None and wanted not in parties:
+            continue
+        rendered.append({
+            "code": row["trade_code"],
+            "season": row["season"],
+            "kind": terms.get("kind") or "permanent",
+            "effective_week": terms.get("effective_week"),
+            "parties": sorted(labels.get(p, "former member") for p in parties if p is not None),
+            "assets": [_asset(a, labels, positions) for a in assets],
+            "special_terms": list(terms.get("special_terms") or []),
+        })
+    return {
+        "season": season or snapshot.season,
+        "trades": rendered[:limit],
+        **_stamp(snapshot, now),
+    }
+
+
+@tool
+def price_history(
+    source: LeagueSource, position: str, kind: str = "permanent", *, now: datetime | None = None
+) -> dict:
+    snapshot = source.snapshot()
+    kinds = ("permanent", "rental", "payment") if kind == "all" else (kind,)
+    if kinds == ("permanent",):
+        kinds = COMPARABLE_KINDS
+    rows = source.trades([snapshot.season, snapshot.season - 1])
+    points = price_points(rows, _positions(snapshot, source))
+    wanted = position.upper()
+    return {
+        "position": wanted,
+        "kind": kind,
+        "median_faab": median_faab(points, wanted, kinds=kinds),
+        "comparables": [
+            {
+                "code": p.trade_code,
+                "season": p.season,
+                "kind": p.kind,
+                "player": p.player_name,
+                "faab": p.faab,
+                "players_back": p.players_back,
+            }
+            for p in comparables_for(points, wanted, limit=5, kinds=kinds)
+        ],
+        **_stamp(snapshot, now),
+    }
+
+
+@tool
+def trade_math(
+    source: LeagueSource,
+    legs: Sequence[dict],
+    weeks_ahead: int = 0,
+    *,
+    now: datetime | None = None,
+) -> dict:
+    snapshot = source.snapshot(horizon_weeks=_horizon(weeks_ahead))
+    refs = source.members()
+    players = source.players()
+    weeks = list(snapshot.weeks)
+    holdings = holdings_by_id(snapshot)
+    flags: list[str] = []
+    sides: dict[int, dict[str, Any]] = {}
+
+    def side(team: AdvisorTeamState) -> dict[str, Any]:
+        if team.member_id not in sides:
+            if team.is_eliminated:
+                flags.append(f"{team.member_label} is eliminated and cannot trade")
+            sides[team.member_id] = {
+                "team": team, "incoming": [], "outgoing": [], "faab": team.faab_remaining,
+                "receives": [], "sends": [],
+            }
+        return sides[team.member_id]
+
+    for leg in legs:
+        sender = resolve_member(str(leg.get("from", "")), snapshot, refs)
+        receiver = resolve_member(str(leg.get("to", "")), snapshot, refs)
+        giving, getting = side(sender), side(receiver)
+        kind = leg.get("kind")
+        if kind == "player":
+            info = resolve_player(str(leg.get("player", "")), snapshot, players)
+            held = holdings.get(info.sleeper_player_id)
+            if held is None or held[0].member_id != sender.member_id:
+                flags.append(f"{info.full_name} is not on {sender.member_label}'s roster")
+                continue
+            giving["outgoing"].append(held[1])
+            getting["incoming"].append(held[1])
+            giving["sends"].append(info.full_name)
+            getting["receives"].append(info.full_name)
+        elif kind in ("faab", "draft_dollars"):
+            amount = int(leg.get("amount") or 0)
+            faab = amount * 5 if kind == "draft_dollars" else amount
+            if faab > sender.faab_remaining:
+                flags.append(
+                    f"{faab} FAAB is over {sender.member_label}'s budget of "
+                    f"{sender.faab_remaining}"
+                )
+            giving["faab"] -= faab
+            getting["faab"] += faab
+            giving["sends"].append(f"{faab} FAAB")
+            getting["receives"].append(f"{faab} FAAB")
+        else:
+            giving["sends"].append(str(leg.get("text") or kind))
+            getting["receives"].append(str(leg.get("text") or kind))
+
+    replacement = replacement_levels(snapshot)
+    margins = {
+        h.player_name: _points(h.projected_now - replacement[h.position])
+        for s in sides.values() for h in s["incoming"]
+        if h.position in replacement and h.projected_now is not None
+    }
+    return {
+        "weeks": weeks,
+        "projections_complete": snapshot.coverage_ok(),
+        "flags": flags,
+        "sides": {
+            s["team"].member_label: {
+                "receives": s["receives"],
+                "sends": s["sends"],
+                "faab_after": s["faab"],
+                "lineup_delta": _points(
+                    lineup_delta(startable(s["team"]), s["incoming"], s["outgoing"], weeks)
+                ),
+            }
+            for s in sides.values()
+        },
+        "points_over_replacement": margins,
+        "note": (
+            "lineup_delta is the change to that side's best legal lineup, summed over weeks;"
+            " null means a projection was missing. When projections_complete is false the"
+            " league's totals are below the coverage gate and the delta is provisional."
+        ),
+        **_stamp(snapshot, now),
+    }
+
+
+@tool
+def rules(source: LeagueSource, topic: str | None = None) -> dict:
+    text = source.rules()
+    if not topic:
+        return {"rules": text}
+    wanted = topic.casefold()
+    sections = text.split("\n## ")
+    kept = [s for s in sections[1:] if wanted in s.casefold()]
+    return {"rules": "\n## ".join(["", *kept]).strip() if kept else text, "topic": topic}
+
+
+@tool
+def history(source: LeagueSource, season: int | None = None) -> dict:
+    results = [r for r in source.season_results() if season is None or r.season == season]
+    return {
+        "seasons": [
+            {
+                "season": r.season,
+                "champion": r.champion,
+                "co_champion": r.co_champion,
+                "runner_up": r.runner_up,
+                "third": r.third,
+                "team_count": r.team_count,
+                "eliminations": r.eliminations,
+                "catalogued_trades": source.catalog(r.season) if season is not None else [],
+            }
+            for r in results
+        ],
+    }
+
+
+@tool
+def survival(
+    source: LeagueSource, week: int | None = None, *, now: datetime | None = None
+) -> dict:
+    snapshot = source.snapshot()
+    wanted = week or snapshot.week
+    return {
+        "week": wanted,
+        "scores": [
+            {"member": s.member_label, "team_name": s.team_name, "points": _points(s.points)}
+            for s in source.week_scores(wanted)
+        ],
+        "eliminated": [
+            {"member": t.member_label, "week": t.eliminated_week, "source": t.elimination_source}
+            for t in snapshot.teams if t.is_eliminated
+        ],
+        "alive": sum(1 for t in snapshot.teams if not t.is_eliminated),
+        **_stamp(snapshot, now),
+    }
+
+
+@tool
+def transactions(
+    source: LeagueSource, week: int | None = None, *, now: datetime | None = None
+) -> dict:
+    snapshot = source.snapshot()
+    wanted = week or snapshot.week
+    by_roster = {t.sleeper_roster_id: t.member_label for t in snapshot.teams}
+    names = {
+        p.sleeper_player_id: p.full_name
+        for p in player_pool(snapshot, source.players()).values()
+    }
+    rendered = []
+    for raw in source.transactions(wanted):
+        moves: dict[str, dict[str, list[str]]] = {}
+        for field in ("adds", "drops"):
+            for player_id, roster_id in (raw.get(field) or {}).items():
+                member = by_roster.get(roster_id, f"roster {roster_id}")
+                moves.setdefault(member, {"adds": [], "drops": []})[field].append(
+                    names.get(player_id, player_id)
+                )
+        created = raw.get("created")
+        rendered.append({
+            "type": raw.get("type"),
+            "status": raw.get("status"),
+            "week": raw.get("leg") or wanted,
+            "at": datetime.fromtimestamp(created / 1000, tz=UTC).isoformat() if created else None,
+            "moves": [{"member": m, **v} for m, v in moves.items()],
+            "waiver_bid": (raw.get("settings") or {}).get("waiver_bid"),
+        })
+    return {"week": wanted, "transactions": rendered, **_stamp(snapshot, now)}
