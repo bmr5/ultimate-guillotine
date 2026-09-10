@@ -13,10 +13,11 @@ import httpx
 import psycopg
 import uvicorn
 
-from ultimate_guillotine.advisor.pricing import PriceRepository
-from ultimate_guillotine.advisor.prompt import advisor_client
-from ultimate_guillotine.advisor.skill import TradeAdvisor, advisor_trigger
-from ultimate_guillotine.advisor.state import SnapshotRepository
+from ultimate_guillotine.agent.records import AgentAnswerRepository, AgentSessionRepository
+from ultimate_guillotine.agent.session import HermesAgentClient
+from ultimate_guillotine.agent.tools.source import DatabaseSource
+from ultimate_guillotine.agent.trigger import FollowUpResolver, league_agent_trigger
+from ultimate_guillotine.agent.worker import AgentWorker
 from ultimate_guillotine.ai.hermes import HermesStructuredClient
 from ultimate_guillotine.config import DeliveryMode, Settings, load_settings
 from ultimate_guillotine.core.hermes_cli import find_hermes_binary
@@ -152,68 +153,122 @@ def trade_chat_guids(
     return frozenset({delivery, *listen_guids})
 
 
-def advisor_chat_guid(settings: Settings, test_target) -> str | None:
-    """The one chat the Advisor answers in: the self-test chat, and only that.
+def agent_chat_guid(settings: Settings, test_target) -> str | None:
+    """The one chat the League Agent answers in: the self-test chat, and only that.
 
-    The chat comes from the **registered** test delivery target rather than from
-    `settings.test_chat_guid`, so the Advisor answers in exactly the chat the
-    listener already trusts: `build_processor` builds its allowlist from the same
-    rows, and a `TEST_CHAT_GUID` in the environment that no `private
-    .delivery_targets` row backs would otherwise name a chat every webhook from
-    it is refused in — a skill registered against a chat it can never hear from.
-    No registered target means no chat, and the Advisor does not run.
-
-    The spec keeps the Advisor in the self-test chat until Ben promotes it, and
-    `private.delivery_targets` has one row per mode with no per-skill column --
-    so promotion is this function returning the production target's chat, a
-    deliberate reviewed change, and never a database row somebody adds by
-    accident.
+    Read off the **registered** test delivery target, not `settings.test_chat_guid`,
+    so the agent answers in exactly the chat the listener already trusts. Promotion
+    to the league chat is this function returning the production target's chat --
+    a reviewed code change, never a row somebody adds.
     """
     if settings.delivery_mode is DeliveryMode.TEST and test_target is not None:
         return test_target.chat_guid
     return None
 
 
-def _register_trade_advisor(
-    settings: Settings, conn, delivery, notifier, registry, chat_guid: str | None
+def build_agent_worker(
+    settings: Settings,
+    client,
+    notifier,
+    chat_guid: str,
+    *,
+    reconcile: bool,
+) -> AgentWorker:
+    """The worker on its own connection, its own delivery service, started and settled.
+
+    Everything the worker touches lives on `worker_conn`: the snapshot reads, the
+    session and answer records, the outbound reservations. The listener's own
+    connection is never handed to it, so a timer-thread post and a webhook can
+    never share a transaction.
+
+    ``chat_guid`` is the factory's contract -- the chat the trigger answers in --
+    and nothing the worker needs: it replies to whatever chat each question came
+    from. ``reconcile`` settles the runs a restart orphaned, and only the live
+    listener may ask for it: `ug ingest gap-fill` builds this same processor
+    while the listener is up, and a gap-fill that reconciled would mark the
+    listener's in-flight run failed.
+    """
+    worker_conn = connect(settings)
+    delivery = DeliveryService(
+        settings,
+        client,
+        TargetRepository(worker_conn),
+        CommittingRepo(OutboundRepository(worker_conn), worker_conn),
+        notifier,
+        commit=worker_conn.commit,
+    )
+    worker = AgentWorker(
+        client=HermesAgentClient(
+            settings.hermes_league_profile_home, model=settings.hermes_model
+        ),
+        source=DatabaseSource(
+            worker_conn, SleeperClient(httpx.Client()), settings.sleeper_league_id
+        ),
+        delivery=delivery,
+        notifier=notifier,
+        runs=CommittingRepo(RunRepository(worker_conn), worker_conn),
+        sessions=CommittingRepo(AgentSessionRepository(worker_conn), worker_conn),
+        answers=CommittingRepo(AgentAnswerRepository(worker_conn), worker_conn),
+    )
+    if reconcile:
+        worker.reconcile_startup()
+    worker.start()
+    return worker
+
+
+def _register_league_agent(
+    settings: Settings,
+    conn,
+    client,
+    delivery,
+    notifier,
+    registry,
+    chat_guid: str | None,
+    worker_factory: Callable[[str], AgentWorker] | None = None,
+    reconcile: bool = False,
 ) -> None:
-    """Register the Trade Advisor, or say once why it is not running.
+    """Register the League Agent, or say once why it is not running.
 
     Not being cleared for this delivery mode -- or having no registered
     self-test target to answer in -- is the expected state of every production
-    start rather than a fault, so it is one log line and not an ops note: an ops
-    note posted on every restart is one nobody reads. A missing Hermes CLI *is*
-    a fault: it is a machine somebody has to fix, so it is announced once here
-    rather than by failing each question in turn.
+    start rather than a fault, so it is one log line and not an ops note. A
+    missing Hermes CLI *is* a fault somebody has to fix, so it is announced once
+    here rather than by failing each question in turn.
 
-    The repositories share the listener's connection, and only the run
-    repository is wrapped: the Advisor commits after each step itself, so a
-    reservation is durable before the model is called and a redelivered webhook
-    cannot start a second answer.
+    The listener's half shares the listener's connection, and only the run
+    repository is wrapped: the reservation is committed before the job is
+    queued, so a redelivered webhook cannot start a second answer. The worker
+    is built by ``worker_factory`` -- by default `build_agent_worker`, on a
+    connection of its own -- and a test hands in a stand-in so nothing here
+    connects or starts a thread.
     """
     if chat_guid is None:
         log.info(
-            "trade advisor disabled: registered self-test chat only, mode is %s",
+            "league agent disabled: registered self-test chat only, mode is %s",
             settings.delivery_mode,
         )
         return
     if find_hermes_binary() is None:
-        log.warning("trade advisor disabled: hermes CLI not found")
-        notifier.ops("Trade Advisor disabled: hermes CLI not found")
+        log.warning("league agent disabled: hermes CLI not found")
+        notifier.ops("League Agent disabled: hermes CLI not found")
         return
-    advisor = TradeAdvisor(
-        settings,
-        conn,
-        advisor_client(settings.hermes_profile_home, model=settings.hermes_model),
-        delivery,
-        notifier,
-        MemberContactRepository(conn),
-        MemberAliasRepository(conn),
-        SnapshotRepository(conn),
-        PriceRepository(conn),
-        CommittingRepo(RunRepository(conn), conn),
+    factory = worker_factory or (
+        lambda guid: build_agent_worker(settings, client, notifier, guid, reconcile=reconcile)
     )
-    registry.register(advisor_trigger(advisor, chat_guid))
+    worker = factory(chat_guid)
+    resolver = FollowUpResolver(
+        OutboundRepository(conn), RunRepository(conn), AgentSessionRepository(conn)
+    )
+    registry.register(
+        league_agent_trigger(
+            worker=worker,
+            contacts=MemberContactRepository(conn),
+            resolver=resolver,
+            runs=CommittingRepo(RunRepository(conn), conn),
+            delivery=delivery,
+            chat_guid=chat_guid,
+        )
+    )
 
 
 def _register_trade_registrar(
@@ -300,7 +355,14 @@ def _register_trade_video(conn, delivery, registry, chat_guids: frozenset[str]) 
 
 
 def build_processor(
-    settings: Settings, conn, client, delivery, notifier
+    settings: Settings,
+    conn,
+    client,
+    delivery,
+    notifier,
+    *,
+    agent_worker_factory: Callable[[str], AgentWorker] | None = None,
+    reconcile_agent_runs: bool = False,
 ) -> tuple[InboundProcessor, set[str]]:
     """Build the trigger registry and inbound processor shared by the live listener
     and `ug ingest gap-fill`.
@@ -314,6 +376,12 @@ def build_processor(
 
     Receipts and source messages are recorded through a `CommittingRepo`, so each
     processed message commits on its own.
+
+    ``agent_worker_factory`` builds the League Agent's worker from the chat it
+    answers in; the default opens a connection and starts a thread, and a test
+    passes a stand-in. ``reconcile_agent_runs`` is `main()`'s alone: the live
+    listener settles the runs its last restart orphaned, and a gap-fill, which
+    runs beside the live listener, must never fail that listener's in-flight run.
     """
     targets = TargetRepository(conn)
     test_target = targets.get(DeliveryMode.TEST)
@@ -333,13 +401,16 @@ def build_processor(
         trade_chat_guids(settings, production_target, listen_guids),
         listen_guids,
     )
-    _register_trade_advisor(
+    _register_league_agent(
         settings,
         conn,
+        client,
         delivery,
         notifier,
         registry,
-        advisor_chat_guid(settings, test_target),
+        agent_chat_guid(settings, test_target),
+        agent_worker_factory,
+        reconcile_agent_runs,
     )
     # Requests are heard wherever alerts are, and in the self-test chat in every mode:
     # in production a request there is answered there (`DeliveryService.reply_to`), so
@@ -379,7 +450,9 @@ def main() -> None:
         notifier,
         commit=conn.commit,
     )
-    processor, _allowed = build_processor(settings, conn, client, delivery, notifier)
+    processor, _allowed = build_processor(
+        settings, conn, client, delivery, notifier, reconcile_agent_runs=True
+    )
     heartbeats = CommittingRepo(HeartbeatRepository(conn), conn)
     start_heartbeat_thread(settings)
 
