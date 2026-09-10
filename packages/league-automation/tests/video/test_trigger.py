@@ -236,10 +236,8 @@ def test_an_alerts_wording_picks_the_trade_by_the_names_in_it() -> None:
     )
     assert match_trade(alert, [OTHER, RENTAL], MEMBERS)["trade_code"] == "T-2026-002"
     assert match_trade("Trade alert 🚨 a rental to Charlie", [OTHER, RENTAL], MEMBERS) is None
-    assert (
-        match_trade("Josh Jacobs to Ben R for Rhamondre from Derek", [OTHER, RENTAL], MEMBERS)
-        is None
-    )
+    # Two names from each trade: a tie, so no guess.
+    assert match_trade("Derek and Charlie and Ryland and Ben R", [OTHER, RENTAL], MEMBERS) is None
     assert match_trade("nothing here", [], MEMBERS) is None
 
 
