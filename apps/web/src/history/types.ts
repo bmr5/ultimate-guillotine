@@ -36,6 +36,16 @@ export interface CatalogTrade {
   assets: TradeAsset[];
   faabTotal: number | null;
   confidence: Confidence;
+  /**
+   * What the league said when the trade was made, or `null` when there is nothing to quote.
+   *
+   * The one piece of league chat these pages carry, by Ben's ruling of 2026-09-10: the tiles
+   * were unreadable as a taxonomy alone. A catalog row's comes from the classification file's
+   * `source_texts`, joined a message per paragraph; a registered row's is the excerpt the
+   * Registrar quoted when it recorded the deal. `null` renders as nothing — never as an empty
+   * quote block, which would say the league said nothing rather than that nothing was kept.
+   */
+  announcement: string | null;
   /** The trade code for a registered row, the literal `catalog` for a catalog row. */
   sourceLabel: string;
   registered: boolean;

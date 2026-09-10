@@ -26,6 +26,7 @@ const TRADE: CatalogTrade = {
     { kind: "condition", label: "rental" },
   ],
   faabTotal: 12,
+  announcement: null,
   confidence: "low",
   sourceLabel: "catalog",
   registered: false,

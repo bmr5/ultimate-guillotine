@@ -42,6 +42,7 @@ function catalogRow(
     ],
     faab_total: null,
     confidence: "high",
+    announcement: null,
     unresolved_parties: 0,
     loaded_at: loadedAt,
   };
@@ -58,6 +59,7 @@ const REGISTERED = {
 
 const REVISION = {
   id: 50,
+  announcement: null,
   trade_id: 5,
   effective_week: 2,
   kind: "trade",

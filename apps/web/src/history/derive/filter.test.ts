@@ -24,6 +24,7 @@ const TRADE: CatalogTrade = {
     },
   ],
   faabTotal: 12,
+  announcement: null,
   confidence: "high",
   sourceLabel: "catalog",
   registered: false,

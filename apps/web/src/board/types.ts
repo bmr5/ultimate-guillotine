@@ -198,6 +198,7 @@ export interface Database {
         faab_total: number | null;
         confidence: "high" | "medium" | "low";
         source: "catalog" | "registered";
+        announcement: string | null;
         unresolved_parties: number;
         loaded_at: string;
       }>;

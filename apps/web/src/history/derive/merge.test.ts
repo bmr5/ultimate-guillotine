@@ -26,6 +26,7 @@ const CATALOG_2024 = {
   assets: [{ kind: "faab", amount: 5, from_party: 0, to_party: 1 }],
   faab_total: 5,
   confidence: "high" as const,
+  announcement: "SENTINEL_CATALOG_ANNOUNCEMENT",
   unresolved_parties: 0,
   loaded_at: "2026-09-09T12:00:00Z",
 };
@@ -48,6 +49,9 @@ const REVISION = {
   trade_id: 5,
   effective_week: 4,
   kind: "rental",
+  // The one field of the terms document that is meant to reach the page, and its own sentinel
+  // says so: `announcement` must be found, the two below must not.
+  announcement: "SENTINEL_EVIDENCE_EXCERPT",
   // Distinct sentinels, so the drop of each field is proved on its own. `display_name` is the
   // bare Sleeper username the terms document carries; it must never reach the page, and a
   // sentinel that also happens to be a member's real `sleeper_display_name` would not prove it.
@@ -95,6 +99,21 @@ describe("mergeTradeSources", () => {
     expect(replacedByBackfill).toBe(0);
   });
 
+  it("carries a catalog row's announcement onto the trade", () => {
+    const { trades } = mergeTradeSources([CATALOG_2024], [], [], MEMBERS);
+    expect(trades[0].announcement).toBe("SENTINEL_CATALOG_ANNOUNCEMENT");
+  });
+
+  it("leaves a catalog row with no announcement carrying none", () => {
+    const { trades } = mergeTradeSources(
+      [{ ...CATALOG_2024, announcement: null }],
+      [],
+      [],
+      MEMBERS,
+    );
+    expect(trades[0].announcement).toBeNull();
+  });
+
   it("labels owners by nickname, else Sleeper display name", () => {
     const { trades } = mergeTradeSources([CATALOG_2024], [], [], MEMBERS);
     expect(trades[0].parties.map((party) => party.label)).toEqual([
@@ -122,14 +141,25 @@ describe("mergeTradeSources", () => {
 });
 
 describe("normalizeRegisteredTrade", () => {
-  it("carries no free text out of the terms document", () => {
+  // Ben's ruling of 2026-09-10 moved exactly one field across this line, so this test now has
+  // to prove a boundary rather than a blanket: the excerpt the league announced the trade in is
+  // carried, and the Sleeper username and the chat's own phrasing of the assets still are not.
+  // Three sentinels, one expected to be found and two expected to be missing — a single
+  // "no free text" sentinel could no longer tell those apart.
+  it("carries the announcement out of the terms document and nothing else", () => {
     const trade = normalizeRegisteredTrade(REGISTERED, REVISION, MEMBERS);
     const serialized = JSON.stringify(trade);
+    expect(trade.announcement).toBe("SENTINEL_EVIDENCE_EXCERPT");
     expect(serialized).not.toContain("SENTINEL_PARTY_DISPLAY_NAME");
     expect(serialized).not.toContain("SENTINEL_ASSET_DESCRIPTION");
     expect(trade.faabTotal).toBe(12);
     expect(trade.week).toBe(4);
     expect(trade.sourceLabel).toBe("T-2025-014");
+  });
+
+  it("has no announcement when the trade has no current revision", () => {
+    const trade = normalizeRegisteredTrade(REGISTERED, undefined, MEMBERS);
+    expect(trade.announcement).toBeNull();
   });
 
   it("marks a rescinded trade", () => {

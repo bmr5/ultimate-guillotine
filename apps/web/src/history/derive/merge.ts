@@ -81,6 +81,7 @@ export function normalizeCatalogTrade(
     assets: catalogAssets(row.assets),
     faabTotal: row.faab_total,
     confidence: row.confidence,
+    announcement: row.announcement,
     sourceLabel: CATALOG_SOURCE_LABEL,
     registered: false,
     rescinded: false,
@@ -104,12 +105,16 @@ function partyIndex(memberIds: number[], value: unknown): number | null {
 /**
  * Turn a registered trade into the same shape, reading only the fields that are safe.
  *
- * The revision's `terms` document also holds `evidence_excerpt` — verbatim league chat — and
- * `parties[].display_name`, the bare Sleeper username. Neither is read here, and the fetcher
- * never requests them. `assets[].description` and `assets[].player_name` are requested, because
- * they ride along inside `terms->assets`, but neither is copied out: this function takes ids and
- * amounts and nothing else, so no wording from the chat can reach the page even if a future
- * terms shape adds more prose.
+ * `evidence_excerpt` is one of them now. It is the message the league announced the trade in,
+ * the fetcher asks for it under the name `announcement`, and it is carried through to the card
+ * by Ben's ruling of 2026-09-10 — one field, named and decided on.
+ *
+ * Everything else in the document is unchanged. `parties[].display_name` is the bare Sleeper
+ * username; `assets[].player_name` is the player as he was typed into the chat and
+ * `assets[].description` is the trade as somebody phrased it. All three ride along inside
+ * `terms->parties` and `terms->assets` because PostgREST cannot project keys out of a JSON
+ * array, and none of them is copied out: below this line the function takes ids and amounts and
+ * nothing else, so a future terms shape that adds more prose adds it to a field nobody reads.
  */
 export function normalizeRegisteredTrade(
   trade: RegisteredTradeRow,
@@ -170,6 +175,7 @@ export function normalizeRegisteredTrade(
     assets,
     faabTotal,
     confidence: "high",
+    announcement: revision?.announcement ?? null,
     sourceLabel: trade.trade_code,
     registered: true,
     rescinded: trade.status === "rescinded",
