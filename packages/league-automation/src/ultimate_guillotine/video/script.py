@@ -6,6 +6,8 @@ and a read that runs long outruns the video and breaks the lip sync. A template
 read stands in when no model is reachable, so a render never waits on one.
 """
 
+import re
+
 from pydantic import BaseModel
 
 from ultimate_guillotine.ai.structured import StructuredOutputClient
@@ -21,11 +23,12 @@ SYSTEM = (
     'live television, in the cadence of a real breaking-news hit: open on "Breaking news" '
     'or "Sources tell ESPN", short declarative sentences, the key detail landed with a beat '
     "of disbelief, an abrupt ending. The league is the Sovereign Guillotine League; the "
-    "parties are league members, not NFL teams; FAAB is the league's waiver budget. State "
-    "only the facts you are given: never invent contract terms, injuries, or reactions from "
-    "real people. Keep the read at or under the word limit. Fill the whole clip: beats run "
-    "from 0.0 to the clip length in order with no gaps, each with a one-phrase delivery "
-    "direction (how he says it, where he looks, a pause, a small self-correction)."
+    "parties are league members, not NFL teams. Waiver money is spoken as plain dollars "
+    '("twenty dollars"); never say FAAB on air. State only the facts you are given: never '
+    "invent contract terms, injuries, or reactions from real people. Keep the read at or "
+    "under the word limit. Fill the whole clip: beats run from 0.0 to the clip length in "
+    "order with no gaps, each with a one-phrase delivery direction (how he says it, where "
+    "he looks, a pause, a small self-correction)."
 )
 
 
@@ -50,6 +53,16 @@ class Script(BaseModel):
 
 def word_budget(seconds: float) -> int:
     return int(seconds * WORDS_PER_SECOND)
+
+
+_FAAB = re.compile(r"\b(\d+) FAAB\b")
+
+
+def spoken(text: str) -> str:
+    """The terms as they are said on air: ``450 FAAB`` is ``450 dollars``. The
+    lower third keeps the league's word; the voice model handles dollars better
+    (Ben, 2026-09-10)."""
+    return _FAAB.sub(r"\1 dollars", text)
 
 
 def normalize(script: Script, seconds: float) -> Script:
@@ -83,7 +96,9 @@ def _sentence(copy: TradeCopy) -> str:
 
 def template_script(copy: TradeCopy, seconds: float) -> Script:
     """A read built from the lower third alone, for when no model is reachable."""
-    terms = ", ".join(part for part in copy.subline.split(" · ") if not part.startswith("Week "))
+    terms = spoken(
+        ", ".join(part for part in copy.subline.split(" · ") if not part.startswith("Week "))
+    )
     beats = [
         Beat(start=0.0, end=seconds * 0.2, direction="leans in, urgent", text="Breaking news."),
         Beat(
@@ -116,8 +131,8 @@ def script_from_text(text: str, seconds: float) -> Script:
 def _brief(copy: TradeCopy, seconds: float) -> str:
     return (
         f"Clip length: {seconds:g} seconds. Word limit: {word_budget(seconds)} words in total.\n"
-        f"Lower third headline: {copy.headline}\n"
-        f"Terms: {copy.subline}\n"
+        f"Lower third headline: {spoken(copy.headline)}\n"
+        f"Terms, with waiver money in dollars: {spoken(copy.subline)}\n"
         f"Caption on screen, for context only: {copy.caption}"
     )
 

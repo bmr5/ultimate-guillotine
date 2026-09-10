@@ -84,6 +84,8 @@ voice. The read is printed before the generation starts.
 
 - Seedance holds about 2.6 spoken words a second: 12 s is 31 words, 8 s is 20. Hermes gets
   the limit and is sent back once if it runs long; a read that still runs long desyncs the lips.
+- Waiver money is spoken as dollars ("twenty dollars"), never FAAB: the voice model handles it
+  better. The lower third on screen still says FAAB.
 - `--script "…"` uses your own words verbatim; `--no-ai` uses the template read
   ("Breaking news. Sources tell ESPN: … The whole league is shaking.") with no model call.
 - A 12 s 720p voiced clip is 78 credits; check with `video cost --voiced --duration 12`.
