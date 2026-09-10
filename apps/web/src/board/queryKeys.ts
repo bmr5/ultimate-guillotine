@@ -42,6 +42,7 @@ export const boardKeys = {
     ["board", "roster_holdings", seasonId] as const,
   finalRosters: (seasonId: number) =>
     ["board", "final_rosters", seasonId] as const,
+  draftPicks: (seasonId: number) => ["board", "draft_picks", seasonId] as const,
   playersPrefix,
   /**
    * Keyed on a fingerprint of the held ids as well as the season. The `.in()` filter is part of
