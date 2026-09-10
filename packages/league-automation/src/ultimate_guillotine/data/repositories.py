@@ -206,6 +206,30 @@ class RunRepository:
             row = cur.fetchone()
             return row[0] if row else None
 
+    def set_session(self, run_id: int, session_id: int) -> None:
+        """Tie a run to the agent session it ran in, for the follow-up that replies to it."""
+        with self._conn.cursor() as cur:
+            cur.execute(
+                "update private.agent_runs set session_id = %s where id = %s",
+                (session_id, run_id),
+            )
+
+    def session_id_for(self, run_id: int) -> int | None:
+        with self._conn.cursor() as cur:
+            cur.execute("select session_id from private.agent_runs where id = %s", (run_id,))
+            row = cur.fetchone()
+            return row[0] if row else None
+
+    def running_ids(self, agent: str) -> list[int]:
+        """Every run of ``agent`` still ``running`` -- what a restart has to settle."""
+        with self._conn.cursor() as cur:
+            cur.execute(
+                "select id from private.agent_runs where agent = %s and status = 'running'"
+                " order by id",
+                (agent,),
+            )
+            return [row[0] for row in cur.fetchall()]
+
 
 class SeasonRepository:
     def __init__(self, conn: psycopg.Connection) -> None:
@@ -422,6 +446,21 @@ class OutboundRepository:
             if row is None:
                 return None
             return OutboundRecord(*row)
+
+    def run_id_for_guid(self, bluebubbles_guid: str) -> int | None:
+        """The run behind one of the bot's own messages, by the GUID iMessage gave it.
+
+        A reply to the bot carries this GUID as its thread root, and the run is
+        how the reply finds the session it continues.
+        """
+        with self._conn.cursor() as cur:
+            cur.execute(
+                "select run_id from private.outbound_messages where bluebubbles_guid = %s"
+                " and run_id is not null order by id desc limit 1",
+                (bluebubbles_guid,),
+            )
+            row = cur.fetchone()
+            return row[0] if row else None
 
 
 class ReceiptRepository:
