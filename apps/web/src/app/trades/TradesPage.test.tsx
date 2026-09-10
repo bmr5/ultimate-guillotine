@@ -6,6 +6,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TradesPage } from "./TradesPage";
 
 const trades = vi.hoisted(() => ({ value: [] as unknown[] }));
+/** What `nfl_state` says the season is; 2025 matches the newer of the two trades below. */
+const currentSeason = vi.hoisted(() => ({
+  season: 2025 as number | null,
+  isPending: false,
+}));
 
 vi.mock("@/history/useTradeCatalog", () => ({
   useTradeCatalog: () => ({
@@ -20,6 +25,13 @@ vi.mock("@/history/useTradeCatalog", () => ({
     ],
     isPending: false,
     errors: [],
+  }),
+}));
+
+vi.mock("@/history/useCurrentSeason", () => ({
+  useCurrentSeason: () => ({
+    season: currentSeason.season,
+    isPending: currentSeason.isPending,
   }),
 }));
 
@@ -47,6 +59,8 @@ function renderPage(initialEntry = "/trades") {
 }
 
 beforeEach(() => {
+  currentSeason.season = 2025;
+  currentSeason.isPending = false;
   trades.value = [
     {
       key: "k1",
@@ -100,13 +114,85 @@ beforeEach(() => {
 });
 
 describe("TradesPage", () => {
-  it("renders every trade and the stats strip", () => {
+  // Ben's ruling of 2026-09-09: the page opens on the current season. Twenty years of catalog
+  // is the answer to a question nobody arriving from the board asked.
+  it("opens on the current season's trades and the stats strip", () => {
     renderPage();
-    expect(screen.getAllByRole("listitem")).toHaveLength(2);
-    expect(screen.getByText("Trades").nextSibling).toHaveTextContent("2");
+    expect(screen.getAllByRole("listitem")).toHaveLength(1);
+    expect(screen.getByText(/2025 · Week 1/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "2025" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByText("Trades").nextSibling).toHaveTextContent("1");
     expect(
       screen.getByText(/1 earlier catalog reading replaced/),
     ).toBeInTheDocument();
+  });
+
+  it("shows every season when the URL asks for all", () => {
+    renderPage("/trades?season=all");
+    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "All" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
+  it("writes the All chip into the query string rather than dropping the param", () => {
+    renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "All" }));
+    // An absent param means the default, which is the current season; "all" has to be said.
+    expect(currentSearch()).toBe("?season=all");
+    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+  });
+
+  it("offers the current season as a chip before it has any trades", () => {
+    currentSeason.season = 2026;
+    renderPage();
+    const chips = screen.getByRole("group", { name: "Season" });
+    expect(
+      [...chips.querySelectorAll("button")].map((chip) => chip.textContent),
+    ).toEqual(["All", "2026", "2025", "2024"]);
+    expect(screen.getByRole("button", { name: "2026" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.queryAllByRole("listitem")).toHaveLength(0);
+    expect(
+      screen.getByText("No trades match these filters."),
+    ).toBeInTheDocument();
+  });
+
+  it("offers every season from an empty current season", () => {
+    currentSeason.season = 2026;
+    renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "All seasons" }));
+    expect(currentSearch()).toBe("?season=all");
+    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+  });
+
+  it("holds the skeleton until the current season is known", () => {
+    currentSeason.season = null;
+    currentSeason.isPending = true;
+    renderPage();
+    // Showing every season and then narrowing to one a moment later would flash twenty years
+    // of trades past the reader; a URL that names its own season has nothing to wait for.
+    expect(screen.queryAllByRole("listitem")).toHaveLength(0);
+    expect(screen.queryByText(/No trades/)).not.toBeInTheDocument();
+  });
+
+  it("shows every season when the current one cannot be read", () => {
+    currentSeason.season = null;
+    renderPage();
+    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+  });
+
+  it("does not wait for the current season when the URL names one", () => {
+    currentSeason.season = null;
+    currentSeason.isPending = true;
+    renderPage("/trades?season=2024");
+    expect(screen.getAllByRole("listitem")).toHaveLength(1);
   });
 
   // Ben's ruling of 2026-09-09: "because of the dynamic nature of many deals it's most likely
@@ -161,8 +247,9 @@ describe("TradesPage", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: "Clear filters" }),
     );
+    // Back to the defaults, which is the current season — not to every season.
     expect(currentSearch()).toBe("");
-    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+    expect(screen.getAllByRole("listitem")).toHaveLength(1);
   });
 
   it("names the trade list", () => {

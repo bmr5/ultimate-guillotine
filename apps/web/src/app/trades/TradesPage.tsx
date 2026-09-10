@@ -17,28 +17,53 @@ import {
 import { ownerLabelFor } from "@/history/derive/ownerLabel";
 import { tradeStats } from "@/history/derive/stats";
 import { parseNumberParam, type TradeFilters } from "@/history/types";
+import { useCurrentSeason } from "@/history/useCurrentSeason";
 import { useTradeCatalog } from "@/history/useTradeCatalog";
 
 /** The query params this page owns. Anything else in the URL is somebody else's and survives. */
 const FILTER_PARAMS = ["season", "type", "pos", "owner", "q"] as const;
 
+/**
+ * The `season` value that means every season.
+ *
+ * The page opens on the current season (Ben's ruling of 2026-09-09), so an absent param is the
+ * default and not "all": a reader who wants the whole catalog has to say so, and the All chip
+ * writes this word rather than dropping the param, which would only put the default back.
+ */
+const SEASON_ALL = "all";
+
+/** A season the URL names, `null` for every season, or `undefined` when the URL says nothing. */
+function parseSeasonParam(value: string | null): number | null | undefined {
+  if (value === SEASON_ALL) return null;
+  return parseNumberParam(value) ?? undefined;
+}
+
 export function TradesPage() {
   const [params, setParams] = useSearchParams();
   const { trades, replacedByBackfill, loadedAt, members, isPending, errors } =
     useTradeCatalog();
+  const currentSeason = useCurrentSeason();
+
+  const seasonParam = parseSeasonParam(params.get("season"));
+  /**
+   * Only a URL that says nothing about the season waits on `nfl_state`: rendering every season
+   * and narrowing to one a moment later would flash twenty years of trades past the reader.
+   * Should the row fail to load, the page falls back to every season rather than to nothing.
+   */
+  const isSeasonPending = seasonParam === undefined && currentSeason.isPending;
 
   // Memoised on `params` rather than rebuilt each render: `filters` is a dependency of the
   // filter memo below, and `react-hooks/exhaustive-deps` is a warning that `--max-warnings 0`
   // turns into a failed lint.
   const filters: TradeFilters = useMemo(
     () => ({
-      season: parseNumberParam(params.get("season")),
+      season: seasonParam === undefined ? currentSeason.season : seasonParam,
       type: params.get("type"),
       position: params.get("pos"),
       memberId: parseNumberParam(params.get("owner")),
       search: params.get("q") ?? "",
     }),
-    [params],
+    [params, seasonParam, currentSeason.season],
   );
 
   function change(next: Partial<TradeFilters>) {
@@ -53,7 +78,8 @@ export function TradesPage() {
     for (const [key, param] of mapping) {
       if (!(key in next)) continue;
       const value = next[key];
-      if (value === null || value === "") updated.delete(param);
+      if (key === "season" && value === null) updated.set(param, SEASON_ALL);
+      else if (value === null || value === "") updated.delete(param);
       else updated.set(param, String(value));
     }
     setParams(updated, { replace: true });
@@ -71,7 +97,23 @@ export function TradesPage() {
     () => filterTrades(trades, filters),
     [trades, filters],
   );
-  const stats = useMemo(() => tradeStats(visible), [visible]);
+  /**
+   * The current season leads the chips whether or not it has a trade yet. Before the season's
+   * first deal the catalog does not know the year exists, and the chip the page opened on
+   * would otherwise be missing from its own filter bar.
+   */
+  const seasons = useMemo(() => {
+    const options = seasonOptions(trades);
+    if (currentSeason.season === null || options.includes(currentSeason.season))
+      return options;
+    return [currentSeason.season, ...options].sort((a, b) => b - a);
+  }, [trades, currentSeason.season]);
+  // Nothing to count until the season is known, or the strip would flash the whole catalog's
+  // figures before settling on one season's.
+  const stats = useMemo(
+    () => tradeStats(isSeasonPending ? [] : visible),
+    [isSeasonPending, visible],
+  );
   // Only the owners this page can name, sorted by the label the `<option>` will carry.
   //
   // Ben's ruling: an unresolved party reads as a former manager, and the filter never lists
@@ -101,7 +143,7 @@ export function TradesPage() {
     <section className="space-y-3">
       <TradeFilterBar
         filters={filters}
-        seasons={seasonOptions(trades)}
+        seasons={seasons}
         types={typeOptions(trades)}
         positions={positionOptions(trades)}
         members={members}
@@ -121,7 +163,7 @@ export function TradesPage() {
         </Alert>
       ))}
 
-      {isPending && (
+      {(isPending || isSeasonPending) && (
         <div className="space-y-2">
           {[0, 1, 2].map((index) => (
             <Skeleton key={index} className="h-20 w-full" />
@@ -129,32 +171,48 @@ export function TradesPage() {
         </div>
       )}
 
-      {!isPending && trades.length === 0 && (
+      {!isPending && !isSeasonPending && trades.length === 0 && (
         <p className="rounded-xl border bg-card p-4 text-sm">
           No trades loaded yet.
         </p>
       )}
-      {!isPending && trades.length > 0 && visible.length === 0 && (
-        <div className="space-y-2 rounded-xl border bg-card p-4 text-sm">
-          <p>No trades match these filters.</p>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={clearFilters}
-          >
-            Clear filters
-          </Button>
-        </div>
-      )}
+      {!isPending &&
+        !isSeasonPending &&
+        trades.length > 0 &&
+        visible.length === 0 && (
+          <div className="space-y-2 rounded-xl border bg-card p-4 text-sm">
+            <p>No trades match these filters.</p>
+            <div className="flex flex-wrap gap-2">
+              {/* Clear puts the defaults back, and the default season is the current one — so
+                  on a season with no trades yet, Clear alone leads straight back here. */}
+              {filters.season !== null && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => change({ season: null })}
+                >
+                  All seasons
+                </Button>
+              )}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={clearFilters}
+              >
+                Clear filters
+              </Button>
+            </div>
+          </div>
+        )}
 
       {/* Named for the same reason `/history` names its season list: a screen reader announces
           an unlabelled list by its length alone, so "list, 12 items" on a page of filters and
           strips says nothing about which list it reached. */}
       <ul aria-label="Trades" className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        {visible.map((trade) => (
-          <TradeCard key={trade.key} trade={trade} />
-        ))}
+        {!isSeasonPending &&
+          visible.map((trade) => <TradeCard key={trade.key} trade={trade} />)}
       </ul>
 
       {loadedAt !== null && <LoadedAtLine loadedAt={loadedAt} />}
