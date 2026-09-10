@@ -19,7 +19,10 @@ KEYS = {"id", "category", "text", "expected_kind", "expected_status", "prereq", 
 #: listener would place them from the sender's handle. A case without it is a
 #: case whose sender could not be placed, which is a different answer rather
 #: than a missing field -- so the key is absent, never `null`.
-OPTIONAL_KEYS = {"announcer"}
+OPTIONAL_KEYS = {"announcer", "alt_kind"}
+#: `alt_kind` is a second `kind` the case accepts. It is for an announcement
+#: with two honest readings that end in the same outcome -- not for a case the
+#: model gets wrong half the time, which is a finding rather than a variant.
 KINDS = {"permanent", "rental", "payment", "rescission", "unclear", "not_a_trade"}
 STATUSES = {
     "created",
@@ -62,6 +65,12 @@ def test_case_shape(case: dict) -> None:
     assert KEYS <= set(case) <= KEYS | OPTIONAL_KEYS
     if "announcer" in case:
         assert isinstance(case["announcer"], str) and case["announcer"].strip()
+    if "alt_kind" in case:
+        assert case["alt_kind"] in KINDS
+        # A second reading has to be a different one, and the notes have to say
+        # why both are honest -- otherwise this is a way to launder a failure.
+        assert case["alt_kind"] != case["expected_kind"]
+        assert "alt_kind" in case["notes"]
     assert case["category"] in CATEGORIES
     assert case["expected_kind"] in KINDS
     assert case["expected_status"] in STATUSES

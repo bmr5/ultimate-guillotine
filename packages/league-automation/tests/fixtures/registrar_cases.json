@@ -737,10 +737,11 @@
       "id": 82,
       "category": "unclear",
       "text": "🚨 Trade Alert 🚨\nkpbowe sends Michael to mdurgin for 300 FAAB",
-      "expected_kind": "unclear",
+      "expected_kind": "permanent",
       "expected_status": "clarification",
       "prereq": null,
-      "notes": "Two players on the giver's roster answer to the name. The model can see both of them in the context pack and asks; without the pack it would pass the fragment through and resolution would ask, in the same words, for the same reason. Either way the chat gets a question and nothing is logged, which is what this case is for -- the code path itself is pinned by `test_resolve.py`, where no model is involved."
+      "notes": "Two players on the giver's roster answer to the name, and there are two honest readings of that. The model can pass the fragment through as an ordinary trade and let resolution ask which one, or it can see both of them in the context pack and ask itself; it has answered each way on consecutive runs. Both end in the same question with nothing logged, which is what the case is for, so `alt_kind` accepts the second reading rather than making the suite a coin toss. The code path is pinned by `test_resolve.py`, with no model involved.",
+      "alt_kind": "unclear"
     },
     {
       "id": 83,

@@ -349,7 +349,8 @@ def run_case(
         if expected_outcome != "not_a_trade":
             reasons.append("detector rejected the message")
     else:
-        if kind != expected_kind:
+        # `alt_kind` is a second reading the case accepts -- see the fixture.
+        if kind not in {expected_kind, case.get("alt_kind")}:
             reasons.append(f"kind {kind}")
         if outcome != expected_outcome:
             reasons.append(f"outcome {outcome}")

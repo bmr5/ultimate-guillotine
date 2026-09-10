@@ -10,7 +10,8 @@ runner calls `extract_trade` + `resolve_extracted` + `validate` directly, the sa
 - **Input** is the exact announcement. ` ⏎ ` marks a newline and long inputs are cut with `…`;
   `packages/league-automation/tests/fixtures/registrar_cases.json` holds the exact text and is
   authoritative.
-- **Kind** is what the model must return in `ExtractedTrade.kind`.
+- **Kind** is what the model must return in `ExtractedTrade.kind`. A row naming two of them is a
+  case with two honest readings, carrying `alt_kind` in the fixture; the runner accepts either.
 - **Status** is what `TradeRegistrar.handle` must return: `created`, `revised`, `duplicate`,
   `rescinded`, `clarification`, or `not_a_trade`.
 - **Reply** is what the chat message must start with, or `none` when the registrar stays
@@ -177,7 +178,7 @@ Results land in `docs/testing/2026-09-09-trade-registrar-results.md`.
 | 73 | `🚨 Trade Alert 🚨 Sparkplug sends Bijan Robinson to the Chairman for 200 FAAB` | `unclear` | `clarification` | `🚨 Trade not logged yet:` | — | Nobody named is a member, but the alert is not placed in another league either -- Sparkplug and the Chairman read like unregistered nicknames, so the bot asks rather than silently dropping what may be a real alert. |
 | 75 | `🚨 Trade Alert 🚨 ⏎ I sent Ja'Marr Chase to mdurgin for 450 FAAB` | `unclear` | `clarification` | `🚨 Trade not logged yet:` | — | No announcer: a sender whose handle was never loaded leaves `Announcer: unknown`, `I` names nobody, and one named party is not a trade. Case 74's text exactly, so the pair proves the announcer and not the wording is what changed the answer. |
 | 77 | `🚨 Trade Alert 🚨 ⏎ I'm sending you Ja'Marr Chase for 450 FAAB` | `unclear` | `clarification` | `🚨 Trade not logged yet:` | — | From kpbowe. A known announcer is only ever one party. The alert names no other member for `you` to mean, so the bot asks who the other side is rather than guessing at whoever was being addressed in the chat. |
-| 82 | `🚨 Trade Alert 🚨 ⏎ kpbowe sends Michael to mdurgin for 300 FAAB` | `unclear` | `clarification` | `🚨 Trade not logged yet:` | — | Two players on the giver's roster answer to the name. The model can see both in the context pack and asks; without the pack it would pass the fragment through and resolution would ask, in the same words. Either way the chat gets a question and nothing is logged. The code path itself is pinned by `test_resolve.py`, with no model involved. |
+| 82 | `🚨 Trade Alert 🚨 ⏎ kpbowe sends Michael to mdurgin for 300 FAAB` | `permanent` or `unclear` | `clarification` | `🚨 Trade not logged yet:` | — | Two players on the giver's roster answer to the name, and two readings are honest: pass the fragment through and let resolution ask, or see both in the pack and ask directly. The model has answered each way on consecutive runs; both end in the same question with nothing logged, so the case carries `alt_kind`. The code path is pinned by `test_resolve.py`, with no model involved. |
 | 83 | `🚨 Trade Alert 🚨 ⏎ chobes sends 950 FAAB to kpbowe for Michael Pittman` | `unclear` | `clarification` | `🚨 Trade not logged yet:` | — | More FAAB than the payer has. `FAAB remaining` is the one part of the context pack that is a check rather than a spelling aid: an amount a team cannot cover is a question, never quietly lowered to what they can afford. Everybody in the synthetic league holds 900. |
 
 ## Privacy and injection (5)
