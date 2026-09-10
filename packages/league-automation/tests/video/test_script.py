@@ -2,12 +2,14 @@ from ultimate_guillotine.ai.structured import AIUsage
 from ultimate_guillotine.video.copy import TradeCopy
 from ultimate_guillotine.video.script import (
     SCHEMA_NAME,
+    SYSTEM,
     Beat,
     Script,
     format_script,
     generate_script,
     normalize,
     script_from_text,
+    spoken,
     template_script,
     word_budget,
 )
@@ -30,7 +32,8 @@ def test_template_read_speaks_the_headline_and_terms_within_budget() -> None:
     assert script.read.startswith(
         "Breaking news. Sources tell ESPN: Josh Jacobs traded to Charlie."
     )
-    assert "Derek gets 450 FAAB, Charlie gets Josh Jacobs." in script.read
+    assert "Derek gets 450 dollars, Charlie gets Josh Jacobs." in script.read
+    assert "FAAB" not in script.read
     assert "Week 3" not in script.read
     assert script.words <= word_budget(12)
     assert script.beats[0].start == 0.0 and script.beats[-1].end == 12
@@ -82,6 +85,7 @@ def test_generate_script_sends_a_long_read_back_once() -> None:
     assert "Your previous read was 60 words; the limit is 31" in client.calls[1]
     assert "Word limit: 31 words" in client.calls[0]
     assert "SOURCES: JOSH JACOBS TRADED TO CHARLIE" in client.calls[0]
+    assert "450 dollars" in client.calls[0] and "FAAB" not in client.calls[0]
     assert script.words == 11 and script.beats[-1].end == 12
 
 
@@ -89,3 +93,11 @@ def test_format_script_lists_beats_and_the_count() -> None:
     text = format_script(template_script(COPY, 12), 12)
     assert text.startswith("00:00-00:02  (leans in, urgent) Breaking news.")
     assert text.endswith("words for 12 s (budget 31)")
+
+
+def test_the_read_says_dollars_never_faab() -> None:
+    assert spoken("Derek gets 450 FAAB · Charlie gets 20 FAAB + Player Alpha") == (
+        "Derek gets 450 dollars · Charlie gets 20 dollars and Player Alpha"
+    )
+    assert spoken("30 draft dollars") == "30 draft dollars"
+    assert "never say FAAB" in SYSTEM
