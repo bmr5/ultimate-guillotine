@@ -95,10 +95,10 @@ jobs:
   # still posts one note to #guillotine-ops on the edge — the first failure and the recovery.
   - name: guillotine-sleeper-scores
     agent: scores-sync
-    schedule: "*/15 * * * *"
+    schedule: "*/5 * * * *"
     script: guillotine_sleeper_scores.sh
     deliver: local
-    max_gap_minutes: 45
+    max_gap_minutes: 20
   - name: guillotine-sleeper-scores-thursday
     agent: scores-sync
     schedule: "* 20-23 * * 4"
