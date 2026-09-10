@@ -113,6 +113,17 @@ uv run --project packages/league-automation python -m ultimate_guillotine.cli.ma
 
 `higgsfield generate list --json` shows recent jobs when the id was not caught.
 
+## Why the reference has no text on it
+
+The first request from the chat came back with Denzo's "pov:" caption and ESPN's banner
+showing through under our overlay: Seedance had been given the Denzo clip as its reference
+and reproduced it, text and all. The generation reference is now
+`data/media/reference/source/espn-schefter-clean-1024.mp4`, 12 s of the ESPN footage
+cropped to the square above the lower third, so there is nothing written in frame to copy.
+The Denzo clip stays as the *style* reference for humans; Seedance never sees it. If text
+ever shows through again, the prompt's "nothing written anywhere in frame" line and this
+crop are the two knobs.
+
 ## What the one generated clip looked like (2026-09-10)
 
 Seedance 2.5 in `omni_reference` mode with the Denzo clip as the reference produced an 8 s
