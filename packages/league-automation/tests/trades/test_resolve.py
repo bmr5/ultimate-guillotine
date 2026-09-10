@@ -5,6 +5,7 @@ from ultimate_guillotine.sleeper.players import Player
 from ultimate_guillotine.trades.models import ExtractedAsset, ExtractedParty, ExtractedTrade
 from ultimate_guillotine.trades.names import normalize_name
 from ultimate_guillotine.trades.resolve import (
+    _NFL_TEAMS,
     MemberRef,
     RosterIndex,
     Unresolved,
@@ -151,6 +152,38 @@ def test_a_team_defense_resolves_however_it_was_typed(name: str) -> None:
     assert resolve(extracted(assets=[player_asset(name)])).assets[0].player_id == "BUF"
 
 
+NFL_DEF_ROWS = [
+    Player(abbr, f"{words[0]} {words[1]}", "DEF", abbr, True)
+    for abbr, words in _NFL_TEAMS.items()
+]
+#: The two cities `_build_defense_aliases` drops as shared: `Buffalo` names one
+#: club, `Los Angeles` names two, so only the nickname and the pair are checked.
+SHARED_CITIES = {"Los Angeles", "New York"}
+
+
+@pytest.mark.parametrize("abbr", list(_NFL_TEAMS), ids=list(_NFL_TEAMS))
+def test_every_club_resolves_by_abbreviation_city_and_nickname(abbr: str) -> None:
+    """Every row of `_NFL_TEAMS` has to reach its own `DEF` row three ways --
+    a typo in one club's entry would otherwise only surface in the chat."""
+    city, nickname = _NFL_TEAMS[abbr][0], _NFL_TEAMS[abbr][1]
+    typings = [abbr, f"{city} {nickname}", nickname, f"the {nickname} D/ST"]
+    if city not in SHARED_CITIES:
+        typings.append(city)
+    for typed in typings:
+        proposal = resolve_with(NFL_DEF_ROWS, extracted(assets=[player_asset(typed)]))
+        assert proposal.assets[0].player_id == abbr, typed
+
+
+@pytest.mark.parametrize(
+    "name", ["Washington Football Team", "Football Team", "WFT", "the WFT D", "Commanders"]
+)
+def test_washington_resolves_under_the_name_it_used_to_have(name: str) -> None:
+    """Half the league still types the old name, and the `DEF` row is filed
+    under `WAS` whichever name is typed."""
+    proposal = resolve_with(NFL_DEF_ROWS, extracted(assets=[player_asset(name)]))
+    assert proposal.assets[0].player_id == "WAS"
+
+
 def test_a_city_two_clubs_share_names_no_defense() -> None:
     """`the New York defense` names neither the Giants nor the Jets, so it asks."""
     with pytest.raises(Unresolved) as info:
@@ -178,14 +211,27 @@ def test_a_generational_suffix_matches_with_or_without_it(typed: str, player_id:
     assert proposal.assets[0].player_id == player_id
 
 
-def test_an_exact_name_still_beats_a_suffix_insensitive_match() -> None:
-    """Suffix-blind matching runs only after an exact match has failed, so a
-    father and son both on file stay separate players."""
-    father = Player("p11", "Marvin Harrison", "WR", "IND", True)
+FATHER = Player("p11", "Marvin Harrison", "WR", "IND", True)
+
+
+def test_a_father_and_son_both_on_file_make_the_bare_name_ambiguous() -> None:
+    """`Marvin Harrison` with both generations on file names either of them.
+    Matching the row spelled without the suffix would be a guess, and a guess
+    logs the wrong player, so the chat is asked which one."""
+    with pytest.raises(Unresolved) as info:
+        resolve_with(
+            [*PLAYERS, HARRISON, FATHER], extracted(assets=[player_asset("Marvin Harrison")])
+        )
+    assert info.value.reason == "Two players named Marvin Harrison; which one?"
+
+
+def test_the_suffix_picks_the_son_when_both_are_on_file() -> None:
+    """The suffix is the only thing that separates them, so a spelling that
+    carries it and matches a row exactly still resolves on its own."""
     proposal = resolve_with(
-        [*PLAYERS, HARRISON, father], extracted(assets=[player_asset("Marvin Harrison")])
+        [*PLAYERS, HARRISON, FATHER], extracted(assets=[player_asset("Marvin Harrison Jr.")])
     )
-    assert proposal.assets[0].player_id == "p11"
+    assert proposal.assets[0].player_id == "p9"
 
 
 def test_unknown_player_name_is_unresolved() -> None:

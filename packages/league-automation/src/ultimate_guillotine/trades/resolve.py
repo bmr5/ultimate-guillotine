@@ -70,7 +70,7 @@ _NFL_TEAMS: dict[str, tuple[str, ...]] = {
     "SF": ("San Francisco", "49ers", "SFO", "Niners"),
     "TB": ("Tampa Bay", "Buccaneers", "TAM", "Bucs"),
     "TEN": ("Tennessee", "Titans"),
-    "WAS": ("Washington", "Commanders", "WSH"),
+    "WAS": ("Washington", "Commanders", "WSH", "Football Team", "WFT"),
 }
 #: Asset kinds that carry a number, and are their own unit when none is given.
 _MONEY_KINDS = {"faab", "usd", "draft_dollars"}
@@ -218,6 +218,9 @@ def _build_defense_aliases() -> dict[str, str]:
         city, nickname = words[0], words[1]
         keys = {normalize_name(abbr), normalize_name(f"{city} {nickname}")}
         keys.update(normalize_name(word) for word in words)
+        # A multi-word alternate is a name the club used to go by, and people
+        # type it after the city the same way: `Washington Football Team`.
+        keys.update(normalize_name(f"{city} {word}") for word in words[2:] if " " in word)
         for key in keys:
             if aliases.setdefault(key, abbr) != abbr:
                 shared.add(key)
@@ -304,24 +307,31 @@ def _is_single_token(norm: str) -> bool:
 
 def _resolve_player(name: str, players: list[Player]) -> str:
     norm = normalize_name(name)
+    base = _without_suffix(norm)
     exact = [p for p in players if normalize_name(p.full_name) == norm]
-    if not exact:
-        # A generational suffix is decoration the two sides rarely agree on:
-        # `Marvin Harrison Jr.` has to find a row filed as `Marvin Harrison`,
-        # and `Kenneth Walker` a row filed as `Kenneth Walker III`. Tried only
-        # after an exact match has failed, so a directory that spells the
-        # suffix out is still matched on its own terms first.
-        base = _without_suffix(norm)
-        if base:
-            exact = [p for p in players if _without_suffix(normalize_name(p.full_name)) == base]
-    if not exact:
-        defense = _match_defense(norm, players)
-        if defense is not None:
-            exact = [defense]
-    if len(exact) == 1:
-        return exact[0].sleeper_player_id
     if len(exact) >= 2:
         raise Unresolved(f"Two players named {name}; which team?")
+    # A generational suffix is decoration the two sides rarely agree on:
+    # `Marvin Harrison Jr.` has to find a row filed as `Marvin Harrison`, and
+    # `Kenneth Walker` a row filed as `Kenneth Walker III`.
+    kin = (
+        [p for p in players if _without_suffix(normalize_name(p.full_name)) == base]
+        if base
+        else []
+    )
+    if len(kin) >= 2 and not (exact and norm != base):
+        # A father and a son are both on file, and the name as typed carries
+        # nothing that separates them: `Marvin Harrison` is either of them, so
+        # the chat settles it. Only a spelling that carries the suffix *and*
+        # matches a row exactly picks one of the two on its own.
+        raise Unresolved(f"Two players named {name}; which one?")
+    if exact:
+        return exact[0].sleeper_player_id
+    if len(kin) == 1:
+        return kin[0].sleeper_player_id
+    defense = _match_defense(norm, players)
+    if defense is not None:
+        return defense.sleeper_player_id
 
     # Only a bare surname falls back to matching on surnames. Somebody who typed
     # a full name meant that player: "Justin Jefferson" must not quietly resolve
