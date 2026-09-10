@@ -147,8 +147,10 @@ def test_the_brief_lists_the_facts_in_dollars() -> None:
         headline=COPY.headline,
         subline=COPY.subline,
         facts=(
-            "Announced in the league chat as: 🚨 Trade alert 🚨 Derek sends Josh Jacobs to "
-            "Charlie for 450 FAAB",
+            (
+                "Announced in the league chat as: 🚨 Trade alert 🚨 Derek sends Josh Jacobs to "
+                "Charlie for 450 FAAB"
+            ),
             "Derek gives Charlie: Josh Jacobs",
             "Charlie gives Derek: 450 FAAB",
         ),
