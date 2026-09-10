@@ -1,4 +1,4 @@
-// Final High-tier pass: HDR scene + bloom, ACES tone mapping, soft vignette.
+// Final High-tier pass: HDR scene + bloom, ACES tone mapping.
 @group(0) @binding(0) var scene: texture_2d<f32>;
 @group(0) @binding(1) var bloom: texture_2d<f32>;
 @group(0) @binding(2) var samp: sampler;
@@ -15,10 +15,8 @@ fn tonemapAces(color: vec3f) -> vec3f {
 @fragment fn fs_main(@location(0) uv: vec2f) -> @location(0) vec4f {
   let base = textureSampleLevel(scene, samp, uv, 0.0).rgb;
   let glow = textureSampleLevel(bloom, samp, uv, 0.0).rgb;
-  let centered = uv - 0.5;
-  // Ben (2026-09-10): the aurora at full power, not a wash behind the cards — a gentle
-  // vignette and the bloom added whole, with the scene lifted before tone mapping.
-  let vignette = 1.0 - dot(centered, centered) * 0.3;
-  let color = tonemapAces((base * 1.5 + glow * 1.0) * vignette);
+  // Ben (2026-09-10): no darkening pass at all — no vignette, the bloom added whole, the
+  // scene lifted before tone mapping. The aurora is the page's light, not a wash behind it.
+  let color = tonemapAces(base * 1.5 + glow * 1.0);
   return vec4f(color, 1.0);
 }

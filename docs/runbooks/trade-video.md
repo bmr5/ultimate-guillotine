@@ -117,9 +117,36 @@ blazer, bookshelves and helmet, no text, animated speech. It composites cleanly
 from his footage, so whether generated clips are ever posted is Ben's call; the ESPN footage
 path uses the real segment the reference used.
 
+## Asking for one from the chat
+
+Reply to a trade alert (or to the bot's "🚨 Trade T-2026-003 logged" line, or say the code)
+with **`@bot create trade video`**. The listener answers within a second:
+
+> 🎬 Making the video for T-2026-003 — about 20 minutes.
+
+and queues a row in `private.video_jobs`. The `guillotine-video-jobs` cron job (every 2 min)
+runs `ug video jobs run`, which claims the oldest queued job, writes the read, generates the
+voiced clip, composites it, and delivers the mp4 through the delivery service — so in test mode
+it lands in the self-test chat, and in the league chat only once the mode is promoted. One
+open job per trade: asking twice gets "already in the works". A rescinded trade gets no video.
+Failures are recorded on the job and posted to `#guillotine-ops`; nothing retries by itself
+because every attempt is 78 credits.
+
+```bash
+uv run --project packages/league-automation python -m ultimate_guillotine.cli.main video jobs list
+uv run --project packages/league-automation python -m ultimate_guillotine.cli.main video jobs add T-2026-003
+uv run --project packages/league-automation python -m ultimate_guillotine.cli.main video jobs run --verbose
+uv run --project packages/league-automation python -m ultimate_guillotine.cli.main video jobs watch
+```
+
+The worker has to run where the media tools are. On the mini that means, once: `brew install
+ffmpeg`, the Higgsfield CLI logged in (`higgsfield auth login`), `uv sync` for Pillow, a
+`git pull` for `data/media/reference`, and `hermes/guillotine/install.sh` to register the cron
+job. `ug video assets` says whether it is all there.
+
 ## Not done yet
 
-- On-demand from Discord ("video T-2026-003" in `#guillotine-ops`) needs a Hermes channel prompt
-  and a way to post the file back; it gets its own plan once the renders look right.
+- The mini's one-time setup above, and a first request in the self-test chat to prove the
+  whole path end to end (queued → rendered → attachment delivered).
 - The caption font is Arial Bold, the closest system font to the reference's; the headline is
   Arial Black.

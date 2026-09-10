@@ -111,7 +111,9 @@ def parse_job(stdout: str) -> Job:
     the output, the way an older CLI printed it.
     """
     try:
-        doc = json.loads(stdout)
+        # The document quotes the prompt back, control characters and all,
+        # which strict JSON refuses; the job id and status are what matter.
+        doc = json.loads(stdout, strict=False)
     except json.JSONDecodeError as exc:
         raise HiggsfieldError("higgsfield printed no job document") from exc
     if isinstance(doc, list):
