@@ -32,13 +32,21 @@ def make(conn, **overrides) -> TradeProposal:
             """
         )
     base = {
-        "season": 2026, "effective_week": 2, "kind": "permanent",
+        "season": 2026,
+        "effective_week": 2,
+        "kind": "permanent",
         "parties": [TradeParty(m1, "Member01"), TradeParty(m2, "Member02")],
-        "assets": [TradeAsset("player", m1, m2, "p1", "Player Alpha", None, None, None),
-                   TradeAsset("faab", m2, m1, None, None, 450, "faab", None)],
-        "rental_return_condition": None, "special_terms": [], "referenced_trade_code": None,
-        "source_message_guid": "g1", "evidence_excerpt": "🚨 ...",
-        "prompt_version": "2026.1", "model": "m",
+        "assets": [
+            TradeAsset("player", m1, m2, "p1", "Player Alpha", None, None, None),
+            TradeAsset("faab", m2, m1, None, None, 450, "faab", None),
+        ],
+        "rental_return_condition": None,
+        "special_terms": [],
+        "referenced_trade_code": None,
+        "source_message_guid": "g1",
+        "evidence_excerpt": "🚨 ...",
+        "prompt_version": "2026.1",
+        "model": "m",
     }
     base.update(overrides)
     return TradeProposal(**base)
@@ -56,8 +64,14 @@ def test_accept_creates_then_detects_duplicate_and_revision(conn) -> None:
         assets=[
             make(conn).assets[0],
             TradeAsset(
-                "faab", make(conn).parties[1].member_id, make(conn).parties[0].member_id,
-                None, None, 500, "faab", None,
+                "faab",
+                make(conn).parties[1].member_id,
+                make(conn).parties[0].member_id,
+                None,
+                None,
+                500,
+                "faab",
+                None,
             ),
         ],
     )
@@ -120,8 +134,14 @@ def test_list_recent_orders_newest_first_and_honours_limit(conn) -> None:
             source_message_guid="g4",
             assets=[
                 TradeAsset(
-                    "player", other.parties[0].member_id, other.parties[1].member_id,
-                    "p2", "Player Beta", None, None, None,
+                    "player",
+                    other.parties[0].member_id,
+                    other.parties[1].member_id,
+                    "p2",
+                    "Player Beta",
+                    None,
+                    None,
+                    None,
                 ),
                 other.assets[1],
             ],
@@ -171,8 +191,18 @@ def payment(conn, amount: int, guid: str):
         conn,
         kind="payment",
         source_message_guid=guid,
-        assets=[TradeAsset("faab", base.parties[0].member_id, base.parties[1].member_id,
-                           None, None, amount, "faab", None)],
+        assets=[
+            TradeAsset(
+                "faab",
+                base.parties[0].member_id,
+                base.parties[1].member_id,
+                None,
+                None,
+                amount,
+                "faab",
+                None,
+            )
+        ],
     )
 
 
@@ -197,8 +227,16 @@ def test_a_correction_after_the_window_is_a_new_trade(conn) -> None:
         source_message_guid="g3",
         assets=[
             make(conn).assets[0],
-            TradeAsset("faab", make(conn).parties[1].member_id, make(conn).parties[0].member_id,
-                       None, None, 500, "faab", None),
+            TradeAsset(
+                "faab",
+                make(conn).parties[1].member_id,
+                make(conn).parties[0].member_id,
+                None,
+                None,
+                500,
+                "faab",
+                None,
+            ),
         ],
     )
     inside = repo.accept(amended)
@@ -216,8 +254,16 @@ def test_a_correction_after_the_window_is_a_new_trade(conn) -> None:
             source_message_guid="g4",
             assets=[
                 make(conn).assets[0],
-                TradeAsset("faab", make(conn).parties[1].member_id,
-                           make(conn).parties[0].member_id, None, None, 600, "faab", None),
+                TradeAsset(
+                    "faab",
+                    make(conn).parties[1].member_id,
+                    make(conn).parties[0].member_id,
+                    None,
+                    None,
+                    600,
+                    "faab",
+                    None,
+                ),
             ],
         )
     )

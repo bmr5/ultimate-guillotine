@@ -166,8 +166,7 @@ def build_registrar_context(
     if teams:
         sections.append("Rosters:\n" + "\n".join(_roster_line(t) for t in teams))
         sections.append(
-            "FAAB remaining:\n"
-            + "\n".join(f"{t.username}: ${t.faab_remaining}" for t in teams)
+            "FAAB remaining:\n" + "\n".join(f"{t.username}: ${t.faab_remaining}" for t in teams)
         )
     lines = [line for line in (_trade_line(t) for t in trades[:trade_limit]) if line]
     if lines:
@@ -197,9 +196,7 @@ def context_from_snapshot(snapshot, members, trades: Sequence[Mapping]) -> str:
             username=team.display_name,
             aliases=aliases.get(team.member_id, ()),
             faab_remaining=team.faab_remaining,
-            players=tuple(
-                ContextPlayer(h.player_name, h.position) for h in team.holdings
-            ),
+            players=tuple(ContextPlayer(h.player_name, h.position) for h in team.holdings),
             is_eliminated=team.is_eliminated,
             eliminated_week=team.eliminated_week,
         )
@@ -256,8 +253,10 @@ def _trade_line(trade: Mapping) -> str:
         return ""
     week = trade.get("effective_week")
     body = "; ".join(f"{g} → {t}: {', '.join(a)}" for (g, t), a in legs.items())
-    return f"{trade.get('trade_code', '?')} wk{week if week is not None else '?'} " \
-           f"{trade.get('status', '?')}: {body}"
+    return (
+        f"{trade.get('trade_code', '?')} wk{week if week is not None else '?'} "
+        f"{trade.get('status', '?')}: {body}"
+    )
 
 
 def _asset_word(asset: Mapping) -> str:

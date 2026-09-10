@@ -176,9 +176,9 @@
       "category": "sloppy",
       "text": "🚨 Trade Alert 🚨 chobes sends Moore to davidwiers for 60 FAAB",
       "expected_kind": "permanent",
-      "expected_status": "clarification",
+      "expected_status": "created",
       "prereq": null,
-      "notes": "Bare surname shared by 16 active players; resolution must ask which team, never guess."
+      "notes": "Player names are best effort now (Ben, 2026-09-10): a name the directory cannot place is kept as text with no id, and the trade still logs."
     },
     {
       "id": 21,
@@ -194,9 +194,9 @@
       "category": "sloppy",
       "text": "🚨 Trade Alert 🚨 kpbowe sends Puca Nakua to jrayay for 90 FAAB",
       "expected_kind": "permanent",
-      "expected_status": "clarification",
+      "expected_status": "created",
       "prereq": null,
-      "notes": "Misspelled player. No fuzzy matching exists, so this must ask rather than pick a neighbour."
+      "notes": "Player names are best effort now (Ben, 2026-09-10): a name the directory cannot place is kept as text with no id, and the trade still logs."
     },
     {
       "id": 23,
@@ -554,9 +554,9 @@
       "category": "unclear",
       "text": "🚨 Trade Alert 🚨 jrayay is renting Breece Hall from davidwiers for 200 FAAB",
       "expected_kind": "rental",
-      "expected_status": "clarification",
+      "expected_status": "created",
       "prereq": null,
-      "notes": "Rental with no return condition; caught by validate(), not by the model."
+      "notes": "A rental with no stated return still logs (Ben, 2026-09-10): the announcement's own words are the record."
     },
     {
       "id": 63,
@@ -738,10 +738,9 @@
       "category": "unclear",
       "text": "🚨 Trade Alert 🚨\nkpbowe sends Michael to mdurgin for 300 FAAB",
       "expected_kind": "permanent",
-      "expected_status": "clarification",
+      "expected_status": "created",
       "prereq": null,
-      "notes": "Two players on the giver's roster answer to the name, and there are two honest readings of that. The model can pass the fragment through as an ordinary trade and let resolution ask which one, or it can see both of them in the context pack and ask itself; it has answered each way on consecutive runs. Both end in the same question with nothing logged, which is what the case is for, so `alt_kind` accepts the second reading rather than making the suite a coin toss. The code path is pinned by `test_resolve.py`, with no model involved.",
-      "alt_kind": "unclear"
+      "notes": "Player names are best effort now (Ben, 2026-09-10): a name the directory cannot place is kept as text with no id, and the trade still logs."
     },
     {
       "id": 83,

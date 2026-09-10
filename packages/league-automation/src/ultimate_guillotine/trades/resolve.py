@@ -409,9 +409,7 @@ def _match_exactly(name: str, players: list[Player]) -> str | None:
     # `Marvin Harrison Jr.` has to find a row filed as `Marvin Harrison`, and
     # `Kenneth Walker` a row filed as `Kenneth Walker III`.
     kin = (
-        [p for p in players if _without_suffix(normalize_name(p.full_name)) == base]
-        if base
-        else []
+        [p for p in players if _without_suffix(normalize_name(p.full_name)) == base] if base else []
     )
     if len(kin) >= 2 and not (exact and norm != base):
         # A father and a son are both on file, and the name as typed carries
@@ -474,9 +472,7 @@ def _match_on_roster(name: str, candidates: list[Player], where: str) -> str | N
     typed = _name_tokens(name)
     if not typed:
         return None
-    matched = {
-        p.sleeper_player_id for p in candidates if typed <= _name_tokens(p.full_name)
-    }
+    matched = {p.sleeper_player_id for p in candidates if typed <= _name_tokens(p.full_name)}
     if len(matched) == 1:
         return next(iter(matched))
     if len(matched) >= 2:
@@ -521,7 +517,9 @@ def _resolve_player_with_rosters(
     def rostered(ids: frozenset[str]) -> list[Player]:
         return [by_id[i] for i in sorted(ids) if i in by_id]
 
-    found = _match_on_roster(name, rostered(rosters.players_for(giver_member_id)), " on that roster")
+    found = _match_on_roster(
+        name, rostered(rosters.players_for(giver_member_id)), " on that roster"
+    )
     if found is None:
         found = _match_on_roster(name, rostered(rosters.all_players()), " in the league")
     if found is None:
@@ -555,9 +553,7 @@ def _reconcile_draft_quotes(
     draft quote between them -- `50 FAAB now and 50 more after Week 4` is two
     payments, not one written twice, and collapsing it would silently halve it.
     """
-    drafted = {
-        i for i, asset in enumerate(extracted.assets) if asset.currency == "draft"
-    }
+    drafted = {i for i, asset in enumerate(extracted.assets) if asset.currency == "draft"}
     if not drafted:
         return assets
     legs: dict[tuple[int | None, int | None], list[int]] = {}
@@ -571,9 +567,7 @@ def _reconcile_draft_quotes(
         amounts = {assets[i].amount for i in indexes}
         if len(amounts) > 1:
             stated = ", ".join(str(a) for a in sorted(amounts))
-            raise Unresolved(
-                f"That says {stated} FAAB for the same thing; which is it?"
-            )
+            raise Unresolved(f"That says {stated} FAAB for the same thing; which is it?")
         keep = next((i for i in indexes if i not in drafted), indexes[0])
         dropped.update(i for i in indexes if i != keep)
     return [asset for i, asset in enumerate(assets) if i not in dropped]
@@ -590,6 +584,7 @@ def resolve_extracted(
     prompt_version: str,
     model: str,
     announcer: MemberRef | None = None,
+    week: int | None = None,
 ) -> TradeProposal:
     """Turn one extraction into a proposal, or raise ``Unresolved``.
 
@@ -684,7 +679,8 @@ def resolve_extracted(
                 # holds nothing as far as we can see, which proves nothing.
                 known = all(c.member_id in rosters.holdings for c in candidates)
                 holds_none = [
-                    c for c in candidates
+                    c
+                    for c in candidates
                     if not any(rosters.holds(c.member_id, p) for p in received)
                 ]
                 if known and len(holds_none) == 1:
@@ -718,12 +714,20 @@ def resolve_extracted(
     # recorded comes from one chain: `Rhamondre` reaches Rhamondre Stevenson on
     # the giver's roster, and a name the first pass placed by exact match is
     # placed by exact match here too, since that step comes first either way.
+    # Best effort, never a question. Ben (2026-09-10): "trade data is incredibly
+    # dynamic, it's probably best to just store as text and reparse the context
+    # from that original text later on if needed." A player the directory cannot
+    # place keeps the name as written and no id; the announcement itself is the
+    # record.
     players_by_id = {p.sleeper_player_id: p for p in players}
     for i, asset in enumerate(extracted.assets):
         if asset.kind == "player" and asset.player_name:
-            resolved_players[i] = _resolve_player_with_rosters(
-                asset.player_name, players, rosters, sides[i][0], players_by_id
-            )
+            try:
+                resolved_players[i] = _resolve_player_with_rosters(
+                    asset.player_name, players, rosters, sides[i][0], players_by_id
+                )
+            except Unresolved:
+                resolved_players.pop(i, None)
 
     trade_assets: list[TradeAsset] = []
     for i, asset in enumerate(extracted.assets):
@@ -746,7 +750,7 @@ def resolve_extracted(
 
     return TradeProposal(
         season=season,
-        effective_week=extracted.effective_week,
+        effective_week=week if week is not None else extracted.effective_week,
         kind=extracted.kind,
         parties=trade_parties,
         assets=trade_assets,
@@ -761,12 +765,12 @@ def resolve_extracted(
 
 
 def validate(proposal: TradeProposal) -> None:
+    """The one thing a log needs: who traded.
+
+    Everything else -- the assets, their units, a rental's return terms -- is
+    the announcement's own wording, stored verbatim and reparsed later if a
+    consumer ever needs it (Ben, 2026-09-10). Refusing to log over any of it
+    only costs the league a record.
+    """
     if len(proposal.parties) < 2:
         raise Unresolved("A trade needs at least two parties")
-    if not proposal.assets:
-        raise Unresolved("A trade needs at least one asset")
-    for asset in proposal.assets:
-        if asset.amount is not None and asset.unit is None:
-            raise Unresolved("An amount needs a unit")
-    if proposal.kind == "rental" and not proposal.rental_return_condition:
-        raise Unresolved("A rental needs a return condition")

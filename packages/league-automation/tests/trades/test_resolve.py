@@ -32,18 +32,41 @@ PLAYERS = [
 
 def extracted(**overrides) -> ExtractedTrade:
     base = {
-        "kind": "permanent", "parties": [ExtractedParty(name="member01"), ExtractedParty(name="Member02")],
+        "kind": "permanent",
+        "parties": [ExtractedParty(name="member01"), ExtractedParty(name="Member02")],
         "assets": [
-            ExtractedAsset(kind="player", from_party="member01", to_party="Member02", player_name="player alpha", amount=None, unit=None, description=None),
-            ExtractedAsset(kind="faab", from_party="Member02", to_party="member01", player_name=None, amount=450, unit="faab", description=None),
+            ExtractedAsset(
+                kind="player",
+                from_party="member01",
+                to_party="Member02",
+                player_name="player alpha",
+                amount=None,
+                unit=None,
+                description=None,
+            ),
+            ExtractedAsset(
+                kind="faab",
+                from_party="Member02",
+                to_party="member01",
+                player_name=None,
+                amount=450,
+                unit="faab",
+                description=None,
+            ),
         ],
-        "effective_week": 2, "rental_return_condition": None, "special_terms": [], "referenced_trade_code": None, "unclear_reason": None,
+        "effective_week": 2,
+        "rental_return_condition": None,
+        "special_terms": [],
+        "referenced_trade_code": None,
+        "unclear_reason": None,
     }
     base.update(overrides)
     return ExtractedTrade(**base)
 
 
-ROSTERS = RosterIndex({1: frozenset({"p1"}), 2: frozenset({"p2"}), 3: frozenset({"p3"}), 4: frozenset()})
+ROSTERS = RosterIndex(
+    {1: frozenset({"p1"}), 2: frozenset({"p2"}), 3: frozenset({"p3"}), 4: frozenset()}
+)
 
 
 def resolve(e: ExtractedTrade, rosters: RosterIndex = ROSTERS):
@@ -51,32 +74,66 @@ def resolve(e: ExtractedTrade, rosters: RosterIndex = ROSTERS):
 
 
 def test_resolves_members_by_name_or_alias_and_players_by_name() -> None:
-    proposal = resolve(extracted(parties=[ExtractedParty(name="memberone"), ExtractedParty(name="Member02")]))
+    proposal = resolve(
+        extracted(parties=[ExtractedParty(name="memberone"), ExtractedParty(name="Member02")])
+    )
     assert [p.member_id for p in proposal.parties] == [1, 2]
     assert proposal.assets[0].player_id == "p1"
     assert proposal.assets[1].amount == 450 and proposal.assets[1].unit == "faab"
 
 
-def test_ambiguous_player_name_is_unresolved_with_reason() -> None:
-    e = extracted(assets=[ExtractedAsset(kind="player", from_party="member01", to_party="Member02", player_name="Mike Williams", amount=None, unit=None, description=None)])
-    with pytest.raises(Unresolved) as info:
-        resolve(e)
-    assert "Mike Williams" in info.value.reason
+def test_an_ambiguous_player_name_is_kept_as_text() -> None:
+    e = extracted(
+        assets=[
+            ExtractedAsset(
+                kind="player",
+                from_party="member01",
+                to_party="Member02",
+                player_name="Mike Williams",
+                amount=None,
+                unit=None,
+                description=None,
+            )
+        ]
+    )
+    [asset] = resolve(e).assets
+    assert asset.player_id is None and asset.player_name == "Mike Williams"
 
 
 def test_ambiguous_member_name_is_settled_by_roster_evidence() -> None:
     # "nick" is Member01 and Member03; only Member01's roster holds Player Alpha, the player sent.
-    e = extracted(parties=[ExtractedParty(name="Nick"), ExtractedParty(name="Member02")],
-                  assets=[ExtractedAsset(kind="player", from_party="Nick", to_party="Member02",
-                                         player_name="Player Alpha", amount=None, unit=None,
-                                         description=None)])
+    e = extracted(
+        parties=[ExtractedParty(name="Nick"), ExtractedParty(name="Member02")],
+        assets=[
+            ExtractedAsset(
+                kind="player",
+                from_party="Nick",
+                to_party="Member02",
+                player_name="Player Alpha",
+                amount=None,
+                unit=None,
+                description=None,
+            )
+        ],
+    )
     assert [p.member_id for p in resolve(e).parties] == [1, 2]
 
 
 def test_ambiguous_member_name_without_roster_evidence_is_unresolved() -> None:
-    e = extracted(parties=[ExtractedParty(name="Nick"), ExtractedParty(name="Member02")],
-                  assets=[ExtractedAsset(kind="faab", from_party="Nick", to_party="Member02",
-                                         player_name=None, amount=10, unit="faab", description=None)])
+    e = extracted(
+        parties=[ExtractedParty(name="Nick"), ExtractedParty(name="Member02")],
+        assets=[
+            ExtractedAsset(
+                kind="faab",
+                from_party="Nick",
+                to_party="Member02",
+                player_name=None,
+                amount=10,
+                unit="faab",
+                description=None,
+            )
+        ],
+    )
     with pytest.raises(Unresolved) as info:
         resolve(e, RosterIndex.empty())
     assert "which one" in info.value.reason
@@ -93,15 +150,21 @@ def test_model_flagged_unclear_is_unresolved_with_its_reason() -> None:
     assert info.value.reason == "No counterparty named"
 
 
-def test_validate_requires_two_parties_one_asset_units_and_return_condition() -> None:
+def test_validate_requires_two_parties_and_nothing_else() -> None:
     good = resolve(extracted())
     validate(good)
     with pytest.raises(Unresolved):
-        validate(resolve(extracted(parties=[ExtractedParty(name="Member01"), ExtractedParty(name="Member01")])))
-    with pytest.raises(Unresolved):
-        validate(resolve(extracted(assets=[])))
-    with pytest.raises(Unresolved):
-        validate(resolve(extracted(kind="rental")))
+        validate(
+            resolve(
+                extracted(
+                    parties=[ExtractedParty(name="Member01"), ExtractedParty(name="Member01")]
+                )
+            )
+        )
+    # Ben (2026-09-10): the record is who traded plus the text; assets and
+    # rental terms are never a reason to refuse a log.
+    validate(resolve(extracted(assets=[])))
+    validate(resolve(extracted(kind="rental")))
 
 
 def resolve_with(players: list[Player], e: ExtractedTrade):
@@ -112,8 +175,13 @@ def player_asset(
     name: str, from_party: str = "member01", to_party: str = "Member02"
 ) -> ExtractedAsset:
     return ExtractedAsset(
-        kind="player", from_party=from_party, to_party=to_party, player_name=name,
-        amount=None, unit=None, description=None,
+        kind="player",
+        from_party=from_party,
+        to_party=to_party,
+        player_name=name,
+        amount=None,
+        unit=None,
+        description=None,
     )
 
 
@@ -126,9 +194,9 @@ def test_last_name_match_ignores_a_generational_suffix() -> None:
 
 
 def test_a_bare_suffix_matches_no_player() -> None:
-    with pytest.raises(Unresolved) as info:
-        resolve_with([*PLAYERS, HARRISON], extracted(assets=[player_asset("III")]))
-    assert info.value.reason == "I can't find a player named III"
+    proposal = resolve_with([*PLAYERS, HARRISON], extracted(assets=[player_asset("III")]))
+    [asset] = proposal.assets
+    assert asset.player_id is None and asset.player_name == "III"
 
 
 @pytest.mark.parametrize("name", ["Kansas City Chiefs", "KC D/ST", "KC DEF"])
@@ -154,8 +222,7 @@ def test_a_team_defense_resolves_however_it_was_typed(name: str) -> None:
 
 
 NFL_DEF_ROWS = [
-    Player(abbr, f"{words[0]} {words[1]}", "DEF", abbr, True)
-    for abbr, words in _NFL_TEAMS.items()
+    Player(abbr, f"{words[0]} {words[1]}", "DEF", abbr, True) for abbr, words in _NFL_TEAMS.items()
 ]
 #: The two cities `_build_defense_aliases` drops as shared: `Buffalo` names one
 #: club, `Los Angeles` names two, so only the nickname and the pair are checked.
@@ -187,9 +254,9 @@ def test_washington_resolves_under_the_name_it_used_to_have(name: str) -> None:
 
 def test_a_city_two_clubs_share_names_no_defense() -> None:
     """`the New York defense` names neither the Giants nor the Jets, so it asks."""
-    with pytest.raises(Unresolved) as info:
-        resolve(extracted(assets=[player_asset("the New York defense")]))
-    assert info.value.reason == "I can't find a player named the New York defense"
+    proposal = resolve(extracted(assets=[player_asset("the New York defense")]))
+    [asset] = proposal.assets
+    assert asset.player_id is None and asset.player_name == "the New York defense"
 
 
 WALKER = Player("p10", "Kenneth Walker III", "RB", "SEA", True)
@@ -219,11 +286,11 @@ def test_a_father_and_son_both_on_file_make_the_bare_name_ambiguous() -> None:
     """`Marvin Harrison` with both generations on file names either of them.
     Matching the row spelled without the suffix would be a guess, and a guess
     logs the wrong player, so the chat is asked which one."""
-    with pytest.raises(Unresolved) as info:
-        resolve_with(
-            [*PLAYERS, HARRISON, FATHER], extracted(assets=[player_asset("Marvin Harrison")])
-        )
-    assert info.value.reason == "Two players named Marvin Harrison; which one?"
+    proposal = resolve_with(
+        [*PLAYERS, HARRISON, FATHER], extracted(assets=[player_asset("Marvin Harrison")])
+    )
+    [asset] = proposal.assets
+    assert asset.player_id is None and asset.player_name == "Marvin Harrison"
 
 
 def test_the_suffix_picks_the_son_when_both_are_on_file() -> None:
@@ -235,10 +302,10 @@ def test_the_suffix_picks_the_son_when_both_are_on_file() -> None:
     assert proposal.assets[0].player_id == "p9"
 
 
-def test_unknown_player_name_is_unresolved() -> None:
-    with pytest.raises(Unresolved) as info:
-        resolve(extracted(assets=[player_asset("Nobody Here")]))
-    assert info.value.reason == "I can't find a player named Nobody Here"
+def test_an_unknown_player_name_is_kept_as_text() -> None:
+    proposal = resolve(extracted(assets=[player_asset("Nobody Here")]))
+    [asset] = proposal.assets
+    assert asset.player_id is None and asset.player_name == "Nobody Here"
 
 
 def test_four_members_sharing_an_alias_are_never_disambiguated() -> None:
@@ -272,25 +339,42 @@ def test_receive_only_rule_is_refused_when_a_candidate_has_no_roster_data() -> N
 
 
 def test_non_player_asset_keeps_an_incidental_player_name_unresolved() -> None:
-    e = extracted(assets=[ExtractedAsset(
-        kind="faab", from_party="member01", to_party="Member02", player_name="Nobody Here",
-        amount=10, unit="faab", description=None,
-    )])
+    e = extracted(
+        assets=[
+            ExtractedAsset(
+                kind="faab",
+                from_party="member01",
+                to_party="Member02",
+                player_name="Nobody Here",
+                amount=10,
+                unit="faab",
+                description=None,
+            )
+        ]
+    )
     asset = resolve(e).assets[0]
     assert asset.player_id is None
     assert asset.player_name == "Nobody Here"
 
 
-def test_validate_rejects_an_amount_without_a_unit() -> None:
+def test_an_amount_without_a_unit_is_logged_anyway() -> None:
     # A money kind supplies its own unit; a player carrying a bare number does
     # not, and there is nothing to guess from.
-    e = extracted(assets=[ExtractedAsset(
-        kind="player", from_party="member01", to_party="Member02", player_name="player alpha",
-        amount=10, unit=None, description=None,
-    )])
-    with pytest.raises(Unresolved) as info:
-        validate(resolve(e))
-    assert info.value.reason == "An amount needs a unit"
+    e = extracted(
+        assets=[
+            ExtractedAsset(
+                kind="player",
+                from_party="member01",
+                to_party="Member02",
+                player_name="player alpha",
+                amount=10,
+                unit=None,
+                description=None,
+            )
+        ]
+    )
+    # Units are the announcement's business now; the log keeps the text.
+    validate(resolve(e))
 
 
 @pytest.mark.parametrize(
@@ -344,11 +428,13 @@ def test_build_roster_index_maps_members_to_their_holdings(conn) -> None:
             (season_id, member_id),
         )
 
-    client = FakeRosterClient([
-        SleeperRoster(roster_id=7, owner_id="u", players=["p1"]),
-        SleeperRoster(roster_id=71, owner_id="v", players=["p2"]),
-        SleeperRoster(roster_id=72, owner_id="w", players=None),
-    ])
+    client = FakeRosterClient(
+        [
+            SleeperRoster(roster_id=7, owner_id="u", players=["p1"]),
+            SleeperRoster(roster_id=71, owner_id="v", players=["p2"]),
+            SleeperRoster(roster_id=72, owner_id="w", players=None),
+        ]
+    )
     index = build_roster_index(client, conn, "league-1", year)
     assert index.holdings == {member_id: frozenset({"p1"})}
     assert index.holds(member_id, "p1") is True
@@ -357,19 +443,37 @@ def test_build_roster_index_maps_members_to_their_holdings(conn) -> None:
 def test_a_unit_wins_over_a_mislabelled_money_kind() -> None:
     """The model sometimes types the wrong money kind next to the right unit;
     the unit is the specific field, so it decides."""
-    e = extracted(assets=[ExtractedAsset(
-        kind="usd", from_party="member01", to_party="Member02", player_name=None,
-        amount=25, unit="faab", description=None,
-    )])
+    e = extracted(
+        assets=[
+            ExtractedAsset(
+                kind="usd",
+                from_party="member01",
+                to_party="Member02",
+                player_name=None,
+                amount=25,
+                unit="faab",
+                description=None,
+            )
+        ]
+    )
     asset = resolve(e).assets[0]
     assert asset.kind == "faab" and asset.unit == "faab" and asset.amount == 25
 
 
 def test_a_money_kind_without_a_unit_becomes_its_own_unit() -> None:
-    e = extracted(assets=[ExtractedAsset(
-        kind="draft_dollars", from_party="member01", to_party="Member02", player_name=None,
-        amount=30, unit=None, description=None,
-    )])
+    e = extracted(
+        assets=[
+            ExtractedAsset(
+                kind="draft_dollars",
+                from_party="member01",
+                to_party="Member02",
+                player_name=None,
+                amount=30,
+                unit=None,
+                description=None,
+            )
+        ]
+    )
     asset = resolve(e).assets[0]
     assert asset.kind == "draft_dollars" and asset.unit == "draft_dollars"
 
@@ -377,10 +481,19 @@ def test_a_money_kind_without_a_unit_becomes_its_own_unit() -> None:
 def test_a_non_money_asset_keeps_its_description_and_drops_the_amount() -> None:
     """`protection` and `other` are terms, not amounts: a bare `1` next to one
     would print as nonsense in the chat."""
-    e = extracted(assets=[ExtractedAsset(
-        kind="other", from_party="member01", to_party="Member02", player_name=None,
-        amount=1, unit=None, description="one gulag pass",
-    )])
+    e = extracted(
+        assets=[
+            ExtractedAsset(
+                kind="other",
+                from_party="member01",
+                to_party="Member02",
+                player_name=None,
+                amount=1,
+                unit=None,
+                description="one gulag pass",
+            )
+        ]
+    )
     asset = resolve(e).assets[0]
     assert asset.kind == "other" and asset.amount is None
     assert asset.description == "one gulag pass"
@@ -390,24 +503,40 @@ def test_a_two_token_name_never_falls_back_to_the_last_name() -> None:
     """Someone typed a full name; matching it to a different player who happens
     to share the surname would log the wrong trade."""
     players = [Player("p9", "Van Jefferson", "WR", "PIT", True)]
-    e = extracted(assets=[ExtractedAsset(
-        kind="player", from_party="member01", to_party="Member02",
-        player_name="Justin Jefferson", amount=None, unit=None, description=None,
-    )])
-    with pytest.raises(Unresolved) as info:
-        resolve_extracted(e, MEMBERS, players, ROSTERS, 2026, "g1", "🚨 ...", "2026.1", "m")
-    assert info.value.reason == "I can't find a player named Justin Jefferson"
+    e = extracted(
+        assets=[
+            ExtractedAsset(
+                kind="player",
+                from_party="member01",
+                to_party="Member02",
+                player_name="Justin Jefferson",
+                amount=None,
+                unit=None,
+                description=None,
+            )
+        ]
+    )
+    proposal = resolve_extracted(e, MEMBERS, players, ROSTERS, 2026, "g1", "🚨 ...", "2026.1", "m")
+    [asset] = proposal.assets
+    assert asset.player_id is None and asset.player_name == "Justin Jefferson"
 
 
 def test_a_single_token_name_still_falls_back_to_the_last_name() -> None:
     players = [Player("p9", "Van Jefferson", "WR", "PIT", True)]
-    e = extracted(assets=[ExtractedAsset(
-        kind="player", from_party="member01", to_party="Member02",
-        player_name="Jefferson", amount=None, unit=None, description=None,
-    )])
-    proposal = resolve_extracted(
-        e, MEMBERS, players, ROSTERS, 2026, "g1", "🚨 ...", "2026.1", "m"
+    e = extracted(
+        assets=[
+            ExtractedAsset(
+                kind="player",
+                from_party="member01",
+                to_party="Member02",
+                player_name="Jefferson",
+                amount=None,
+                unit=None,
+                description=None,
+            )
+        ]
     )
+    proposal = resolve_extracted(e, MEMBERS, players, ROSTERS, 2026, "g1", "🚨 ...", "2026.1", "m")
     assert proposal.assets[0].player_id == "p9"
 
 
@@ -423,8 +552,15 @@ def test_a_first_person_party_resolves_to_the_announcer(pronoun: str) -> None:
     e = extracted(
         parties=[ExtractedParty(name=pronoun), ExtractedParty(name="Member02")],
         assets=[
-            ExtractedAsset(kind="player", from_party=pronoun, to_party="Member02",
-                           player_name="Player Alpha", amount=None, unit=None, description=None),
+            ExtractedAsset(
+                kind="player",
+                from_party=pronoun,
+                to_party="Member02",
+                player_name="Player Alpha",
+                amount=None,
+                unit=None,
+                description=None,
+            ),
         ],
     )
     proposal = resolve_extracted(
@@ -447,10 +583,20 @@ def test_a_member_who_goes_by_a_first_person_word_keeps_their_name() -> None:
     """The member index is asked before the pronoun guard: an alias really is a
     name, and the announcer only stands in for a word nobody answers to."""
     members = [*MEMBERS, MemberRef(5, "Member05", ("me",))]
-    e = extracted(parties=[ExtractedParty(name="me"), ExtractedParty(name="Member02")],
-                  assets=[ExtractedAsset(kind="player", from_party="me", to_party="Member02",
-                                         player_name="Player Alpha", amount=None, unit=None,
-                                         description=None)])
+    e = extracted(
+        parties=[ExtractedParty(name="me"), ExtractedParty(name="Member02")],
+        assets=[
+            ExtractedAsset(
+                kind="player",
+                from_party="me",
+                to_party="Member02",
+                player_name="Player Alpha",
+                amount=None,
+                unit=None,
+                description=None,
+            )
+        ],
+    )
     proposal = resolve_extracted(
         e, members, PLAYERS, ROSTERS, 2026, "g1", "x", "2026.1", "m", announcer=MEMBERS[0]
     )
@@ -461,7 +607,15 @@ def test_the_announcer_is_not_added_to_a_trade_that_never_mentions_them() -> Non
     """Knowing who posted an alert is not a reason to make them a party to it:
     a member relaying two other people's trade stays out of the record."""
     proposal = resolve_extracted(
-        extracted(), MEMBERS, PLAYERS, ROSTERS, 2026, "g1", "x", "2026.1", "m",
+        extracted(),
+        MEMBERS,
+        PLAYERS,
+        ROSTERS,
+        2026,
+        "g1",
+        "x",
+        "2026.1",
+        "m",
         announcer=MEMBERS[3],
     )
     assert [p.member_id for p in proposal.parties] == [1, 2]
@@ -497,9 +651,7 @@ ROSTERED = RosterIndex(
 def rostered(name: str):
     """Resolve one player asset given away by Member01, against the rosters above."""
     e = extracted(assets=[player_asset(name)])
-    return resolve_extracted(
-        e, MEMBERS, ROSTER_PLAYERS, ROSTERED, 2026, "g1", "x", "2026.1", "m"
-    )
+    return resolve_extracted(e, MEMBERS, ROSTER_PLAYERS, ROSTERED, 2026, "g1", "x", "2026.1", "m")
 
 
 def test_a_first_name_resolves_against_the_giving_party_s_roster() -> None:
@@ -524,47 +676,41 @@ def test_a_name_on_nobody_else_s_roster_resolves_league_wide() -> None:
 def test_two_players_on_the_giver_s_roster_answer_to_the_name_so_the_chat_is_asked() -> None:
     """Roster evidence narrows; it never guesses. Both Bellwethers are the
     giver's, so this is a question rather than a coin toss."""
-    with pytest.raises(Unresolved) as info:
-        rostered("Bellwether")
-    assert info.value.reason == "Two players named Bellwether on that roster; which one?"
+    proposal = rostered("Bellwether")
+    [asset] = proposal.assets
+    assert asset.player_id is None and asset.player_name == "Bellwether"
 
 
 def test_a_name_nobody_in_the_league_answers_to_keeps_the_old_message() -> None:
-    with pytest.raises(Unresolved) as info:
-        rostered("Nonexistent Placeholder")
-    assert info.value.reason == "I can't find a player named Nonexistent Placeholder"
+    proposal = rostered("Nonexistent Placeholder")
+    [asset] = proposal.assets
+    assert asset.player_id is None and asset.player_name == "Nonexistent Placeholder"
 
 
 def test_a_full_typed_name_is_never_swapped_for_a_different_rostered_one() -> None:
     """`Justin Quillon` is not in the directory and `Van Quillon` is, on the
     giver's roster. Sharing a surname is not being the same man, so this asks
     rather than recording a trade for somebody nobody named."""
-    with pytest.raises(Unresolved) as info:
-        rostered("Justin Quillon")
-    assert info.value.reason == "I can't find a player named Justin Quillon"
+    proposal = rostered("Justin Quillon")
+    [asset] = proposal.assets
+    assert asset.player_id is None and asset.player_name == "Justin Quillon"
 
 
 def test_an_exact_name_still_wins_before_any_roster_is_read() -> None:
-    assert (
-        rostered("Michael Tolliver").assets[0].player_id == "p12"
-    )
+    assert rostered("Michael Tolliver").assets[0].player_id == "p12"
 
 
 def test_an_asset_with_no_giver_falls_back_to_the_old_chain() -> None:
     """Nothing says whose roster to read, so the giver's-roster step is skipped
     and a bare surname is answered the way it was before rosters were consulted
     -- `Sam Fernsby` is on nobody's roster at all."""
-    assert (
-        _resolve_player_with_rosters("Fernsby", ROSTER_PLAYERS, ROSTERED, None) == "p15"
-    )
+    assert _resolve_player_with_rosters("Fernsby", ROSTER_PLAYERS, ROSTERED, None) == "p15"
 
 
 def test_an_empty_roster_index_leaves_resolution_exactly_as_it_was() -> None:
     """A Sleeper outage or a database-less dry run loses roster evidence and must
     degrade to the old answers rather than to no answers."""
-    assert (
-        _resolve_player_with_rosters("Fernsby", ROSTER_PLAYERS, RosterIndex.empty(), 1) == "p15"
-    )
+    assert _resolve_player_with_rosters("Fernsby", ROSTER_PLAYERS, RosterIndex.empty(), 1) == "p15"
     with pytest.raises(Unresolved) as info:
         _resolve_player_with_rosters("Rashaan", ROSTER_PLAYERS, RosterIndex.empty(), 1)
     assert info.value.reason == "I can't find a player named Rashaan"
@@ -605,8 +751,14 @@ def faab_asset(
     description: str | None = None,
 ) -> ExtractedAsset:
     return ExtractedAsset(
-        kind="faab", from_party=from_party, to_party=to_party, player_name=None,
-        amount=amount, unit="faab", currency=currency, description=description,
+        kind="faab",
+        from_party=from_party,
+        to_party=to_party,
+        player_name=None,
+        amount=amount,
+        unit="faab",
+        currency=currency,
+        description=description,
     )
 
 
@@ -624,9 +776,7 @@ def test_an_amount_already_converted_is_not_converted_again() -> None:
     """The prompt asks the model to do the arithmetic and keep the announcement's
     own phrase in the label. When it does, the guard has to stay out of the way --
     `$65 FAAB ($13 draft)` is 65, never 325."""
-    proposal = resolve(
-        extracted(assets=[faab_asset(65, description="$65 FAAB ($13 draft FAAB)")])
-    )
+    proposal = resolve(extracted(assets=[faab_asset(65, description="$65 FAAB ($13 draft FAAB)")]))
     money = proposal.assets[0]
     assert money.amount == 65
     assert money.description == "$65 FAAB ($13 draft FAAB)"
@@ -652,11 +802,7 @@ def test_two_prices_that_disagree_are_a_question_for_the_chat() -> None:
     """`$70 FAAB ($13 draft)` is 70 and 65: the announcement states two different
     prices and nothing here can pick between them."""
     with pytest.raises(Unresolved) as info:
-        resolve(
-            extracted(
-                assets=[faab_asset(70), faab_asset(13, currency="draft")]
-            )
-        )
+        resolve(extracted(assets=[faab_asset(70), faab_asset(13, currency="draft")]))
     assert info.value.reason == "That says 65, 70 FAAB for the same thing; which is it?"
 
 
@@ -689,8 +835,14 @@ def test_real_money_is_never_multiplied() -> None:
         extracted(
             assets=[
                 ExtractedAsset(
-                    kind="usd", from_party="Member02", to_party="member01", player_name=None,
-                    amount=13, unit="usd", currency="draft", description=None,
+                    kind="usd",
+                    from_party="Member02",
+                    to_party="member01",
+                    player_name=None,
+                    amount=13,
+                    unit="usd",
+                    currency="draft",
+                    description=None,
                 )
             ]
         )

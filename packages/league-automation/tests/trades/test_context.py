@@ -125,8 +125,7 @@ def test_faab_is_one_line_a_team() -> None:
 def test_a_trade_line_carries_the_code_week_status_and_both_legs() -> None:
     line = _line(build_registrar_context(3, TEAMS, [trade()]), "T-2026-004")
     assert line == (
-        "T-2026-004 wk3 accepted: Member01 → Member02: Player Alpha; "
-        "Member02 → Member01: 450 FAAB"
+        "T-2026-004 wk3 accepted: Member01 → Member02: Player Alpha; Member02 → Member01: 450 FAAB"
     )
 
 
@@ -173,8 +172,16 @@ def test_every_money_unit_is_spelled_the_way_the_chat_spells_it(
     terms = {
         "parties": [{"member_id": 1, "display_name": "Member01"}],
         "assets": [
-            {"kind": unit, "from_member_id": 1, "to_member_id": None, "amount": amount,
-             "unit": unit, "player_name": None, "player_id": None, "description": None}
+            {
+                "kind": unit,
+                "from_member_id": 1,
+                "to_member_id": None,
+                "amount": amount,
+                "unit": unit,
+                "player_name": None,
+                "player_id": None,
+                "description": None,
+            }
         ],
     }
     assert expected in build_registrar_context(3, (), [trade(terms=terms)])
@@ -225,8 +232,12 @@ def _snapshot() -> LeagueSnapshot:
     at = datetime(2026, 9, 9, tzinfo=UTC)
 
     def team(
-        member_id: int, name: str, player: str, position: str,
-        eliminated: bool = False, eliminated_week: int | None = None,
+        member_id: int,
+        name: str,
+        player: str,
+        position: str,
+        eliminated: bool = False,
+        eliminated_week: int | None = None,
     ) -> AdvisorTeamState:
         return AdvisorTeamState(
             team_id=100 + member_id,
@@ -308,9 +319,7 @@ def test_the_rules_file_names_nobody_and_stays_short() -> None:
 def test_a_missing_rules_file_leaves_the_section_out(monkeypatch: pytest.MonkeyPatch) -> None:
     """An empty `League rules:` heading would be a claim that the league has none."""
     league_rules.cache_clear()
-    monkeypatch.setattr(
-        context_module, "LEAGUE_RULES_PATH", Path("/nonexistent/league-rules.md")
-    )
+    monkeypatch.setattr(context_module, "LEAGUE_RULES_PATH", Path("/nonexistent/league-rules.md"))
     try:
         assert league_rules() == ""
         assert "League rules:" not in build_registrar_context(4, TEAMS, [])

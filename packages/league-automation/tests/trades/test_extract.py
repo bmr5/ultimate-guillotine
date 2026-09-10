@@ -22,7 +22,7 @@ class FakeAI:
 
 def test_prompt_is_versioned_and_states_the_rules() -> None:
     prompt = load_prompt()
-    assert PROMPT_VERSION == "2026.4"
+    assert PROMPT_VERSION == "2026.5"
     assert prompt.startswith(f"<!-- prompt_version: {PROMPT_VERSION} -->")
     assert "verbatim" in prompt and "null" in prompt and "fairness" in prompt
 
@@ -252,6 +252,32 @@ def test_prompt_states_the_2026_4_rules(rule: str, phrase: str) -> None:
     assert phrase in " ".join(load_prompt().split())
 
 
+#: 2026.5 (Ben, 2026-09-10): the record is who traded and the announcement's words.
+PROMPT_RULES_2026_5 = [
+    (
+        "a missing asset never withholds a reading",
+        "The assets are copied through as written and never a reason to withhold a reading",
+    ),
+    (
+        "fewer than two people is the only unclear rule left",
+        "if fewer than two people are named in the announcement itself, set `kind` to `unclear`",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    ("rule", "phrase"),
+    PROMPT_RULES_2026_5,
+    ids=[rule for rule, _ in PROMPT_RULES_2026_5],
+)
+def test_prompt_states_the_2026_5_rules(rule: str, phrase: str) -> None:
+    assert phrase in " ".join(load_prompt().split())
+
+
+def test_prompt_no_longer_withholds_a_reading_for_a_missing_asset() -> None:
+    assert "or no asset is named" not in " ".join(load_prompt().split())
+
+
 def test_prompt_keeps_the_not_a_trade_rules_ahead_of_the_unclear_rules() -> None:
     """Order is the rule: a report of someone else's alert has to be answered
     `not_a_trade` before the direction test can turn it into a clarification."""
@@ -267,8 +293,7 @@ def test_prompt_marks_the_user_message_context_lines_as_never_announcement() -> 
     assert (
         "The user message's `Season:`, `Week hint:`, `League members`, `Announcer:`,"
         " `Current NFL week:`,\n`Rosters:`, `FAAB remaining:`, `Trades this season:` and"
-        " `League rules:` lines are"
-        in prompt
+        " `League rules:` lines are" in prompt
     )
     assert "context, never announcement content" in prompt
     # The one exception, and the reason the announcer line is not just more context:
@@ -291,13 +316,42 @@ def test_prompt_explains_referenced_trade_code_and_asset_fields() -> None:
 
 def test_extract_passes_context_and_returns_model_output() -> None:
     expected = ExtractedTrade(
-        kind="rental", parties=[ExtractedParty(name="Member03"), ExtractedParty(name="Member04")],
-        assets=[ExtractedAsset(kind="player", from_party="Member04", to_party="Member03", player_name="Player Beta", amount=None, unit=None, description=None),
-                ExtractedAsset(kind="faab", from_party="Member03", to_party="Member04", player_name=None, amount=92, unit="faab", description=None)],
-        effective_week=2, rental_return_condition="50 FAAB returned Monday", special_terms=[], referenced_trade_code=None, unclear_reason=None,
+        kind="rental",
+        parties=[ExtractedParty(name="Member03"), ExtractedParty(name="Member04")],
+        assets=[
+            ExtractedAsset(
+                kind="player",
+                from_party="Member04",
+                to_party="Member03",
+                player_name="Player Beta",
+                amount=None,
+                unit=None,
+                description=None,
+            ),
+            ExtractedAsset(
+                kind="faab",
+                from_party="Member03",
+                to_party="Member04",
+                player_name=None,
+                amount=92,
+                unit="faab",
+                description=None,
+            ),
+        ],
+        effective_week=2,
+        rental_return_condition="50 FAAB returned Monday",
+        special_terms=[],
+        referenced_trade_code=None,
+        unclear_reason=None,
     )
     ai = FakeAI(expected)
-    result, usage = extract_trade(ai, "🚨 Member03 rents Player Beta from Member04 for 92 FAAB, 50 returned Monday", 2026, 2, ["Member03", "Member04"])
+    result, usage = extract_trade(
+        ai,
+        "🚨 Member03 rents Player Beta from Member04 for 92 FAAB, 50 returned Monday",
+        2026,
+        2,
+        ["Member03", "Member04"],
+    )
     assert result == expected and usage.response_id == "gen-1"
     system, user, schema, name = ai.calls[0]
     assert schema is ExtractedTrade and name == "extracted_trade"
@@ -339,9 +393,7 @@ def test_the_context_pack_goes_between_the_announcer_and_the_announcement() -> N
     the prompt calls context, and the pack is more of the same."""
     ai = FakeAI(ExtractedTrade(kind="not_a_trade"))
     pack = "Current NFL week: 4\n\nRosters:\nMember03 (no known nicknames): Player Beta RB"
-    extract_trade(
-        ai, "Member03 sends Beta", 2026, None, ["Member03", "Member04"], "Member03", pack
-    )
+    extract_trade(ai, "Member03 sends Beta", 2026, None, ["Member03", "Member04"], "Member03", pack)
     user = ai.calls[0][1]
     assert pack in user
     assert user.index("Announcer: Member03") < user.index(pack) < user.index("Announcement:")

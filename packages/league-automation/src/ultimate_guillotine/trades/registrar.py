@@ -33,6 +33,7 @@ from ultimate_guillotine.data.repositories import (
 )
 from ultimate_guillotine.listener.processing import Trigger
 from ultimate_guillotine.messages.bluebubbles import InboundMessage
+from ultimate_guillotine.sleeper.state import NflStateRepository
 from ultimate_guillotine.trades.context import TRADE_LIMIT, context_from_snapshot
 from ultimate_guillotine.trades.detect import is_rescission_candidate, is_trade_candidate
 from ultimate_guillotine.trades.extract import PROMPT_VERSION, extract_trade
@@ -52,6 +53,7 @@ from ultimate_guillotine.trades.resolve import (
     resolve_extracted,
     validate,
 )
+from ultimate_guillotine.trades.week import week_for
 
 AGENT = "trade-registrar"
 #: A trade code as it is written in the chat. Gate traffic carries `TEST-`
@@ -259,6 +261,7 @@ class TradeRegistrar:
                 PROMPT_VERSION,
                 usage.model,
                 announcer=announcer,
+                week=self._week_for(msg),
             )
             if extracted.kind == "rescission":
                 return self._rescind_by_context(run_id, msg, proposal, input_version)
@@ -282,6 +285,20 @@ class TradeRegistrar:
         self._deliver(run_id, content)
         self._finish(run_id, "succeeded", content=content, input_version=input_version)
         return acceptance.status
+
+    def _week_for(self, msg: InboundMessage) -> int | None:
+        """The week the alert belongs to, from its own timestamp.
+
+        Read off ``public.nfl_state`` (see ``trades.week``). A registrar built
+        without a connection -- the CLI's fixture mode -- has no state row and
+        leaves the week to the model's field, which is what it did before.
+        """
+        if self._conn is None:
+            return None
+        try:
+            return week_for(msg.sent_at, NflStateRepository(self._conn).get())
+        except Exception:  # noqa: BLE001 - the week is never worth failing a log
+            return None
 
     def _announcer(self, msg: InboundMessage, members=()) -> MemberRef | None:
         """Which member posted this alert, when that can be answered.
@@ -498,11 +515,7 @@ def trade_trigger(registrar: TradeRegistrar, chat_guids: str | frozenset[str]) -
     allowed = frozenset({chat_guids}) if isinstance(chat_guids, str) else frozenset(chat_guids)
 
     def matches(msg: InboundMessage) -> bool:
-        return (
-            msg.chat_guid in allowed
-            and is_trade_candidate(msg.text)
-            and not is_signed(msg.text)
-        )
+        return msg.chat_guid in allowed and is_trade_candidate(msg.text) and not is_signed(msg.text)
 
     def handle(msg: InboundMessage) -> None:
         registrar.handle(msg)
