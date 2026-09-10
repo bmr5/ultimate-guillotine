@@ -5,7 +5,7 @@ import {
   type RosterPlayer,
   type SortMode,
 } from "../types";
-import { isUnavailable } from "./availability";
+import { isOut } from "./availability";
 import { A_BEFORE_B, B_BEFORE_A, NAME_COLLATOR, TIED } from "./compare";
 import { layoutStarters } from "./roster";
 import { sortValue } from "./sort";
@@ -166,10 +166,16 @@ function toPositionPlayer(player: RosterPlayer): PositionPlayer {
   };
 }
 
-/** Whether the team is starting somebody at this position who is not playing this week. */
+/**
+ * Whether the team is starting somebody at this position who is not playing this week.
+ *
+ * The same `isOut` rule the card's out chip uses, so the two readings of one lineup cannot
+ * disagree: a `Doubtful` starter Sleeper has stopped projecting is a hole here as well.
+ */
 function hasOutStarter(players: PositionPlayer[]): boolean {
   return players.some(
-    (player) => player.isStarter && isUnavailable(player.injuryStatus),
+    (player) =>
+      player.isStarter && isOut(player.injuryStatus, player.projectedPoints),
   );
 }
 

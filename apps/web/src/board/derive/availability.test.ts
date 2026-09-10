@@ -9,8 +9,11 @@ import { describe, expect, it } from "vitest";
 import type { RosterPlayer } from "../types";
 import {
   injuryTag,
+  isOut,
   isUnavailable,
+  KNOWN_INJURY_STATUSES,
   normalizeInjuryStatus,
+  outReason,
   outStarters,
   resolveStarterAvailability,
   TENTATIVE_STATUSES,
@@ -60,8 +63,9 @@ const withRow = (rows: StarterSlotRow[], index: number, row: StarterSlotRow) =>
 
 describe("injury status vocabulary", () => {
   it("names the statuses that mean a player is not playing", () => {
-    // The six Sleeper values that take a player off the field. `Questionable` and
-    // `Doubtful` are deliberately not among them: they are a doubt, not an absence.
+    // The six Sleeper values that take a player off the field whatever else is true of the
+    // row. A doubt is not one of them on its own — see `outReason` for the case where a
+    // withdrawn projection turns one into an absence anyway.
     expect([...UNAVAILABLE_STATUSES]).toEqual([
       "Out",
       "IR",
@@ -71,6 +75,21 @@ describe("injury status vocabulary", () => {
       "DNR",
     ]);
     expect([...TENTATIVE_STATUSES]).toEqual(["Questionable", "Doubtful"]);
+  });
+
+  it("knows the same nine statuses the sync stores", () => {
+    // `KNOWN_INJURY_STATUSES` in `players.py`, in this build's own order.
+    expect([...KNOWN_INJURY_STATUSES]).toEqual([
+      "Out",
+      "IR",
+      "PUP",
+      "Sus",
+      "COV",
+      "DNR",
+      "Questionable",
+      "Doubtful",
+      "NA",
+    ]);
   });
 
   it.each([
@@ -128,6 +147,30 @@ describe("injury status vocabulary", () => {
   });
 });
 
+describe("outReason", () => {
+  it.each([
+    // A status that means absent is absent whether or not Sleeper still has a number.
+    ["Out", null, "unavailable"],
+    ["Out", 4.2, "unavailable"],
+    ["IR", 9.4, "unavailable"],
+    // Ben's tight end, 2026-09-09: flagged `Doubtful`, projection withdrawn.
+    ["Doubtful", null, "no-projection"],
+    ["Questionable", null, "no-projection"],
+    ["NA", null, "no-projection"],
+    // The doubt with the number still published is the league's own guess that he plays.
+    ["Doubtful", 8.5, null],
+    ["Questionable", 9.4, null],
+    // No flag at all and no number is missing data, which is the `partial` chip's job.
+    [null, null, null],
+    ["", null, null],
+    // A word this build has never seen never takes a starter out of a lineup.
+    ["Sprained", null, null],
+  ])("reads %s with projection %s as %s", (status, projection, expected) => {
+    expect(outReason(status, projection)).toBe(expected);
+    expect(isOut(status, projection)).toBe(expected !== null);
+  });
+});
+
 describe("outStarters", () => {
   it("names the out starters, in lineup order, with their statuses", () => {
     const rows = withRow(
@@ -156,6 +199,7 @@ describe("outStarters", () => {
         fullName: "Shelved Back",
         status: "IR",
         title: "Injured reserve",
+        reason: "unavailable",
         // Sleeper is still publishing a number for him; the caller has to know, because that
         // number is inside `starters_projected` and is not coverage of a lineup he is not in.
         projectedPoints: 9.4,
@@ -165,6 +209,7 @@ describe("outStarters", () => {
         fullName: "Broken Tightend",
         status: "Out",
         title: "Out",
+        reason: "unavailable",
         projectedPoints: null,
       },
     ]);
@@ -213,6 +258,36 @@ const projectedOutTe = () =>
     projectedPoints: 4.2,
   });
 
+/** Ben's own card, 2026-09-09: flagged `Doubtful`, and Sleeper published no projection. */
+const doubtfulTe = () =>
+  filled("TE", {
+    sleeperPlayerId: "te",
+    fullName: "Doubtful Tightend",
+    slotIndex: 5,
+    injuryStatus: "Doubtful",
+    projectedPoints: null,
+  });
+
+/** The same doubt, with the number still published. */
+const projectedDoubtfulTe = () =>
+  filled("TE", {
+    sleeperPlayerId: "te",
+    fullName: "Doubtful Tightend",
+    slotIndex: 5,
+    injuryStatus: "Doubtful",
+    projectedPoints: 8.5,
+  });
+
+/** A questionable starter Sleeper has stopped projecting. */
+const questionableWr = () =>
+  filled("WR", {
+    sleeperPlayerId: "wr",
+    fullName: "Questionable Receiver",
+    slotIndex: 3,
+    injuryStatus: "Questionable",
+    projectedPoints: null,
+  });
+
 /** A fit starter Sleeper simply has no number for. */
 const unprojectedStarter = () =>
   filled("WR", {
@@ -229,6 +304,47 @@ const AVAILABILITY_CASES: AvailabilityCase[] = [
     name: "one out starter, everyone else projected: out, never partial",
     input: {
       starterRows: withRow(healthyLineup(), 5, outTe()),
+      startersProjected: 9,
+      starterSlots: 10,
+      emptySlots: 0,
+    },
+    outCount: 1,
+    outChipText: "1 starter out",
+    isPartial: false,
+    adjustedCoveragePct: 100,
+  },
+  {
+    // Ben's report tonight: the `Doubtful` tight end with the withdrawn projection read as
+    // "missing data", which is the one case the injury work exists for.
+    name: "a doubtful starter with no projection: out, never partial",
+    input: {
+      starterRows: withRow(healthyLineup(), 5, doubtfulTe()),
+      startersProjected: 9,
+      starterSlots: 10,
+      emptySlots: 0,
+    },
+    outCount: 1,
+    outChipText: "1 starter out",
+    isPartial: false,
+    adjustedCoveragePct: 100,
+  },
+  {
+    name: "a doubtful starter Sleeper still projects: still available, still counted",
+    input: {
+      starterRows: withRow(healthyLineup(), 5, projectedDoubtfulTe()),
+      startersProjected: 10,
+      starterSlots: 10,
+      emptySlots: 0,
+    },
+    outCount: 0,
+    outChipText: null,
+    isPartial: false,
+    adjustedCoveragePct: 100,
+  },
+  {
+    name: "a questionable starter with no projection: out on the same rule",
+    input: {
+      starterRows: withRow(healthyLineup(), 3, questionableWr()),
       startersProjected: 9,
       starterSlots: 10,
       emptySlots: 0,
@@ -401,6 +517,26 @@ describe("resolveStarterAvailability details", () => {
     expect(availability.outChipTitle).toBe(
       "Out starters: Broken Tightend (Out)",
     );
+  });
+
+  it("says what gave a withdrawn projection away in the tooltip", () => {
+    const availability = resolveStarterAvailability({
+      starterRows: withRow(healthyLineup(), 5, doubtfulTe()),
+      startersProjected: 9,
+      starterSlots: 10,
+      emptySlots: 0,
+    });
+    // The status alone would read as a doubt the reader could argue with; the missing number
+    // is the half of the reason that makes the chip make sense.
+    expect(availability.outChipTitle).toBe(
+      "Out starters: Doubtful Tightend (Doubtful, no projection)",
+    );
+    expect(availability.outStarters[0]).toMatchObject({
+      status: "Doubtful",
+      title: "Doubtful",
+      reason: "no-projection",
+      projectedPoints: null,
+    });
   });
 
   it("has no tooltip when nobody is out", () => {

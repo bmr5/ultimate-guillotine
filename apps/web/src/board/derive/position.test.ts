@@ -228,6 +228,36 @@ describe("positionView", () => {
     expect(rows.find((r) => r.teamId === 2)?.likelyBidderReason).toBeNull();
   });
 
+  it("flags a doubtful starter Sleeper has stopped projecting, like the card does", () => {
+    // The out chip and this view read one lineup, so they read it the same way: a known flag
+    // with the projection withdrawn is an absence, not missing data.
+    const rows = positionView(
+      [
+        team({ teamId: 1, roster: [te("kelce", 20, 0)] }),
+        team({
+          teamId: 2,
+          roster: [
+            player({
+              sleeperPlayerId: "bowers",
+              slot: "starter",
+              slotIndex: 0,
+              lineupPosition: "TE",
+              position: "TE",
+              projectedPoints: null,
+              injuryStatus: "Doubtful",
+            }),
+          ],
+        }),
+      ],
+      "TE",
+      ["TE"],
+    );
+    const row = rows.find((r) => r.teamId === 2);
+    expect(row?.likelyBidderReason).toBe("starter out");
+    // The slot is filled, so this is not the empty-slot rule firing under another name.
+    expect(row?.emptySlots).toBe(0);
+  });
+
   it("names the empty slot and the thin starter as their own reasons", () => {
     const rows = positionView(
       [
