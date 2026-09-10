@@ -5,14 +5,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 
+import { FORMER_MANAGER, seasonPlacingLabel } from "../derive/ownerLabel";
 import type { SeasonElimination, SeasonResult } from "../types";
-
-/**
- * What a season shows where an owner should be. Ben's ruling: a champion the loader could not
- * tie back to a member is "Unlisted" — the same word `/trades` uses for a player the directory
- * cannot name — never a blank, and never a real name pulled from `members.display_name`.
- */
-export const UNLISTED_OWNER = "Unlisted";
 
 /**
  * The focus ring every other bare `<button>` on the site carries (see `TradeCard`). This one is
@@ -25,8 +19,9 @@ const FOCUS_RING_CLASS =
 /**
  * One elimination line.
  *
- * A week the sheet recorded by name reads as the name. Otherwise it reads as the figures the
- * sheet actually wrote down, and only those: a `null` count contributes no clause at all.
+ * A week the sheet recorded by member id reads as a person — the name when the directory has
+ * one, otherwise "Former manager". A week the sheet recorded as counts reads as the figures it
+ * actually wrote down, and only those: a `null` count contributes no clause at all.
  *
  * That is not the same as saying so per figure. Most weeks are missing one of the two for a
  * structural reason rather than a gap in the file — 2023 ran without a general pool, so its
@@ -44,8 +39,14 @@ function eliminationText(
   // Guarded on the id rather than trusting the resolver with a `null`: a week the sheet
   // recorded as counts has no member id at all, and asking for the name of nobody is how it
   // would end up captioned with somebody else's.
-  const named = entry.memberId === null ? null : labelForMember(entry.memberId);
-  if (named !== null) return `Week ${entry.week} · ${named} eliminated`;
+  if (entry.memberId !== null) {
+    // The sheet named somebody this week, so the line is about a person either way. When the
+    // directory cannot say who, that is a manager who has left, not a reason to fall back to
+    // the counts — the counts describe a different kind of week, and a week that named one
+    // person usually has no counts to fall back to at all.
+    const named = labelForMember(entry.memberId);
+    return `Week ${entry.week} · ${named ?? FORMER_MANAGER} eliminated`;
+  }
   const parts = [
     entry.gulagOut === null ? null : `${entry.gulagOut} out of the gulag`,
     entry.poolOut === null ? null : `${entry.poolOut} from the pool`,
@@ -57,6 +58,25 @@ function eliminationText(
   }`;
 }
 
+/**
+ * One of the placings that trail the champion, or `null` for one the season never recorded.
+ *
+ * The id decides whether the clause exists at all: a season with no runner-up on file says
+ * nothing about a runner-up, which is why these are dropped rather than printed as "Not
+ * recorded" the way the champion line is — the champion line is the card's subject and
+ * always renders, these are an aside. But a placing the sheet *did* record and the directory
+ * cannot name is a person, and dropping it would lose a fact the row is carrying; it reads
+ * "Runner-up Former manager", the same as the champion line above it.
+ */
+function placingText(
+  role: string,
+  label: string | null,
+  memberId: number | null,
+): string | null {
+  if (memberId === null) return null;
+  return `${role} ${label ?? FORMER_MANAGER}`;
+}
+
 interface Props {
   season: SeasonResult;
   labelForMember: (memberId: number | null) => string | null;
@@ -66,9 +86,13 @@ export function SeasonCard({ season, labelForMember }: Props) {
   const [open, setOpen] = useState(false);
   const panelId = useId();
   const runnerUps = [
-    season.coChampionLabel && `Co-champion ${season.coChampionLabel}`,
-    season.runnerUpLabel && `Runner-up ${season.runnerUpLabel}`,
-    season.thirdLabel && `Third ${season.thirdLabel}`,
+    placingText(
+      "Co-champion",
+      season.coChampionLabel,
+      season.coChampionMemberId,
+    ),
+    placingText("Runner-up", season.runnerUpLabel, season.runnerUpMemberId),
+    placingText("Third", season.thirdLabel, season.thirdMemberId),
     season.teamCount !== null && `${season.teamCount} teams`,
   ].filter((part): part is string => Boolean(part));
 
@@ -80,7 +104,7 @@ export function SeasonCard({ season, labelForMember }: Props) {
             Champion {season.season}
           </p>
           <p className="text-2xl font-semibold">
-            {season.championLabel ?? UNLISTED_OWNER}
+            {seasonPlacingLabel(season.championLabel, season.championMemberId)}
           </p>
           {runnerUps.length > 0 && (
             <p className="text-sm text-muted-foreground">

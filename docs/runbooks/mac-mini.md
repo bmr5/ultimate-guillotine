@@ -431,6 +431,12 @@ written by `ug sleeper sync` and `ug members aliases load`; labels use that orde
 the bare username. `public.seasons` caches the scoring settings, roster positions, and
 waiver budget.
 
+A manager who has left the league has no Sleeper account to sync, so
+`ug members former add --name "<Name>" [--alias "<alias>" ...]` writes the profile by hand:
+the row is keyed `former:<slug>` (a key nothing displays, and one `ug sleeper sync` can
+never collide with), the name becomes the `nickname`, and `sleeper_display_name` stays
+null. Rerunning the same name updates that one row. `ug members former list` counts them.
+
 ### 9b. Jobs and cadence
 
 | Job | Schedule (mini local time) | Delivers to |

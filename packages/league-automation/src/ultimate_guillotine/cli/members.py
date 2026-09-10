@@ -1,4 +1,9 @@
-"""`ug members` subcommands: list, aliases load, handles load.
+"""`ug members` subcommands: list, aliases load, handles load, former add/list.
+
+`former add` is the one command here that creates a member. Everybody else arrives through
+`ug sleeper sync`, keyed by their Sleeper username; a manager who has left the league has no
+account to be synced from, so this writes the row by hand under a `former:` key and gives it
+a nickname, which is the label every page already reads.
 
 Nicknames are the one piece of league knowledge the model cannot infer, and
 they are also personal: the alias file is git-ignored and nothing here prints an
@@ -26,6 +31,19 @@ from ultimate_guillotine.data.repositories import (
     normalize_handle,
 )
 
+#: Printed after every `former add`, word for word.
+#:
+#: `aliases load` matches a file entry by `public.members.display_name`, which for a former
+#: member is `former:<slug>` rather than a Sleeper username. A file that names one any other
+#: way is reported as an unknown member and skipped, so the aliases this command wrote would
+#: quietly stop being maintained from the file the rest of the league is maintained from.
+#:
+#: The slug is deliberately *not* filled in: the slug is the name, and this command does not
+#: print the name back. Fixed text also means a run of it can be pasted into ops as-is.
+FORMER_ALIASES_HINT = (
+    'aliases file: key a former member\'s entry "sleeper_username": "former:<slug>"'
+)
+
 
 def register(subparsers) -> None:
     parser = subparsers.add_parser("members", help="league member and alias commands")
@@ -39,6 +57,22 @@ def register(subparsers) -> None:
     load = aliases_sub.add_parser("load", help="replace every member's aliases from a JSON file")
     load.add_argument("path")
     load.set_defaults(handler=cmd_aliases_load)
+
+    former = members_sub.add_parser("former", help="manage members who have left the league")
+    former_sub = former.add_subparsers(dest="subcommand", required=True)
+    former_add = former_sub.add_parser(
+        "add", help="create a member profile with no Sleeper account"
+    )
+    former_add.add_argument("--name", required=True, help="the name this member is known by")
+    former_add.add_argument(
+        "--alias",
+        action="append",
+        default=[],
+        help="another name this member is called; repeat for each",
+    )
+    former_add.set_defaults(handler=cmd_former_add)
+    former_list = former_sub.add_parser("list", help="how many former members exist")
+    former_list.set_defaults(handler=cmd_former_list)
 
     handles = members_sub.add_parser("handles", help="manage hashed member handles")
     handles_sub = handles.add_subparsers(dest="subcommand", required=True)
@@ -96,6 +130,42 @@ def cmd_aliases_load(args: argparse.Namespace) -> int:
     if skipped:
         print(f"skipped: {skipped}")
     return 1 if skipped and members == 0 else 0
+
+
+def cmd_former_add(args: argparse.Namespace) -> int:
+    """Give a departed manager a profile, without tying one to Sleeper.
+
+    Ben's ruling: a champion who has left the league is a member like any other -- the
+    history pages name him -- but there is no Sleeper account to sync him from, and inventing
+    a fake one would put a made-up username in the column `ug sleeper sync` upserts on. So
+    the row is keyed `former:<slug>`, a key nothing displays, and the name lives in
+    `nickname`, the label the board and the history pages already read.
+
+    Rerunning is the way to add an alias that was remembered later: the same name updates
+    the one row rather than making a second.
+
+    Counts only on the way out, matching `aliases load`: the name went in on the command
+    line and this command has no business echoing it into a terminal log.
+    """
+    deps = build_deps()
+    repo = MemberAliasRepository(deps.conn)
+    created, aliases = repo.upsert_former(args.name, args.alias or [])
+    deps.conn.commit()
+    print(f"former member: 1 {'created' if created else 'updated'}, {aliases} aliases")
+    print(FORMER_ALIASES_HINT)
+    return 0
+
+
+def cmd_former_list(args: argparse.Namespace) -> int:
+    """How many former members there are. Deliberately not who they are.
+
+    `members list` already prints every member's key and nickname, and that is the command
+    for looking one up. This one exists so a former-member load can be verified from an ops
+    note without the note carrying a name.
+    """
+    deps = build_deps()
+    print(f"former members: {MemberAliasRepository(deps.conn).count_former()}")
+    return 0
 
 
 def cmd_handles_load(args: argparse.Namespace) -> int:

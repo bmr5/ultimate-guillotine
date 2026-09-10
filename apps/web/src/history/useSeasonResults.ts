@@ -74,10 +74,17 @@ export function useSeasonResults() {
     () =>
       (results.data ?? []).map((row) => ({
         season: row.season,
+        // Each placing keeps its id beside its label. The label alone cannot say whether a
+        // season has a champion the directory cannot name or no champion recorded at all —
+        // both arrive here as `null` — and the two read differently on the page.
         championLabel: labelForMember(row.champion_member_id),
+        championMemberId: row.champion_member_id,
         coChampionLabel: labelForMember(row.co_champion_member_id),
+        coChampionMemberId: row.co_champion_member_id,
         runnerUpLabel: labelForMember(row.runner_up_member_id),
+        runnerUpMemberId: row.runner_up_member_id,
         thirdLabel: labelForMember(row.third_member_id),
+        thirdMemberId: row.third_member_id,
         teamCount: row.team_count,
         eliminations: toEliminations(row.eliminations),
         notes: row.notes,

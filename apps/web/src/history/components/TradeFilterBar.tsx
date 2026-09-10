@@ -1,9 +1,8 @@
-import { UNKNOWN_OWNER } from "@/board/derive/join";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
-import { ownerLabelFor } from "../derive/ownerLabel";
+import { FORMER_MANAGER, ownerLabelFor } from "../derive/ownerLabel";
 import type { HistoryMemberRow } from "../fetchers";
 import type { TradeFilters } from "../types";
 
@@ -117,19 +116,23 @@ export function TradeFilterBar(props: Props) {
           }
         >
           <option value="">Any owner</option>
-          {/* An owner the directory cannot name is still an owner some trade on screen has,
-              so the option is offered under `UNKNOWN_OWNER` rather than left out — without it
-              the filter would silently have no way to reach those trades. The order is the
-              caller's; `TradesPage` sorts these by label. */}
+          {/* `memberIds` is only the owners the caller could name — Ben's ruling: the filter
+              never lists a former manager, because one such option would stand for every
+              unmapped party in the catalog at once. The order is the caller's; `TradesPage`
+              sorts these by label. */}
           {memberIds.map((id) => (
             <option key={id} value={id}>
-              {ownerLabelFor(id, members) ?? UNKNOWN_OWNER}
+              {ownerLabelFor(id, members) ?? FORMER_MANAGER}
             </option>
           ))}
+          {/* A filter the URL carries but this list does not offer, disabled: without it the
+              select reads "Any owner" while an owner filter is in force. `FORMER_MANAGER` is
+              what an old link pointing at an unmapped party reads as here — it says what the
+              filter is doing, which is not the same as offering it. */}
           {filters.memberId !== null &&
             !memberIds.includes(filters.memberId) && (
               <option value={filters.memberId} disabled>
-                {ownerLabelFor(filters.memberId, members) ?? UNKNOWN_OWNER}
+                {ownerLabelFor(filters.memberId, members) ?? FORMER_MANAGER}
               </option>
             )}
         </select>

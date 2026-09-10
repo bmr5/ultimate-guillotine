@@ -7,9 +7,13 @@ import { SeasonCard } from "./SeasonCard";
 const SEASON: SeasonResult = {
   season: 2024,
   championLabel: "Alpha",
+  championMemberId: 1,
   coChampionLabel: null,
+  coChampionMemberId: null,
   runnerUpLabel: null,
+  runnerUpMemberId: null,
   thirdLabel: null,
+  thirdMemberId: null,
   teamCount: 19,
   eliminations: [
     // 2024's grid states both counts; the `0` is a figure the sheet wrote, not a missing one.
@@ -54,14 +58,65 @@ describe("SeasonCard", () => {
     expect(screen.getByText(/Bravo/)).toBeInTheDocument();
   });
 
-  it("says when a champion could not be resolved", () => {
+  // Ben's ruling: a champion the directory cannot name is a manager who has left, which is
+  // what "Former manager" says. "Unlisted" read as a hole in the data.
+  it("calls a champion it could not resolve a former manager", () => {
     render(
       <SeasonCard
-        season={{ ...SEASON, championLabel: null }}
+        season={{ ...SEASON, championLabel: null, championMemberId: 42 }}
         labelForMember={() => "Bravo"}
       />,
     );
-    expect(screen.getByText("Unlisted")).toBeInTheDocument();
+    expect(screen.getByText("Former manager")).toBeInTheDocument();
+    expect(screen.queryByText("Unlisted")).not.toBeInTheDocument();
+  });
+
+  // The other half of the same null label: no champion on file at all. Calling that a
+  // former manager would claim a person the sheet never named.
+  it("says a season with no champion recorded is not recorded", () => {
+    render(
+      <SeasonCard
+        season={{ ...SEASON, championLabel: null, championMemberId: null }}
+        labelForMember={() => "Bravo"}
+      />,
+    );
+    expect(screen.getByText("Not recorded")).toBeInTheDocument();
+    expect(screen.queryByText("Former manager")).not.toBeInTheDocument();
+  });
+
+  it("keeps a runner-up it could not name, and drops one never recorded", () => {
+    render(
+      <SeasonCard
+        season={{
+          ...SEASON,
+          runnerUpLabel: null,
+          runnerUpMemberId: 42,
+          thirdLabel: "Charlie",
+          thirdMemberId: 3,
+        }}
+        labelForMember={() => "Bravo"}
+      />,
+    );
+    // The row recorded a runner-up, so the clause survives with the same word the champion
+    // line uses; the co-champion the row left null says nothing at all.
+    expect(
+      screen.getByText(/Runner-up Former manager · Third Charlie · 19 teams/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Co-champion/)).not.toBeInTheDocument();
+  });
+
+  it("says a week the sheet named was a former manager, not a week of counts", () => {
+    // The sheet recorded a person that week, so the line is about a person either way; falling
+    // back to the counts would report a different kind of week, and this one has no counts.
+    const line = renderOneLine({
+      week: 4,
+      order: 1,
+      memberId: 7,
+      gulagOut: null,
+      poolOut: null,
+    });
+    expect(line).toHaveTextContent("Week 4 · Former manager eliminated");
+    expect(line.textContent).not.toContain("not recorded");
   });
 
   // Ben's ruling: a line is built from the figures the sheet actually wrote. Never a `0` where
