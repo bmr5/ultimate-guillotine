@@ -5,7 +5,7 @@ import ErrorPage from "@/app/error-page";
 import App from "@/app/layout";
 // The trades and history pages arrive in their own chunks; `lazyPages.ts` says why the board
 // does not.
-import { HistoryPage, TradesPage } from "@/app/lazyPages";
+import { DraftPage, HistoryPage, TradesPage } from "@/app/lazyPages";
 
 /**
  * Ben's decision 1: the board is the home page. Everything else is a redirect onto it.
@@ -34,6 +34,10 @@ export const router = createBrowserRouter([
       {
         path: "board",
         loader: ({ request }) => redirectHome(request),
+      },
+      {
+        path: "draft",
+        element: <DraftPage />,
       },
       {
         path: "trades",

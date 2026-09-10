@@ -3,6 +3,7 @@ import { NavLink, Outlet, useLocation } from "react-router";
 
 import { prefetchPages } from "@/app/lazyPages";
 import { BoardSkeleton } from "@/board/components/BoardStates";
+import { DraftPageSkeleton } from "@/draft/components/DraftSkeleton";
 import { HistoryListSkeleton } from "@/history/components/HistorySkeleton";
 import { TradesPageSkeleton } from "@/history/components/TradesSkeleton";
 import { cn } from "@/lib/utils";
@@ -10,13 +11,15 @@ import { REVEAL_CLASS, revealStyle } from "@/motion/reveal";
 import { MusicToggle } from "@/music/MusicToggle";
 
 /**
- * The three public pages, in the order Ben asked for them.
+ * The four public pages: the board first, then the draft (Ben, 2026-09-10: "make a draft tab
+ * on the site just to show the full draft"), then the two Ben ordered before it.
  *
  * `end` on `/` keeps the board link from matching every route: without it `NavLink` treats `/`
  * as a prefix of `/trades` and marks the board current on all three pages.
  */
 const LINKS: [to: string, label: string, end: boolean][] = [
   ["/", "Board", true],
+  ["/draft", "Draft", false],
   ["/trades", "Trades", false],
   ["/history", "History", false],
 ];
@@ -36,6 +39,7 @@ const PREFETCH_DELAY_MS = 2500;
  * the page's own skeleton takes over from it without anything moving.
  */
 function PageFallback({ pathname }: { pathname: string }) {
+  if (pathname.startsWith("/draft")) return <DraftPageSkeleton />;
   if (pathname.startsWith("/trades")) return <TradesPageSkeleton />;
   if (pathname.startsWith("/history")) return <HistoryListSkeleton />;
   return <BoardSkeleton />;

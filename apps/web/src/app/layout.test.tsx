@@ -162,7 +162,7 @@ describe("App layout", () => {
     }
   });
 
-  it("keeps the three page links, with the current one marked", () => {
+  it("keeps the four page links, with the current one marked", () => {
     const router = makeRouter("/history", [
       { path: "history", element: <p>history</p> },
     ]);
@@ -170,6 +170,7 @@ describe("App layout", () => {
     const links = screen.getAllByRole("link");
     expect(links.map((link) => link.textContent)).toEqual([
       "Board",
+      "Draft",
       "Trades",
       "History",
     ]);

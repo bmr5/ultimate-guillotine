@@ -19,6 +19,12 @@ export const TradesPage = lazy(() =>
   })),
 );
 
+export const DraftPage = lazy(() =>
+  import("@/app/draft/DraftPage").then((module) => ({
+    default: module.DraftPage,
+  })),
+);
+
 export const HistoryPage = lazy(() =>
   import("@/app/history/HistoryPage").then((module) => ({
     default: module.HistoryPage,
@@ -36,4 +42,5 @@ export const HistoryPage = lazy(() =>
 export function prefetchPages(): void {
   void import("@/app/trades/TradesPage").catch(() => undefined);
   void import("@/app/history/HistoryPage").catch(() => undefined);
+  void import("@/app/draft/DraftPage").catch(() => undefined);
 }
