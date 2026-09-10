@@ -79,6 +79,10 @@ _MONEY_KINDS = {"faab", "usd", "draft_dollars"}
 _TERM_KINDS = {"protection", "other"}
 # Generational suffixes, normalized: they are never the name anyone types.
 _NAME_SUFFIXES = {"jr", "sr", "ii", "iii", "iv", "v"}
+#: First-person tokens, normalized. The prompt asks the model to write the
+#: announcer's username instead of one of these; this is the guard for when it
+#: does not, and it only fires when no member goes by the word.
+_FIRST_PERSON = {"me", "i", "my team", "myself", "my"}
 
 
 class Unresolved(Exception):
@@ -359,7 +363,16 @@ def resolve_extracted(
     excerpt: str,
     prompt_version: str,
     model: str,
+    announcer: MemberRef | None = None,
 ) -> TradeProposal:
+    """Turn one extraction into a proposal, or raise ``Unresolved``.
+
+    ``announcer`` is the member who posted the announcement, when the sender
+    could be placed. The prompt already asks the model to write that member's
+    username wherever the announcement said `I` or `me`, so this is only the
+    guard for a model that wrote the pronoun through anyway; with no announcer
+    known the pronoun is a name nobody has, which is what it was before.
+    """
     if extracted.kind == "unclear":
         raise Unresolved(extracted.unclear_reason or "The alert is unclear")
 
@@ -401,6 +414,12 @@ def resolve_extracted(
             return member_cache[norm]
 
         candidates = member_index.get(norm, [])
+        if not candidates and norm in _FIRST_PERSON and announcer is not None:
+            # The announcement said `me` and the model copied it through. The
+            # member index is asked first, so a member who really does go by one
+            # of these words still wins the name.
+            member_cache[norm] = announcer
+            return announcer
         if not candidates:
             raise Unresolved(f"I don't recognize '{name}' as a league member")
         if len(candidates) == 1:

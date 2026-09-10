@@ -408,3 +408,59 @@ def test_a_single_token_name_still_falls_back_to_the_last_name() -> None:
         e, MEMBERS, players, ROSTERS, 2026, "g1", "🚨 ...", "2026.1", "m"
     )
     assert proposal.assets[0].player_id == "p9"
+
+
+#: A first-person party name, as the model would leave it if it ignored the
+#: prompt's instruction to write the announcer's username instead.
+FIRST_PERSON = ("me", "Me", "I", "my team", "My Team", "myself")
+
+
+@pytest.mark.parametrize("pronoun", FIRST_PERSON, ids=FIRST_PERSON)
+def test_a_first_person_party_resolves_to_the_announcer(pronoun: str) -> None:
+    """The prompt asks for the username; this is the guard for when the model
+    writes the pronoun through anyway, so the trade is still logged."""
+    e = extracted(
+        parties=[ExtractedParty(name=pronoun), ExtractedParty(name="Member02")],
+        assets=[
+            ExtractedAsset(kind="player", from_party=pronoun, to_party="Member02",
+                           player_name="Player Alpha", amount=None, unit=None, description=None),
+        ],
+    )
+    proposal = resolve_extracted(
+        e, MEMBERS, PLAYERS, ROSTERS, 2026, "g1", "x", "2026.1", "m", announcer=MEMBERS[0]
+    )
+    assert [p.member_id for p in proposal.parties] == [1, 2]
+    assert proposal.assets[0].from_member_id == 1 and proposal.assets[0].to_member_id == 2
+
+
+def test_a_first_person_party_with_no_announcer_asks_the_chat() -> None:
+    """No announcer means the sender was never placed -- an unloaded handle -- so
+    `me` is a name nobody has, and the wording is the one it always was."""
+    e = extracted(parties=[ExtractedParty(name="me"), ExtractedParty(name="Member02")])
+    with pytest.raises(Unresolved) as info:
+        resolve_extracted(e, MEMBERS, PLAYERS, ROSTERS, 2026, "g1", "x", "2026.1", "m")
+    assert info.value.reason == "I don't recognize 'me' as a league member"
+
+
+def test_a_member_who_goes_by_a_first_person_word_keeps_their_name() -> None:
+    """The member index is asked before the pronoun guard: an alias really is a
+    name, and the announcer only stands in for a word nobody answers to."""
+    members = [*MEMBERS, MemberRef(5, "Member05", ("me",))]
+    e = extracted(parties=[ExtractedParty(name="me"), ExtractedParty(name="Member02")],
+                  assets=[ExtractedAsset(kind="player", from_party="me", to_party="Member02",
+                                         player_name="Player Alpha", amount=None, unit=None,
+                                         description=None)])
+    proposal = resolve_extracted(
+        e, members, PLAYERS, ROSTERS, 2026, "g1", "x", "2026.1", "m", announcer=MEMBERS[0]
+    )
+    assert [p.member_id for p in proposal.parties] == [5, 2]
+
+
+def test_the_announcer_is_not_added_to_a_trade_that_never_mentions_them() -> None:
+    """Knowing who posted an alert is not a reason to make them a party to it:
+    a member relaying two other people's trade stays out of the record."""
+    proposal = resolve_extracted(
+        extracted(), MEMBERS, PLAYERS, ROSTERS, 2026, "g1", "x", "2026.1", "m",
+        announcer=MEMBERS[3],
+    )
+    assert [p.member_id for p in proposal.parties] == [1, 2]
