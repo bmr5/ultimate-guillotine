@@ -9,7 +9,11 @@ from types import SimpleNamespace
 import pytest
 
 from ultimate_guillotine.cli import members as members_cli
-from ultimate_guillotine.data.repositories import MemberContactRepository, handle_hash
+from ultimate_guillotine.data.repositories import (
+    MemberAliasRepository,
+    MemberContactRepository,
+    handle_hash,
+)
 from ultimate_guillotine.trades.models import MemberRef
 
 
@@ -303,3 +307,179 @@ def test_handles_load_leaves_nothing_behind_when_a_later_entry_conflicts(
     # Member01's row went in before the conflict and must not have survived it.
     assert repo.counts() == [("Member03", 1)]
     assert repo.member_for_handle_hash(handle_hash(HANDLE)) is None
+
+
+# --- `ug members former add` ---------------------------------------------------------------
+#
+# Sentinel names only. These tests write to the developer's local database (rolled back by the
+# `conn` fixture), and a real member's name in a test file is a real member's name in git.
+FORMER_NAME = "Sentinel Former"
+FORMER_KEY = "former:sentinel-former"
+
+
+class _FixtureConn:
+    """The test connection with `commit` disarmed.
+
+    The `conn` fixture holds the whole test inside a `force_rollback` transaction, and psycopg
+    forbids an explicit `commit()` inside one. `cmd_former_add` commits, as every `ug` command
+    does; wrapping rather than skipping the commit keeps the command under test exactly as it
+    ships, and every other call -- `transaction()`, `cursor()` -- goes straight through to the
+    real connection, so what the repository writes is what the assertions read back.
+    """
+
+    def __init__(self, conn) -> None:
+        self._conn = conn
+
+    def __getattr__(self, name: str):
+        return getattr(self._conn, name)
+
+    def commit(self) -> None:
+        pass
+
+
+def _former_deps(conn) -> SimpleNamespace:
+    return SimpleNamespace(conn=_FixtureConn(conn))
+
+
+def _former_row(conn, display_name: str):
+    with conn.cursor() as cur:
+        cur.execute(
+            "select id, nickname, sleeper_display_name from public.members"
+            " where display_name = %s",
+            (display_name,),
+        )
+        return cur.fetchone()
+
+
+def _aliases_of(conn, member_id: int) -> list[str]:
+    with conn.cursor() as cur:
+        cur.execute(
+            # By id, not by alias: the insertion order is `replace_aliases`' own -- the
+            # name first, then each `--alias` -- and sorting by the text would depend on
+            # the database's collation for a case difference.
+            "select alias from private.member_aliases where member_id = %s order by id",
+            (member_id,),
+        )
+        return [row[0] for row in cur.fetchall()]
+
+
+def test_former_add_writes_a_profile_with_no_sleeper_link(
+    conn, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The row a departed manager gets: a key nothing displays, the name as the nickname,
+    and no Sleeper column filled in, because there is no Sleeper account."""
+    monkeypatch.setattr(members_cli, "build_deps", lambda: _former_deps(conn))
+
+    exit_code = members_cli.cmd_former_add(
+        argparse.Namespace(name=FORMER_NAME, alias=["Sentinel Nick"])
+    )
+
+    assert exit_code == 0
+    row = _former_row(conn, FORMER_KEY)
+    assert row is not None
+    member_id, nickname, sleeper_display_name = row
+    assert nickname == FORMER_NAME
+    assert sleeper_display_name is None
+    assert _aliases_of(conn, member_id) == ["Sentinel Former", "Sentinel Nick"]
+
+
+def test_former_add_reports_counts_and_never_the_name(
+    conn, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The name went in on the command line; echoing it back would put it in whatever log
+    the run was pasted into. The alias hint is fixed text for the same reason -- the slug
+    is the name."""
+    monkeypatch.setattr(members_cli, "build_deps", lambda: _former_deps(conn))
+
+    members_cli.cmd_former_add(argparse.Namespace(name=FORMER_NAME, alias=["Sentinel Nick"]))
+
+    captured = capsys.readouterr()
+    assert "former member: 1 created, 2 aliases" in captured.out
+    assert members_cli.FORMER_ALIASES_HINT in captured.out
+    assert "former:<slug>" in captured.out
+    for stream in (captured.out, captured.err):
+        assert FORMER_NAME not in stream
+        assert "Sentinel Nick" not in stream
+        assert "sentinel-former" not in stream
+
+
+def test_former_add_is_idempotent_and_updates_the_aliases(
+    conn, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Rerunning is how an alias remembered later gets added. One row, the new alias set,
+    and the second run says `updated` so the operator can tell which happened."""
+    monkeypatch.setattr(members_cli, "build_deps", lambda: _former_deps(conn))
+    members_cli.cmd_former_add(argparse.Namespace(name=FORMER_NAME, alias=["Sentinel Nick"]))
+    capsys.readouterr()
+
+    # A different spelling of the same name, to prove the key is the normalized slug.
+    members_cli.cmd_former_add(
+        argparse.Namespace(name="  sentinel   former ", alias=["Sentinel Other"])
+    )
+
+    assert "former member: 1 updated, 2 aliases" in capsys.readouterr().out
+    with conn.cursor() as cur:
+        cur.execute(
+            "select count(*) from public.members where display_name like 'former:%'"
+        )
+        assert cur.fetchone()[0] == 1
+    row = _former_row(conn, FORMER_KEY)
+    assert row is not None
+    member_id, nickname, _ = row
+    # The nickname follows the spelling of the latest run: it is the first alias, the way
+    # every other member's is.
+    assert nickname == "sentinel   former"
+    assert _aliases_of(conn, member_id) == ["sentinel   former", "Sentinel Other"]
+
+
+def test_former_add_rejects_a_name_that_is_only_punctuation(
+    conn, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`former:` on its own is not a key, and a second blank one would land on the first."""
+    monkeypatch.setattr(members_cli, "build_deps", lambda: _former_deps(conn))
+
+    with pytest.raises(ValueError, match="needs a name"):
+        members_cli.cmd_former_add(argparse.Namespace(name="  !!  ", alias=[]))
+
+
+def test_former_add_leaves_no_member_behind_when_an_alias_is_taken(
+    conn, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A profile with no aliases is a profile resolution can never match, so the member row
+    must not survive an alias the league has already given to somebody else."""
+    monkeypatch.setattr(members_cli, "build_deps", lambda: _former_deps(conn))
+    _seed_member(conn, "Member01")
+    MemberAliasRepository(conn).replace_aliases("Member01", ["Sentinel Nick"])
+
+    with pytest.raises(ValueError, match="another member"):
+        members_cli.cmd_former_add(
+            argparse.Namespace(name=FORMER_NAME, alias=["Sentinel Nick"])
+        )
+
+    assert _former_row(conn, FORMER_KEY) is None
+
+
+def test_former_list_counts_without_naming(
+    conn, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(members_cli, "build_deps", lambda: _former_deps(conn))
+    members_cli.cmd_former_add(argparse.Namespace(name=FORMER_NAME, alias=[]))
+    members_cli.cmd_former_add(argparse.Namespace(name="Sentinel Second", alias=[]))
+    capsys.readouterr()
+
+    assert members_cli.cmd_former_list(argparse.Namespace()) == 0
+
+    captured = capsys.readouterr()
+    assert "former members: 2" in captured.out
+    assert FORMER_NAME not in captured.out
+    assert "Sentinel Second" not in captured.out
+
+
+def test_members_help_lists_former() -> None:
+    result = subprocess.run(
+        [sys.executable, "-m", "ultimate_guillotine.cli.main", "members", "--help"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0 and "former" in result.stdout
