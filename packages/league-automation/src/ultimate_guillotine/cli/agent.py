@@ -2,8 +2,6 @@
 
 import argparse
 
-from ultimate_guillotine.agent.tools.mcp import serve
-
 
 def register(subparsers) -> None:
     parser = subparsers.add_parser("agent", help="League Agent commands")
@@ -19,4 +17,8 @@ def register(subparsers) -> None:
 
 
 def cmd_mcp(args: argparse.Namespace) -> int:
+    # Imported here rather than at the top: `ug` runs from cron all day, and only this
+    # command needs mcp and httpx loaded.
+    from ultimate_guillotine.agent.tools.mcp import serve
+
     return serve(args.fixture)

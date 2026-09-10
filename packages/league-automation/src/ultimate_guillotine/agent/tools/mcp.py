@@ -10,18 +10,15 @@ arguments mean.
 
 import inspect
 import json
-import logging
 import os
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 from mcp.server.mcpserver import MCPServer
 
 from ultimate_guillotine.agent.tools import league
 from ultimate_guillotine.agent.tools.source import DatabaseSource, FixtureSource, LeagueSource
-
-log = logging.getLogger(__name__)
 
 TOOL_NAMES = (
     "league_overview", "roster", "player", "projections", "trades", "price_history",
@@ -49,14 +46,23 @@ def build_server(source: LeagueSource) -> tuple[MCPServer, dict[str, Callable[..
     def register(fn: Callable[..., str]) -> Callable[..., str]:
         tools[fn.__name__] = fn
         # cleandoc, so the model reads a paragraph rather than the docstring's indentation.
-        server.tool(name=fn.__name__, description=inspect.cleandoc(fn.__doc__ or ""))(fn)
+        # structured_output=False, so a wrapper's `-> str` does not become an output schema
+        # and the JSON text crosses the pipe once, not again as structured_content.
+        server.tool(
+            name=fn.__name__,
+            description=inspect.cleandoc(fn.__doc__ or ""),
+            structured_output=False,
+        )(fn)
         return fn
 
     @register
     def league_overview() -> str:
         """The season, the week, every team's label, FAAB, elimination, projected total,
         board rank (1 = lowest live projection, closest to the guillotine) and out starters.
-        Call this first."""
+        How far to trust a projection: each team carries coverage_pct (the share of its
+        filled lineup slots with a projection this week) and provisional (true while that,
+        or the sync as a whole, is under the 95 percent gate), and the top-level
+        projections_complete is true only when every live team clears it. Call this first."""
         return _dump(league.league_overview(source))
 
     @register
@@ -76,7 +82,9 @@ def build_server(source: LeagueSource) -> tuple[MCPServer, dict[str, Callable[..
         return _dump(league.player(source, name, weeks_ahead))
 
     @register
-    def projections(members: list[str] | None = None, scope: str = "starters") -> str:
+    def projections(
+        members: list[str] | None = None, scope: Literal["starters", "roster"] = "starters"
+    ) -> str:
         """This week's projected points: the named members side by side, or the whole
         league ranked when no members are given. scope 'starters' (the lineup) or 'roster'."""
         return _dump(league.projections(source, members or (), scope))
@@ -84,11 +92,14 @@ def build_server(source: LeagueSource) -> tuple[MCPServer, dict[str, Callable[..
     @register
     def trades(season: int | None = None, member: str | None = None, limit: int = 25) -> str:
         """Registered trades for a season (default: this one), optionally only those a member
-        was party to: code, week, kind, parties, assets and special terms."""
+        was party to: code, week, kind, parties, assets and special terms. Newest first;
+        limit caps how many come back (default 25)."""
         return _dump(league.trades(source, season, member, limit))
 
     @register
-    def price_history(position: str, kind: str = "permanent") -> str:
+    def price_history(
+        position: str, kind: Literal["permanent", "rental", "all"] = "permanent"
+    ) -> str:
         """What the league has paid in FAAB at a position: the median and the biggest recent
         comparables. kind 'permanent', 'rental' or 'all'."""
         return _dump(league.price_history(source, position, kind))
