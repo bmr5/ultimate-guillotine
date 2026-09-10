@@ -33,11 +33,21 @@ DROPPED_WITH_CONTENT = frozenset({
     "script", "style", "iframe", "object", "embed", "svg", "form", "noscript", "template",
     "math",
 })
+#: Dropped tags that carry no end tag, so counting one would swallow the rest of the file.
+VOID_DROPPED = frozenset({"embed"})
 _TEMPLATE_PATH = Path(__file__).resolve().parents[5] / "agents" / "league-agent" / "artifact.html"
+#: Every way a byte of HTML or CSS asks a browser to fetch something.
 _EXTERNAL = re.compile(
-    r"""(?:\bsrc\s*=\s*["']?|<link[^>]+href\s*=\s*["']?|url\(\s*["']?)(https?://[^"')\s>]+)""",
-    re.IGNORECASE,
+    r"""(?:
+          \b(?:src|srcset|poster|data)\s*=\s*["']?   # img/script/video/object attributes
+        | <(?:link|base)[^>]+href\s*=\s*["']?        # a stylesheet, or a new base for every URL
+        | url\(\s*["']?                              # CSS url(...)
+        | @import\s*["']                             # CSS @import "..."
+    )(https?://[^"')\s>]+)""",
+    re.IGNORECASE | re.VERBOSE,
 )
+#: A template slot. Anything else shaped like one is left where it stands.
+_TOKEN = re.compile(r"__[A-Z_]+__")
 
 
 @lru_cache(maxsize=1)
@@ -75,29 +85,53 @@ def sanitize_body(html_body: str, allowed_urls: Collection[str]) -> str:
 
 
 class _TextCollector(HTMLParser):
+    """The prose in some markup, with a dropped element's content left out.
+
+    Skipping must never outlive its element, because a scan that stops early
+    is a scan that misses what comes after it. So a tag that carries no end
+    tag is not counted at all, and text a dropped tag swallowed without ever
+    closing is handed back at the end -- a stray line of CSS in the scan costs
+    nothing; a missed phone number costs everything.
+    """
+
+    #: ``<style>`` must not put the parser into CDATA mode: unclosed, it would eat the rest.
+    CDATA_CONTENT_ELEMENTS: tuple[str, ...] = ()
+
     def __init__(self) -> None:
         super().__init__()
         self.parts: list[str] = []
         self._skip = 0
+        self._swallowed: list[str] = []
+
+    def handle_startendtag(self, tag: str, attrs) -> None:
+        """``<embed/>`` has no content to skip and no end tag to balance: ignore it."""
 
     def handle_starttag(self, tag: str, attrs) -> None:
-        if tag in DROPPED_WITH_CONTENT:
+        if tag in DROPPED_WITH_CONTENT and tag not in VOID_DROPPED:
             self._skip += 1
 
     def handle_endtag(self, tag: str) -> None:
         if tag in DROPPED_WITH_CONTENT and self._skip:
             self._skip -= 1
+            if not self._skip:
+                self._swallowed.clear()
 
     def handle_data(self, data: str) -> None:
-        if not self._skip and data.strip():
-            self.parts.append(data.strip())
+        text = data.strip()
+        if text:
+            (self._swallowed if self._skip else self.parts).append(text)
+
+    def text(self) -> str:
+        # Anything still swallowed belongs to a dropped tag that never closed.
+        return " ".join(self.parts + self._swallowed)
 
 
 def text_content(markup: str) -> str:
     """The words in some HTML, for the verifier's scans."""
     collector = _TextCollector()
     collector.feed(markup)
-    return " ".join(collector.parts)
+    collector.close()
+    return collector.text()
 
 
 def external_references(markup: str) -> list[str]:
@@ -111,13 +145,14 @@ def artifact_filename(title: str, week: int) -> str:
 
 
 def _sources_html(sources: Sequence[Source]) -> str:
-    if not sources:
+    kept = [s for s in sources if s.url.startswith("https://")]
+    if not kept:
+        # Including when every source was dropped: an empty <ol> says nothing.
         return '<p class="muted">No outside sources; league data only.</p>'
     items = "".join(
         f'<li><a href="{html.escape(s.url, quote=True)}" rel="{LINK_REL}">'
         f"{html.escape(s.claim)}</a></li>"
-        for s in sources
-        if s.url.startswith("https://")
+        for s in kept
     )
     return f"<ol>{items}</ol>"
 
@@ -144,7 +179,6 @@ def render_artifact(
         "__SOURCES__": _sources_html(report.sources),
         "__GENERATED__": html.escape(generated_at.strftime("%Y-%m-%d %H:%M UTC")),
     }
-    rendered = _template()
-    for token, value in replacements.items():
-        rendered = rendered.replace(token, value)
-    return rendered
+    # One pass, so no substituted value can be read as a later token: a report
+    # titled __BODY__ is a title, not an instruction.
+    return _TOKEN.sub(lambda m: replacements.get(m.group(0), m.group(0)), _template())

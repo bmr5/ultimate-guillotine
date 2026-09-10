@@ -88,3 +88,53 @@ def test_text_content_strips_markup() -> None:
 
 def test_the_size_cap_is_the_spec_figure() -> None:
     assert ARTIFACT_MAX_BYTES == 200_000
+
+
+def test_text_content_is_not_truncated_by_a_void_dropped_tag() -> None:
+    raw = '<p>before</p><embed src="x"><p>after 555-1234</p>'
+    assert text_content(raw) == "before after 555-1234"
+    assert text_content(sanitize_body(raw, set())) == "before after 555-1234"
+
+
+def test_text_content_is_not_truncated_by_a_dropped_tag_that_never_closes() -> None:
+    scanned = text_content("<p>before</p><style>p{color:red}<p>after 555-1234</p>")
+    assert scanned.startswith("before")
+    assert scanned.endswith("after 555-1234")
+
+
+def test_external_references_catches_the_other_ways_a_file_loads() -> None:
+    assert external_references('<img srcset="https://cdn/a.png 1x">') == ["https://cdn/a.png"]
+    assert external_references('<video poster="https://cdn/p.jpg">') == ["https://cdn/p.jpg"]
+    assert external_references('<base href="https://cdn/">') == ["https://cdn/"]
+    assert external_references('<object data="https://cdn/o.swf">') == ["https://cdn/o.swf"]
+    assert external_references('<style>@import "https://cdn/y.css";</style>') == [
+        "https://cdn/y.css"
+    ]
+
+
+def test_a_title_that_looks_like_a_token_is_not_one() -> None:
+    rendered = render_artifact(
+        Report(title="__BODY__", question="q", html_body="<p>the real body</p>", sources=[]),
+        asker_label=None, season=2026, week=6, source_line="Source: league data",
+        generated_at=GENERATED,
+    )
+    assert "<h1>__BODY__</h1>" in rendered
+    assert "<title>__BODY__</title>" in rendered
+    assert rendered.count("the real body") == 1
+
+
+def test_sources_that_are_not_https_leave_no_empty_list() -> None:
+    rendered = render_artifact(
+        _report("<p>x</p>", sources=(Source(url="http://insecure.example/x", claim="c"),)),
+        asker_label=None, season=2026, week=6, source_line="Source: league data",
+        generated_at=GENERATED,
+    )
+    assert "No outside sources; league data only." in rendered
+    assert "<ol>" not in rendered
+
+
+def test_the_link_rel_is_the_sanitizers_own_not_the_authors() -> None:
+    cleaned = sanitize_body(f'<a href="{SOURCE}" rel="external nofollow">x</a>', {SOURCE})
+    assert 'rel="noopener noreferrer"' in cleaned
+    assert "external" not in cleaned and "nofollow" not in cleaned
+    assert sanitize_body('<p rel="noopener noreferrer">x</p>', set()) == "<p>x</p>"
