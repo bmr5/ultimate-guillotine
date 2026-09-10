@@ -106,6 +106,22 @@ class RosterIndex:
     def holds(self, member_id: int, player_id: str) -> bool:
         return player_id in self.holdings.get(member_id, frozenset())
 
+    def players_for(self, member_id: int | None) -> frozenset[str]:
+        """One member's roster, or nothing for a member nobody could place."""
+        if member_id is None:
+            return frozenset()
+        return self.holdings.get(member_id, frozenset())
+
+    def all_players(self) -> frozenset[str]:
+        """Every player on every roster in the index.
+
+        A partial name that is on nobody's roster in particular is still worth
+        matching league-wide: `Rhamondre` names one man in the NFL, and the
+        rostered players are a two-hundred-name haystack rather than the
+        directory's several thousand.
+        """
+        return frozenset().union(*self.holdings.values()) if self.holdings else frozenset()
+
 
 #: Past this, the holdings cache is not trusted for trade resolution and the registrar
 #: pays for one live Sleeper call rather than resolving against a stalled roster.
@@ -310,6 +326,30 @@ def _is_single_token(norm: str) -> bool:
 
 
 def _resolve_player(name: str, players: list[Player]) -> str:
+    """Resolve a player name against the whole directory, or say it is unknown.
+
+    The signature the CLI, the replay and the older tests already call. Trade
+    resolution goes through :func:`_resolve_player_with_rosters` instead, which
+    is this chain with the roster steps spliced in.
+    """
+    found = _resolve_directly(name, players)
+    if found is None:
+        raise Unresolved(f"I can't find a player named {name}")
+    return found
+
+
+def _resolve_directly(name: str, players: list[Player]) -> str | None:
+    """The whole no-roster chain, answering ``None`` for a name nothing matched.
+
+    ``None`` rather than an exception because the caller may have a roster step
+    left to try; an *ambiguous* name still raises, because roster evidence is
+    not what settles two players who are both called Mike Williams.
+    """
+    return _match_exactly(name, players) or _match_by_surname(name, players)
+
+
+def _match_exactly(name: str, players: list[Player]) -> str | None:
+    """Exact name, suffix-blind kin, or a team defense -- the certain matches."""
     norm = normalize_name(name)
     base = _without_suffix(norm)
     exact = [p for p in players if normalize_name(p.full_name) == norm]
@@ -336,21 +376,101 @@ def _resolve_player(name: str, players: list[Player]) -> str:
     defense = _match_defense(norm, players)
     if defense is not None:
         return defense.sleeper_player_id
+    return None
 
-    # Only a bare surname falls back to matching on surnames. Somebody who typed
-    # a full name meant that player: "Justin Jefferson" must not quietly resolve
-    # to the only Jefferson on file.
+
+def _match_by_surname(name: str, players: list[Player]) -> str | None:
+    """The last resort: a bare surname over the whole directory.
+
+    Only a bare surname falls back to matching on surnames. Somebody who typed a
+    full name meant that player: "Justin Jefferson" must not quietly resolve to
+    the only Jefferson on file.
+    """
+    norm = normalize_name(name)
     typed_last = _last_name(norm) if _is_single_token(norm) else None
-    if typed_last is not None:
-        last_name_matches = [
-            p for p in players if _last_name(normalize_name(p.full_name)) == typed_last
-        ]
-        if len(last_name_matches) == 1:
-            return last_name_matches[0].sleeper_player_id
-        if len(last_name_matches) >= 2:
-            raise Unresolved(f"Two players named {name}; which team?")
+    if typed_last is None:
+        return None
+    matches = [p for p in players if _last_name(normalize_name(p.full_name)) == typed_last]
+    if len(matches) == 1:
+        return matches[0].sleeper_player_id
+    if len(matches) >= 2:
+        raise Unresolved(f"Two players named {name}; which team?")
+    return None
 
-    raise Unresolved(f"I can't find a player named {name}")
+
+def _name_tokens(name: str) -> set[str]:
+    """The words in a name, with generational suffixes dropped.
+
+    ``Marvin Harrison Jr.`` -> ``{marvin, harrison}``, so the suffix is never a
+    token a candidate has to carry.
+    """
+    return {token for token in _without_suffix(normalize_name(name)).split(" ") if token}
+
+
+def _match_on_roster(name: str, candidates: list[Player], where: str) -> str | None:
+    """The one player on ``candidates`` whose name contains every word typed.
+
+    Containment in both directions is the point. `Rhamondre` matches
+    `Rhamondre Stevenson`, `Wilson` matches `Michael Wilson`, and
+    `Michael Wilson` matches himself -- but `Justin Jefferson` does not match
+    `Van Jefferson`, because `justin` is not one of his words. That is the rule
+    that keeps this a resolver of *partial* names rather than a fuzzy matcher
+    that quietly swaps one full name for another.
+
+    Two matches raise rather than pick: a roster with two Wilsons on it is a
+    question for the chat, and ``where`` says which haystack was searched so the
+    question names it.
+    """
+    typed = _name_tokens(name)
+    if not typed:
+        return None
+    matched = {
+        p.sleeper_player_id for p in candidates if typed <= _name_tokens(p.full_name)
+    }
+    if len(matched) == 1:
+        return next(iter(matched))
+    if len(matched) >= 2:
+        raise Unresolved(f"Two players named {name}{where}; which one?")
+    return None
+
+
+def _resolve_player_with_rosters(
+    name: str,
+    players: list[Player],
+    rosters: RosterIndex,
+    giver_member_id: int | None,
+) -> str:
+    """Resolve a player name with roster evidence between the certain matches
+    and the surname fallback.
+
+    Order, and why. An exact name, a suffix-blind kin match or a team defense is
+    certain, so it wins outright. Otherwise the name is a fragment -- `Rhamondre`,
+    `Wilson` -- and the best evidence about a fragment is who was giving the
+    player away: it is his roster the player is leaving. Failing that, the
+    league's rosters as a whole, which is still a far smaller haystack than the
+    directory. Only then the old bare-surname rule over every active player, and
+    only then the question.
+
+    ``giver_member_id`` is ``None`` when the asset names no giver, or one nobody
+    could place; the giver's-roster step is simply skipped and the rest of the
+    chain runs as it always did.
+    """
+    found = _match_exactly(name, players)
+    if found is not None:
+        return found
+    by_id = {p.sleeper_player_id: p for p in players}
+
+    def rostered(ids: frozenset[str]) -> list[Player]:
+        return [by_id[i] for i in sorted(ids) if i in by_id]
+
+    found = _match_on_roster(name, rostered(rosters.players_for(giver_member_id)), " on that roster")
+    if found is None:
+        found = _match_on_roster(name, rostered(rosters.all_players()), " in the league")
+    if found is None:
+        found = _match_by_surname(name, players)
+    if found is None:
+        raise Unresolved(f"I can't find a player named {name}")
+    return found
 
 
 def resolve_extracted(
@@ -378,13 +498,29 @@ def resolve_extracted(
 
     member_index = _build_member_index(members)
 
-    # Resolve every player asset first -- roster disambiguation below depends on it.
+    # Players and parties each want the other resolved first: settling two
+    # members who go by one name reads the rosters of the players they are
+    # trading, and settling a partial player name reads the roster of the member
+    # giving him away. So the players are resolved twice.
+    #
+    # This first pass is the old no-roster chain, and it exists only to feed
+    # member disambiguation below. Nothing it cannot answer is reported from
+    # here -- neither a name it cannot find nor one two players share -- because
+    # the roster pass further down is the step that exists for both, and a
+    # question raised here would be raised about a haystack the caller has not
+    # finished narrowing. Every player question the chat ends up being asked
+    # comes from the second pass.
     resolved_players: dict[int, str] = {}
     for i, asset in enumerate(extracted.assets):
         # Only player assets carry a name we must resolve; a FAAB asset that
         # mentions a player in passing keeps the free text and no player id.
         if asset.kind == "player" and asset.player_name:
-            resolved_players[i] = _resolve_player(asset.player_name, players)
+            try:
+                found = _resolve_directly(asset.player_name, players)
+            except Unresolved:
+                continue
+            if found is not None:
+                resolved_players[i] = found
 
     def sent_players(norm_name: str) -> set[str]:
         return {
@@ -461,10 +597,30 @@ def resolve_extracted(
             seen_member_ids.add(member.member_id)
             trade_parties.append(TradeParty(member.member_id, member.display_name))
 
+    # Every asset's two sides, settled before the second player pass: it is the
+    # giver's member id that the roster step needs.
+    sides = [
+        (
+            resolve_member(a.from_party).member_id if a.from_party else None,
+            resolve_member(a.to_party).member_id if a.to_party else None,
+        )
+        for a in extracted.assets
+    ]
+
+    # The second pass, now with rosters. Every player asset is resolved again
+    # rather than only the ones the first pass missed, so the answer that gets
+    # recorded comes from one chain: `Rhamondre` reaches Rhamondre Stevenson on
+    # the giver's roster, and a name the first pass placed by exact match is
+    # placed by exact match here too, since that step comes first either way.
+    for i, asset in enumerate(extracted.assets):
+        if asset.kind == "player" and asset.player_name:
+            resolved_players[i] = _resolve_player_with_rosters(
+                asset.player_name, players, rosters, sides[i][0]
+            )
+
     trade_assets: list[TradeAsset] = []
     for i, asset in enumerate(extracted.assets):
-        from_id = resolve_member(asset.from_party).member_id if asset.from_party else None
-        to_id = resolve_member(asset.to_party).member_id if asset.to_party else None
+        from_id, to_id = sides[i]
         kind, amount, unit = _money(asset.kind, asset.amount, asset.unit)
         trade_assets.append(
             TradeAsset(
