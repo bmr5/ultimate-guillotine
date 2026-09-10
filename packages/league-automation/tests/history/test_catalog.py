@@ -85,7 +85,10 @@ def test_several_messages_become_one_block_split_by_a_blank_line() -> None:
     """Two messages about one trade are two paragraphs, not one run-on sentence."""
     reading = read_record(
         _record(source_texts=["ANNOUNCEMENT-ONE", "  ANNOUNCEMENT-TWO  "]),
-        {}, NO_PLAYERS, season_id=None, loaded_at=LOADED_AT,
+        {},
+        NO_PLAYERS,
+        season_id=None,
+        loaded_at=LOADED_AT,
     )
     assert reading.row.announcement == "ANNOUNCEMENT-ONE\n\nANNOUNCEMENT-TWO"
 
@@ -123,7 +126,10 @@ def test_week_or_date_is_a_dict_of_both() -> None:
     """The analyst dates every record and weeks most of them; a non-numeric week is dropped."""
     reading = read_record(
         _record(id="2023-002", week_or_date={"week": "Pre-Draft", "date": "2023-08-14"}),
-        {}, NO_PLAYERS, season_id=None, loaded_at=LOADED_AT,
+        {},
+        NO_PLAYERS,
+        season_id=None,
+        loaded_at=LOADED_AT,
     )
     assert reading.row.week is None
     assert reading.row.occurred_on == date(2023, 8, 14)
@@ -132,7 +138,10 @@ def test_week_or_date_is_a_dict_of_both() -> None:
 def test_a_record_placed_in_neither_week_nor_date_keeps_both_columns_null() -> None:
     reading = read_record(
         _record(week_or_date={"week": None, "date": None}),
-        {}, NO_PLAYERS, season_id=None, loaded_at=LOADED_AT,
+        {},
+        NO_PLAYERS,
+        season_id=None,
+        loaded_at=LOADED_AT,
     )
     assert reading.row.week is None and reading.row.occurred_on is None
 
@@ -155,12 +164,14 @@ def test_every_label_a_member_answers_to_resolves() -> None:
 def test_parallel_asset_lists_become_kind_objects() -> None:
     """The file keeps assets as parallel lists; the table keeps them as closed shapes."""
     reading = read_record(
-        _record(assets={
-            "players": ["Rookie One", "Nobody At All"],
-            "positions": ["RB", "not-a-position"],
-            "faab": [12, 0],
-            "return_conditions": ["1 week", "gulag protections"],
-        }),
+        _record(
+            assets={
+                "players": ["Rookie One", "Nobody At All"],
+                "positions": ["RB", "not-a-position"],
+                "faab": [12, 0],
+                "return_conditions": ["1 week", "gulag protections"],
+            }
+        ),
         {},
         PlayerIndex([Player("4034", "Rookie One", "RB", "KC", True)]),
         season_id=None,
@@ -179,11 +190,18 @@ def test_parallel_asset_lists_become_kind_objects() -> None:
 def test_free_text_conditions_are_dropped_and_counted() -> None:
     """A sentence out of the chat is the one thing that could reach a public page."""
     reading = read_record(
-        _record(assets={
-            "players": [], "positions": [], "faab": [],
-            "return_conditions": ["1 week", "SENTINEL is owed $40 back on survival"],
-        }),
-        {}, NO_PLAYERS, season_id=None, loaded_at=LOADED_AT,
+        _record(
+            assets={
+                "players": [],
+                "positions": [],
+                "faab": [],
+                "return_conditions": ["1 week", "SENTINEL is owed $40 back on survival"],
+            }
+        ),
+        {},
+        NO_PLAYERS,
+        season_id=None,
+        loaded_at=LOADED_AT,
     )
     assert reading.row.assets == [{"kind": "condition", "label": "rental"}]
     assert reading.unmapped_conditions == 1
@@ -192,11 +210,18 @@ def test_free_text_conditions_are_dropped_and_counted() -> None:
 
 def test_one_label_per_record_however_many_phrases_said_it() -> None:
     reading = read_record(
-        _record(assets={
-            "players": [], "positions": [], "faab": [],
-            "return_conditions": ["1 week", "one week hold", "hold"],
-        }),
-        {}, NO_PLAYERS, season_id=None, loaded_at=LOADED_AT,
+        _record(
+            assets={
+                "players": [],
+                "positions": [],
+                "faab": [],
+                "return_conditions": ["1 week", "one week hold", "hold"],
+            }
+        ),
+        {},
+        NO_PLAYERS,
+        season_id=None,
+        loaded_at=LOADED_AT,
     )
     assert reading.row.assets == [{"kind": "condition", "label": "rental"}]
 
@@ -213,15 +238,25 @@ def test_a_confidence_the_analyst_invented_is_read_as_low() -> None:
 
 
 def test_a_player_name_two_players_answer_to_keeps_the_name_and_no_id() -> None:
-    players = PlayerIndex([
-        Player("1", "Rookie One", "RB", "KC", True),
-        Player("2", "Rookie One", "WR", "SF", True),
-    ])
+    players = PlayerIndex(
+        [
+            Player("1", "Rookie One", "RB", "KC", True),
+            Player("2", "Rookie One", "WR", "SF", True),
+        ]
+    )
     reading = read_record(
-        _record(assets={
-            "players": ["Rookie One"], "positions": ["RB"], "faab": [], "return_conditions": [],
-        }),
-        {}, players, season_id=None, loaded_at=LOADED_AT,
+        _record(
+            assets={
+                "players": ["Rookie One"],
+                "positions": ["RB"],
+                "faab": [],
+                "return_conditions": [],
+            }
+        ),
+        {},
+        players,
+        season_id=None,
+        loaded_at=LOADED_AT,
     )
     assert reading.row.assets == [
         {"kind": "player", "sleeper_player_id": None, "name": "Rookie One", "position": "RB"}
@@ -239,10 +274,18 @@ def test_a_bare_surname_never_becomes_a_player_id() -> None:
     assert players.id_for("One") is None
 
     reading = read_record(
-        _record(assets={
-            "players": ["One"], "positions": ["RB"], "faab": [], "return_conditions": [],
-        }),
-        {}, players, season_id=None, loaded_at=LOADED_AT,
+        _record(
+            assets={
+                "players": ["One"],
+                "positions": ["RB"],
+                "faab": [],
+                "return_conditions": [],
+            }
+        ),
+        {},
+        players,
+        season_id=None,
+        loaded_at=LOADED_AT,
     )
     assert reading.row.assets == [
         {"kind": "player", "sleeper_player_id": None, "name": "One", "position": "RB"}
@@ -258,12 +301,18 @@ def test_a_team_defense_still_resolves() -> None:
 def test_a_players_entry_that_is_not_a_string_is_not_a_name() -> None:
     """A number or an object in the names list is unreadable, not a name to stringify."""
     reading = read_record(
-        _record(assets={
-            "players": [12, None, {"name": "SENTINEL"}, "Rookie One"],
-            "positions": ["RB", "RB", "RB", "WR"],
-            "faab": [], "return_conditions": [],
-        }),
-        {}, NO_PLAYERS, season_id=None, loaded_at=LOADED_AT,
+        _record(
+            assets={
+                "players": [12, None, {"name": "SENTINEL"}, "Rookie One"],
+                "positions": ["RB", "RB", "RB", "WR"],
+                "faab": [],
+                "return_conditions": [],
+            }
+        ),
+        {},
+        NO_PLAYERS,
+        season_id=None,
+        loaded_at=LOADED_AT,
     )
     assert reading.row.assets == [
         {"kind": "player", "sleeper_player_id": None, "name": "Rookie One", "position": "WR"}
@@ -276,8 +325,11 @@ def test_a_type_or_structure_longer_than_a_label_refuses_the_record(field: str) 
     """Past the cap the field is holding a sentence, and the column would take it."""
     with pytest.raises(CatalogRecordRefused) as refusal:
         read_record(
-            _record(**{field: "SENTINEL " * 20}), {}, NO_PLAYERS,
-            season_id=None, loaded_at=LOADED_AT,
+            _record(**{field: "SENTINEL " * 20}),
+            {},
+            NO_PLAYERS,
+            season_id=None,
+            loaded_at=LOADED_AT,
         )
     assert "2025-014" in str(refusal.value)
     assert "SENTINEL" not in str(refusal.value)
@@ -286,18 +338,29 @@ def test_a_type_or_structure_longer_than_a_label_refuses_the_record(field: str) 
 @pytest.mark.parametrize("field", ["type", "structure"])
 def test_a_type_or_structure_at_the_cap_is_published(field: str) -> None:
     reading = read_record(
-        _record(**{field: "x" * MAX_NAME_LENGTH}), {}, NO_PLAYERS,
-        season_id=None, loaded_at=LOADED_AT,
+        _record(**{field: "x" * MAX_NAME_LENGTH}),
+        {},
+        NO_PLAYERS,
+        season_id=None,
+        loaded_at=LOADED_AT,
     )
     assert getattr(reading.row, "trade_type" if field == "type" else field) == "x" * MAX_NAME_LENGTH
 
 
 def test_a_player_name_longer_than_a_name_is_dropped_whole() -> None:
     reading = read_record(
-        _record(assets={
-            "players": ["SENTINEL " * 20], "positions": ["RB"], "faab": [], "return_conditions": [],
-        }),
-        {}, NO_PLAYERS, season_id=None, loaded_at=LOADED_AT,
+        _record(
+            assets={
+                "players": ["SENTINEL " * 20],
+                "positions": ["RB"],
+                "faab": [],
+                "return_conditions": [],
+            }
+        ),
+        {},
+        NO_PLAYERS,
+        season_id=None,
+        loaded_at=LOADED_AT,
     )
     assert reading.row.assets == []
     assert "SENTINEL" not in repr(reading)
@@ -306,10 +369,18 @@ def test_a_player_name_longer_than_a_name_is_dropped_whole() -> None:
 @pytest.mark.parametrize("faab", [[0], [-5], ["12"], [True]])
 def test_faab_that_is_not_a_positive_whole_number_is_not_an_asset(faab: list) -> None:
     reading = read_record(
-        _record(assets={
-            "players": [], "positions": [], "faab": faab, "return_conditions": [],
-        }),
-        {}, NO_PLAYERS, season_id=None, loaded_at=LOADED_AT,
+        _record(
+            assets={
+                "players": [],
+                "positions": [],
+                "faab": faab,
+                "return_conditions": [],
+            }
+        ),
+        {},
+        NO_PLAYERS,
+        season_id=None,
+        loaded_at=LOADED_AT,
     )
     assert reading.row.assets == []
 
@@ -317,13 +388,18 @@ def test_faab_that_is_not_a_positive_whole_number_is_not_an_asset(faab: list) ->
 def test_the_row_the_reader_builds_is_one_the_database_accepts(conn) -> None:
     """The jsonb validators are the same allowlist restated; this proves they agree."""
     reading = read_record(
-        _record(assets={
-            "players": ["Rookie One"],
-            "positions": ["RB"],
-            "faab": [12],
-            "return_conditions": ["1 week", "all permanent", "no gulag protections"],
-        }),
-        {}, NO_PLAYERS, season_id=None, loaded_at=LOADED_AT,
+        _record(
+            assets={
+                "players": ["Rookie One"],
+                "positions": ["RB"],
+                "faab": [12],
+                "return_conditions": ["1 week", "all permanent", "no gulag protections"],
+            }
+        ),
+        {},
+        NO_PLAYERS,
+        season_id=None,
+        loaded_at=LOADED_AT,
     )
     assert HistoryRepository(conn).upsert_catalog(reading.row) == "inserted"
     assert reading.unmapped_conditions == 1

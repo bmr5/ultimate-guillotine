@@ -57,8 +57,7 @@ def seed_league(conn) -> tuple[int, dict[int, int]]:
         teams: dict[int, int] = {}
         for roster_id in (1, 2, 3):
             cur.execute(
-                "insert into public.members (display_name, nickname) values (%s, %s)"
-                " returning id",
+                "insert into public.members (display_name, nickname) values (%s, %s) returning id",
                 (f"eod-seed-{roster_id}", f"Nick{roster_id}"),
             )
             member_id = cur.fetchone()[0]
@@ -74,8 +73,15 @@ def seed_league(conn) -> tuple[int, dict[int, int]]:
                 "insert into public.team_season_state (season_id, team_id, faab_budget,"
                 " faab_used, is_eliminated, eliminated_week, elimination_source, synced_at)"
                 " values (%s, %s, 1000, %s, %s, %s, %s, %s)",
-                (season_id, team_id, 100 * roster_id, eliminated, 2 if eliminated else None,
-                 "adjudicator" if eliminated else None, SEEDED_AT),
+                (
+                    season_id,
+                    team_id,
+                    100 * roster_id,
+                    eliminated,
+                    2 if eliminated else None,
+                    "adjudicator" if eliminated else None,
+                    SEEDED_AT,
+                ),
             )
             for index, (pid, _name, position, _team, _injury) in enumerate(PLAYERS[roster_id]):
                 cur.execute(
@@ -88,8 +94,7 @@ def seed_league(conn) -> tuple[int, dict[int, int]]:
                     "insert into public.player_projections (season, week, sleeper_player_id,"
                     " stat_line, league_points, scoring_version, projected_at, synced_at)"
                     " values (%s, %s, %s, '{}', %s, 'v1', %s, %s)",
-                    (SENTINEL_SEASON, WEEK, pid, Decimal(10 + roster_id), SEEDED_AT,
-                     SEEDED_AT),
+                    (SENTINEL_SEASON, WEEK, pid, Decimal(10 + roster_id), SEEDED_AT, SEEDED_AT),
                 )
             cur.execute(
                 "insert into public.team_week_projections (season_id, team_id, week,"
@@ -102,20 +107,37 @@ def seed_league(conn) -> tuple[int, dict[int, int]]:
                 cur.execute(
                     "insert into public.final_rosters (season_id, team_id, eliminated_week,"
                     " holdings, frozen_at) values (%s, %s, 2, %s, %s)",
-                    (season_id, team_id, Jsonb([
-                        {"sleeper_player_id": pid, "slot": "starter", "slot_index": index,
-                         "lineup_position": position}
-                        for index, (pid, _n, position, _t, _i) in enumerate(PLAYERS[3])
-                    ]), SEEDED_AT),
+                    (
+                        season_id,
+                        team_id,
+                        Jsonb(
+                            [
+                                {
+                                    "sleeper_player_id": pid,
+                                    "slot": "starter",
+                                    "slot_index": index,
+                                    "lineup_position": position,
+                                }
+                                for index, (pid, _n, position, _t, _i) in enumerate(PLAYERS[3])
+                            ]
+                        ),
+                        SEEDED_AT,
+                    ),
                 )
             # Three weeks of scores: two past weeks for the replay, this week live.
             for week in (1, 2, WEEK):
                 cur.execute(
                     "insert into public.team_week_scores (season_id, team_id, week, points,"
                     " players_points, starters, synced_at) values (%s, %s, %s, %s, %s, %s, %s)",
-                    (season_id, team_id, week, Decimal(50 + 10 * roster_id + week),
-                     Jsonb({PLAYERS[roster_id][0][0]: 12.5}),
-                     [p[0] for p in PLAYERS[roster_id]], SEEDED_AT),
+                    (
+                        season_id,
+                        team_id,
+                        week,
+                        Decimal(50 + 10 * roster_id + week),
+                        Jsonb({PLAYERS[roster_id][0][0]: 12.5}),
+                        [p[0] for p in PLAYERS[roster_id]],
+                        SEEDED_AT,
+                    ),
                 )
         for team_id in (teams[1], teams[2]):
             cur.execute(

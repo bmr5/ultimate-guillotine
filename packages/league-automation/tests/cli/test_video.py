@@ -31,7 +31,16 @@ def touch_reference(root) -> Assets:
 def test_video_help_lists_commands() -> None:
     result = subprocess.run([*UG, "video", "--help"], capture_output=True, text=True, check=False)
     assert result.returncode == 0
-    for name in ("assets", "card", "cost", "render"):
+    for name in ("assets", "card", "cost", "script", "render", "jobs"):
+        assert name in result.stdout
+
+
+def test_jobs_help_lists_the_queue_commands() -> None:
+    result = subprocess.run(
+        [*UG, "video", "jobs", "--help"], capture_output=True, text=True, check=False
+    )
+    assert result.returncode == 0
+    for name in ("list", "run", "watch", "add"):
         assert name in result.stdout
 
 

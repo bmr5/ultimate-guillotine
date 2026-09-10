@@ -64,17 +64,30 @@ def test_the_fixture_terms_are_a_whole_trade_proposal() -> None:
 
 def _asset(kind, from_id, to_id, player_id=None, player_name=None, amount=None, unit=None):
     return {
-        "kind": kind, "from_member_id": from_id, "to_member_id": to_id,
-        "player_id": player_id, "player_name": player_name, "amount": amount,
-        "unit": unit, "description": None,
+        "kind": kind,
+        "from_member_id": from_id,
+        "to_member_id": to_id,
+        "player_id": player_id,
+        "player_name": player_name,
+        "amount": amount,
+        "unit": unit,
+        "description": None,
     }
 
 
 def test_a_player_for_faab_becomes_one_price_point() -> None:
-    rows = [{"trade_code": "T-2025-001", "season": 2025, "terms": _terms([
-        _asset("player", 1, 2, "pa", "Alpha"),
-        _asset("faab", 2, 1, amount=120, unit="faab"),
-    ])}]
+    rows = [
+        {
+            "trade_code": "T-2025-001",
+            "season": 2025,
+            "terms": _terms(
+                [
+                    _asset("player", 1, 2, "pa", "Alpha"),
+                    _asset("faab", 2, 1, amount=120, unit="faab"),
+                ]
+            ),
+        }
+    ]
     points = price_points(rows, POSITIONS)
     assert len(points) == 1
     point = points[0]
@@ -84,29 +97,53 @@ def test_a_player_for_faab_becomes_one_price_point() -> None:
 
 
 def test_faab_is_split_across_the_players_it_paid_for() -> None:
-    rows = [{"trade_code": "T-2025-002", "season": 2025, "terms": _terms([
-        _asset("player", 1, 2, "pa", "Alpha"),
-        _asset("player", 1, 2, "pc", "Gamma"),
-        _asset("faab", 2, 1, amount=100, unit="faab"),
-    ])}]
+    rows = [
+        {
+            "trade_code": "T-2025-002",
+            "season": 2025,
+            "terms": _terms(
+                [
+                    _asset("player", 1, 2, "pa", "Alpha"),
+                    _asset("player", 1, 2, "pc", "Gamma"),
+                    _asset("faab", 2, 1, amount=100, unit="faab"),
+                ]
+            ),
+        }
+    ]
     assert [p.faab for p in price_points(rows, POSITIONS)] == [50, 50]
 
 
 def test_a_player_for_player_records_the_swap_not_a_price() -> None:
-    rows = [{"trade_code": "T-2025-003", "season": 2025, "terms": _terms([
-        _asset("player", 1, 2, "pa", "Alpha"),
-        _asset("player", 2, 1, "pb", "Beta"),
-    ])}]
+    rows = [
+        {
+            "trade_code": "T-2025-003",
+            "season": 2025,
+            "terms": _terms(
+                [
+                    _asset("player", 1, 2, "pa", "Alpha"),
+                    _asset("player", 2, 1, "pb", "Beta"),
+                ]
+            ),
+        }
+    ]
     points = price_points(rows, POSITIONS)
     assert {p.player_name for p in points} == {"Alpha", "Beta"}
     assert all(p.faab is None and p.players_back == 1 for p in points)
 
 
 def test_non_faab_currencies_keep_their_unit_and_never_price_a_proposal() -> None:
-    rows = [{"trade_code": "T-2025-004", "season": 2025, "terms": _terms([
-        _asset("player", 1, 2, "pa", "Alpha"),
-        _asset("usd", 2, 1, amount=25, unit="usd"),
-    ])}]
+    rows = [
+        {
+            "trade_code": "T-2025-004",
+            "season": 2025,
+            "terms": _terms(
+                [
+                    _asset("player", 1, 2, "pa", "Alpha"),
+                    _asset("usd", 2, 1, amount=25, unit="usd"),
+                ]
+            ),
+        }
+    ]
     point = price_points(rows, POSITIONS)[0]
     assert point.unit == "usd" and point.faab is None
     assert comparables_for([point], "RB") == []
@@ -114,18 +151,31 @@ def test_non_faab_currencies_keep_their_unit_and_never_price_a_proposal() -> Non
 
 def test_comparables_prefer_the_newest_season_and_the_biggest_price() -> None:
     rows = [
-        {"trade_code": "T-2025-005", "season": 2025, "terms": _terms([
-            _asset("player", 1, 2, "pa", "Alpha"),
-            _asset("faab", 2, 1, amount=40, unit="faab"),
-        ])},
-        {"trade_code": "T-2026-001", "season": 2026, "terms": _terms([
-            _asset("player", 1, 2, "pc", "Gamma"),
-            _asset("faab", 2, 1, amount=90, unit="faab"),
-        ])},
+        {
+            "trade_code": "T-2025-005",
+            "season": 2025,
+            "terms": _terms(
+                [
+                    _asset("player", 1, 2, "pa", "Alpha"),
+                    _asset("faab", 2, 1, amount=40, unit="faab"),
+                ]
+            ),
+        },
+        {
+            "trade_code": "T-2026-001",
+            "season": 2026,
+            "terms": _terms(
+                [
+                    _asset("player", 1, 2, "pc", "Gamma"),
+                    _asset("faab", 2, 1, amount=90, unit="faab"),
+                ]
+            ),
+        },
     ]
     points = price_points(rows, POSITIONS)
     assert [p.trade_code for p in comparables_for(points, "RB")] == [
-        "T-2026-001", "T-2025-005",
+        "T-2026-001",
+        "T-2025-005",
     ]
     assert comparables_for(points, "TE") == []
     assert median_faab(points, "RB") == 65
@@ -138,10 +188,18 @@ def test_a_price_point_carries_the_counterparties_as_ids_not_labels() -> None:
     Labels belong to whoever renders the advice, and a price point that carried
     one would be a place for a member's name to leak into a shared comparable.
     """
-    rows = [{"trade_code": "T-2025-006", "season": 2025, "terms": _terms([
-        _asset("player", 1, 2, "pa", "Alpha"),
-        _asset("faab", 2, 1, amount=30, unit="faab"),
-    ])}]
+    rows = [
+        {
+            "trade_code": "T-2025-006",
+            "season": 2025,
+            "terms": _terms(
+                [
+                    _asset("player", 1, 2, "pa", "Alpha"),
+                    _asset("faab", 2, 1, amount=30, unit="faab"),
+                ]
+            ),
+        }
+    ]
     point = price_points(rows, POSITIONS)[0]
     assert (point.from_member_id, point.to_member_id) == (1, 2)
     assert "Member01" not in repr(point)
@@ -149,20 +207,36 @@ def test_a_price_point_carries_the_counterparties_as_ids_not_labels() -> None:
 
 def test_a_mixed_currency_payment_is_priced_on_its_faab_leg_only() -> None:
     """Dollars alongside FAAB do not inflate the FAAB the league can quote."""
-    rows = [{"trade_code": "T-2025-007", "season": 2025, "terms": _terms([
-        _asset("player", 1, 2, "pa", "Alpha"),
-        _asset("faab", 2, 1, amount=60, unit="faab"),
-        _asset("usd", 2, 1, amount=25, unit="usd"),
-    ])}]
+    rows = [
+        {
+            "trade_code": "T-2025-007",
+            "season": 2025,
+            "terms": _terms(
+                [
+                    _asset("player", 1, 2, "pa", "Alpha"),
+                    _asset("faab", 2, 1, amount=60, unit="faab"),
+                    _asset("usd", 2, 1, amount=25, unit="usd"),
+                ]
+            ),
+        }
+    ]
     point = price_points(rows, POSITIONS)[0]
     assert point.unit == "faab" and point.faab == 60
 
 
 def test_a_player_with_no_position_known_is_recorded_but_never_compared() -> None:
-    rows = [{"trade_code": "T-2025-008", "season": 2025, "terms": _terms([
-        _asset("player", 1, 2, "pz", "Zeta"),
-        _asset("faab", 2, 1, amount=70, unit="faab"),
-    ])}]
+    rows = [
+        {
+            "trade_code": "T-2025-008",
+            "season": 2025,
+            "terms": _terms(
+                [
+                    _asset("player", 1, 2, "pz", "Zeta"),
+                    _asset("faab", 2, 1, amount=70, unit="faab"),
+                ]
+            ),
+        }
+    ]
     points = price_points(rows, POSITIONS)
     assert points[0].position is None and points[0].player_id == "pz"
     assert comparables_for(points, "RB") == [] and median_faab(points, "RB") is None
@@ -176,10 +250,19 @@ def test_a_season_with_no_trades_has_no_prices_rather_than_an_error() -> None:
 
 def test_a_rental_is_recorded_but_never_priced_against_a_permanent() -> None:
     """A rental's FAAB buys a few weeks, so it is not what the player costs."""
-    rows = [{"trade_code": "T-2025-009", "season": 2025, "terms": _terms([
-        _asset("player", 1, 2, "pa", "Alpha"),
-        _asset("faab", 2, 1, amount=30, unit="faab"),
-    ], kind="rental")}]
+    rows = [
+        {
+            "trade_code": "T-2025-009",
+            "season": 2025,
+            "terms": _terms(
+                [
+                    _asset("player", 1, 2, "pa", "Alpha"),
+                    _asset("faab", 2, 1, amount=30, unit="faab"),
+                ],
+                kind="rental",
+            ),
+        }
+    ]
     points = price_points(rows, POSITIONS)
     assert points[0].kind == "rental" and points[0].faab == 30
     assert comparables_for(points, "RB") == []
@@ -191,10 +274,18 @@ def test_a_rental_is_recorded_but_never_priced_against_a_permanent() -> None:
 
 def test_money_from_an_unnamed_party_never_prices_a_player() -> None:
     """Two unattributed halves of a trade do not add up to a price."""
-    rows = [{"trade_code": "T-2025-010", "season": 2025, "terms": _terms([
-        _asset("player", None, 2, "pa", "Alpha"),
-        _asset("faab", 2, None, amount=200, unit="faab"),
-    ])}]
+    rows = [
+        {
+            "trade_code": "T-2025-010",
+            "season": 2025,
+            "terms": _terms(
+                [
+                    _asset("player", None, 2, "pa", "Alpha"),
+                    _asset("faab", 2, None, amount=200, unit="faab"),
+                ]
+            ),
+        }
+    ]
     point = price_points(rows, POSITIONS)[0]
     assert point.player_name == "Alpha" and point.from_member_id is None
     assert point.faab is None and point.unit is None
@@ -248,10 +339,18 @@ def _seed_trades(conn) -> None:
                 "insert into public.trade_revisions"
                 " (trade_id, revision, terms, effective_week)"
                 " values (%s, 1, %s, 5) returning id",
-                (trade_id, json.dumps(_terms([
-                    _asset("player", 1, 2, "pa", "Alpha"),
-                    _asset("faab", 2, 1, amount=120, unit="faab"),
-                ], season=SENTINEL_SEASON))),
+                (
+                    trade_id,
+                    json.dumps(
+                        _terms(
+                            [
+                                _asset("player", 1, 2, "pa", "Alpha"),
+                                _asset("faab", 2, 1, amount=120, unit="faab"),
+                            ],
+                            season=SENTINEL_SEASON,
+                        )
+                    ),
+                ),
             )
             revision_id = cur.fetchone()[0]
             cur.execute(

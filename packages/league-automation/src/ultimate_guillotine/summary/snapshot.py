@@ -234,8 +234,9 @@ class EodRepository:
                 (season_id, week),
             )
             return [
-                ScoreRow(team_id, points, dict(players_points or {}), tuple(starters or ()),
-                         synced_at)
+                ScoreRow(
+                    team_id, points, dict(players_points or {}), tuple(starters or ()), synced_at
+                )
                 for team_id, points, players_points, starters, synced_at in cur.fetchall()
             ]
 

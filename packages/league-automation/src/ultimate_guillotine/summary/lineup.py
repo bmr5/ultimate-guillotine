@@ -96,9 +96,7 @@ def build_starters(
     scores row. A slot the manager left blank is a line of its own so the roster
     watch can say so.
     """
-    ordered = sorted(
-        holdings, key=lambda h: (h.slot_index if h.slot_index is not None else 10_000)
-    )
+    ordered = sorted(holdings, key=lambda h: h.slot_index if h.slot_index is not None else 10_000)
     lines: list[StarterLine] = []
     for holding in ordered:
         info = players.get(holding.sleeper_player_id, PlayerInfo(None, None))

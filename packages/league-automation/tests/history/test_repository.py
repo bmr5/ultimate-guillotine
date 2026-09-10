@@ -129,8 +129,7 @@ def test_catalog_rerun_is_byte_identical(conn) -> None:
     """The idempotency claim, checked as a whole-row comparison rather than a count."""
     repo = HistoryRepository(conn)
     read_back = (
-        "select to_jsonb(t) - 'id' - 'created_at' from public.trade_catalog t"
-        " where catalog_id = %s"
+        "select to_jsonb(t) - 'id' - 'created_at' from public.trade_catalog t where catalog_id = %s"
     )
     repo.upsert_catalog(_row(catalog_id="2099-014"))
     with conn.cursor() as cur:
@@ -159,7 +158,9 @@ def test_season_result_upsert_and_season_id_lookup(conn) -> None:
     assert repo.upsert_season_result(row) == "inserted"
 
     with conn.cursor() as cur:
-        cur.execute("select team_count, eliminations from public.season_results where season = 2098")
+        cur.execute(
+            "select team_count, eliminations from public.season_results where season = 2098"
+        )
         team_count, eliminations = cur.fetchone()
     assert team_count == 19
     assert eliminations[0]["gulag_out"] == 2
@@ -181,7 +182,9 @@ def test_season_result_upsert_and_season_id_lookup(conn) -> None:
     assert repo.upsert_season_result(corrected) == "updated"
 
     with conn.cursor() as cur:
-        cur.execute("select team_count, eliminations from public.season_results where season = 2098")
+        cur.execute(
+            "select team_count, eliminations from public.season_results where season = 2098"
+        )
         rows = cur.fetchall()
     assert len(rows) == 1
     team_count, eliminations = rows[0]

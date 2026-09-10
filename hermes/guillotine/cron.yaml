@@ -147,3 +147,9 @@ jobs:
     script: guillotine_eod_summary.sh
     deliver: "discord:#guillotine-ops"
     max_gap_minutes: 3000
+  - name: guillotine-video-jobs
+    agent: video-jobs
+    schedule: "every 2m"
+    script: guillotine_video_jobs.sh
+    deliver: "discord:#guillotine-ops"
+    max_gap_minutes: 30

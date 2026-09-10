@@ -22,12 +22,16 @@ class HermesNotifier:
 
     @classmethod
     def from_settings(cls, settings: Settings, runner=subprocess.run) -> "HermesNotifier":
-        return cls(settings.hermes_profile_home, runner, {
-            "ops": settings.discord_ops_channel,
-            "feed": settings.discord_feed_channel,
-            "drafts": settings.discord_drafts_channel,
-            "alerts": settings.discord_alerts_channel,
-        })
+        return cls(
+            settings.hermes_profile_home,
+            runner,
+            {
+                "ops": settings.discord_ops_channel,
+                "feed": settings.discord_feed_channel,
+                "drafts": settings.discord_drafts_channel,
+                "alerts": settings.discord_alerts_channel,
+            },
+        )
 
     def send(self, channel: str, text: str) -> bool:
         env = {**os.environ, "HERMES_HOME": self._home}

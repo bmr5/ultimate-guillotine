@@ -196,9 +196,7 @@ def _blank(player_id, snapshot=None):
 
 def _priced_points(faab=COMPARABLE_FAAB):
     """The league's history: one permanent sale of a running back, at ``faab``."""
-    row = trade_row(
-        code=COMPARABLE_CODE, faab=faab, player_id="p01b0", player_name="Bench 01-0"
-    )
+    row = trade_row(code=COMPARABLE_CODE, faab=faab, player_id="p01b0", player_name="Bench 01-0")
     return price_history([row])
 
 
@@ -342,9 +340,7 @@ def test_an_acquire_ask_only_brings_back_the_asked_position() -> None:
 
 def test_a_move_ask_sends_the_asked_position_away() -> None:
     _, candidates = _generate(MOVE_WR, SELLER_MEMBER_ID)
-    outgoing = {
-        leg.position for c in candidates for leg in c.asker_sends if leg.kind == "player"
-    }
+    outgoing = {leg.position for c in candidates for leg in c.asker_sends if leg.kind == "player"}
     assert outgoing == {"WR"}
     assert not any(leg.kind == "player" for c in candidates for leg in c.asker_receives)
 
@@ -457,9 +453,7 @@ def test_no_single_counterparty_can_fill_the_whole_list() -> None:
     other sixteen managers would never be mentioned.
     """
     _, candidates = _generate(ACQUIRE_RB, snapshot=DARK, limit=50)
-    deepest = max(
-        len([h for h in team.bench() if h.position == "RB"]) for team in DARK.teams
-    )
+    deepest = max(len([h for h in team.bench() if h.position == "RB"]) for team in DARK.teams)
     assert deepest > OFFERS_PER_COUNTERPARTY
     counts = Counter(c.counterparty_member_id for c in candidates)
     assert counts and max(counts.values()) == OFFERS_PER_COUNTERPARTY
@@ -497,8 +491,7 @@ def test_a_rental_ask_is_priced_off_the_rental_and_never_the_permanent_sale() ->
     assert all(c.reasons.price_basis == "comparable" for c in candidates)
 
 
-def test_a_permanent_ask_is_priced_off_the_sale_with_the_rental_on_the_same_file(
-) -> None:
+def test_a_permanent_ask_is_priced_off_the_sale_with_the_rental_on_the_same_file() -> None:
     """The other half of the same rule: a rental never cheapens a real purchase."""
     _, candidates = _generate(ACQUIRE_RB, points=_mixed_points())
 
@@ -540,9 +533,7 @@ def test_a_price_the_asker_cannot_pay_is_clamped_and_stops_quoting_history() -> 
 def test_a_sender_who_cannot_clear_the_floor_has_no_offer_to_make() -> None:
     snapshot = fixture_snapshot()
     broke = tuple(
-        replace(team, faab_remaining=FAAB_FLOOR - 1)
-        if team.member_id == ASKER_MEMBER_ID
-        else team
+        replace(team, faab_remaining=FAAB_FLOOR - 1) if team.member_id == ASKER_MEMBER_ID else team
         for team in snapshot.teams
     )
     _, candidates = _generate(ACQUIRE_RB, snapshot=replace(snapshot, teams=broke))
@@ -598,9 +589,7 @@ def test_a_richer_buyer_does_not_outrank_an_equal_offer_on_a_move() -> None:
     richer = replace(
         snapshot,
         teams=tuple(
-            replace(team, faab_remaining=RICHER_BUDGET)
-            if team.member_id == buyer_id
-            else team
+            replace(team, faab_remaining=RICHER_BUDGET) if team.member_id == buyer_id else team
             for team in snapshot.teams
         ),
     )
@@ -622,8 +611,7 @@ def test_the_acquire_list_is_exactly_this_sequence() -> None:
     """
     _, candidates = _generate(ACQUIRE_RB, limit=50)
     actual = tuple(
-        (c.counterparty_member_id, min(c.player_ids()), c.reasons.price_faab)
-        for c in candidates
+        (c.counterparty_member_id, min(c.player_ids()), c.reasons.price_faab) for c in candidates
     )
     assert actual == GOLDEN_ACQUIRE_RB
 
@@ -738,8 +726,7 @@ def test_an_unprojected_incumbent_makes_the_delta_unknown_rather_than_bigger() -
         # The seller's own back-up is still fully projected, so its side stands.
         assert candidate.counterparty_delta == Decimal(0)
     listed = [
-        (c.counterparty_member_id, min(c.player_ids()), c.reasons.price_faab)
-        for c in candidates
+        (c.counterparty_member_id, min(c.player_ids()), c.reasons.price_faab) for c in candidates
     ]
     assert listed == list(GOLDEN_ACQUIRE_RB)
 
@@ -807,9 +794,7 @@ def test_a_rank_nudge_can_break_a_tie_but_never_beat_a_point() -> None:
         _rank_term(rank, neediest_first=first) for rank in ranks for first in (True, False)
     )
     calmest = max(
-        _pressure_term(rank, desperate_first=first)
-        for rank in ranks
-        for first in (True, False)
+        _pressure_term(rank, desperate_first=first) for rank in ranks for first in (True, False)
     )
     assert biggest == NEED_RANK_WEIGHT
     assert calmest == PRESSURE_WEIGHT

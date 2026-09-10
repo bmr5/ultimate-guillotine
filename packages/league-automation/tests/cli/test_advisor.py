@@ -45,8 +45,12 @@ BARE_ENV = {
 
 def run(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        [*UG, *args], capture_output=True, text=True, check=False,
-        env=BARE_ENV if env is None else env, timeout=60,
+        [*UG, *args],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=BARE_ENV if env is None else env,
+        timeout=60,
     )
 
 
@@ -117,7 +121,11 @@ def test_the_text_run_prints_the_outcome_the_model_and_the_reply(tmp_path) -> No
     machine that could not have called a model if it wanted to.
     """
     result = ask(
-        "--fixture", "--text", STAND_PAT_QUESTION, "--as", STAND_PAT_MEMBER,
+        "--fixture",
+        "--text",
+        STAND_PAT_QUESTION,
+        "--as",
+        STAND_PAT_MEMBER,
         env=no_hermes(tmp_path),
     )
 
@@ -155,9 +163,7 @@ def test_a_hostile_json_run_is_refused_before_any_candidate_is_built(tmp_path) -
     answer to an instruction to ignore the rules -- which is exactly the output
     the injection gate exists to withhold.
     """
-    result = ask(
-        "--fixture", "--json", "--text", HOSTILE, "--as", MEMBER, env=no_hermes(tmp_path)
-    )
+    result = ask("--fixture", "--json", "--text", HOSTILE, "--as", MEMBER, env=no_hermes(tmp_path))
 
     assert result.returncode == 0, result.stderr
     lines = result.stdout.splitlines()
@@ -207,9 +213,7 @@ def test_two_members_answering_to_one_name_exit_two_rather_than_pick_one(
         lambda self: [MemberRef(1, "Ben", ()), MemberRef(2, "Benjamin", ("ben",))],
     )
 
-    exit_code = advisor_cli.cmd_ask(
-        parse("--fixture", "--json", "--text", QUESTION, "--as", "Ben")
-    )
+    exit_code = advisor_cli.cmd_ask(parse("--fixture", "--json", "--text", QUESTION, "--as", "Ben"))
 
     captured = capsys.readouterr()
     assert exit_code == 2
@@ -218,9 +222,7 @@ def test_two_members_answering_to_one_name_exit_two_rather_than_pick_one(
 
 
 @pytest.mark.parametrize("flags", [(), ("--json",)], ids=["text", "json"])
-def test_a_data_layer_with_no_snapshot_exits_one_on_either_path(
-    monkeypatch, capsys, flags
-) -> None:
+def test_a_data_layer_with_no_snapshot_exits_one_on_either_path(monkeypatch, capsys, flags) -> None:
     """Both outputs answer a missing snapshot the same way, and neither pretends.
 
     The listener turns this into the fallback line in the chat; a dry run has an
@@ -232,9 +234,7 @@ def test_a_data_layer_with_no_snapshot_exits_one_on_either_path(
 
     monkeypatch.setattr(advisor_cli.FixtureLeague, "load", unavailable)
 
-    exit_code = advisor_cli.cmd_ask(
-        parse("--fixture", *flags, "--text", QUESTION, "--as", MEMBER)
-    )
+    exit_code = advisor_cli.cmd_ask(parse("--fixture", *flags, "--text", QUESTION, "--as", MEMBER))
 
     captured = capsys.readouterr()
     assert exit_code == 1

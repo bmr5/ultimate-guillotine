@@ -42,8 +42,16 @@ from ultimate_guillotine.trades.resolve import _match_defense
 #: league, not the league's own words. `source` is absent too: it says which private artefact
 #: he read, which is nobody's business but his.
 CATALOG_FIELDS = (
-    "id", "season", "week_or_date", "type", "structure", "parties", "assets",
-    "faab_total", "confidence", "source_texts",
+    "id",
+    "season",
+    "week_or_date",
+    "type",
+    "structure",
+    "parties",
+    "assets",
+    "faab_total",
+    "confidence",
+    "source_texts",
 )
 
 #: A return condition is a label from this closed set, never prose. The database's
@@ -61,21 +69,40 @@ CONFIDENCE_VALUES = frozenset({"high", "medium", "low"})
 #: of a clause, and publishing them as `conditional` would invert what they said.
 _PHRASES_BY_LABEL: dict[str, tuple[str, ...]] = {
     "rental": (
-        "rental", "hold", "this week", "1 week", "one week", "1 week hold", "one week hold",
-        "bye week hold", "1 week rental", "one week rental", "1-week rental", "1 week rentals",
+        "rental",
+        "hold",
+        "this week",
+        "1 week",
+        "one week",
+        "1 week hold",
+        "one week hold",
+        "bye week hold",
+        "1 week rental",
+        "one week rental",
+        "1-week rental",
+        "1 week rentals",
         "hold / 1 week rental",
     ),
     "two_way": (
-        "swap", "1 week swap", "one week swap", "1 week both ways", "1 week rental swap",
+        "swap",
+        "1 week swap",
+        "one week swap",
+        "1 week both ways",
+        "1 week rental swap",
         "one week swap, players swapped back next week",
     ),
     "conditional": (
-        "gulag protections", "gulag protected", "with protections", "standard protections",
+        "gulag protections",
+        "gulag protected",
+        "with protections",
+        "standard protections",
         "gulag protections both ways",
     ),
     "keeper": ("all permanent", "permanent deal", "hold becomes permanent"),
     "return_after_week": (
-        "players returned", "players returned on survival", "players returned per the rental deal",
+        "players returned",
+        "players returned on survival",
+        "players returned per the rental deal",
         "players swapped back next week",
     ),
 }
@@ -231,13 +258,15 @@ def _player_assets(assets: dict[str, Any], players: PlayerIndex) -> list[dict[st
         if not name or len(name) > MAX_NAME_LENGTH:
             continue
         position = positions[i] if i < len(positions) else None
-        built.append({
-            "kind": "player",
-            "sleeper_player_id": players.id_for(name),
-            "name": name,
-            # A closed vocabulary, so a stray note in the positions list cannot ride along.
-            "position": position if position in SKILL_POSITIONS else None,
-        })
+        built.append(
+            {
+                "kind": "player",
+                "sleeper_player_id": players.id_for(name),
+                "name": name,
+                # A closed vocabulary, so a stray note in the positions list cannot ride along.
+                "position": position if position in SKILL_POSITIONS else None,
+            }
+        )
     return built
 
 

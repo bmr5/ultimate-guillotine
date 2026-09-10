@@ -27,8 +27,13 @@ LIVE = Game(game_id="g3", week=WEEK, date=None, home="SF", away="SEA", status="i
 GAMES = {"PHI": DONE, "DAL": DONE, "KC": PRE, "DEN": PRE, "SF": LIVE, "SEA": LIVE}
 
 
-def _holding(pid: str, slot_index: int, position: str = "RB", points: str | None = "12.5",
-             lineup_position: str | None = None) -> AdvisorHolding:
+def _holding(
+    pid: str,
+    slot_index: int,
+    position: str = "RB",
+    points: str | None = "12.5",
+    lineup_position: str | None = None,
+) -> AdvisorHolding:
     return AdvisorHolding(
         sleeper_player_id=pid,
         player_name=f"Player {pid}",
@@ -41,8 +46,9 @@ def _holding(pid: str, slot_index: int, position: str = "RB", points: str | None
     )
 
 
-def _starter(status: str, position: str = "RB", projected: str | None = "10",
-             team_id: int = 1) -> StarterLine:
+def _starter(
+    status: str, position: str = "RB", projected: str | None = "10", team_id: int = 1
+) -> StarterLine:
     return StarterLine(
         sleeper_player_id=f"p-{position}-{status}",
         name="x",
@@ -140,8 +146,12 @@ def test_build_starters_reads_points_team_and_flag_off_the_inputs() -> None:
     holdings = [_holding("p1", 0, "QB", "18.0"), _holding("p2", 1, "RB", "12.0")]
     players = {"p1": PlayerInfo("PHI", None), "p2": PlayerInfo("KC", "Questionable")}
     starters = build_starters(
-        holdings, players=players, points={"p1": 21.4}, week_games=GAMES,
-        schedule_available=True, starter_slots=2,
+        holdings,
+        players=players,
+        points={"p1": 21.4},
+        week_games=GAMES,
+        schedule_available=True,
+        starter_slots=2,
     )
     assert [s.status for s in starters] == ["done", "remaining"]
     assert starters[0].points == Decimal("21.40")
@@ -154,8 +164,12 @@ def test_build_starters_reads_points_team_and_flag_off_the_inputs() -> None:
 def test_build_starters_appends_one_empty_line_per_unfilled_slot() -> None:
     holdings = [_holding("p1", 0, "QB")]
     starters = build_starters(
-        holdings, players={"p1": PlayerInfo("PHI", None)}, points={}, week_games=GAMES,
-        schedule_available=True, starter_slots=3,
+        holdings,
+        players={"p1": PlayerInfo("PHI", None)},
+        points={},
+        week_games=GAMES,
+        schedule_available=True,
+        starter_slots=3,
     )
     assert [s.status for s in starters] == ["done", "empty", "empty"]
     assert starters[1].sleeper_player_id is None
@@ -166,8 +180,12 @@ def test_build_starters_keeps_lineup_order() -> None:
     holdings = [_holding("p2", 1, "RB"), _holding("p1", 0, "QB")]
     players = {"p1": PlayerInfo("PHI", None), "p2": PlayerInfo("PHI", None)}
     starters = build_starters(
-        holdings, players=players, points={}, week_games=GAMES,
-        schedule_available=True, starter_slots=2,
+        holdings,
+        players=players,
+        points={},
+        week_games=GAMES,
+        schedule_available=True,
+        starter_slots=2,
     )
     assert [s.sleeper_player_id for s in starters] == ["p1", "p2"]
 
@@ -175,8 +193,12 @@ def test_build_starters_keeps_lineup_order() -> None:
 def test_a_player_the_directory_does_not_know_still_gets_a_line() -> None:
     holdings = [_holding("mystery", 0, "RB")]
     starters = build_starters(
-        holdings, players={}, points={}, week_games=GAMES,
-        schedule_available=True, starter_slots=1,
+        holdings,
+        players={},
+        points={},
+        week_games=GAMES,
+        schedule_available=True,
+        starter_slots=1,
     )
     assert starters[0].nfl_team is None
     assert starters[0].status == "remaining"
@@ -187,10 +209,18 @@ def test_a_player_the_directory_does_not_know_still_gets_a_line() -> None:
 
 def test_coverage_counts_only_pending_starters_on_live_teams() -> None:
     teams = [
-        _team(1, (_starter("remaining"), _starter("remaining", projected=None), _starter("done",
-                                                                                      projected=None))),
-        _team(2, (_starter("live"), _starter("out", projected=None), _starter("empty",
-                                                                             projected=None))),
+        _team(
+            1,
+            (
+                _starter("remaining"),
+                _starter("remaining", projected=None),
+                _starter("done", projected=None),
+            ),
+        ),
+        _team(
+            2,
+            (_starter("live"), _starter("out", projected=None), _starter("empty", projected=None)),
+        ),
         _team(3, (_starter("remaining", projected=None),), eliminated=True),
     ]
     # Three pending starters on live teams, two of them projected.
@@ -204,8 +234,14 @@ def test_coverage_is_full_when_nothing_is_pending() -> None:
 
 def test_position_medians_come_from_every_projected_starter() -> None:
     teams = [
-        _team(1, (_starter("done", "RB", "10"), _starter("remaining", "RB", "20"),
-                  _starter("remaining", "WR", "7"))),
+        _team(
+            1,
+            (
+                _starter("done", "RB", "10"),
+                _starter("remaining", "RB", "20"),
+                _starter("remaining", "WR", "7"),
+            ),
+        ),
         _team(2, (_starter("remaining", "RB", "16"), _starter("remaining", "WR", None))),
     ]
     medians = position_medians(teams)

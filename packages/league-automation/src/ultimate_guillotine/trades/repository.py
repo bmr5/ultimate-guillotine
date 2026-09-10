@@ -98,7 +98,9 @@ class TradeRepository:
         terms = proposal.model_dump(mode="json")
         try:
             with self._conn.transaction():
-                return self._accept(proposal, fingerprint, context, terms, announced_at, announced_by)
+                return self._accept(
+                    proposal, fingerprint, context, terms, announced_at, announced_by
+                )
         except psycopg.errors.UniqueViolation:
             # A concurrent writer recorded this fingerprint between our lookup
             # and our insert. The failed transaction is rolled back by now, so
@@ -160,6 +162,25 @@ class TradeRepository:
         """Return the trade and its current terms, or ``None`` if unknown."""
         with self._conn.cursor() as cur:
             cur.execute(f"{_TRADE_SELECT} where t.trade_code = %s", (code,))
+            row = cur.fetchone()
+            return _trade_row(row) if row else None
+
+    def find_by_source_guid(self, source_guid: str) -> dict | None:
+        """The trade one chat message logged or revised, with its *current*
+        terms -- what a reply to a trade alert resolves to."""
+        with self._conn.cursor() as cur:
+            cur.execute(
+                """
+                select t.id, t.trade_code, t.status, r.revision, r.terms, r.effective_week
+                from public.trade_revisions src
+                join public.trades t on t.id = src.trade_id
+                join public.trade_revisions r on r.id = t.current_revision_id
+                where src.source_message_guid = %s
+                order by src.id desc
+                limit 1
+                """,
+                (source_guid,),
+            )
             row = cur.fetchone()
             return _trade_row(row) if row else None
 

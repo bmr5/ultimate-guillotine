@@ -39,8 +39,8 @@ def _tamper(response: TradeAdviceResponse, **fields) -> TradeAdviceResponse:
 def test_a_faithful_response_passes_and_canonicalizes_player_names() -> None:
     snapshot, candidates = _setup()
     response = advised_response(candidates[0])
-    wrong_name = response.proposals[0].asker_receives[0].model_copy(
-        update={"player_name": "Somebody Else"}
+    wrong_name = (
+        response.proposals[0].asker_receives[0].model_copy(update={"player_name": "Somebody Else"})
     )
     tampered = _tamper(response, asker_receives=[wrong_name])
     verified = verify(tampered, candidates, snapshot, ASKER)
@@ -275,9 +275,7 @@ def test_the_counterparty_comes_back_as_the_label_the_league_renders() -> None:
 
 def test_proposals_come_back_in_rank_order() -> None:
     snapshot, candidates = _setup()
-    second = advised_response(candidates[1], index=2).proposals[0].model_copy(
-        update={"rank": 2}
-    )
+    second = advised_response(candidates[1], index=2).proposals[0].model_copy(update={"rank": 2})
     first = advised_response(candidates[0]).proposals[0]
     response = TradeAdviceResponse(
         status="ok", headline="RB help", note=None, proposals=[second, first]

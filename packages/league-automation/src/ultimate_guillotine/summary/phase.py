@@ -104,8 +104,7 @@ def replay_gulag(
         return [
             t
             for t in team_ids
-            if t not in eliminated
-            or (eliminated[t] is not None and eliminated[t] >= replay_week)
+            if t not in eliminated or (eliminated[t] is not None and eliminated[t] >= replay_week)
         ]
 
     gulag: tuple[int, ...] = ()

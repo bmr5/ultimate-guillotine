@@ -8,9 +8,7 @@ def test_the_hop_is_read_from_the_teams_table(conn) -> None:
     with conn.cursor() as cur:
         cur.execute("select id from public.seasons where year = 2026")
         season_id = cur.fetchone()[0]
-        cur.execute(
-            "insert into public.members (display_name) values ('hop-fixture') returning id"
-        )
+        cur.execute("insert into public.members (display_name) values ('hop-fixture') returning id")
         member_id = cur.fetchone()[0]
         cur.execute(
             "insert into public.teams (season_id, member_id, sleeper_user_id, "

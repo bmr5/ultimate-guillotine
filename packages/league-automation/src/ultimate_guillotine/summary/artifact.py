@@ -189,7 +189,7 @@ def _board_card(view: View) -> str:
     out_html = f'<p class="out">{escape(out)}</p>' if out else ""
     return (
         '<section class="card"><h2>📊 The board</h2>'
-        f'<table><thead><tr>{"".join(heads)}</tr></thead><tbody>{"".join(rows)}</tbody></table>'
+        f"<table><thead><tr>{''.join(heads)}</tr></thead><tbody>{''.join(rows)}</tbody></table>"
         f"{out_html}</section>"
     )
 
@@ -223,8 +223,18 @@ def render_html(packet: EodPacket, color: EodColor | None, now: datetime) -> str
     cards = [_hero(view, now)]
     if color is not None:
         cards.append(_colour_card(color))
-    cards.extend(c for c in (_gulag_card(view), _block_card(view), _sweating_card(view),
-                             _board_card(view), _watch_card(view), _moves_card(view)) if c)
+    cards.extend(
+        c
+        for c in (
+            _gulag_card(view),
+            _block_card(view),
+            _sweating_card(view),
+            _board_card(view),
+            _watch_card(view),
+            _moves_card(view),
+        )
+        if c
+    )
     cards.append(f"<footer>{escape(' · '.join(view.footer_parts()))}</footer>")
     title = escape(f"Guillotine Daily · Week {view.snap.week}")
     return (
@@ -232,7 +242,7 @@ def render_html(packet: EodPacket, color: EodColor | None, now: datetime) -> str
         '<html lang="en"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width, initial-scale=1">'
         f"<title>{title}</title><style>{_CSS}</style></head>"
-        f'<body><main>{"".join(cards)}</main></body></html>\n'
+        f"<body><main>{''.join(cards)}</main></body></html>\n"
     )
 
 

@@ -39,8 +39,7 @@ def test_sleeper_help_lists_every_subcommand() -> None:
 
 def test_projections_help_lists_week_and_rescore() -> None:
     result = subprocess.run(
-        [sys.executable, "-m", "ultimate_guillotine.cli.main", "sleeper",
-         "projections", "--help"],
+        [sys.executable, "-m", "ultimate_guillotine.cli.main", "sleeper", "projections", "--help"],
         capture_output=True,
         text=True,
         check=False,
@@ -128,8 +127,12 @@ class FakeRepo:
 
 
 REPORT = SimpleNamespace(
-    rows=9400, scored=9400, unscored=0, scoring_version="v1",
-    drift_share=Decimal("0.0000"), drift_flagged=False,
+    rows=9400,
+    scored=9400,
+    unscored=0,
+    scoring_version="v1",
+    drift_share=Decimal("0.0000"),
+    drift_flagged=False,
 )
 
 
@@ -186,9 +189,7 @@ def _wire(
 
 
 def _args(**overrides) -> argparse.Namespace:
-    return argparse.Namespace(
-        **{"week": None, "rescore": False, "quiet": True, **overrides}
-    )
+    return argparse.Namespace(**{"week": None, "rescore": False, "quiet": True, **overrides})
 
 
 def test_the_write_the_recompute_and_the_stamp_share_one_transaction(
@@ -274,7 +275,11 @@ def test_rescore_skips_the_fetch_and_still_recomputes(
 
     assert sleeper_cli.cmd_projections(_args(rescore=True)) == 0
     assert conn.events == [
-        "begin", "rescore 2026w3", "recompute", "flag 100.00 flagged=False", "commit"
+        "begin",
+        "rescore 2026w3",
+        "recompute",
+        "flag 100.00 flagged=False",
+        "commit",
     ]
 
 
@@ -325,9 +330,7 @@ def test_coverage_climbing_back_over_the_gate_posts_one_recovery_note(
 
     sleeper_cli.cmd_projections(_args())
 
-    assert notifier.notes == [
-        "projections week 3: coverage recovered to 97.00%, at or above 95%"
-    ]
+    assert notifier.notes == ["projections week 3: coverage recovered to 97.00%, at or above 95%"]
 
 
 def test_a_healthy_run_after_a_healthy_run_says_nothing(

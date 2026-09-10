@@ -113,9 +113,7 @@ def build_packet(
             f"under the {COVERAGE_GATE}% gate"
         )
     result = None if reason else simulate(snapshot, simulations=simulations, seed=seed)
-    return EodPacket(
-        snapshot=snapshot, result=result, coverage_pct=coverage, no_odds_reason=reason
-    )
+    return EodPacket(snapshot=snapshot, result=result, coverage_pct=coverage, no_odds_reason=reason)
 
 
 def compose_summary(
@@ -141,9 +139,7 @@ def compose_summary(
     model: str | None = None
     if use_ai and ai is not None:
         try:
-            answer, usage = write_color(
-                ai, facts, week=snapshot.week, day_state=snapshot.day_state
-            )
+            answer, usage = write_color(ai, facts, week=snapshot.week, day_state=snapshot.day_state)
             color = verify_color(answer, facts, [t.label for t in snapshot.teams])
             model = usage.model
         except ColorRejected as exc:
@@ -224,9 +220,7 @@ class EodSummaryAgent:
         if not force and self._repo.sent_today(season_id, week, kind):
             return Outcome("already_sent", "", None, False)
 
-        composed = self.compose(
-            snapshot, now, use_ai=use_ai, simulations=simulations, seed=seed
-        )
+        composed = self.compose(snapshot, now, use_ai=use_ai, simulations=simulations, seed=seed)
         packet = composed.packet
         if packet.result is not None:
             self._repo.record_snapshot(season_id, week, kind, snapshot, packet.result, now)
@@ -266,8 +260,7 @@ class EodSummaryAgent:
             )
         except Exception as exc:  # noqa: BLE001 - reported, never fatal
             self._notifier.ops(
-                f"EOD summary attachment failed after the text went out: "
-                f"{exc.__class__.__name__}"
+                f"EOD summary attachment failed after the text went out: {exc.__class__.__name__}"
             )
         self._commit()
         return Outcome("sent", composed.short, composed.model, odds)

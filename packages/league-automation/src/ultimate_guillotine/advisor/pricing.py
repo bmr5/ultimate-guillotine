@@ -83,9 +83,7 @@ def _unit_of(asset: dict) -> str | None:
     return asset.get("unit") or asset.get("kind")
 
 
-def price_points(
-    rows: Iterable[dict], positions: Mapping[str, str | None]
-) -> list[PricePoint]:
+def price_points(rows: Iterable[dict], positions: Mapping[str, str | None]) -> list[PricePoint]:
     """One price point per player who changed hands in each trade.
 
     The price of a player is whatever money went the other way, split evenly
@@ -114,10 +112,15 @@ def price_points(
             # ``None`` against every payment with an unstated recipient would
             # conjure a price out of two things the extractor failed to
             # attribute, so an unattributed move is recorded with no price.
-            paid: list[dict] = [] if sender is None else [
-                m for m in money
-                if m.get("to_member_id") == sender and m.get("amount") is not None
-            ]
+            paid: list[dict] = (
+                []
+                if sender is None
+                else [
+                    m
+                    for m in money
+                    if m.get("to_member_id") == sender and m.get("amount") is not None
+                ]
+            )
             faab_paid = [m for m in paid if _unit_of(m) == "faab"]
             priced = faab_paid or paid
             bought = [p for p in players if p.get("from_member_id") == sender]
@@ -126,20 +129,22 @@ def price_points(
             total = sum((Decimal(int(m["amount"])) for m in priced), Decimal(0))
             share = int(total / len(bought)) if priced and bought else None
             player_id = asset.get("player_id")
-            points.append(PricePoint(
-                trade_code=row["trade_code"],
-                season=int(row["season"]),
-                kind=str(terms.get("kind") or "permanent"),
-                position=positions.get(player_id) if player_id else None,
-                player_name=asset.get("player_name"),
-                player_id=player_id,
-                faab=share if unit == "faab" else None,
-                unit=unit,
-                players_back=back,
-                effective_week=terms.get("effective_week"),
-                from_member_id=sender,
-                to_member_id=asset.get("to_member_id"),
-            ))
+            points.append(
+                PricePoint(
+                    trade_code=row["trade_code"],
+                    season=int(row["season"]),
+                    kind=str(terms.get("kind") or "permanent"),
+                    position=positions.get(player_id) if player_id else None,
+                    player_name=asset.get("player_name"),
+                    player_id=player_id,
+                    faab=share if unit == "faab" else None,
+                    unit=unit,
+                    players_back=back,
+                    effective_week=terms.get("effective_week"),
+                    from_member_id=sender,
+                    to_member_id=asset.get("to_member_id"),
+                )
+            )
     return points
 
 
@@ -159,8 +164,7 @@ def comparables_for(
     A caller who wants those asks for them by name: ``kinds=("rental",)``.
     """
     matching = [
-        p for p in points
-        if p.position == position and p.faab is not None and p.kind in kinds
+        p for p in points if p.position == position and p.faab is not None and p.kind in kinds
     ]
     matching.sort(key=lambda p: (-p.season, -(p.faab or 0), p.trade_code))
     return matching[:limit]
@@ -178,8 +182,7 @@ def median_faab(
     median and the comparables shown beneath it always come from one population.
     """
     prices = [
-        p.faab for p in points
-        if p.position == position and p.faab is not None and p.kind in kinds
+        p.faab for p in points if p.position == position and p.faab is not None and p.kind in kinds
     ]
     return int(median(prices)) if prices else None
 
@@ -188,9 +191,7 @@ class PriceRepository:
     def __init__(self, conn: psycopg.Connection) -> None:
         self._conn = conn
 
-    def accepted_terms(
-        self, seasons: Sequence[int], limit: int = DEFAULT_LIMIT
-    ) -> list[dict]:
+    def accepted_terms(self, seasons: Sequence[int], limit: int = DEFAULT_LIMIT) -> list[dict]:
         """Current terms of every live trade in these seasons, newest first.
 
         Only the current revision of a trade counts: an amended trade was paid
@@ -215,8 +216,7 @@ class PriceRepository:
                 (list(seasons), limit),
             )
             return [
-                {"trade_code": row[0], "season": row[1], "terms": row[2]}
-                for row in cur.fetchall()
+                {"trade_code": row[0], "season": row[1], "terms": row[2]} for row in cur.fetchall()
             ]
 
     def positions_for(self, player_ids: Sequence[str]) -> dict[str, str | None]:

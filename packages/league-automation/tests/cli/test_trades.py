@@ -11,7 +11,12 @@ from ultimate_guillotine.trades.resolve import MemberRef
 
 
 def test_trades_help_lists_commands() -> None:
-    result = subprocess.run([sys.executable, "-m", "ultimate_guillotine.cli.main", "trades", "--help"], capture_output=True, text=True, check=False)
+    result = subprocess.run(
+        [sys.executable, "-m", "ultimate_guillotine.cli.main", "trades", "--help"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
     assert result.returncode == 0
     for name in ("extract", "list", "retry", "replay"):
         assert name in result.stdout
@@ -19,7 +24,10 @@ def test_trades_help_lists_commands() -> None:
 
 def _trade(code: str = "T-2026-001") -> dict:
     return {
-        "trade_id": 1, "trade_code": code, "status": "accepted", "revision": 1,
+        "trade_id": 1,
+        "trade_code": code,
+        "status": "accepted",
+        "revision": 1,
         "effective_week": 2,
         "terms": {"parties": [{"display_name": "Member01"}, {"display_name": "Member02"}]},
     }
@@ -28,8 +36,7 @@ def _trade(code: str = "T-2026-001") -> dict:
 def test_list_prints_a_header_over_the_rows(capsys: pytest.CaptureFixture[str]) -> None:
     trades_cli.print_trades([_trade()])
     assert capsys.readouterr().out == (
-        "code  status  rev  week  parties\n"
-        "T-2026-001  accepted  1  2  Member01, Member02\n"
+        "code  status  rev  week  parties\nT-2026-001  accepted  1  2  Member01, Member02\n"
     )
 
 
@@ -124,8 +131,9 @@ def test_as_names_the_announcer_the_pipeline_is_given(monkeypatch: pytest.Monkey
     monkeypatch.setattr(trades_cli, "dry_run_pipeline", capture)
 
     exit_code = trades_cli.cmd_extract(
-        argparse.Namespace(text="🚨 I sent Player Alpha to Member02", rosters=False,
-                           announcer="benny")
+        argparse.Namespace(
+            text="🚨 I sent Player Alpha to Member02", rosters=False, announcer="benny"
+        )
     )
 
     assert exit_code == 0
@@ -137,12 +145,14 @@ def test_extract_without_as_passes_no_announcer(monkeypatch: pytest.MonkeyPatch)
     _extract_deps(monkeypatch)
     seen = {}
     monkeypatch.setattr(
-        trades_cli, "dry_run_pipeline",
+        trades_cli,
+        "dry_run_pipeline",
         lambda *args, **kwargs: (seen.update(kwargs), trades_cli.NOT_A_TRADE)[1],
     )
     trades_cli.cmd_extract(
-        argparse.Namespace(text="🚨 Member01 sends Player Alpha to Member02", rosters=False,
-                           announcer=None)
+        argparse.Namespace(
+            text="🚨 Member01 sends Player Alpha to Member02", rosters=False, announcer=None
+        )
     )
     assert seen["announcer"] is None
 
@@ -156,8 +166,9 @@ def test_an_unknown_as_is_refused_rather_than_ignored(
     monkeypatch.setattr(trades_cli, "dry_run_pipeline", lambda *a, **k: pytest.fail("called"))
 
     exit_code = trades_cli.cmd_extract(
-        argparse.Namespace(text="🚨 I sent Player Alpha to Member02", rosters=False,
-                           announcer="nobody-here")
+        argparse.Namespace(
+            text="🚨 I sent Player Alpha to Member02", rosters=False, announcer="nobody-here"
+        )
     )
 
     assert exit_code == 2

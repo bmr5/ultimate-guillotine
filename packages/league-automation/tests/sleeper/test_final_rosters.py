@@ -49,9 +49,7 @@ def test_holdings_payload_keeps_classification_order_and_every_slot_field() -> N
     assert holdings_payload(()) == []
 
 
-def test_an_elimination_freezes_that_teams_holdings(
-    conn, rosters, sleeper_client, team_id
-) -> None:
+def test_an_elimination_freezes_that_teams_holdings(conn, rosters, sleeper_client, team_id) -> None:
     # Two teams are out: roster 1 tagged here, roster 2 tagged in the fixture.
     rosters[0]["metadata"] = {"eliminated": "true"}
     report = sync_season(sleeper_client, conn, 2026, LEAGUE_ID, week=3)

@@ -107,9 +107,7 @@ def build_team_week(
         rows.append(
             TeamWeekProjection(
                 team_id=tally.team_id,
-                projected_points=tally.projected_points.quantize(
-                    _CENTS, rounding=ROUND_HALF_UP
-                ),
+                projected_points=tally.projected_points.quantize(_CENTS, rounding=ROUND_HALF_UP),
                 starter_slots=starter_slots,
                 filled_slots=tally.filled_slots,
                 empty_slots=max(starter_slots - tally.filled_slots, 0),
@@ -136,8 +134,7 @@ class TeamWeekRepository:
         """How many starting slots the league runs, per the cached roster positions."""
         with self._conn.cursor() as cur:
             cur.execute(
-                "select jsonb_array_length(roster_positions) from public.seasons "
-                "where id = %s",
+                "select jsonb_array_length(roster_positions) from public.seasons where id = %s",
                 (season_id,),
             )
             row = cur.fetchone()
@@ -223,9 +220,20 @@ class TeamWeekRepository:
                   computed_at = excluded.computed_at
                 """,
                 [
-                    (season_id, r.team_id, week, r.projected_points, r.starter_slots,
-                     r.filled_slots, r.empty_slots, r.starters_projected,
-                     r.missing_projections, r.coverage_pct, r.is_provisional, now)
+                    (
+                        season_id,
+                        r.team_id,
+                        week,
+                        r.projected_points,
+                        r.starter_slots,
+                        r.filled_slots,
+                        r.empty_slots,
+                        r.starters_projected,
+                        r.missing_projections,
+                        r.coverage_pct,
+                        r.is_provisional,
+                        now,
+                    )
                     for r in rows
                 ],
             )

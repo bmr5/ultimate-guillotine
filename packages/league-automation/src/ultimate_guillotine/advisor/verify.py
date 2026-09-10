@@ -162,8 +162,7 @@ def _resolved(facts: _Facts, proposal: AdvisedTrade) -> AdvisedTrade:
     """
     return proposal.model_copy(
         update={
-            "counterparties": [facts.team(name).member_label
-                               for name in proposal.counterparties],
+            "counterparties": [facts.team(name).member_label for name in proposal.counterparties],
             "asker_receives": [_resolved_leg(facts, leg) for leg in proposal.asker_receives],
             "asker_sends": [_resolved_leg(facts, leg) for leg in proposal.asker_sends],
         }
@@ -202,7 +201,8 @@ def _checked_side(
         if _key(leg) not in expected:
             raise Rejected(f"a leg's amount or direction is not candidate {index}'s")
         legs.append(
-            leg if leg.player_id is None
+            leg
+            if leg.player_id is None
             else leg.model_copy(update={"player_name": facts.players[leg.player_id]})
         )
     if Counter(_key(leg) for leg in advised) != expected:
@@ -235,9 +235,7 @@ def _checked(
             "asker_receives": _checked_side(
                 facts, proposal.asker_receives, candidate.asker_receives, index
             ),
-            "asker_sends": _checked_side(
-                facts, proposal.asker_sends, candidate.asker_sends, index
-            ),
+            "asker_sends": _checked_side(facts, proposal.asker_sends, candidate.asker_sends, index),
             "return_condition": candidate.return_condition or proposal.return_condition,
         }
     )

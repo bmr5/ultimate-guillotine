@@ -5,26 +5,40 @@ from ultimate_guillotine.sleeper.sync import sync_season, validate_league
 
 
 def test_validate_rejects_wrong_roster_count() -> None:
-    league = SleeperLeague(league_id="1389372259260452864", name="Ultimate Guillotine League", season="2026", total_rosters=12)
+    league = SleeperLeague(
+        league_id="1389372259260452864",
+        name="Ultimate Guillotine League",
+        season="2026",
+        total_rosters=12,
+    )
     with pytest.raises(ValueError, match="expected 18 rosters"):
         validate_league(league, expected_id="1389372259260452864", expected_rosters=18)
 
 
 def test_validate_rejects_wrong_id() -> None:
-    league = SleeperLeague(league_id="1", name="Ultimate Guillotine League", season="2026", total_rosters=18)
+    league = SleeperLeague(
+        league_id="1", name="Ultimate Guillotine League", season="2026", total_rosters=18
+    )
     with pytest.raises(ValueError, match="league id"):
         validate_league(league, expected_id="1389372259260452864", expected_rosters=18)
 
 
 def test_validate_accepts_matching_league() -> None:
-    league = SleeperLeague(league_id="1389372259260452864", name="Ultimate Guillotine League", season="2026", total_rosters=18)
+    league = SleeperLeague(
+        league_id="1389372259260452864",
+        name="Ultimate Guillotine League",
+        season="2026",
+        total_rosters=18,
+    )
     validate_league(league, expected_id="1389372259260452864", expected_rosters=18)
 
 
 class FakeSyncClient:
     """Fake Sleeper client for testing sync error cases."""
 
-    def __init__(self, league: SleeperLeague, users: list[SleeperUser], rosters: list[SleeperRoster]) -> None:
+    def __init__(
+        self, league: SleeperLeague, users: list[SleeperUser], rosters: list[SleeperRoster]
+    ) -> None:
         self._league = league
         self._users = users
         self._rosters = rosters
@@ -106,7 +120,10 @@ class FakeSyncCursor:
 def test_sync_season_raises_on_unknown_owner() -> None:
     """A roster with an unknown owner_id raises ValueError."""
     league = SleeperLeague(
-        league_id="1389372259260452864", name="Ultimate Guillotine League", season="2026", total_rosters=2
+        league_id="1389372259260452864",
+        name="Ultimate Guillotine League",
+        season="2026",
+        total_rosters=2,
     )
     users = [SleeperUser(user_id="user-01", display_name="Member01", metadata={})]
     rosters = [
@@ -123,7 +140,10 @@ def test_sync_season_raises_on_unknown_owner() -> None:
 def test_sync_season_raises_on_mismatch_count() -> None:
     """A rosters list with fewer entries than expected raises ValueError."""
     league = SleeperLeague(
-        league_id="1389372259260452864", name="Ultimate Guillotine League", season="2026", total_rosters=2
+        league_id="1389372259260452864",
+        name="Ultimate Guillotine League",
+        season="2026",
+        total_rosters=2,
     )
     users = [
         SleeperUser(user_id="user-01", display_name="Member01", metadata={}),

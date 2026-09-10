@@ -82,16 +82,24 @@ def test_projected_final_is_points_so_far_plus_the_remaining_means() -> None:
         starter("live", projected="12", points="7"),
         starter("out", projected="15"),
     )
-    result = simulate(snapshot((team(1, points="17.5", starters=lineup), done_team(2, "5"),
-                                done_team(3, "6"))), simulations=10)
+    result = simulate(
+        snapshot((team(1, points="17.5", starters=lineup), done_team(2, "5"), done_team(3, "6"))),
+        simulations=10,
+    )
     # 17.5 scored + 8.25 to come + max(0, 12 - 7) still to come from the live starter.
     assert result.teams[1].projected_final == Decimal("30.75")
     assert result.teams[1].pending == 2
 
 
 def test_a_gulag_pair_fight_only_each_other_and_their_odds_sum_to_one() -> None:
-    teams = (done_team(1, "100"), done_team(2, "95"), done_team(3, "60"), done_team(4, "50"),
-             done_team(5, "70"), done_team(6, "80"))
+    teams = (
+        done_team(1, "100"),
+        done_team(2, "95"),
+        done_team(3, "60"),
+        done_team(4, "50"),
+        done_team(5, "70"),
+        done_team(6, "80"),
+    )
     snap = snapshot(teams, week=5, phase_=phase(5, "gulag", gulag=(5, 6), source="events"))
     result = simulate(snap, simulations=100)
     assert result.teams[5].adverse_event == "gulag_loss"
@@ -106,8 +114,14 @@ def test_a_gulag_pair_fight_only_each_other_and_their_odds_sum_to_one() -> None:
 
 
 def test_week_twelve_takes_the_gulag_loser_and_the_lowest_of_the_rest() -> None:
-    teams = (done_team(1, "100"), done_team(2, "95"), done_team(3, "60"), done_team(4, "50"),
-             done_team(5, "70"), done_team(6, "80"))
+    teams = (
+        done_team(1, "100"),
+        done_team(2, "95"),
+        done_team(3, "60"),
+        done_team(4, "50"),
+        done_team(5, "70"),
+        done_team(6, "80"),
+    )
     snap = snapshot(teams, week=12, phase_=phase(12, "double", gulag=(5, 6), source="events"))
     result = simulate(snap, simulations=100)
     assert result.teams[5].probability == ONE
@@ -126,8 +140,7 @@ def test_the_cut_weeks_take_the_lowest_score_of_everyone() -> None:
 
 
 def test_the_final_names_the_runner_up() -> None:
-    snap = snapshot((done_team(1, "100"), done_team(2, "95")), week=17,
-                    phase_=phase(17, "final"))
+    snap = snapshot((done_team(1, "100"), done_team(2, "95")), week=17, phase_=phase(17, "final"))
     result = simulate(snap, simulations=100)
     assert result.teams[2].adverse_event == "title_loss"
     assert result.teams[2].probability == ONE
@@ -135,10 +148,16 @@ def test_the_final_names_the_runner_up() -> None:
 
 
 def test_an_eliminated_team_is_in_no_pool() -> None:
-    teams = (done_team(1, "100"), done_team(2, "90"), done_team(3, "80"),
-             done_team(4, "0", eliminated=True, eliminated_week=3))
-    result = simulate(snapshot(teams, week=4, phase_=phase(4, "gulag", gulag=(), source="unknown")),
-                      simulations=100)
+    teams = (
+        done_team(1, "100"),
+        done_team(2, "90"),
+        done_team(3, "80"),
+        done_team(4, "0", eliminated=True, eliminated_week=3),
+    )
+    result = simulate(
+        snapshot(teams, week=4, phase_=phase(4, "gulag", gulag=(), source="unknown")),
+        simulations=100,
+    )
     assert 4 not in result.teams
     assert result.teams[3].probability == ONE
     assert result.teams[2].probability == ONE
@@ -189,8 +208,9 @@ def test_too_few_teams_for_the_event_yields_zero_odds_not_a_crash() -> None:
 
 def test_the_input_hash_moves_with_a_score_and_holds_otherwise() -> None:
     base = snapshot(_entry_week())
-    moved = snapshot((done_team(1, "100"), done_team(2, "90"), done_team(3, "80"),
-                      done_team(4, "11")))
+    moved = snapshot(
+        (done_team(1, "100"), done_team(2, "90"), done_team(3, "80"), done_team(4, "11"))
+    )
     assert input_hash(base) == input_hash(snapshot(_entry_week()))
     assert input_hash(base) != input_hash(moved)
     assert len(input_hash(base)) == 64

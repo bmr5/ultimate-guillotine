@@ -18,23 +18,38 @@ from ultimate_guillotine.summary.survival import simulate
 
 def _packet(snap, *, odds: bool = True, reason: str | None = None) -> EodPacket:
     result = simulate(snap, simulations=200) if odds else None
-    return EodPacket(snapshot=snap, result=result, coverage_pct=Decimal(100),
-                     no_odds_reason=None if odds else (reason or "no schedule"))
+    return EodPacket(
+        snapshot=snap,
+        result=result,
+        coverage_pct=Decimal(100),
+        no_odds_reason=None if odds else (reason or "no schedule"),
+    )
 
 
 def _entry_week():
-    return snapshot((done_team(1, "100"), done_team(2, "90"), done_team(3, "80"),
-                     done_team(4, "70.5")), week=1, day_state="final", games_final=16,
-                    games_total=16)
+    return snapshot(
+        (done_team(1, "100"), done_team(2, "90"), done_team(3, "80"), done_team(4, "70.5")),
+        week=1,
+        day_state="final",
+        games_final=16,
+        games_total=16,
+    )
 
 
 # -- header ---------------------------------------------------------------
 
 
 def test_the_header_names_the_week_the_day_and_the_games() -> None:
-    snap = snapshot((done_team(1, "100"), done_team(2, "90"), done_team(3, "80"),
-                     team(4, points="0", starters=(starter("remaining"),))),
-                    week=3, phase_=phase(3, "gulag", gulag=(1, 2), source="events"))
+    snap = snapshot(
+        (
+            done_team(1, "100"),
+            done_team(2, "90"),
+            done_team(3, "80"),
+            team(4, points="0", starters=(starter("remaining"),)),
+        ),
+        week=3,
+        phase_=phase(3, "gulag", gulag=(1, 2), source="events"),
+    )
     text = render(_packet(snap), None, NOW)
     lines = text.splitlines()
     assert lines[0] == "🗡️ GUILLOTINE DAILY · Week 3 · Sunday"
@@ -42,10 +57,15 @@ def test_the_header_names_the_week_the_day_and_the_games() -> None:
 
 
 def test_the_outlook_header_says_nothing_has_kicked_off() -> None:
-    snap = snapshot((team(1, starters=(starter("remaining"),)),
-                     team(2, starters=(starter("remaining"),)),
-                     team(3, starters=(starter("remaining"),))),
-                    day_state="outlook", games_final=0)
+    snap = snapshot(
+        (
+            team(1, starters=(starter("remaining"),)),
+            team(2, starters=(starter("remaining"),)),
+            team(3, starters=(starter("remaining"),)),
+        ),
+        day_state="outlook",
+        games_final=0,
+    )
     assert render(_packet(snap), None, NOW).splitlines()[1] == (
         "Nothing has kicked off yet · the projected board"
     )
@@ -58,9 +78,13 @@ def test_the_final_header_says_the_week_is_in_the_books() -> None:
 
 
 def test_the_unknown_header_says_the_schedule_was_unreachable() -> None:
-    snap = snapshot((done_team(1, "1"), done_team(2, "2"), done_team(3, "3")),
-                    day_state="unknown", schedule_available=False, games_final=0,
-                    games_total=0)
+    snap = snapshot(
+        (done_team(1, "1"), done_team(2, "2"), done_team(3, "3")),
+        day_state="unknown",
+        schedule_available=False,
+        games_final=0,
+        games_total=0,
+    )
     assert render(_packet(snap, odds=False), None, NOW).splitlines()[1] == (
         "Game status unavailable tonight"
     )
@@ -87,8 +111,14 @@ def test_no_colour_leaves_no_gap() -> None:
 
 
 def test_the_gulag_pair_are_listed_by_their_odds_of_losing() -> None:
-    teams = (done_team(1, "100"), done_team(2, "95"), done_team(3, "60"), done_team(4, "50"),
-             done_team(5, "70"), done_team(6, "80"))
+    teams = (
+        done_team(1, "100"),
+        done_team(2, "95"),
+        done_team(3, "60"),
+        done_team(4, "50"),
+        done_team(5, "70"),
+        done_team(6, "80"),
+    )
     snap = snapshot(teams, week=5, phase_=phase(5, "gulag", gulag=(5, 6), source="events"))
     text = render(_packet(snap), None, NOW)
     assert "⚔️ THE GULAG · loser is out" in text
@@ -136,8 +166,12 @@ def test_the_block_names_the_two_likeliest_and_who_is_sweating() -> None:
 
 
 def test_a_cut_week_puts_one_team_on_the_block() -> None:
-    snap = snapshot((done_team(1, "100"), done_team(2, "95"), done_team(3, "60")), week=14,
-                    phase_=phase(14, "cut"), day_state="final")
+    snap = snapshot(
+        (done_team(1, "100"), done_team(2, "95"), done_team(3, "60")),
+        week=14,
+        phase_=phase(14, "cut"),
+        day_state="final",
+    )
     text = render(_packet(snap), None, NOW)
     assert "⚰️ ON THE BLOCK · lowest score is cut" in text
     assert "Member03 · locked · proj 60 · actual 60.0" in text
@@ -145,8 +179,12 @@ def test_a_cut_week_puts_one_team_on_the_block() -> None:
 
 
 def test_the_final_names_the_title_at_stake() -> None:
-    snap = snapshot((done_team(1, "100"), done_team(2, "95")), week=17,
-                    phase_=phase(17, "final"), day_state="final")
+    snap = snapshot(
+        (done_team(1, "100"), done_team(2, "95")),
+        week=17,
+        phase_=phase(17, "final"),
+        day_state="final",
+    )
     assert "🏆 THE FINAL · lower score is runner-up" in render(_packet(snap), None, NOW)
 
 
@@ -158,8 +196,14 @@ def test_the_board_ranks_by_projected_finish_and_marks_the_gulag_and_the_estimat
         done_team(1, "100"),
         team(2, points="40", starters=(starter("remaining", projected="70"),)),
         done_team(3, "95"),
-        team(4, points="0", starters=(starter("remaining", projected=None, position="RB"),
-                                      starter("remaining", projected="30", position="RB"))),
+        team(
+            4,
+            points="0",
+            starters=(
+                starter("remaining", projected=None, position="RB"),
+                starter("remaining", projected="30", position="RB"),
+            ),
+        ),
         done_team(5, "60"),
         done_team(6, "50"),
         done_team(7, "10", eliminated=True, eliminated_week=3),
@@ -191,8 +235,13 @@ def test_before_kickoff_the_block_and_the_gulag_lines_carry_the_projection_not_a
         team(5, starters=(starter("remaining", projected="60"),)),
         team(6, starters=(starter("remaining", projected="50"),)),
     )
-    snap = snapshot(teams, week=5, phase_=phase(5, "gulag", gulag=(5, 6), source="events"),
-                    day_state="outlook", games_final=0)
+    snap = snapshot(
+        teams,
+        week=5,
+        phase_=phase(5, "gulag", gulag=(5, 6), source="events"),
+        day_state="outlook",
+        games_final=0,
+    )
     text = render(_packet(snap), None, NOW)
     gulag = text.split("⚔️ THE GULAG · loser is out\n", 1)[1].split("\n\n", 1)[0].splitlines()
     assert re.fullmatch(r"Member06 · \d+% to lose · proj 50", gulag[0]), gulag[0]
@@ -202,10 +251,15 @@ def test_before_kickoff_the_block_and_the_gulag_lines_carry_the_projection_not_a
 
 
 def test_the_outlook_board_drops_the_score_and_the_players_left() -> None:
-    snap = snapshot((team(1, starters=(starter("remaining", projected="100"),)),
-                     team(2, starters=(starter("remaining", projected="90"),)),
-                     team(3, starters=(starter("remaining", projected="80"),))),
-                    day_state="outlook", games_final=0)
+    snap = snapshot(
+        (
+            team(1, starters=(starter("remaining", projected="100"),)),
+            team(2, starters=(starter("remaining", projected="90"),)),
+            team(3, starters=(starter("remaining", projected="80"),)),
+        ),
+        day_state="outlook",
+        games_final=0,
+    )
     text = render(_packet(snap), None, NOW)
     assert "📊 THE BOARD · proj · risk" in text
     assert "1. Member01 · 100 · " in text
@@ -219,8 +273,9 @@ def test_the_roster_watch_names_the_holes() -> None:
     teams = (
         team(1, starters=(starter("done"), starter("empty"))),
         team(2, starters=(starter("out", injury="Out", name="Hurt Guy"), starter("done"))),
-        team(3, starters=(starter("out", injury="Questionable", projected=None,
-                                  name="Doubt Guy"),)),
+        team(
+            3, starters=(starter("out", injury="Questionable", projected=None, name="Doubt Guy"),)
+        ),
         team(4, starters=(starter("remaining", projected=None, name="Nobody Knows"),)),
         done_team(5, "50"),
     )
@@ -255,8 +310,11 @@ def test_the_moves_line_says_who_added_and_dropped_whom() -> None:
         Move("trade", NOW, "Member08", ("Star",), (), None),
         Move("free_agent", NOW, "Member09", ("Pickup",), (), None),
     )
-    snap = snapshot((done_team(1, "1"), done_team(2, "2"), done_team(3, "3")), moves=moves,
-                    moves_since=NOW - timedelta(hours=48))
+    snap = snapshot(
+        (done_team(1, "1"), done_team(2, "2"), done_team(3, "3")),
+        moves=moves,
+        moves_since=NOW - timedelta(hours=48),
+    )
     text = render(_packet(snap), None, NOW)
     # Friday 11:50 PM Central, two days before the Sunday-night `NOW`.
     lines = text.split("🔁 MOVES SINCE FRI 11:50 PM\n", 1)[1].split("\n\n", 1)[0].splitlines()
@@ -278,8 +336,11 @@ def test_the_window_stamp_keeps_its_meridiem_upper_case() -> None:
 
 def test_a_moves_window_nobody_recorded_is_called_recent() -> None:
     moves = (Move("waiver", NOW, "Member03", ("New Guy",), (), None),)
-    text = render(_packet(snapshot((done_team(1, "1"), done_team(2, "2"), done_team(3, "3")),
-                                   moves=moves)), None, NOW)
+    text = render(
+        _packet(snapshot((done_team(1, "1"), done_team(2, "2"), done_team(3, "3")), moves=moves)),
+        None,
+        NOW,
+    )
     assert "🔁 RECENT MOVES\n" in text
 
 
@@ -294,10 +355,15 @@ def test_the_footer_is_one_line_monte_carlo_projections_as_of() -> None:
 
 
 def test_factual_mode_carries_no_percentage_and_says_why() -> None:
-    teams = (done_team(1, "100"), done_team(2, "52"), done_team(3, "50"),
-             team(4, points="45", starters=(starter("remaining", projected=None),)))
-    text = render(_packet(snapshot(teams), odds=False, reason="coverage 50% of remaining"
-                                                                " starters"), None, NOW)
+    teams = (
+        done_team(1, "100"),
+        done_team(2, "52"),
+        done_team(3, "50"),
+        team(4, points="45", starters=(starter("remaining", projected=None),)),
+    )
+    text = render(
+        _packet(snapshot(teams), odds=False, reason="coverage 50% of remaining starters"), None, NOW
+    )
     assert "%" not in text.replace("coverage 50%", "")
     assert text.splitlines()[-1] == (
         "No Monte Carlo odds: coverage 50% of remaining starters · data as of 11:50 PM CST"
@@ -311,8 +377,9 @@ def test_factual_mode_carries_no_percentage_and_says_why() -> None:
 
 
 def test_a_missing_scores_row_is_said_in_the_footer() -> None:
-    snap = snapshot((done_team(1, "100", has_score_row=False), done_team(2, "90"),
-                     done_team(3, "80")))
+    snap = snapshot(
+        (done_team(1, "100", has_score_row=False), done_team(2, "90"), done_team(3, "80"))
+    )
     assert "1 team has no score on file" in render(_packet(snap), None, NOW)
 
 

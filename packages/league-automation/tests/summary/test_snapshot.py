@@ -34,8 +34,11 @@ def _game(game_id: str, home: str, away: str, status: str) -> Game:
 #: PHI/DAL are done, KC/DEN still to come, SF/SEA under way.
 GAMES = {
     team: game
-    for game in (_game("g1", "PHI", "DAL", "complete"), _game("g2", "KC", "DEN", "pre_game"),
-                 _game("g3", "SF", "SEA", "in_game"))
+    for game in (
+        _game("g1", "PHI", "DAL", "complete"),
+        _game("g2", "KC", "DEN", "pre_game"),
+        _game("g3", "SF", "SEA", "in_game"),
+    )
     for team in (game.home, game.away)
 }
 
@@ -47,24 +50,31 @@ def _inputs(*, games=GAMES, scores=None, events=(), moves=(), players=None) -> E
     nfl_team = {101: "PHI", 102: "KC", 103: "SF"}
     directory = {
         h.sleeper_player_id: PlayerInfo(nfl_team.get(t.team_id, "NYJ"), None)
-        for t in league.teams for h in t.holdings
+        for t in league.teams
+        for h in t.holdings
     }
     if players:
         directory.update(players)
     if scores is None:
         scores = [
-            ScoreRow(t.team_id, Decimal(100 + t.team_id), {h.sleeper_player_id: 11.5 for h in
-                                                          t.starters()[:2]},
-                     tuple(h.sleeper_player_id for h in t.starters()), NOW)
-            for t in league.teams if t.team_id != 103
+            ScoreRow(
+                t.team_id,
+                Decimal(100 + t.team_id),
+                {h.sleeper_player_id: 11.5 for h in t.starters()[:2]},
+                tuple(h.sleeper_player_id for h in t.starters()),
+                NOW,
+            )
+            for t in league.teams
+            if t.team_id != 103
         ]
     return EodInputs(
         league=league,
         players=directory,
         player_names={"p-gone": "Gone Player"},
         scores=scores,
-        past_scores={w: {t.team_id: Decimal(80 + t.team_id) for t in league.teams}
-                     for w in range(1, WEEK)},
+        past_scores={
+            w: {t.team_id: Decimal(80 + t.team_id) for t in league.teams} for w in range(1, WEEK)
+        },
         events=list(events),
         moves=list(moves),
         week_games=games,
@@ -96,8 +106,7 @@ def test_points_come_off_the_score_row_and_a_missing_row_is_an_absence() -> None
     team = snap.team(101)
     assert team.points == Decimal(201)
     assert team.has_score_row
-    assert [s.points for s in team.starters][:3] == [Decimal("11.50"), Decimal("11.50"),
-                                                      Decimal(0)]
+    assert [s.points for s in team.starters][:3] == [Decimal("11.50"), Decimal("11.50"), Decimal(0)]
     missing = snap.team(103)
     assert not missing.has_score_row
     assert missing.points == Decimal(0)
@@ -117,7 +126,9 @@ def test_the_phase_is_resolved_from_the_events_and_the_past_scores() -> None:
     events = [(WEEK, "gulag_entry", {"team_id": 105}), (WEEK, "gulag_entry", {"team_id": 106})]
     snap = assemble(_inputs(events=events))
     assert (snap.phase.kind, snap.phase.gulag_team_ids, snap.phase.gulag_source) == (
-        "gulag", (105, 106), "events",
+        "gulag",
+        (105, 106),
+        "events",
     )
     replayed = assemble(_inputs())
     assert replayed.phase.gulag_source == "replay"
@@ -185,10 +196,22 @@ class _ScheduleClient:
 
 def _schedule() -> list[dict]:
     return [
-        {"status": "complete", "date": "2098-09-25", "home": "PHI", "week": db_seed.WEEK,
-         "game_id": "a", "away": "DAL"},
-        {"status": "pre_game", "date": "2098-09-27", "home": "KC", "week": db_seed.WEEK,
-         "game_id": "b", "away": "DEN"},
+        {
+            "status": "complete",
+            "date": "2098-09-25",
+            "home": "PHI",
+            "week": db_seed.WEEK,
+            "game_id": "a",
+            "away": "DAL",
+        },
+        {
+            "status": "pre_game",
+            "date": "2098-09-27",
+            "home": "KC",
+            "week": db_seed.WEEK,
+            "game_id": "b",
+            "away": "DEN",
+        },
     ]
 
 
@@ -240,7 +263,6 @@ def test_a_schedule_outage_still_yields_a_snapshot(conn) -> None:
     assert snap.day_state == "unknown"
 
 
-
 def test_the_moves_window_starts_at_the_previous_post_or_a_day_back() -> None:
     """Ben's cadence skips Tuesdays and Saturdays, so "today" is the wrong window: the
     league wants everything since it last heard from the bot, capped so an outage does
@@ -262,12 +284,15 @@ def test_the_repository_reads_the_previous_post_and_widens_the_window_to_it(conn
     repo = EodRepository(conn)
     assert repo.previous_post_at(season_id) is None
     # A post sent 60 hours ago: the 50-hour-old claim is now inside the window.
-    recap_id = SummaryRepository(conn).record_recap(season_id, db_seed.WEEK, "eod:2098-09-24",
-                                                    "2026.1", "hash", "body")
+    recap_id = SummaryRepository(conn).record_recap(
+        season_id, db_seed.WEEK, "eod:2098-09-24", "2026.1", "hash", "body"
+    )
     SummaryRepository(conn).mark_sent(recap_id)
     with conn.cursor() as cur:
-        cur.execute("update public.recaps set created_at = %s where id = %s",
-                    (db_seed.NOW - timedelta(hours=60), recap_id))
+        cur.execute(
+            "update public.recaps set created_at = %s where id = %s",
+            (db_seed.NOW - timedelta(hours=60), recap_id),
+        )
     assert repo.previous_post_at(season_id) == db_seed.NOW - timedelta(hours=60)
     snap = load_snapshot(conn, _ScheduleClient(_schedule()), db_seed.NOW)
     assert snap.moves_since == db_seed.NOW - timedelta(hours=60)
