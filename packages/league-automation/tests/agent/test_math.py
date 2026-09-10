@@ -9,6 +9,7 @@ generator did is a separate claim, and it is checked separately, in
 from decimal import Decimal
 
 from ultimate_guillotine.advisor.fixture import fixture_snapshot
+from ultimate_guillotine.agent.tools import math as lineup_math
 from ultimate_guillotine.agent.tools.math import (
     POSITIONS,
     STARTER_SLOTS,
@@ -105,3 +106,8 @@ def test_below_the_gate_with_points_intact_the_delta_is_a_number() -> None:
     incoming = next(h for t in snapshot.teams for h in t.holdings if h.position == "RB")
     delta = lineup_delta(startable(team), [incoming], [], (snapshot.week,))
     assert isinstance(delta, Decimal)
+
+
+def test_the_public_surface_lists_the_holdings_index() -> None:
+    assert "holdings_by_id" in lineup_math.__all__
+    assert all(hasattr(lineup_math, name) for name in lineup_math.__all__)

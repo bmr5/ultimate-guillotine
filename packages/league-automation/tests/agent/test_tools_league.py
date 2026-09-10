@@ -1,5 +1,6 @@
 """The tools, over the fixture league. Every snapshot-backed result carries its age."""
 
+from dataclasses import replace
 from datetime import timedelta, timezone
 
 from ultimate_guillotine.advisor.fixture import ELIMINATED_MEMBER_ID, FIXTURE_SYNCED_AT
@@ -149,19 +150,56 @@ def test_trade_math_values_each_side_and_flags_the_impossible() -> None:
     assert any("eliminated" in flag for flag in bad["flags"])
 
 
+def test_trade_math_judges_faab_on_the_net_after_every_leg() -> None:
+    """Two legs that only together overdraw are one flag, and a credit counts."""
+    result = trade_math(SOURCE, [
+        {"kind": "faab", "amount": 200, "from": "Member18", "to": "Member02"},
+        {"kind": "faab", "amount": 200, "from": "Member18", "to": "Member03"},
+        {"kind": "draft_dollars", "amount": 3, "from": "Member02", "to": "Member18"},
+    ], now=NOW)
+    assert result["sides"]["Member18"]["faab_after"] == -105
+    assert result["flags"] == [
+        "Member18 ends 105 FAAB over budget (sends 400 against 280 remaining)"
+    ]
+
+
+def test_a_side_credited_before_it_pays_is_judged_on_the_net() -> None:
+    class Broke(FixtureSource):
+        """Member18 down to 20 FAAB, so the 60 it sends would overdraw on its own."""
+
+        def snapshot(self, horizon_weeks: int = 1):
+            snapshot = super().snapshot(horizon_weeks)
+            teams = tuple(
+                replace(t, faab_remaining=20) if t.member_id == 18 else t
+                for t in snapshot.teams
+            )
+            return replace(snapshot, teams=teams)
+
+    result = trade_math(Broke(), [
+        {"kind": "faab", "amount": 50, "from": "Member02", "to": "Member18"},
+        {"kind": "faab", "amount": 60, "from": "Member18", "to": "Member02"},
+    ], now=NOW)
+    assert result["flags"] == []
+    assert result["sides"]["Member18"]["faab_after"] == 10
+
+
 def test_rules_return_the_whole_file_or_one_topic() -> None:
     everything = rules(SOURCE)
     assert "Trading" in everything["rules"]
     section = rules(SOURCE, topic="waiver")
     assert "Waivers" in section["rules"] and "Shape of the league" not in section["rules"]
+    assert everything["source"] == section["source"] == "league-rules.md"
+    assert "as_of" not in everything
 
 
 def test_history_lists_placings_and_survival_lists_the_week() -> None:
     seasons = history(SOURCE)
     assert [s["season"] for s in seasons["seasons"]] == [2024, 2025]
     assert seasons["seasons"][1]["champion"] == "Member09"
+    assert seasons["source"] == "season_results" and "as_of" not in seasons
     one = history(SOURCE, season=2025)
     assert one["seasons"][0]["eliminations"][0]["member"] == "Member17"
+    assert one["source"] == "season_results"
     week = survival(SOURCE, now=NOW)
     assert week["week"] == 6 and week["scores"][0]["member"] == "Member18"
     assert week["eliminated"] == [{"member": "Member17", "week": 5, "source": "adjudicator"}]

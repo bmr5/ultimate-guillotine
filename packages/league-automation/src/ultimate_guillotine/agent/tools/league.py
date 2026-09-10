@@ -4,10 +4,13 @@ Every function takes a :class:`~ultimate_guillotine.agent.tools.source.LeagueSou
 and returns a JSON-able dict. Numbers are floats (two decimals in, two out),
 names are public labels, and every result read off the snapshot carries
 ``as_of``, ``newest_sync`` and ``age_minutes`` so the agent can say how fresh
-its answer is; ``rules`` and ``history`` read a file and finished seasons, and
-carry no stamp. A name that does not resolve, or a league that cannot be read,
-is an ``error`` key rather than an exception: the model reads the reason and
-asks, rather than the tool call failing with nothing to relay.
+its answer is. The two exceptions are ``rules`` and ``history``: neither is
+snapshot-backed, so neither is stamped; each carries a ``source`` key instead
+(``league-rules.md`` and ``season_results``) that says where it read from
+rather than how fresh the snapshot is. A name that does not resolve, or a
+league that cannot be read, is an ``error`` key rather than an exception: the
+model reads the reason and asks, rather than the tool call failing with
+nothing to relay.
 """
 
 from collections.abc import Callable, Sequence
@@ -360,7 +363,7 @@ def trade_math(
                 flags.append(f"{team.member_label} is eliminated and cannot trade")
             sides[team.member_id] = {
                 "team": team, "incoming": [], "outgoing": [], "faab": team.faab_remaining,
-                "receives": [], "sends": [],
+                "faab_sent": 0, "receives": [], "sends": [],
             }
         return sides[team.member_id]
 
@@ -382,18 +385,23 @@ def trade_math(
         elif kind in ("faab", "draft_dollars"):
             amount = int(leg.get("amount") or 0)
             faab = amount * 5 if kind == "draft_dollars" else amount
-            if faab > sender.faab_remaining:
-                flags.append(
-                    f"{faab} FAAB is over {sender.member_label}'s budget of "
-                    f"{sender.faab_remaining}"
-                )
             giving["faab"] -= faab
+            giving["faab_sent"] += faab
             getting["faab"] += faab
             giving["sends"].append(f"{faab} FAAB")
             getting["receives"].append(f"{faab} FAAB")
         else:
             giving["sends"].append(str(leg.get("text") or kind))
             getting["receives"].append(str(leg.get("text") or kind))
+
+    # Budget is judged on the net, once every credit and debit is in: one flag per side.
+    for s in sides.values():
+        if s["faab"] < 0:
+            team, over, sent = s["team"], -s["faab"], s["faab_sent"]
+            flags.append(
+                f"{team.member_label} ends {over} FAAB over budget "
+                f"(sends {sent} against {team.faab_remaining} remaining)"
+            )
 
     replacement = replacement_levels(snapshot)
     margins = {
@@ -430,11 +438,15 @@ def trade_math(
 def rules(source: LeagueSource, topic: str | None = None) -> dict:
     text = source.rules()
     if not topic:
-        return {"rules": text}
+        return {"rules": text, "source": "league-rules.md"}
     wanted = topic.casefold()
     sections = text.split("\n## ")
     kept = [s for s in sections[1:] if wanted in s.casefold()]
-    return {"rules": "\n## ".join(["", *kept]).strip() if kept else text, "topic": topic}
+    return {
+        "rules": "\n## ".join(["", *kept]).strip() if kept else text,
+        "topic": topic,
+        "source": "league-rules.md",
+    }
 
 
 @tool
@@ -454,6 +466,7 @@ def history(source: LeagueSource, season: int | None = None) -> dict:
             }
             for r in results
         ],
+        "source": "season_results",
     }
 
 

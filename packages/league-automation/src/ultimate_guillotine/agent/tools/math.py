@@ -50,6 +50,7 @@ __all__ = [
     "POSITIONS",
     "REPLACEMENT_RANK",
     "STARTER_SLOTS",
+    "holdings_by_id",
     "lineup_delta",
     "lineup_points",
     "replacement_levels",
