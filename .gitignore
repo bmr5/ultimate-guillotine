@@ -38,3 +38,5 @@ data/private/*
 # Claude Code scratch
 .superpowers/
 .claude/worktrees/
+
+.vercel
