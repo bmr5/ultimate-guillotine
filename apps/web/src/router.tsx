@@ -2,7 +2,9 @@ import { createBrowserRouter, redirect, RouteObject } from "react-router-dom";
 
 import { BoardPage } from "@/app/board/BoardPage";
 import ErrorPage from "@/app/error-page";
+import { HistoryPage } from "@/app/history/HistoryPage";
 import App from "@/app/layout";
+import { TradesPage } from "@/app/trades/TradesPage";
 
 /**
  * Ben's decision 1: the board is the home page. Everything else is a redirect onto it.
@@ -32,6 +34,16 @@ export const router = createBrowserRouter([
         path: "board",
         loader: ({ request }) => redirectHome(request),
       },
+      {
+        path: "trades",
+        element: <TradesPage />,
+      },
+      {
+        path: "history",
+        element: <HistoryPage />,
+      },
+      // The catch-all stays last: it matches every path, and reading it after the pages it
+      // is a fallback for is how the file says which routes are real.
       {
         path: "*",
         loader: () => redirect("/"),
