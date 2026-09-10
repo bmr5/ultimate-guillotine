@@ -24,14 +24,19 @@ function optionalIndex(value: unknown): number | null {
 }
 
 /**
- * A trade party, named. A member id the directory does not carry is still a party to the deal,
- * so it keeps its place on the card under `FORMER_MANAGER` rather than being dropped — the row
- * would otherwise read as a smaller trade than it was.
+ * A trade party, named where the directory can name one. A member id it does not carry is still
+ * a party to the deal, so it keeps its place on the card under `FORMER_MANAGER` rather than
+ * being dropped — the row would otherwise read as a smaller trade than it was.
+ *
+ * `resolved` records which of the two happened, so a caller can count the parties it cannot
+ * name without reading the stand-in label back out of the field meant for a name.
  */
 function tradeParty(memberId: number, members: HistoryMemberRow[]): TradeParty {
+  const label = ownerLabelFor(memberId, members);
   return {
     memberId,
-    label: ownerLabelFor(memberId, members) ?? FORMER_MANAGER,
+    label: label ?? FORMER_MANAGER,
+    resolved: label !== null,
   };
 }
 

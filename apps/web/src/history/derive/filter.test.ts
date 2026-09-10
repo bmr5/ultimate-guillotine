@@ -11,7 +11,7 @@ const TRADE: CatalogTrade = {
   occurredOn: null,
   tradeType: "rental",
   structure: "player-for-faab",
-  parties: [{ memberId: 1, label: "Alpha" }],
+  parties: [{ memberId: 1, label: "Alpha", resolved: true }],
   partyCount: 2,
   assets: [
     {

@@ -11,7 +11,7 @@ const TRADE: CatalogTrade = {
   occurredOn: null,
   tradeType: "rental",
   structure: "player-for-faab",
-  parties: [{ memberId: 1, label: "Alpha" }],
+  parties: [{ memberId: 1, label: "Alpha", resolved: true }],
   partyCount: 2,
   assets: [
     {
@@ -43,8 +43,8 @@ describe("TradeCard", () => {
         trade={{
           ...TRADE,
           parties: [
-            { memberId: 1, label: "Alpha" },
-            { memberId: 2, label: "Bravo" },
+            { memberId: 1, label: "Alpha", resolved: true },
+            { memberId: 2, label: "Bravo", resolved: true },
           ],
           partyCount: 2,
           unresolvedParties: 0,
@@ -60,9 +60,9 @@ describe("TradeCard", () => {
         trade={{
           ...TRADE,
           parties: [
-            { memberId: 1, label: "Alpha" },
-            { memberId: 2, label: "Bravo" },
-            { memberId: 3, label: "Charlie" },
+            { memberId: 1, label: "Alpha", resolved: true },
+            { memberId: 2, label: "Bravo", resolved: true },
+            { memberId: 3, label: "Charlie", resolved: true },
           ],
           partyCount: 3,
           unresolvedParties: 0,
@@ -89,10 +89,59 @@ describe("TradeCard", () => {
     expect(screen.getByText("Alpha ↔ 3 former managers")).toBeInTheDocument();
   });
 
+  // The recorded-id case, which the count used to miss: the id reached `parties` and arrived
+  // carrying `FORMER_MANAGER`, so the old title named it with the rest — "Alpha ↔ Former
+  // manager ↔ Former manager", capitalised and mid-sentence, one segment per head.
+  it("folds a recorded party the directory cannot name into the count", () => {
+    render(
+      <TradeCard
+        trade={{
+          ...TRADE,
+          parties: [
+            { memberId: 1, label: "Alpha", resolved: true },
+            { memberId: 98, label: "Former manager", resolved: false },
+            { memberId: 99, label: "Former manager", resolved: false },
+          ],
+          partyCount: 3,
+          unresolvedParties: 0,
+        }}
+      />,
+    );
+    expect(screen.getByText("Alpha ↔ 2 former managers")).toBeInTheDocument();
+    expect(screen.queryByText(/Former manager/)).not.toBeInTheDocument();
+  });
+
+  // One of each kind of unnamed party. They are the same fact to a reader — a head the page
+  // cannot put a name to — so they are one count, not two segments.
+  it("counts a party it could not resolve and one never recorded together", () => {
+    render(
+      <TradeCard
+        trade={{
+          ...TRADE,
+          parties: [
+            { memberId: 1, label: "Alpha", resolved: true },
+            { memberId: 99, label: "Former manager", resolved: false },
+          ],
+          partyCount: 3,
+          unresolvedParties: 1,
+        }}
+      />,
+    );
+    expect(screen.getByText("Alpha ↔ 2 former managers")).toBeInTheDocument();
+  });
+
   it("puts the category and the structure in a sublabel under the title", () => {
     render(<TradeCard trade={TRADE} />);
     expect(screen.getByText("Rental · player for FAAB")).toBeInTheDocument();
     expect(screen.getByText("Season 2024 · Week 3")).toBeInTheDocument();
+  });
+
+  // A row with no category at all: the sublabel is the structure alone, not " · 1-for-1" with
+  // a separator hanging off the front of it.
+  it("drops the separator when the row carries no trade type", () => {
+    render(<TradeCard trade={{ ...TRADE, tradeType: "" }} />);
+    expect(screen.getByText("Player for FAAB")).toBeInTheDocument();
+    expect(screen.queryByText(/^·/)).not.toBeInTheDocument();
   });
 
   it("dates a trade the catalog placed by date rather than by week", () => {

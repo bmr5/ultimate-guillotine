@@ -153,6 +153,13 @@ describe("mergeTradeSources", () => {
       "Alpha",
       "Former manager",
     ]);
+    // And says which of the two is a name. The card counts the parties it cannot name into one
+    // segment of the title, and it reads this flag rather than the stand-in label — a manager
+    // whose nickname happened to be "Former manager" would otherwise fold in with them.
+    expect(trades[0].parties.map((party) => party.resolved)).toEqual([
+      true,
+      false,
+    ]);
     expect(trades[0].partyCount).toBe(2);
   });
 });

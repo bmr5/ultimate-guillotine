@@ -49,10 +49,19 @@ function words(value: string): string {
  * "Rental · Player For FAAB" reads as a heading competing with one.
  */
 function categoryLabel(trade: CatalogTrade): string {
-  const category = words(trade.tradeType);
-  return `${category.charAt(0).toUpperCase()}${category.slice(1)} · ${words(
-    trade.structure,
-  )}`;
+  // Joined from the parts that exist rather than interpolated, and capitalised after the
+  // filter rather than before it. A row carrying no `trade_type` would otherwise open its
+  // sublabel with a bare " · ", which reads as a category the page failed to print rather than
+  // as one the row never carried — and then lead with a lowercase word where the caption is
+  // supposed to start with a capital one.
+  const parts = [words(trade.tradeType), words(trade.structure)].filter(
+    (part) => part !== "",
+  );
+  return parts
+    .map((part, index) =>
+      index === 0 ? `${part.charAt(0).toUpperCase()}${part.slice(1)}` : part,
+    )
+    .join(" · ");
 }
 
 /** `Season 2024 · Week 3`, or the date when the catalog placed the trade by date instead. */
@@ -73,15 +82,23 @@ function whenLabel(trade: CatalogTrade): string {
  * The parties the page could not name are one trailing segment rather than one segment each:
  * "Alpha ↔ 2 former managers" is what the row actually knows, where "Alpha ↔ a former manager ↔
  * a former manager" reads as two identified people who happen to share a name. The wording is
- * `formerManagerPhrase`'s, so the title and the badge row say it the same way.
+ * `formerManagerPhrase`'s.
+ *
+ * Both kinds of unnamed party fold into that one count, which is why the title reads
+ * `party.resolved` rather than the length of the array: a party missing from `party_member_ids`
+ * altogether never reaches `parties`, but one whose recorded id resolves to no member does, and
+ * it arrives carrying `FORMER_MANAGER`. Naming it with the rest would put that capitalised
+ * stand-in mid-title, once per head — the very reading the fold exists to refuse.
  *
  * Empty when the row names nobody at all — the caller falls back to the category rather than
  * hanging an empty heading on the card.
  */
 function ownersTitle(trade: CatalogTrade): string {
-  const missing = Math.max(trade.partyCount - trade.parties.length, 0);
-  const segments = trade.parties.map((party) => party.label);
-  if (missing > 0) segments.push(formerManagerPhrase(missing));
+  const segments = trade.parties
+    .filter((party) => party.resolved)
+    .map((party) => party.label);
+  const unnamed = Math.max(trade.partyCount - segments.length, 0);
+  if (unnamed > 0) segments.push(formerManagerPhrase(unnamed));
   return segments.join(OWNER_SEPARATOR);
 }
 
