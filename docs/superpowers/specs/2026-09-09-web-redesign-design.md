@@ -105,9 +105,9 @@ leave the fallback in place — the sky is never a reason the board fails to ren
 `vgpu`, `@vgpu/wgsl` (its Vite plugin resolves `.wgsl` imports; `src/wgsl-env.d.ts` types them),
 `@pmndrs/detect-gpu` (lazy, only on the High tier while signals are armed).
 
-**Dark only.** `<html class="dark">` in `index.html`; `ThemeProvider`, `theme-context`,
-`ModeToggle` and `icons.tsx` are deleted; `globals.css` defines the tokens once on `:root` with no
-`.dark` block and no dark variant. The `vite-ui-theme` localStorage key is left alone — nothing
+**Dark only.** `color-scheme: dark` on `html` and a `theme-color` meta; `ThemeProvider`,
+`theme-context`, `ModeToggle` and `icons.tsx` are deleted; `globals.css` defines the tokens once
+on `:root` with no `.dark` class, block or variant. The `vite-ui-theme` localStorage key is left alone — nothing
 reads it any more.
 
 **Primitives.** The ten kept primitives are regenerated from the current shadcn registry now that
