@@ -141,7 +141,10 @@ GOLDEN = (
     #: Member 1 is the strongest roster in the league and nobody is long a QB, so
     #: the generator finds nothing: the answer is the stand-pat line, unpriced.
     Golden(
-        "no sensible trade", "@daddy who should I trade with for a QB", "no_good_trades", member_id=1
+        "no sensible trade",
+        "@daddy who should I trade with for a QB",
+        "no_good_trades",
+        member_id=1,
     ),
     #: The question turns on a projected number and there is no projected number
     #: to give, so nothing a model could add would be honest.
