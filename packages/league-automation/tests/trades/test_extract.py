@@ -60,12 +60,32 @@ PROMPT_RULES_2026_2 = [
         "An aside attached to the announcer's own alert",
     ),
     (
-        "another league's trade names no member",
-        "An alert that names nobody from the `League members` list is another league's trade",
+        "a message with no transaction in it is not_a_trade",
+        "A message with no transaction in it at all",
+    ),
+    (
+        "a bare header or siren is not the unclear case",
+        "is `not_a_trade` and never `unclear`",
+    ),
+    (
+        "another league's trade names no member and is placed elsewhere",
+        "`League members` list *and* places the trade somewhere else",
+    ),
+    (
+        "naming nobody on its own is unclear, not not_a_trade",
+        "an alert that names no member but places the trade nowhere else is `unclear`",
     ),
     (
         "one named member is enough",
         "One league member named in the announcement is enough to make it this league's alert",
+    ),
+    (
+        "first and second person name nobody",
+        "First- and second-person references name nobody",
+    ),
+    (
+        "an announcement resting on one names fewer than two people",
+        "names fewer than two people and is `unclear`",
     ),
     (
         "unstated direction is unclear, with a reason",
