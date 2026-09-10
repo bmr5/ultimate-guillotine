@@ -47,7 +47,7 @@ export function TradeFilterBar(props: Props) {
     onClear,
   } = props;
   return (
-    <div className="sticky top-0 z-10 space-y-2 bg-muted/40 pb-2 pt-1">
+    <div className="sticky top-0 z-10 -mx-4 space-y-2 border-b bg-background/70 px-4 py-3 backdrop-blur-md sm:mx-0 sm:rounded-xl sm:border">
       <div className="flex flex-wrap gap-1.5" role="group" aria-label="Season">
         {/* The vendored `Badge` is a plain div with no `asChild`, so a chip that must be
             clickable and focusable is a `Button` at `size="sm"`, not a Badge wrapping one. */}
@@ -77,7 +77,7 @@ export function TradeFilterBar(props: Props) {
       <div className="grid grid-cols-3 gap-2">
         <select
           aria-label="Type"
-          className="h-9 rounded-md border bg-background px-2 text-sm"
+          className="h-9 rounded-md border-input bg-background/60 px-2 text-sm"
           value={filters.type ?? ""}
           onChange={(event) => onChange({ type: event.target.value || null })}
         >
@@ -91,7 +91,7 @@ export function TradeFilterBar(props: Props) {
         </select>
         <select
           aria-label="Position"
-          className="h-9 rounded-md border bg-background px-2 text-sm"
+          className="h-9 rounded-md border-input bg-background/60 px-2 text-sm"
           value={filters.position ?? ""}
           onChange={(event) =>
             onChange({ position: event.target.value || null })
@@ -107,7 +107,7 @@ export function TradeFilterBar(props: Props) {
         </select>
         <select
           aria-label="Owner"
-          className="h-9 rounded-md border bg-background px-2 text-sm"
+          className="h-9 rounded-md border-input bg-background/60 px-2 text-sm"
           value={filters.memberId ?? ""}
           onChange={(event) =>
             onChange({

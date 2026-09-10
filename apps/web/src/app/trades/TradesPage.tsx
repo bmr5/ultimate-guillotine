@@ -130,12 +130,12 @@ export function TradesPage() {
       )}
 
       {!isPending && trades.length === 0 && (
-        <p className="rounded-md border bg-card p-4 text-sm">
+        <p className="rounded-xl border bg-card p-4 text-sm">
           No trades loaded yet.
         </p>
       )}
       {!isPending && trades.length > 0 && visible.length === 0 && (
-        <div className="space-y-2 rounded-md border bg-card p-4 text-sm">
+        <div className="space-y-2 rounded-xl border bg-card p-4 text-sm">
           <p>No trades match these filters.</p>
           <Button
             type="button"

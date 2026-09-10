@@ -179,7 +179,7 @@ export function TradeCard({ trade }: { trade: CatalogTrade }) {
             {trade.announcement !== null && (
               <blockquote
                 className={cn(
-                  "mt-2 whitespace-pre-line border-l-2 pl-2 text-xs text-muted-foreground",
+                  "mt-2 border-l-2 pl-2 text-xs whitespace-pre-line text-muted-foreground",
                   !open && "line-clamp-4",
                 )}
               >
@@ -192,7 +192,12 @@ export function TradeCard({ trade }: { trade: CatalogTrade }) {
                   is everything the title does not say: the money, the analyst's doubt, and the
                   two chips Ben kept — the rescinded mark and the trade code. */}
               {trade.faabTotal !== null && (
-                <Badge variant="outline">{trade.faabTotal} FAAB</Badge>
+                <Badge
+                  variant="outline"
+                  className="border-primary/40 text-primary"
+                >
+                  {trade.faabTotal} FAAB
+                </Badge>
               )}
               {trade.confidence !== "high" && !trade.registered && (
                 <Badge variant="outline">low confidence</Badge>
