@@ -74,6 +74,15 @@ describe("fetchTradeCatalog", () => {
     expect(calls[0].columns).toContain("announcement");
     expect(calls[0].order).toEqual(["season", false]);
   });
+
+  // Ben's ruling of 2026-09-09 took the FAAB total off the card and out of the stats strip, so
+  // nothing reads the column any more — and this fetcher's rule is that it asks for exactly
+  // what the page renders and no more.
+  it("no longer asks for the analyst's FAAB total", async () => {
+    const { client, calls } = createFakeClient({ trade_catalog: [] });
+    await fetchTradeCatalog(client);
+    expect(calls[0].columns).not.toContain("faab_total");
+  });
 });
 
 describe("fetchRegisteredTrades", () => {
@@ -84,6 +93,14 @@ describe("fetchRegisteredTrades", () => {
     expect(calls[0].columns).not.toMatch(/(^|,)\s*terms\s*(,|$)/);
     expect(calls[0].columns).not.toContain("evidence_excerpt");
     expect(calls[0].columns).toContain("seasons ( year )");
+  });
+
+  // The instant a registered card is dated by. `trade_revisions.created_at` would be the
+  // current revision's and would move every time a deal is amended.
+  it("asks for the instant the trade was recorded", async () => {
+    const { client, calls } = createFakeClient({ trades: [] });
+    await fetchRegisteredTrades(client);
+    expect(calls[0].columns).toContain("created_at");
   });
 });
 

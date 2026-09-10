@@ -13,9 +13,9 @@ const base: CatalogTrade = {
   parties: [],
   partyCount: 2,
   assets: [],
-  faabTotal: 10,
   confidence: "high",
   announcement: null,
+  registeredAt: null,
   sourceLabel: "catalog",
   registered: false,
   rescinded: false,
@@ -23,7 +23,11 @@ const base: CatalogTrade = {
 };
 
 describe("tradeStats", () => {
-  it("sums FAAB, counts seasons, and names the most-traded position", () => {
+  // Three figures, not four. `faabMoved` went with the card's FAAB badge, by Ben's ruling of
+  // 2026-09-09 that the number is not a useful thing to log for these deals; the equality below
+  // is against the whole object rather than field by field so a fourth cannot creep back in
+  // unnoticed.
+  it("counts trades and seasons, and names the most-traded position", () => {
     const stats = tradeStats([
       {
         ...base,
@@ -42,7 +46,6 @@ describe("tradeStats", () => {
         ...base,
         key: "k2",
         season: 2024,
-        faabTotal: null,
         assets: [
           {
             kind: "player",
@@ -66,7 +69,6 @@ describe("tradeStats", () => {
     expect(stats).toEqual({
       tradeCount: 2,
       seasonCount: 2,
-      faabMoved: 10,
       topPosition: "RB",
     });
   });
@@ -75,13 +77,9 @@ describe("tradeStats", () => {
     expect(tradeStats([base]).topPosition).toBeNull();
   });
 
-  it("leaves a rescinded trade's FAAB out of the total", () => {
-    const stats = tradeStats([
-      base,
-      { ...base, key: "k2", faabTotal: 40, rescinded: true },
-    ]);
-    // Both trades are still counted and still shown; only the money that never moved is out.
+  // A rescinded trade happened, so it is counted and shown like any other.
+  it("counts a rescinded trade", () => {
+    const stats = tradeStats([base, { ...base, key: "k2", rescinded: true }]);
     expect(stats.tradeCount).toBe(2);
-    expect(stats.faabMoved).toBe(10);
   });
 });

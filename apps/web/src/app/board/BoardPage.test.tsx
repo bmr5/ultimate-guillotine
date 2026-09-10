@@ -175,6 +175,51 @@ describe("BoardPage", () => {
     expect(items[1]).toHaveTextContent("owner1");
   });
 
+  /**
+   * Ben, 2026-09-10: "make the board always one column. I find it confusing to have 2 cols on a
+   * 1-18 ranked board." A rank only reads down a single column, so no breakpoint may put one
+   * back — not on the live list, not on the eliminated list below the divider, and not on the
+   * skeleton that stands in for both before the first payload lands.
+   */
+  describe("the board's single column", () => {
+    const gridLists = (container: HTMLElement) =>
+      [...container.querySelectorAll("ul")].filter((list) =>
+        list.className.includes("grid-cols-1"),
+      );
+
+    const expectOneColumn = (container: HTMLElement) => {
+      const lists = gridLists(container);
+      expect(lists.length).toBeGreaterThan(0);
+      for (const list of lists) {
+        expect(list.className).not.toMatch(/\b(?:sm|md|lg|xl|2xl):grid-cols-/);
+      }
+    };
+
+    it("holds one column on the live list at every breakpoint", () => {
+      boardData.current = result({
+        teams: [
+          team({ teamId: 1, projectedPoints: 140 }),
+          team({
+            teamId: 2,
+            projectedPoints: 90,
+            isEliminated: true,
+            eliminatedWeek: 2,
+          }),
+        ],
+      });
+      const { container } = renderPage();
+      // Both lists: the active board and the eliminated group under the divider.
+      expect(gridLists(container)).toHaveLength(2);
+      expectOneColumn(container);
+    });
+
+    it("holds one column on the skeleton, so the two never disagree", () => {
+      boardData.current = result({ isPending: true });
+      const { container } = renderPage();
+      expectOneColumn(container);
+    });
+  });
+
   it("groups eliminated teams under a divider", () => {
     boardData.current = result({
       teams: [

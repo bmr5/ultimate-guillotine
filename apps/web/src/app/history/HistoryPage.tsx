@@ -23,7 +23,7 @@ export function HistoryPage() {
       {isPending && <Skeleton className="h-40 w-full" />}
 
       {!isPending && seasons.length === 0 && (
-        <p className="rounded-md border bg-card p-4 text-sm">
+        <p className="rounded-xl border bg-card p-4 text-sm">
           No seasons loaded yet.
         </p>
       )}

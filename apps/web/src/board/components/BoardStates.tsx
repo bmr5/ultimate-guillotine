@@ -4,6 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
 import { MS_PER_SECOND } from "../derive/time";
+import { BOARD_GRID } from "../layout";
 import { REALTIME_POLL_MS } from "../realtime";
 import type { BoardQueryError } from "../useBoardData";
 
@@ -20,7 +21,7 @@ export const REALTIME_PAUSED_TEXT = `Live updates are paused. Polling every ${PO
 
 export function BoardSkeleton() {
   return (
-    <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+    <ul className={BOARD_GRID}>
       {Array.from({ length: SKELETON_CARD_COUNT }, (_, index) => index).map(
         (index) => (
           <li key={index}>
@@ -95,7 +96,7 @@ export function BoardErrors({
  */
 export function RealtimeBanner({ onRefresh }: { onRefresh: () => void }) {
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-md border bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
+    <div className="flex flex-wrap items-center gap-3 rounded-md border bg-card px-3 py-2 text-sm text-muted-foreground">
       <span>{REALTIME_PAUSED_TEXT}</span>
       <Button size="sm" variant="outline" onClick={onRefresh}>
         Refresh now
@@ -106,7 +107,7 @@ export function RealtimeBanner({ onRefresh }: { onRefresh: () => void }) {
 
 export function EliminatedDivider({ count }: { count: number }) {
   return (
-    <h2 className="mt-6 border-t pt-4 text-sm font-semibold text-muted-foreground">
+    <h2 className="mt-8 border-t border-destructive/60 pt-3 text-sm font-medium text-muted-foreground">
       Eliminated ({count})
     </h2>
   );

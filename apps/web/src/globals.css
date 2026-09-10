@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "@fontsource-variable/archivo/wdth.css";
 
 /*
  * Styles every native form control, which is what the `<select>` filters on the trade page
@@ -8,84 +9,55 @@
  */
 @plugin "@tailwindcss/forms";
 
-@custom-variant dark (&:is(.dark *));
-
 /*
- * The palette, one value per token per theme. The values are the HSL triplets the app has
- * always used, wrapped in hsl() so Tailwind 4 can read them as colors; the redesign that
- * follows this toolchain change is where they get replaced.
+ * The palette, drawn from the sky shader's own colors so the surfaces and the aurora read as
+ * one thing (see docs/superpowers/specs/2026-09-09-web-redesign-design.md). The site is dark
+ * only, so every token is defined once, here, with no theme switch.
+ *
+ *   sky     #05070C  the shader's horizon — the ground, and what shows without WebGPU
+ *   glass   sky-tinted at 80%, so the aurora shows through a card faintly
+ *   ink     #F2F3F8  text          ash  #A3A9BD  secondary text
+ *   ember   #F0A24A  the one accent — active filter, focus ring, FAAB
+ *   blade   #FF6B7A  out starters, eliminated, destructive
  */
 :root {
-  --background: hsl(0 0% 100%);
-  --foreground: hsl(222.2 84% 4.9%);
+  --background: #05070c;
+  --foreground: #f2f3f8;
 
-  --muted: hsl(210 40% 96.1%);
-  --muted-foreground: hsl(215.4 16.3% 46.9%);
+  --card: rgb(11 14 23 / 0.8);
+  --card-foreground: #f2f3f8;
 
-  --popover: hsl(0 0% 100%);
-  --popover-foreground: hsl(222.2 84% 4.9%);
+  /* Opaque: a menu or a tooltip floats over whatever is behind it and has to stay legible. */
+  --popover: #0f1320;
+  --popover-foreground: #f2f3f8;
 
-  --card: hsl(0 0% 100%);
-  --card-foreground: hsl(222.2 84% 4.9%);
+  --primary: #f0a24a;
+  --primary-foreground: #1a1206;
 
-  --border: hsl(214.3 31.8% 91.4%);
-  --input: hsl(214.3 31.8% 91.4%);
+  --secondary: rgb(255 255 255 / 0.08);
+  --secondary-foreground: #f2f3f8;
 
-  --primary: hsl(222.2 47.4% 11.2%);
-  --primary-foreground: hsl(210 40% 98%);
+  --muted: rgb(255 255 255 / 0.06);
+  --muted-foreground: #a3a9bd;
 
-  --secondary: hsl(210 40% 96.1%);
-  --secondary-foreground: hsl(222.2 47.4% 11.2%);
+  --accent: rgb(255 255 255 / 0.1);
+  --accent-foreground: #f2f3f8;
 
-  --accent: hsl(210 40% 96.1%);
-  --accent-foreground: hsl(222.2 47.4% 11.2%);
+  --destructive: #ff6b7a;
+  --destructive-foreground: #f2f3f8;
 
-  --destructive: hsl(0 84.2% 60.2%);
-  --destructive-foreground: hsl(210 40% 98%);
+  --border: rgb(255 255 255 / 0.1);
+  --input: rgb(255 255 255 / 0.12);
+  --ring: #f0a24a;
 
-  --ring: hsl(215 20.2% 65.1%);
-
-  --radius: 0.5rem;
+  /* Radius encodes the level: containers 12px, controls 6px, chips 4px. */
+  --radius: 0.75rem;
 }
 
-.dark {
-  --background: hsl(222.2 84% 4.9%);
-  --foreground: hsl(210 40% 98%);
-
-  --muted: hsl(217.2 32.6% 17.5%);
-  --muted-foreground: hsl(215 20.2% 65.1%);
-
-  --popover: hsl(222.2 84% 4.9%);
-  --popover-foreground: hsl(210 40% 98%);
-
-  --card: hsl(222.2 84% 4.9%);
-  --card-foreground: hsl(210 40% 98%);
-
-  --border: hsl(217.2 32.6% 17.5%);
-  --input: hsl(217.2 32.6% 17.5%);
-
-  --primary: hsl(210 40% 98%);
-  --primary-foreground: hsl(222.2 47.4% 11.2%);
-
-  --secondary: hsl(217.2 32.6% 17.5%);
-  --secondary-foreground: hsl(210 40% 98%);
-
-  --accent: hsl(217.2 32.6% 17.5%);
-  --accent-foreground: hsl(210 40% 98%);
-
-  --destructive: hsl(0 62.8% 30.6%);
-  --destructive-foreground: hsl(0 85.7% 97.3%);
-
-  --ring: hsl(217.2 32.6% 17.5%);
-}
-
-/*
- * What the utilities see. `inline` makes each utility carry the variable reference itself, so
- * `bg-background` follows whichever of `:root` and `.dark` is in force where it is used.
- */
 @theme inline {
+  /* One family in two widths: figures are set narrow and heavy, words at normal width. */
   --font-sans:
-    "Inter var", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    "Archivo Variable", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
     "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif,
     "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
 
@@ -109,27 +81,52 @@
   --color-input: var(--input);
   --color-ring: var(--ring);
 
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
+  --radius-sm: 0.25rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: var(--radius);
 
   --height-display: 100dvh;
   --width-display: 100dvw;
+}
+
+/*
+ * The figures voice: narrow width, heavy, tabular. Projections, scores, ranks, the week, FAAB
+ * totals and the stats strip all speak in it; every other word stays at normal width.
+ */
+@utility figures {
+  font-stretch: 75%;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
 }
 
 @layer base {
   * {
     @apply border-border;
   }
+  html {
+    color-scheme: dark;
+  }
   body {
     @apply bg-background text-foreground;
+    /*
+     * What the reader sees without WebGPU, or before the first frame of the sky: a still wash in
+     * the aurora's colors. The canvas paints over it once it is ready.
+     */
+    background-image:
+      radial-gradient(60% 45% at 30% 25%, rgb(80 45 120 / 0.35), transparent 70%),
+      radial-gradient(45% 40% at 75% 60%, rgb(10 70 90 / 0.3), transparent 70%),
+      radial-gradient(35% 30% at 55% 85%, rgb(180 100 40 / 0.14), transparent 70%);
+    background-attachment: fixed;
   }
 }
 
 /*
  * Reduced motion, scoped to the board's team cards. A global `[data-state]` rule would reach
  * every Radix component on the page — dialogs, toasts, tooltips — so the collapse animation is
- * stilled only where this task introduced it.
+ * stilled only where this task introduced it. (The sky respects the same preference in
+ * `src/sky/Sky.tsx`: it does not mount at all.)
  *
  * The `.board-team-card` selector below is the value of `TEAM_CARD_CLASS`, exported from
  * `src/board/components/TeamCard.tsx` and applied to the card there. A test asserts the card

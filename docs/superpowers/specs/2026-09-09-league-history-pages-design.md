@@ -205,3 +205,13 @@ table, and Ben has reviewed the Vercel preview at 375 px in light and dark.
   "a former manager" / "N former managers" segment; the category and structure move to a muted
   sublabel in sentence case (`Rental · player for FAAB`), above `Season 2024 · Week 3`. The
   owners are no longer also badges — the rescinded mark and the trade code chip stay.
+- **A trade card logs four things and nothing else** (2026-09-09): "$30 FAAB is wrong by the way,
+  because of the dynamic nature of many deals it's most likely not useful to include the FAAB
+  number here. we just want to log the Participants, the date and time, a category, and the exact
+  text" — so the card is the owners' names, one date line (a registered trade's `trades.created_at`
+  localized, `Sep 9, 2026 · 9:12 PM`; a catalog row keeps `Season 2024 · Week 3`, which is all the
+  spreadsheet knows), the category alone in the sublabel, and the announcement, clamped to four
+  lines until the card is opened; the FAAB badge, the low-confidence badge, the `catalog` chip and
+  the expanded asset list are gone, and so are the stats strip's "FAAB moved" cell and its
+  footnote. The assets stay in the derived row because the search box matches player names
+  against them.

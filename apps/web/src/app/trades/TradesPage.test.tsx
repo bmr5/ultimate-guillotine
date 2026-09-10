@@ -70,9 +70,9 @@ beforeEach(() => {
           toParty: 1,
         },
       ],
-      faabTotal: 4,
       confidence: "high",
       announcement: "ANNOUNCEMENT-ONE",
+      registeredAt: null,
       sourceLabel: "catalog",
       registered: false,
       rescinded: false,
@@ -88,9 +88,9 @@ beforeEach(() => {
       parties: [],
       partyCount: 2,
       assets: [],
-      faabTotal: null,
       confidence: "high",
       announcement: null,
+      registeredAt: null,
       sourceLabel: "catalog",
       registered: false,
       rescinded: false,
@@ -103,13 +103,18 @@ describe("TradesPage", () => {
   it("renders every trade and the stats strip", () => {
     renderPage();
     expect(screen.getAllByRole("listitem")).toHaveLength(2);
-    expect(screen.getByText("FAAB moved").nextSibling).toHaveTextContent("4");
+    expect(screen.getByText("Trades").nextSibling).toHaveTextContent("2");
     expect(
       screen.getByText(/1 earlier catalog reading replaced/),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText("FAAB moved excludes rescinded trades"),
-    ).toBeInTheDocument();
+  });
+
+  // Ben's ruling of 2026-09-09: "because of the dynamic nature of many deals it's most likely
+  // not useful to include the FAAB number here". The strip is where the last FAAB figure on
+  // the page lived, and its footnote with it.
+  it("says nothing about FAAB in the stats strip", () => {
+    renderPage();
+    expect(screen.queryByText(/FAAB/i)).not.toBeInTheDocument();
   });
 
   it("filters by the season in the URL", () => {
@@ -162,8 +167,9 @@ describe("TradesPage", () => {
 
   it("names the trade list", () => {
     renderPage();
-    // An expanded card nests its own asset list inside this one, so an unnamed trades list is
-    // announced as "list, 2 items" and so is the card's.
+    // A screen reader announces an unlabelled list by its length alone, and this page carries
+    // more than one list — the filter bar's owner select is not one, but the strip beside it
+    // and any list a future card grows would be.
     expect(screen.getByRole("list", { name: "Trades" })).toBeInTheDocument();
   });
 

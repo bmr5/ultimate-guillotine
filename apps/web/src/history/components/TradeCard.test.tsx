@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import type { CatalogTrade } from "../types";
@@ -25,13 +25,23 @@ const TRADE: CatalogTrade = {
     { kind: "faab", amount: 12, fromParty: 1, toParty: 0 },
     { kind: "condition", label: "rental" },
   ],
-  faabTotal: 12,
   announcement: null,
   confidence: "low",
+  registeredAt: null,
   sourceLabel: "catalog",
   registered: false,
   rescinded: false,
   unresolvedParties: 1,
+};
+
+/** The same deal as the Registrar recorded it, stamped and coded. */
+const REGISTERED: CatalogTrade = {
+  ...TRADE,
+  key: "registered:5",
+  confidence: "high",
+  registeredAt: "2026-09-10T01:12:00Z",
+  sourceLabel: "T-2026-014",
+  registered: true,
 };
 
 describe("TradeCard", () => {
@@ -108,7 +118,6 @@ describe("TradeCard", () => {
       />,
     );
     expect(screen.getByText("Alpha ↔ 2 former managers")).toBeInTheDocument();
-    expect(screen.queryByText(/Former manager/)).not.toBeInTheDocument();
   });
 
   // One of each kind of unnamed party. They are the same fact to a reader — a head the page
@@ -130,18 +139,21 @@ describe("TradeCard", () => {
     expect(screen.getByText("Alpha ↔ 2 former managers")).toBeInTheDocument();
   });
 
-  it("puts the category and the structure in a sublabel under the title", () => {
+  // Ben's ruling of 2026-09-09 cut the sublabel to the category alone: `2 team` was never a
+  // category, only a restatement of the title, which already names every party in the deal.
+  it("puts the category alone in a sublabel under the title", () => {
     render(<TradeCard trade={TRADE} />);
-    expect(screen.getByText("Rental · player for FAAB")).toBeInTheDocument();
+    expect(screen.getByText("Rental")).toBeInTheDocument();
+    expect(screen.queryByText(/player for FAAB/i)).not.toBeInTheDocument();
     expect(screen.getByText("Season 2024 · Week 3")).toBeInTheDocument();
   });
 
-  // A row with no category at all: the sublabel is the structure alone, not " · 1-for-1" with
-  // a separator hanging off the front of it.
-  it("drops the separator when the row carries no trade type", () => {
+  // A row with no category at all gets no sublabel — not an empty muted line between the title
+  // and the date, which reads as a caption the page failed to print.
+  it("drops the sublabel when the row carries no trade type", () => {
     render(<TradeCard trade={{ ...TRADE, tradeType: "" }} />);
-    expect(screen.getByText("Player for FAAB")).toBeInTheDocument();
-    expect(screen.queryByText(/^·/)).not.toBeInTheDocument();
+    const title = screen.getByText("Alpha ↔ a former manager");
+    expect(title.nextElementSibling).toHaveTextContent("Season 2024 · Week 3");
   });
 
   it("dates a trade the catalog placed by date rather than by week", () => {
@@ -151,31 +163,48 @@ describe("TradeCard", () => {
     expect(screen.getByText("Season 2024 · 2024-09-30")).toBeInTheDocument();
   });
 
-  it("badges a low-confidence catalog row", () => {
+  // Ben's ruling: a card logs "the Participants, the date and time, a category, and the exact
+  // text". A registered trade knows the instant it was recorded, so that is its date line. The
+  // exact wording is the viewer's own locale's and is pinned in `tradeDate.test.ts`; what this
+  // test owes is that the card reads the stamp at all rather than the season beside it.
+  it("dates a registered card by the instant it was recorded", () => {
+    render(<TradeCard trade={REGISTERED} />);
+    expect(screen.queryByText("Season 2024 · Week 3")).not.toBeInTheDocument();
+    expect(screen.getByText(/2026.*·/)).toBeInTheDocument();
+  });
+
+  // Ben's ruling: "$30 FAAB is wrong ... because of the dynamic nature of many deals it's most
+  // likely not useful to include the FAAB number here". The fixture's assets carry 12 FAAB, so
+  // a card that still totalled or listed them would say so somewhere.
+  it("says nothing about FAAB, open or closed", () => {
     render(<TradeCard trade={TRADE} />);
-    expect(screen.getByText(/low confidence/i)).toBeInTheDocument();
-    expect(screen.getByText("catalog")).toBeInTheDocument();
+    expect(screen.queryByText(/FAAB/i)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /alpha/i }));
+    expect(screen.queryByText(/FAAB/i)).not.toBeInTheDocument();
+  });
+
+  // The analyst's doubt is not one of the four things a card logs, and the fixture is a
+  // low-confidence catalog row.
+  it("does not badge a low-confidence catalog row", () => {
+    render(<TradeCard trade={TRADE} />);
+    expect(screen.queryByText(/low confidence/i)).not.toBeInTheDocument();
+  });
+
+  // `catalog` says where the page read the deal, not anything about the deal, so it is not a
+  // chip. A catalog trade that was not rescinded therefore carries no chips at all.
+  it("carries no chips on a plain catalog row", () => {
+    render(<TradeCard trade={TRADE} />);
+    expect(screen.queryByText("catalog")).not.toBeInTheDocument();
   });
 
   it("shows the trade code for a registered row and strikes a rescinded one", () => {
-    render(
-      <TradeCard
-        trade={{
-          ...TRADE,
-          sourceLabel: "T-2025-014",
-          registered: true,
-          rescinded: true,
-          confidence: "high",
-          unresolvedParties: 0,
-        }}
-      />,
-    );
-    expect(screen.getByText("T-2025-014")).toBeInTheDocument();
+    render(<TradeCard trade={{ ...REGISTERED, rescinded: true }} />);
+    expect(screen.getByText("T-2026-014")).toBeInTheDocument();
+    expect(screen.getByText("Rescinded")).toBeInTheDocument();
     expect(screen.getByRole("listitem")).toHaveAttribute(
       "data-rescinded",
       "true",
     );
-    expect(screen.queryByText(/low confidence/i)).not.toBeInTheDocument();
   });
 
   // Ben's ruling: "include the actual text of the trade to give more context, it is hard to
@@ -220,19 +249,34 @@ describe("TradeCard", () => {
     ).not.toHaveTextContent("ANNOUNCEMENT-ONE");
   });
 
-  it("expands to the asset list", () => {
-    render(<TradeCard trade={TRADE} />);
-    const toggle = screen.getByRole("button", { name: /rental/i });
+  // Ben's ruling of 2026-09-09 took the asset list off the expanded card. Opening one is now
+  // exactly "show me the rest of what was said", so the panel holds the announcement and there
+  // is no list of players and amounts under it.
+  it("expands to the whole announcement and to no asset list", () => {
+    render(
+      <TradeCard trade={{ ...TRADE, announcement: "ANNOUNCEMENT-ONE" }} />,
+    );
+    const toggle = screen.getByRole("button", { name: /alpha/i });
     expect(toggle).toHaveAttribute("aria-expanded", "false");
     fireEvent.click(toggle);
     expect(toggle).toHaveAttribute("aria-expanded", "true");
 
-    // Scoped to the asset list, and matched by regex rather than by an exact string. An asset
-    // row that knows the position renders "A Player (RB)", and the FAAB total badge in the
-    // summary carries the same "12 FAAB" wording as the asset row it totals, so an unscoped
-    // `getByText` finds two elements.
-    const assets = within(screen.getByRole("list"));
-    expect(assets.getByText(/A Player/)).toBeInTheDocument();
-    expect(assets.getByText(/12 FAAB/)).toBeInTheDocument();
+    expect(screen.queryByRole("list")).not.toBeInTheDocument();
+    expect(screen.queryByText(/A Player/)).not.toBeInTheDocument();
+  });
+
+  // The panel the toggle names has to exist even when the row carries nothing to put in it, or
+  // `aria-controls` points at nothing and a screen reader is told about a region it cannot find.
+  it("always points aria-controls at a real element", () => {
+    const { container } = render(
+      <TradeCard trade={{ ...TRADE, announcement: null }} />,
+    );
+    const panelId = screen
+      .getByRole("button", { name: /alpha/i })
+      .getAttribute("aria-controls");
+    expect(panelId).not.toBeNull();
+    expect(
+      container.querySelector(`#${CSS.escape(panelId ?? "")}`),
+    ).not.toBeNull();
   });
 });

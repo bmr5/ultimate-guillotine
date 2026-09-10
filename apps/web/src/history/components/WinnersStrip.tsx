@@ -6,11 +6,13 @@ export function WinnersStrip({ seasons }: { seasons: SeasonResult[] }) {
   return (
     <ul
       aria-label="Winners"
-      className="divide-y rounded-md border bg-card text-sm"
+      className="divide-y rounded-xl border bg-card text-sm"
     >
       {seasons.map((season) => (
         <li key={season.season} className="flex justify-between px-3 py-1.5">
-          <span className="text-muted-foreground">{season.season}</span>
+          <span className="text-base figures text-muted-foreground">
+            {season.season}
+          </span>
           {/* The same call the season card makes, so a season cannot be a former manager
               in one place and not recorded in the other. */}
           <span className="font-medium">

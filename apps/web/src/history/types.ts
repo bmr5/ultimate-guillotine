@@ -43,8 +43,16 @@ export interface CatalogTrade {
   parties: TradeParty[];
   /** How many people were in the deal, including any the loader could not resolve. */
   partyCount: number;
+  /**
+   * Every asset the deal moved, for the search box and nothing else.
+   *
+   * Ben's ruling of 2026-09-09 took the asset list off the card: "we just want to log the
+   * Participants, the date and time, a category, and the exact text". The assets stay in the
+   * derived row because `filterTrades` matches player names against them — a trade is still
+   * findable by who was in it — and because `resolvePlayerNames` is what turns a registered
+   * asset's bare `player_id` into a name to match. Nothing renders them.
+   */
   assets: TradeAsset[];
-  faabTotal: number | null;
   confidence: Confidence;
   /**
    * What the league said when the trade was made, or `null` when there is nothing to quote.
@@ -56,6 +64,17 @@ export interface CatalogTrade {
    * quote block, which would say the league said nothing rather than that nothing was kept.
    */
   announcement: string | null;
+  /**
+   * When the Registrar recorded a registered trade, ISO-8601, or `null` for a catalog row.
+   *
+   * The catalog is a reading of a spreadsheet and knows only the season and the week (or, for a
+   * handful of rows, the day), so it has no instant to carry and its cards are still dated
+   * `Season 2024 · Week 3`. A registered trade has one, and Ben's ruling of 2026-09-09 is that
+   * the card shows it: "we just want to log the Participants, the date and time, a category,
+   * and the exact text". Kept as the raw string rather than an epoch so the formatter, not the
+   * data layer, decides the viewer's timezone and locale.
+   */
+  registeredAt: string | null;
   /** The trade code for a registered row, the literal `catalog` for a catalog row. */
   sourceLabel: string;
   registered: boolean;

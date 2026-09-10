@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { injuryTag } from "../derive/availability";
 import { LIKELY_BIDDER_REASONS, type PositionRow } from "../derive/position";
 import { layoutStarters } from "../derive/roster";
+import { BOARD_GRID } from "../layout";
 import type { PositionFilter } from "../types";
 import { RosterPanel } from "./RosterPanel";
 
@@ -105,7 +106,7 @@ const PositionTeamRow = memo(function PositionTeamRow({
         data-eliminated={row.isEliminated || undefined}
         className={cn(
           "overflow-hidden",
-          row.isEliminated && "border-dashed bg-muted/60",
+          row.isEliminated && "border-dashed bg-background/50",
         )}
       >
         <Collapsible open={isOpen}>
@@ -117,7 +118,7 @@ const PositionTeamRow = memo(function PositionTeamRow({
             aria-controls={panelId}
             onClick={() => onToggle(row.teamId)}
             className={cn(
-              "flex min-h-[44px] w-full items-start gap-3 p-4 text-left",
+              "flex min-h-[44px] w-full items-start gap-3 px-4 py-3 text-left",
               FOCUS_RING_CLASS,
             )}
           >
@@ -151,7 +152,7 @@ const PositionTeamRow = memo(function PositionTeamRow({
                       )}
                     >
                       <span className="font-medium">{player.fullName}</span>{" "}
-                      <span className="tabular-nums text-muted-foreground">
+                      <span className="text-muted-foreground tabular-nums">
                         {player.isStarter && player.livePoints !== null ? (
                           <>
                             <span
@@ -220,7 +221,7 @@ const PositionTeamRow = memo(function PositionTeamRow({
               </span>
             </span>
             <span className="shrink-0 text-right">
-              <span className="block text-base font-semibold tabular-nums text-foreground">
+              <span className="block text-2xl leading-none figures text-foreground">
                 {faab}
               </span>
               {row.emptySlots > 0 ? (
@@ -288,9 +289,9 @@ interface PositionViewProps {
 /**
  * The whole league at one position, one row per team, in the order `positionView` decided.
  *
- * A single column rather than the board's grid: the rows are wide and shallow — owner, budget,
- * the players inline — and reading down one column is how the question is actually asked ("who
- * would bid on a tight end?").
+ * The same single column the board itself now holds (`BOARD_GRID`): the rows are wide and
+ * shallow — owner, budget, the players inline — and reading down one column is how the question
+ * is actually asked ("who would bid on a tight end?").
  */
 export function PositionView({
   position,
@@ -301,7 +302,7 @@ export function PositionView({
   rosterPositions,
 }: PositionViewProps) {
   return (
-    <ul className="grid grid-cols-1 gap-3">
+    <ul className={BOARD_GRID}>
       {rows.map((row) => (
         <PositionTeamRow
           key={row.teamId}

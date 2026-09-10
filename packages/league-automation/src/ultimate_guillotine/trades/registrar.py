@@ -42,6 +42,7 @@ from ultimate_guillotine.trades.format import (
     format_confirmation,
     format_rescinded,
     format_updated,
+    party_labels,
 )
 from ultimate_guillotine.trades.resolve import (
     MemberRef,
@@ -228,7 +229,7 @@ class TradeRegistrar:
 
         members = self._members.all_members()
         season = self._resolve_season()
-        announcer = self._announcer(msg)
+        announcer = self._announcer(msg, members)
         extracted, usage = extract_trade(
             self._ai,
             msg.text,
@@ -271,33 +272,45 @@ class TradeRegistrar:
             # The same terms are already on file; re-posting them would be noise.
             self._finish(run_id, "duplicate", input_version=input_version)
             return "duplicate"
+        labels = party_labels(members)
         if acceptance.status == "revised":
             content = format_updated(
-                acceptance.trade_code, proposal, acceptance.previous_terms or {}
+                acceptance.trade_code, proposal, acceptance.previous_terms or {}, labels
             )
         else:
-            content = format_confirmation(acceptance.trade_code, proposal)
+            content = format_confirmation(acceptance.trade_code, proposal, labels)
         self._deliver(run_id, content)
         self._finish(run_id, "succeeded", content=content, input_version=input_version)
         return acceptance.status
 
-    def _announcer(self, msg: InboundMessage) -> MemberRef | None:
+    def _announcer(self, msg: InboundMessage, members=()) -> MemberRef | None:
         """Which member posted this alert, when that can be answered.
 
         League members announce their own trades in the first person, so the
         extraction needs a name for `I`. The sender is placed the way the Advisor
         places its asker -- the hashed handle, never the handle -- and an empty
         sender is nobody rather than a lookup of the empty string's digest, which
-        no handle can ever have produced. ``is_from_me`` is not a special case:
-        Ben announces trades like everyone else, and his own handle is loaded
-        like everyone else's; a webhook that carries no handle for it simply has
-        no announcer.
+        no handle can ever have produced.
+
+        ``is_from_me`` is the one special case: BlueBubbles reports no sender
+        handle on the Mac's own account, so a first-person alert from the
+        commissioner would otherwise have no announcer (which is exactly what
+        happened to Ben's own test alert). ``COMMISSIONER_SLEEPER_USERNAME``
+        names that member; without the setting the old behaviour stands.
 
         A handle nobody has loaded is a `None` the caller has to respect -- the
         alternative is guessing which member wrote `my team`, and a guessed party
         would be logged as fact. Nothing here logs the handle, its digest, or the
         member it found.
         """
+        if msg.is_from_me and not msg.sender_address:
+            wanted = (self._settings.commissioner_sleeper_username or "").strip().lower()
+            if not wanted:
+                return None
+            for member in members:
+                if member.display_name.lower() == wanted:
+                    return member
+            return None
         if self._contacts is None or not msg.sender_address:
             return None
         return self._contacts.member_for_handle_hash(handle_hash(msg.sender_address))
@@ -328,9 +341,10 @@ class TradeRegistrar:
             return None
         try:
             snapshot = SnapshotRepository(self._conn).load()
-            return context_from_snapshot(
-                snapshot, members, self._trades.list_recent(TRADE_LIMIT)
-            ) or None
+            return (
+                context_from_snapshot(snapshot, members, self._trades.list_recent(TRADE_LIMIT))
+                or None
+            )
         except Exception as exc:  # noqa: BLE001 - any context failure degrades the same way
             with contextlib.suppress(Exception):
                 self._conn.rollback()
@@ -428,9 +442,7 @@ class TradeRegistrar:
                 self._sleeper, self._conn, self._settings.sleeper_league_id, season
             )
         except Exception as exc:  # noqa: BLE001 - any roster failure degrades the same way
-            self._notifier.ops(
-                f"Trade Registrar could not load rosters: {exc.__class__.__name__}"
-            )
+            self._notifier.ops(f"Trade Registrar could not load rosters: {exc.__class__.__name__}")
             return RosterIndex.empty()
 
     def _deliver(self, run_id: int, content: str) -> None:

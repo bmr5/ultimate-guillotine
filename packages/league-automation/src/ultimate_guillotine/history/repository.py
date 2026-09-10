@@ -19,6 +19,8 @@ that tripped it, which is exactly the unvetted chat or workbook content the vali
 exist to keep out of Postgres and out of the logs.
 """
 
+from typing import Any
+
 import psycopg
 from psycopg.types.json import Jsonb
 
@@ -62,6 +64,23 @@ class HistoryRepository:
             cur.execute("select id from public.seasons where year = %s", (year,))
             row = cur.fetchone()
         return row[0] if row else None
+
+    def eliminations_for(self, season: int) -> list[dict[str, Any]]:
+        """The elimination entries a season's row already holds, or none for a new season.
+
+        `upsert_season_result` writes that column from the row it is handed, because the
+        workbook is the source of truth for a season it covers. A command that is told
+        placings and nothing else -- `ug history set-result` -- has no week grid to write
+        and must not blank the one already there, so it reads the entries back and hands
+        them over unchanged. An absent row and a row with an empty array read alike here:
+        both mean "this command contributes no weeks".
+        """
+        with self._conn.cursor() as cur:
+            cur.execute(
+                "select eliminations from public.season_results where season = %s", (season,)
+            )
+            row = cur.fetchone()
+        return list(row[0]) if row and row[0] else []
 
     def upsert_catalog(self, row: CatalogRow) -> str:
         self._require_caller_transaction()

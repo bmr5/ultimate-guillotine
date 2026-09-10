@@ -502,6 +502,13 @@ written by `ug sleeper sync` and `ug members aliases load`; labels use that orde
 the bare username. `public.seasons` caches the scoring settings, roster positions, and
 waiver budget.
 
+A season the records workbook's `Winners` sheet does not carry — 2025, whose only sheet
+is the dues roster the loader will not open — is written by hand with
+`ug history set-result --season 2025 --champion "<username>" [--co-champion U] [--runner-up U] [--third U] [--team-count N] [--notes "…"]`:
+it resolves each name through the same aliases the loaders use, prints `result: season
+2025 created` or `updated`, exits 1 without writing if a name resolves to nobody, and is
+left alone by later `ug history load-results` runs, which only write the seasons they read.
+
 A manager who has left the league has no Sleeper account to sync, so
 `ug members former add --name "<Name>" [--alias "<alias>" ...]` writes the profile by hand:
 the row is keyed `former:<slug>` (a key nothing displays, and one `ug sleeper sync` can
