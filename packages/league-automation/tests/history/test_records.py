@@ -220,26 +220,35 @@ def test_a_workbook_with_no_winners_sheet_is_empty_not_an_error(tmp_path: Path) 
 
 
 def _uncached_2024(path: Path) -> None:
-    """A 2024 sheet whose middle week is formulas, saved without a calculation pass.
+    """A 2024 sheet with a half-uncached week and a fully uncached one, never calculated.
 
     This is the real workbook's condition in miniature: openpyxl writes the formula and
-    no cached result, so `data_only=True` reads `None` -- a week that exists as a row and
-    states no count. Sentinel text only; nothing here came out of the file.
+    no cached result, so `data_only=True` reads `None`. Week 2 is the file's own case --
+    an uncached gulag cell beside a literal pool cell, a week that is half readable --
+    and week 3 is the case where the row states nothing at all. Sentinel text only;
+    nothing here came out of the file.
     """
     book = Workbook()
     winners = book.active
     winners.title = "Winners"
     winners["B3"], winners["C3"] = 2024, "sentinel-champion"
     grid = book.create_sheet("2024")
-    grid["F4"], grid["G4"] = 0, 1  # week 1: counted
-    grid["F5"], grid["G5"] = "=D5-1", "=E5"  # week 2: formulas, no cached value
-    grid["F6"], grid["G6"] = 1, 0  # week 3: counted
-    grid["I6"] = "Winner"
+    grid["F4"], grid["G4"] = 0, 1  # week 1: both counts written down
+    grid["F5"], grid["G5"] = "=D5-1", 2  # week 2: gulag uncached, pool literal
+    grid["F6"], grid["G6"] = "=D6-1", "=E6"  # week 3: neither count cached
+    grid["F7"], grid["G7"] = 1, 0  # week 4: both counts written down
+    grid["I7"] = "Winner"
     book.save(path)
 
 
 def test_a_week_stating_no_count_is_counted_not_invented(tmp_path: Path) -> None:
-    """The third counter: weeks the file leaves silent, so a load cannot look complete."""
+    """The third counter: week rows missing a count, so a load cannot look complete.
+
+    The counter is rows, not cells, and not only rows that yielded nothing. Week 2 still
+    produces an entry -- its pool count is written down -- and is still a week the file
+    did not fully state, so it counts. Week 3 states neither count and counts once, not
+    twice. Weeks 1 and 4 state both and cost nothing.
+    """
     path = tmp_path / "uncached.xlsx"
     _uncached_2024(path)
 
@@ -249,20 +258,26 @@ def test_a_week_stating_no_count_is_counted_not_invented(tmp_path: Path) -> None
     finally:
         opened.close()
 
-    # The silent week yields no entry -- nothing is recomputed from the formula -- and
-    # the weeks that do have counts keep the numbers their own rows give them.
-    assert [entry["week"] for entry in entries] == [1, 3]
-    assert [entry["order"] for entry in entries] == [1, 2]
-    assert silent == 1
+    # Nothing is recomputed from a formula: the half-read week keeps a null gulag count,
+    # and the weeks with counts keep the numbers their own rows give them.
+    assert [entry["week"] for entry in entries] == [1, 2, 4]
+    assert [entry["order"] for entry in entries] == [1, 2, 3]
+    assert entries[1]["gulag_out"] is None
+    assert entries[1]["pool_out"] == 2
+    assert silent == 2
 
     rows, _, total_silent = season_result_rows(path, index={}, notes={}, loaded_at=LOADED_AT)
 
-    assert total_silent == 1
-    assert len(rows[0].eliminations) == 2
+    assert total_silent == 2
+    assert len(rows[0].eliminations) == 3
 
 
 def test_the_sheets_empty_tail_is_not_counted_as_weeks(tmp_path: Path) -> None:
-    """Blank rows past the last week are the end of the sheet, not weeks with no count."""
+    """A grid whose every week states both counts is zero, tail or no tail.
+
+    Two things at once: a fully literal grid costs the counter nothing, and the blank
+    rows past the last week are the end of the sheet rather than weeks with no count.
+    """
     book = Workbook()
     winners = book.active
     winners.title = "Winners"

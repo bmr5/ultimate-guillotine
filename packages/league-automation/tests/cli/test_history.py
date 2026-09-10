@@ -252,9 +252,10 @@ def test_load_results_prints_counts_only(stack, capsys: pytest.CaptureFixture[st
     out = capsys.readouterr().out
     assert exit_code == 0
     # Six seasons on the Winners sheet; with no members loaded, six champions and one
-    # second name resolve to nobody.
+    # second name resolve to nobody. The last field is 2024's week rows whose gulag
+    # count is an uncached formula -- it falls to 0 once the file is recalculated.
     assert out.strip() == (
-        "results: 6 seasons, 0 updated, 7 unresolved names, 0 weeks with no count"
+        "results: 6 seasons, 0 updated, 7 unresolved names, 11 weeks with no count"
     )
     _assert_counts_only(out)
 
@@ -269,7 +270,7 @@ def test_a_results_rerun_reports_the_seasons_it_updated(
 
     out = capsys.readouterr().out
     assert out.strip() == (
-        "results: 6 seasons, 6 updated, 7 unresolved names, 0 weeks with no count"
+        "results: 6 seasons, 6 updated, 7 unresolved names, 11 weeks with no count"
     )
     _assert_counts_only(out)
 

@@ -185,11 +185,16 @@ def _eliminations_2024(sheet) -> tuple[list[dict[str, Any]], int]:
     one: a skipped row would otherwise renumber every week after it, and the renumbering
     would look exactly like data.
 
-    A row whose two elimination cells are both empty -- blank, or a formula the file has
-    no cached result for -- yields no entry and is counted instead. The counting is
-    deferred until a later row proves the grid carried on, so the sheet's empty tail is
-    not mistaken for weeks the season played: only a gap with data after it, or the
-    `Winner` row itself, is a week the workbook failed to state.
+    The second number counts **week rows, not cells**: a row is counted once when either
+    of its two elimination cells is empty -- blank, or a formula the file has no cached
+    result for. That includes rows that still produce an entry, because a week whose
+    gulag count is missing and whose pool count is written down is exactly as unread as
+    one where both are missing; a row missing both is still one week, counted once.
+
+    A row with neither count yields no entry, and its counting is deferred until a later
+    row proves the grid carried on, so the sheet's empty tail is not mistaken for weeks
+    the season played: only a gap with data after it, or the `Winner` row itself, is a
+    week the workbook failed to state.
     """
     entries: list[dict[str, Any]] = []
     silent = pending = 0
@@ -203,10 +208,13 @@ def _eliminations_2024(sheet) -> tuple[list[dict[str, Any]], int]:
             entries.append(_entry(week, len(entries) + 1, gulag_out, pool_out))
             silent += pending
             pending = 0
+            if gulag_out is None or pool_out is None:
+                silent += 1
         # The `Winner` cell sits on the season's last week. Past it the sheet is over,
         # so any gap still pending at that point was inside the season after all.
         if _text(sheet.cell(row=row, column=GRID_2024_WINNER_COL).value):
             silent += pending
+            pending = 0
             break
     return entries, silent
 
@@ -220,7 +228,11 @@ def _eliminations_2023(sheet) -> tuple[list[dict[str, Any]], int]:
 
     The read stops at the first row whose week cell is not a number, which is row 24's
     `Winner` marker. That is also the fence: the signup block starts three rows later.
+
     A numbered week with no cut count is a week the sheet does not state, and is counted.
+    The null `pool_out` is not: this grid has no pool column at all, so there is no cell
+    to be blank or uncached, and counting every week of 2023 for a column the season
+    never had would report a hole the file does not have.
     """
     entries: list[dict[str, Any]] = []
     silent = 0
@@ -237,14 +249,18 @@ def _eliminations_2023(sheet) -> tuple[list[dict[str, Any]], int]:
 
 
 def read_week_grid(workbook, season: int) -> tuple[list[dict[str, Any]], int]:
-    """The season's elimination entries, plus how many of its weeks state no count at all.
+    """The season's elimination entries, plus how many of its weeks are missing a count.
 
-    The second number is the honest size of the hole in the file. Both grids lean on
-    formulas, and the workbook has never been saved with its results cached, so a week
-    can be present as a row and absent as a number; an entry is built only where a count
-    was actually written down, and every other week of the grid is counted here so the
-    loader can say how much of the season it could not read. It is a count of weeks and
-    nothing else -- no row, no cell, no text.
+    The second number is the honest size of the hole in the file: every week row of the
+    grid, entry or no entry, whose season has a count column the sheet left empty --
+    blank, or a formula with no cached result under `data_only=True`. Each such row adds
+    one, however many of its cells are empty. Both grids lean on formulas and the
+    workbook has never been saved with its results cached, so a week can be present as a
+    row and absent as a number, and a week can be half-read: an entry is built wherever
+    a count was actually written down, and the same row is still counted here so the
+    loader can say how much of the season it could not read. Re-saving the workbook in
+    Excel caches the formulas and the number falls. It is a count of weeks and nothing
+    else -- no row, no cell, no text.
     """
     name = str(season)
     if name not in PUBLIC_SHEETS or name not in workbook.sheetnames:

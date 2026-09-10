@@ -141,8 +141,9 @@ def cmd_load_results(args: argparse.Namespace) -> int:
     `weeks with no count` is the last number on the line because it is the one Ben can
     act on without touching the loader: the workbook's grids are mostly formulas and the
     file has never been saved with its results cached, so a week can exist as a row and
-    still state nothing. Opening the workbook in Excel, saving, and rerunning drives that
-    count down. Without it, a load reports six clean seasons over a file full of holes.
+    state one of its two counts, or neither. Every such week row counts once here, entry
+    or no entry. Opening the workbook in Excel, saving, and rerunning drives that count
+    down. Without it, a load reports six clean seasons over a file full of holes.
     """
     deps = build_deps()
     notes = _parse_notes(args.notes)
