@@ -1,11 +1,11 @@
-"""`ug history` subcommands: load-catalog and load-results.
+"""`ug history` subcommands: load-catalog, load-results and set-result.
 
 An operator command Ben runs on the Mac mini, and it prints counts and nothing else.
 The input names real people -- the classification file's parties, the chat the analyst
-read to write it, and the records workbook's champion cells, which sit in the same file
-as the dues ledger -- so a loader that echoed a row back would put a league member's
-name in a terminal scrollback and, worse, teach the next command that doing so is
-normal.
+read to write it, the records workbook's champion cells, which sit in the same file as
+the dues ledger, and the usernames Ben types into `set-result` -- so a command that
+echoed one back would put a league member's name in a terminal scrollback and, worse,
+teach the next command that doing so is normal.
 """
 
 import argparse
@@ -18,14 +18,36 @@ from pathlib import Path
 from ultimate_guillotine.cli.deps import build_deps
 from ultimate_guillotine.data.repositories import MemberAliasRepository
 from ultimate_guillotine.history.catalog import (
+    AMBIGUOUS,
     CatalogRecordRefused,
     PlayerIndex,
     build_label_index,
     read_record,
 )
+from ultimate_guillotine.history.models import SeasonResultRow
 from ultimate_guillotine.history.records import season_result_rows
 from ultimate_guillotine.history.repository import HistoryRepository, HistoryRowRejected
 from ultimate_guillotine.sleeper.players import PlayerRepository
+from ultimate_guillotine.trades.names import normalize_name
+
+#: What `set-result` says when a name resolves to nobody, or to two people. Fixed text:
+#: the thing that failed to resolve is a league member's name, and a message that read it
+#: back to say so would put it in the scrollback this whole module keeps clean. Which of
+#: the four flags it was is left out for the same reason -- Ben typed the command a second
+#: ago and can see it; the terminal keeps it forever.
+UNRESOLVED_NAME = (
+    "a name did not resolve to exactly one league member; "
+    "add an alias with `ug members aliases load` and rerun"
+)
+
+#: The four placings `set-result` takes, in the order they are resolved, mapped onto the
+#: `SeasonResultRow` columns they fill.
+PLACINGS = (
+    ("champion", "champion_member_id"),
+    ("co_champion", "co_champion_member_id"),
+    ("runner_up", "runner_up_member_id"),
+    ("third", "third_member_id"),
+)
 
 
 def register(subparsers) -> None:
@@ -48,6 +70,16 @@ def register(subparsers) -> None:
         help="a caption for one season, e.g. 2022=co-champions; repeatable",
     )
     results.set_defaults(handler=cmd_load_results)
+
+    hand = history_sub.add_parser("set-result", help="record one season's placings by hand")
+    hand.add_argument("--season", type=int, required=True, metavar="YEAR")
+    hand.add_argument("--champion", required=True, metavar="USERNAME")
+    hand.add_argument("--co-champion", dest="co_champion", metavar="USERNAME")
+    hand.add_argument("--runner-up", dest="runner_up", metavar="USERNAME")
+    hand.add_argument("--third", metavar="USERNAME")
+    hand.add_argument("--team-count", dest="team_count", type=int, metavar="N")
+    hand.add_argument("--notes", metavar="TEXT", help="a caption for the season")
+    hand.set_defaults(handler=cmd_set_result)
 
 
 def cmd_load_catalog(args: argparse.Namespace) -> int:
@@ -174,3 +206,66 @@ def cmd_load_results(args: argparse.Namespace) -> int:
         f"{unresolved} unresolved names, {silent_weeks} weeks with no count"
     )
     return 1 if loaded == 0 else 0
+
+
+def cmd_set_result(args: argparse.Namespace) -> int:
+    """Write one public.season_results row from the command line.
+
+    The records workbook is not the whole record. Its `Winners` sheet is a year behind
+    the league -- 2025 has no row on it, and the only sheet that knows about 2025 is the
+    dues roster the reader will not open -- so `load-results` publishes the six seasons
+    the sheet carries and silently omits the one Ben won. This is the door for a season
+    the workbook does not cover, and it takes what the workbook would have said: who
+    placed, how many teams started, and a caption.
+
+    Names resolve exactly the way both loaders resolve them -- `build_label_index` over
+    the members table and the private aliases -- so a nickname, a Sleeper display name or
+    an alias all work, and the id is what is stored. But where a loader reading a file
+    counts an unresolved name and carries on, this one stops: a loader is reading six
+    seasons and one hole in it is a number Ben can chase, while this command is one
+    season with one champion in it, and a row published with a null champion because a
+    username was misspelt is worse than no row at all. Nothing is written on that path.
+
+    `eliminations` is read back and handed over unchanged: this command is told placings
+    and has no week grid, and a rerun to add a runner-up must not blank the weeks a
+    `load-results` run put there. `notes` is coalesced by the upsert for the same reason.
+    Everything else on the row is the flags as typed -- omitting `--team-count` on a
+    rerun clears the count, because the command's arguments are the season's placings and
+    a half-remembered one is not a thing to preserve.
+    """
+    deps = build_deps()
+    loaded_at = datetime.now(UTC)
+
+    # The reads belong inside the transaction too -- see `cmd_load_catalog` for why a
+    # query taken first turns the write into a savepoint that rolls back at exit.
+    with deps.conn.transaction():
+        repo = HistoryRepository(deps.conn)
+        index = build_label_index(MemberAliasRepository(deps.conn).all_members())
+        placings: dict[str, int | None] = {}
+        for flag, column in PLACINGS:
+            name = getattr(args, flag)
+            if name is None:
+                placings[column] = None
+                continue
+            # `AMBIGUOUS` is None as well, so a label two members answer to takes the
+            # same exit as a label nobody does. Both mean the same thing here: the
+            # command cannot say whose season this was.
+            member_id = index.get(normalize_name(name), AMBIGUOUS)
+            if member_id is None:
+                print(UNRESOLVED_NAME, file=sys.stderr)
+                return 1
+            placings[column] = member_id
+        row = SeasonResultRow(
+            season=args.season,
+            season_id=repo.season_id_for(args.season),
+            team_count=args.team_count,
+            eliminations=repo.eliminations_for(args.season),
+            notes=args.notes,
+            unresolved_names=0,
+            loaded_at=loaded_at,
+            **placings,
+        )
+        outcome = repo.upsert_season_result(row)
+
+    print(f"result: season {args.season} {'created' if outcome == 'inserted' else 'updated'}")
+    return 0
