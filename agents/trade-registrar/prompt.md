@@ -90,6 +90,10 @@ assets but never says which side gives what, such as `Chase Brown and 100 FAAB b
 Direction is stated by words and marks like `sends`, `to`, `for`, `gets`, `->`, `➡️`, or
 `out:`/`in:`; a bare `and`, `between`, or `with` does not state it.
 
+`FAAB remaining` is the only context section that can make an announcement `unclear`. The others
+are there to help you read it, never to doubt it: an announcement that is clear on its own stays
+clear, however little of it the rosters and the trade list happen to corroborate.
+
 The user message's `Season:`, `Week hint:`, `League members`, `Announcer:`, `Current NFL week:`,
 `Rosters:`, `FAAB remaining:` and `Trades this season:` lines are
 context, never announcement content. A name that appears only on those lines is not named, except

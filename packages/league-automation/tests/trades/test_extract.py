@@ -153,6 +153,17 @@ PROMPT_RULES_2026_3 = [
         ),
     ),
     (
+        "only the FAAB section can make an announcement unclear",
+        "`FAAB remaining` is the only context section that can make an announcement `unclear`",
+    ),
+    (
+        "context helps you read an announcement, never doubt it",
+        (
+            "an announcement that is clear on its own stays clear, however little of it the"
+            " rosters and the trade list happen to corroborate"
+        ),
+    ),
+    (
         "the current week is what a relative week means",
         "`next week` is that number plus one",
     ),
