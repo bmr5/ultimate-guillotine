@@ -1,15 +1,8 @@
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SeasonCard } from "@/history/components/SeasonCard";
-import { WinnersStrip } from "@/history/components/WinnersStrip";
 import { useSeasonResults } from "@/history/useSeasonResults";
 import { REVEAL_CLASS, revealStyle } from "@/motion/reveal";
-
-/**
- * Where the season cards start in the page's cascade: the winners strip is place 0, and the
- * cards follow it. The alerts, the placeholder and the empty state stand where the strip would.
- */
-const AFTER_WINNERS = 1;
 
 export function HistoryPage() {
   const { seasons, isPending, errors } = useSeasonResults();
@@ -47,22 +40,21 @@ export function HistoryPage() {
         </p>
       )}
 
+      {/* The champion cards are the whole page (Ben, 2026-09-10: the winners table said
+          the same thing twice). Each card's place in the cascade is its place in the list. */}
       {seasons.length > 0 && (
-        <>
-          <WinnersStrip seasons={seasons} />
-          <ul
-            aria-label="Seasons"
-            className="grid grid-cols-1 gap-2 sm:grid-cols-2"
-          >
-            {seasons.map((season, index) => (
-              <SeasonCard
-                key={season.season}
-                season={season}
-                revealIndex={AFTER_WINNERS + index}
-              />
-            ))}
-          </ul>
-        </>
+        <ul
+          aria-label="Seasons"
+          className="grid grid-cols-1 gap-2 sm:grid-cols-2"
+        >
+          {seasons.map((season, index) => (
+            <SeasonCard
+              key={season.season}
+              season={season}
+              revealIndex={index}
+            />
+          ))}
+        </ul>
       )}
     </section>
   );

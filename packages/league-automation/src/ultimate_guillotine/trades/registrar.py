@@ -35,13 +35,12 @@ from ultimate_guillotine.listener.processing import Trigger
 from ultimate_guillotine.messages.bluebubbles import InboundMessage
 from ultimate_guillotine.sleeper.state import NflStateRepository
 from ultimate_guillotine.trades.context import TRADE_LIMIT, context_from_snapshot
-from ultimate_guillotine.trades.detect import is_rescission_candidate, is_trade_candidate
+from ultimate_guillotine.trades.detect import is_trade_candidate
 from ultimate_guillotine.trades.extract import PROMPT_VERSION, extract_trade
-from ultimate_guillotine.trades.fingerprint import message_fingerprint, trade_context_key
+from ultimate_guillotine.trades.fingerprint import message_fingerprint
 from ultimate_guillotine.trades.format import (
     format_clarification,
     format_confirmation,
-    format_rescinded,
     format_updated,
     party_labels,
 )
@@ -61,7 +60,6 @@ AGENT = "trade-registrar"
 #: of one has to be recognised the same way.
 TRADE_CODE = re.compile(r"(?:TEST|T)-\d{4}-\d{3}")
 EXCERPT_LIMIT = 2000
-NO_CODE_REASON = "Which trade is rescinded? Include its T- code"
 #: How far back a repost of the same text counts as the same announcement.
 #: Long enough to cover a chat someone scrolls up and re-sends from, short
 #: enough that the same terms agreed again next month are a new trade.
@@ -225,10 +223,6 @@ class TradeRegistrar:
             self._finish(run_id, "duplicate")
             return "duplicate"
 
-        rescinded = self._rescind_by_code(run_id, msg)
-        if rescinded is not None:
-            return rescinded
-
         members = self._members.all_members()
         season = self._resolve_season()
         announcer = self._announcer(msg, members)
@@ -264,7 +258,11 @@ class TradeRegistrar:
                 week=self._week_for(msg),
             )
             if extracted.kind == "rescission":
-                return self._rescind_by_context(run_id, msg, proposal, input_version)
+                # Ben (2026-09-10): nothing in the chat cancels a trade. A wrong
+                # log is a manual review (`ug trades rescind`), so a cancellation
+                # message is recorded like a joke and answered with nothing.
+                self._finish(run_id, "succeeded", input_version=input_version)
+                return "not_a_trade"
             validate(proposal)
         except Unresolved as exc:
             return self._clarify(run_id, exc.reason, input_version)
@@ -373,41 +371,6 @@ class TradeRegistrar:
                 f"Trade Registrar could not build the context pack: {exc.__class__.__name__}"
             )
             return None
-
-    def _rescind_by_code(self, run_id: int, msg: InboundMessage) -> str | None:
-        """Handle a rescission that names its trade code, before any model call.
-
-        Returns ``None`` when this is not that case, so the caller falls through
-        to extraction -- a rescission with no code still needs the model to say
-        which trade it means.
-        """
-        if not is_rescission_candidate(msg.text):
-            return None
-        match = TRADE_CODE.search(msg.text)
-        if match is None:
-            return None
-        return self._rescind(run_id, match.group(0), msg, input_version=None)
-
-    def _rescind_by_context(
-        self, run_id: int, msg: InboundMessage, proposal, input_version: str
-    ) -> str:
-        """Rescind the trade an uncoded rescission describes, or ask for its code."""
-        trade_id = self._trades.find_by_context(trade_context_key(proposal))
-        trade = self._trades.find_by_id(trade_id) if trade_id is not None else None
-        if trade is None:
-            return self._clarify(run_id, NO_CODE_REASON, input_version)
-        return self._rescind(run_id, trade["trade_code"], msg, input_version)
-
-    def _rescind(
-        self, run_id: int, code: str, msg: InboundMessage, input_version: str | None
-    ) -> str:
-        if not self._trades.rescind(code, msg.guid, msg.sent_at):
-            return self._clarify(run_id, f"I have no trade {code} on file.", input_version)
-        self._commit()
-        content = format_rescinded(code)
-        self._deliver(run_id, content)
-        self._finish(run_id, "succeeded", content=content, input_version=input_version)
-        return "rescinded"
 
     def _clarify(self, run_id: int, reason: str, input_version: str | None) -> str:
         """Ask the chat one question and log the run as a success.

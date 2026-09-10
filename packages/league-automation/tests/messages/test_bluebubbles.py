@@ -44,7 +44,9 @@ def test_send_text_posts_chat_guid_and_returns_guid() -> None:
 
 @respx.mock
 def test_send_text_raises_on_error() -> None:
-    respx.post("http://bb.local/api/v1/message/text").mock(return_value=httpx.Response(500, json={"status": 500, "message": "boom"}))
+    respx.post("http://bb.local/api/v1/message/text").mock(
+        return_value=httpx.Response(500, json={"status": 500, "message": "boom"})
+    )
     client = BlueBubblesClient("http://bb.local", "pw", httpx.Client())
     with pytest.raises(BlueBubblesError):
         client.send_text("iMessage;+;chat-test", "hi")
@@ -53,7 +55,9 @@ def test_send_text_raises_on_error() -> None:
 @respx.mock
 def test_messages_after_uses_ms_and_parses() -> None:
     route = respx.get("http://bb.local/api/v1/chat/iMessage%3B%2B%3Bchat-test/message").mock(
-        return_value=httpx.Response(200, json={"status": 200, "data": [json.loads(FIXTURE.read_text())["data"]]})
+        return_value=httpx.Response(
+            200, json={"status": 200, "data": [json.loads(FIXTURE.read_text())["data"]]}
+        )
     )
     client = BlueBubblesClient("http://bb.local", "pw", httpx.Client())
     out = client.messages_after("iMessage;+;chat-test", datetime(2026, 9, 8, tzinfo=UTC))
@@ -64,7 +68,44 @@ def test_messages_after_uses_ms_and_parses() -> None:
 
 @respx.mock
 def test_ensure_webhook_creates_when_missing() -> None:
-    respx.get("http://bb.local/api/v1/webhook").mock(return_value=httpx.Response(200, json={"status": 200, "data": []}))
-    create = respx.post("http://bb.local/api/v1/webhook").mock(return_value=httpx.Response(200, json={"status": 200, "data": {"id": 1}}))
-    BlueBubblesClient("http://bb.local", "pw", httpx.Client()).ensure_webhook("http://127.0.0.1:8646/bluebubbles-webhook?password=x")
+    respx.get("http://bb.local/api/v1/webhook").mock(
+        return_value=httpx.Response(200, json={"status": 200, "data": []})
+    )
+    create = respx.post("http://bb.local/api/v1/webhook").mock(
+        return_value=httpx.Response(200, json={"status": 200, "data": {"id": 1}})
+    )
+    BlueBubblesClient("http://bb.local", "pw", httpx.Client()).ensure_webhook(
+        "http://127.0.0.1:8646/bluebubbles-webhook?password=x"
+    )
     assert json.loads(create.calls.last.request.content)["events"] == ["new-message"]
+
+
+def test_a_tapback_is_not_a_message() -> None:
+    """A reaction quotes the whole alert it reacts to, so it read as a repost of
+    the alert until the listener learned to drop it (Ben's chat, 2026-09-10)."""
+    original = {
+        "type": "new-message",
+        "data": {
+            "guid": "m1",
+            "chatGuid": "iMessage;+;chat1",
+            "text": "🚨 Trade alert 🚨 a sends b to c for 10",
+            "isFromMe": False,
+            "dateCreated": 1757000000000,
+            "handle": {"address": "+15555550100"},
+        },
+    }
+    assert parse_webhook(original) is not None
+    for kind in ("like", 2000, 2006, "3001"):
+        reaction = {
+            "type": "new-message",
+            "data": {
+                **original["data"],
+                "guid": f"r-{kind}",
+                "text": "Liked “🚨 Trade alert 🚨 a sends b to c for 10”",
+                "associatedMessageGuid": "p:0/m1",
+                "associatedMessageType": kind,
+            },
+        }
+        assert parse_webhook(reaction) is None, kind
+    plain = {"type": "new-message", "data": {**original["data"], "associatedMessageType": 0}}
+    assert parse_webhook(plain) is not None

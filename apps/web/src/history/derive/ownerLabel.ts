@@ -70,3 +70,13 @@ export function ownerLabelFor(
   const member = members.find((candidate) => candidate.id === memberId);
   return member === undefined ? null : resolveOwnerLabel(member);
 }
+
+/**
+ * Ben (2026-09-10): "just for something funny put an asterisk after Ben R." One name, one
+ * asterisk, on the history page only; nothing else about the label changes.
+ */
+export const ASTERISKED_CHAMPION = "Ben R";
+
+export function championDisplay(label: string): string {
+  return label === ASTERISKED_CHAMPION ? `${label}*` : label;
+}

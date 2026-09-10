@@ -121,9 +121,10 @@ const CLEAR_SEARCH_LABEL = "Clear search";
 const TOUCH_TARGET_CLASS = "min-h-[44px]";
 
 /**
- * The board's own header: the week, the sort, the search box and the last-pull indicator. It is
- * sticky but never collapses — a header that changes height as the list scrolls moves the sort
- * and search controls out from under the reader's finger mid-scroll.
+ * The board's own header: the week, the sort, the search box and the last-pull indicator. It
+ * scrolls with the list and wears the same rounded, bordered face as the cards below it at every
+ * width — Ben: a pinned header ate half a phone screen, and a full-bleed one with a bare bottom
+ * rule looked like a different surface from the cards.
  *
  * Every second-by-second tick lives here rather than in the page, so the clock re-renders this
  * header alone and never the team cards below it.
@@ -201,7 +202,7 @@ export function BoardHeader({
 
   return (
     <header
-      className={`sticky top-0 z-20 -mx-4 mb-3 space-y-2 border-b bg-background/70 px-4 py-3 backdrop-blur-md sm:mx-0 sm:rounded-xl sm:border ${REVEAL_CLASS}`}
+      className={`mb-3 space-y-2 rounded-xl border bg-background/70 px-4 py-3 backdrop-blur-md ${REVEAL_CLASS}`}
       // The first thing on the board to settle; the cards follow it down the page.
       style={revealStyle(0)}
     >

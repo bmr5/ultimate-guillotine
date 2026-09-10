@@ -82,10 +82,10 @@ def test_the_scores_jobs_fire_every_minute_in_a_game_window() -> None:
         if job["script"] == "guillotine_sleeper_scores.sh"
     }
     assert schedules == {
-        "guillotine-sleeper-scores": "*/15 * * * *",
-        "guillotine-sleeper-scores-thursday": "* 20-23 * * 4",
-        "guillotine-sleeper-scores-sunday": "* 13-23 * * 0",
-        "guillotine-sleeper-scores-monday": "* 20-23 * * 1",
+        "guillotine-sleeper-scores": "*/5 * * * *",
+        "guillotine-sleeper-scores-thursday": "* 19-23 * * 4",
+        "guillotine-sleeper-scores-sunday": "* 12-23 * * 0",
+        "guillotine-sleeper-scores-monday": "* 19-23 * * 1",
     }
     # The gap budget has to clear the *baseline*, not the burst: outside a game window the
     # */15 row is the only thing firing, and a budget under it would alarm every Tuesday.

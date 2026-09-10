@@ -50,7 +50,7 @@ export function TradeFilterBar(props: Props) {
   return (
     <div
       className={cn(
-        "sticky top-0 z-10 -mx-4 space-y-2 border-b bg-background/70 px-4 py-3 backdrop-blur-md sm:mx-0 sm:rounded-xl sm:border",
+        "space-y-2 rounded-xl border bg-background/70 px-4 py-3 backdrop-blur-md",
         REVEAL_CLASS,
       )}
       // The first thing on the page to settle; the strip and the cards follow it down.

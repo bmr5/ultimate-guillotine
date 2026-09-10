@@ -523,13 +523,13 @@ null. Rerunning the same name updates that one row. `ug members former list` cou
 | `guillotine-nfl-state` | every 10m | `#guillotine-ops` |
 | `guillotine-players-sync` | `0 */4 * * *` | `#guillotine-ops` |
 | `guillotine-sleeper-projections` | `*/30 * * * *` | `#guillotine-ops` |
-| `guillotine-sleeper-projections-thursday` | `*/5 20-23 * * 4` | local only |
-| `guillotine-sleeper-projections-sunday` | `*/5 13-23 * * 0` | local only |
-| `guillotine-sleeper-projections-monday` | `*/5 20-23 * * 1` | local only |
-| `guillotine-sleeper-scores` | `*/15 * * * *` | local only |
-| `guillotine-sleeper-scores-thursday` | `* 20-23 * * 4` | local only |
-| `guillotine-sleeper-scores-sunday` | `* 13-23 * * 0` | local only |
-| `guillotine-sleeper-scores-monday` | `* 20-23 * * 1` | local only |
+| `guillotine-sleeper-projections-thursday` | `*/5 19-23 * * 4` | local only |
+| `guillotine-sleeper-projections-sunday` | `*/5 12-23 * * 0` | local only |
+| `guillotine-sleeper-projections-monday` | `*/5 19-23 * * 1` | local only |
+| `guillotine-sleeper-scores` | `*/5 * * * *` | local only |
+| `guillotine-sleeper-scores-thursday` | `* 19-23 * * 4` | local only |
+| `guillotine-sleeper-scores-sunday` | `* 12-23 * * 0` | local only |
+| `guillotine-sleeper-scores-monday` | `* 19-23 * * 1` | local only |
 
 `guillotine-players-sync` runs every four hours rather than nightly because
 `public.players.injury_status` is the one column on it that changes mid-week: an `Out`
@@ -548,7 +548,7 @@ they are what makes the board's `Scores updated` stamp mean anything: they run
 `ug sleeper scores`, which writes `public.team_week_scores` from Sleeper's matchups feed
 and moves `synced_at` on every run, score or no score. Every minute inside a game window
 — Ben asked for the current score beside the projection and for it to be realtime, and a
-five-minute score is not that — and `*/15` the rest of the week, which keeps the row warm
+five-minute score is not that — and `*/5` the rest of the week, which keeps the row warm
 without asking Sleeper 1,440 times a day for a number that has not moved. All four share
 the agent `scores-sync` and all four deliver `local`, the baseline included: at once a
 minute an outage would post sixty identical lines an hour, so the run history on the mini

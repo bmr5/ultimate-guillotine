@@ -1,7 +1,11 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { REVEAL_CLASS, revealStyle } from "@/motion/reveal";
 
-import { FORMER_MANAGER, seasonPlacingLabel } from "../derive/ownerLabel";
+import {
+  championDisplay,
+  FORMER_MANAGER,
+  seasonPlacingLabel,
+} from "../derive/ownerLabel";
 import type { SeasonResult } from "../types";
 
 /**
@@ -49,13 +53,17 @@ export function SeasonCard({ season, revealIndex = 0 }: Props) {
       className={`list-none ${REVEAL_CLASS}`}
       style={revealStyle(revealIndex)}
     >
-      <Card>
-        <CardContent className="space-y-2 p-4">
+      {/* Every season card is the same size (Ben, 2026-09-10): a fixed floor tall enough
+          for the champion plus one placings line, whether or not a season has one. */}
+      <Card className="h-full">
+        <CardContent className="min-h-[7.5rem] space-y-2 p-4">
           <p className="text-xs text-muted-foreground">
             Champion {season.season}
           </p>
           <p className="text-3xl leading-none figures">
-            {seasonPlacingLabel(season.championLabel, season.championMemberId)}
+            {championDisplay(
+              seasonPlacingLabel(season.championLabel, season.championMemberId),
+            )}
           </p>
           {runnerUps.length > 0 && (
             <p className="text-sm text-muted-foreground">

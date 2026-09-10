@@ -61,21 +61,24 @@ jobs:
     script: guillotine_sleeper_projections.sh
     deliver: "discord:#guillotine-ops"
     max_gap_minutes: 90
+  # Game windows are in the Mac mini's local time (Central): Thursday and Monday
+  # kickoffs are 7:15 PM, Sunday's first slate is noon, so each window opens the
+  # hour before and runs to midnight.
   - name: guillotine-sleeper-projections-thursday
     agent: projections-sync
-    schedule: "*/5 20-23 * * 4"
+    schedule: "*/5 19-23 * * 4"
     script: guillotine_sleeper_projections.sh
     deliver: local
     max_gap_minutes: 90
   - name: guillotine-sleeper-projections-sunday
     agent: projections-sync
-    schedule: "*/5 13-23 * * 0"
+    schedule: "*/5 12-23 * * 0"
     script: guillotine_sleeper_projections.sh
     deliver: local
     max_gap_minutes: 90
   - name: guillotine-sleeper-projections-monday
     agent: projections-sync
-    schedule: "*/5 20-23 * * 1"
+    schedule: "*/5 19-23 * * 1"
     script: guillotine_sleeper_projections.sh
     deliver: local
     max_gap_minutes: 90
@@ -95,25 +98,25 @@ jobs:
   # still posts one note to #guillotine-ops on the edge — the first failure and the recovery.
   - name: guillotine-sleeper-scores
     agent: scores-sync
-    schedule: "*/15 * * * *"
+    schedule: "*/5 * * * *"
     script: guillotine_sleeper_scores.sh
     deliver: local
-    max_gap_minutes: 45
+    max_gap_minutes: 20
   - name: guillotine-sleeper-scores-thursday
     agent: scores-sync
-    schedule: "* 20-23 * * 4"
+    schedule: "* 19-23 * * 4"
     script: guillotine_sleeper_scores.sh
     deliver: local
     max_gap_minutes: 45
   - name: guillotine-sleeper-scores-sunday
     agent: scores-sync
-    schedule: "* 13-23 * * 0"
+    schedule: "* 12-23 * * 0"
     script: guillotine_sleeper_scores.sh
     deliver: local
     max_gap_minutes: 45
   - name: guillotine-sleeper-scores-monday
     agent: scores-sync
-    schedule: "* 20-23 * * 1"
+    schedule: "* 19-23 * * 1"
     script: guillotine_sleeper_scores.sh
     deliver: local
     max_gap_minutes: 45

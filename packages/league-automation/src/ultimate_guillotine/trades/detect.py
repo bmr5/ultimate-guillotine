@@ -23,52 +23,27 @@ RESCIND_TERMS = re.compile(
 )
 HEADER = re.compile(r"trade\s+alert", re.IGNORECASE)
 
-#: The verbs that move something between two people. Narrower than
-#: :data:`TRADE_TERMS`, because with no siren in the message these have to carry
-#: the whole weight: `trade` and `trading` are what people *talk* about all day
-#: and are left out, while `trades` and `traded` report something that happened.
-#: `for` is in the list because half the league writes an alert with no verb at
-#: all -- `Player Alpha for 300` -- which is why an asset word is required
-#: alongside it.
-NO_SIREN_VERBS = re.compile(
-    r"\b(sends|trades|traded|buys|bought|sells|sold|swap|swaps|rent|rents|rental|for)\b",
-    re.IGNORECASE,
-)
-#: What is being paid. `$1` matches without a word boundary, which `\b` before a
-#: dollar sign would not give.
-ASSET_WORDS = re.compile(r"\bfaab\b|\$\d|\bdraft\b|\brental\b|\bround\b|\bpick\b", re.IGNORECASE)
-
 
 def is_trade_candidate(text: str) -> bool:
     """Is this message worth putting to the model?
 
-    The siren is still the strongest signal and the cheapest to trust: with a
-    🚨 in the message, a trade word, a rescission word or a `trade alert` header
-    is enough, and a rescission counts even when it names no trade word at all --
-    `🚨 Cancel T-2026-014 🚨` is exactly the message the registrar has to act on.
+    Ben (2026-09-10): "Trades need to be explicitly marked with the Siren."
+    The 🚨 is the league's own signal that a message is an announcement to be
+    logged, so nothing without one goes to the model -- however much it looks
+    like a trade. With a siren, a trade word, a rescission word or a `trade
+    alert` header is enough.
 
-    Without a siren the message has to say more, because most of the chat has no
-    siren in it. Two shapes get through: a `trade alert` header, which is
-    unmistakable; and a verb that moves something between two people together
-    with a word for what is being paid (`buys … for $65 FAAB`, `sends … for a 3rd
-    round pick`). Requiring both is what keeps `anyone want to trade for a WR`
-    out while letting `Ben buys Parker Washington from Ryland for $65 FAAB` in.
-
-    **This function does not decide what is a trade.** The model's `not_a_trade`
-    verdict does, and it sees the announcement, the league members, the rosters
-    and the rest of the context pack. Everything here is answering the much
-    smaller question of whether a model call is worth making, so the rules are
-    tuned to let banter through rather than to hold a real alert out.
+    **This function does not decide what is a trade.** The model's
+    `not_a_trade` verdict does; this only decides whether a model call is worth
+    making.
     """
-    if ALERT in text:
-        return (
-            HEADER.search(text) is not None
-            or TRADE_TERMS.search(text) is not None
-            or RESCIND_TERMS.search(text) is not None
-        )
-    if HEADER.search(text) is not None:
-        return True
-    return NO_SIREN_VERBS.search(text) is not None and ASSET_WORDS.search(text) is not None
+    if ALERT not in text:
+        return False
+    return (
+        HEADER.search(text) is not None
+        or TRADE_TERMS.search(text) is not None
+        or RESCIND_TERMS.search(text) is not None
+    )
 
 
 def is_rescission_candidate(text: str) -> bool:

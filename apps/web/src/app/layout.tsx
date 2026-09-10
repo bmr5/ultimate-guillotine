@@ -42,7 +42,7 @@ function PageFallback() {
 
 /**
  * The shell is the wordmark and the nav, sitting on the sky with no bar and no border of their
- * own — the board carries its own sticky header below, and that is the one frosted surface.
+ * own — the board carries its own header below, and that is the one frosted surface.
  * The site is dark only, so there is no theme toggle here any more.
  *
  * `NavLink` writes `aria-current="page"` on the active link itself, so the marking a screen
