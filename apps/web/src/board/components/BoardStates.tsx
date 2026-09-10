@@ -4,6 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
 import { MS_PER_SECOND } from "../derive/time";
+import { BOARD_GRID } from "../layout";
 import { REALTIME_POLL_MS } from "../realtime";
 import type { BoardQueryError } from "../useBoardData";
 
@@ -20,7 +21,7 @@ export const REALTIME_PAUSED_TEXT = `Live updates are paused. Polling every ${PO
 
 export function BoardSkeleton() {
   return (
-    <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+    <ul className={BOARD_GRID}>
       {Array.from({ length: SKELETON_CARD_COUNT }, (_, index) => index).map(
         (index) => (
           <li key={index}>
