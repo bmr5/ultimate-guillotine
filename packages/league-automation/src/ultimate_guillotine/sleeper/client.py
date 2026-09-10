@@ -82,6 +82,13 @@ class SleeperClient:
         result: list[dict[str, Any]] = response.json()
         return result
 
+    def get_transactions(self, league_id: str, week: int) -> list[dict[str, Any]]:
+        """Fetch the raw transactions -- adds, drops, waivers, trades -- for one week."""
+        response = self._http.get(f"/league/{league_id}/transactions/{week}")
+        response.raise_for_status()
+        result: list[dict[str, Any]] = response.json()
+        return result
+
     def get_nfl_state(self) -> dict[str, Any]:
         """Fetch the current NFL season/week state."""
         response = self._http.get("/state/nfl")

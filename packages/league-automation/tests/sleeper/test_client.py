@@ -78,3 +78,15 @@ def test_client_exposes_no_write_methods() -> None:
 def test_client_does_not_follow_redirects_off_sleeper() -> None:
     client = SleeperClient(httpx.Client())
     assert client._http.follow_redirects is False
+
+
+@respx.mock
+def test_get_transactions_reads_one_week() -> None:
+    route = respx.get("https://api.sleeper.app/v1/league/L1/transactions/6").mock(
+        return_value=httpx.Response(200, json=[{"type": "free_agent", "status": "complete",
+                                                "adds": {"p1": 3}, "drops": {"p2": 3},
+                                                "roster_ids": [3], "leg": 6, "created": 0}])
+    )
+    client = SleeperClient(httpx.Client())
+    rows = client.get_transactions("L1", 6)
+    assert route.called and rows[0]["adds"] == {"p1": 3}
