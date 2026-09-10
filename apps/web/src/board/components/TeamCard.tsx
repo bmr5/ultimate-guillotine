@@ -12,6 +12,7 @@ import {
 import { cn } from "@/lib/utils";
 
 import { resolveStarterAvailability } from "../derive/availability";
+import { resolveChipKinds, type ChipKind } from "../derive/chips";
 import {
   COVERAGE_GATE_PCT,
   partialCoverageExplanation,
@@ -60,22 +61,23 @@ const PARTIAL_BADGE_TEXT = "partial";
  *
  * Ben's addendum: "make every card the same height — the badge currently changes card height."
  * A `min-h` alone would not do it; it works because everything inside the summary is bounded.
- * The owner line, the team name and the total line each truncate to one line, neither chip row
- * wraps, and the projection block is at most three lines (number, `proj`, empty count).
+ * The owner line, the team name and the total line each truncate to one line, the chip row does
+ * not wrap, and the projection block is at most three lines (number, `proj`, empty count).
  * 6.5rem clears that tallest case with the card's `p-4` around it, so a card with chips, a card
  * with an empty-slot count and a plain card all measure the same.
  *
- * The summary's second grid row — the stacked chip row — sits under that floor and is mounted,
- * at its own fixed height, on every card. It is a band every card carries, not a row a loud
- * card grows.
+ * The summary is one grid row. The fallback row round 2 added below it — where a third chip went
+ * when the owner's line could not hold it — is gone: it was mounted on every card to keep the
+ * heights level, which cost all twelve cards 44px to serve a case the chip-set rule has since
+ * made impossible.
  */
 export const SUMMARY_MIN_HEIGHT_CLASS = "min-h-[6.5rem]";
 
 /**
- * The floor under both chip rows — the overlay on the owner's line and the stacked row below
- * the summary — so each occupies the same band on every card whether it holds chips or none.
- * It is the 44px touch target the tooltip triggers inside them need anyway; naming it here is
- * what makes the equal-height claim independent of what is in either row.
+ * The floor under the chip row overlaid on the owner's line, so it occupies the same band on
+ * every card whether it holds chips or none. It is the 44px touch target the tooltip triggers
+ * inside it need anyway; naming it here is what makes the equal-height claim independent of
+ * what is in the row.
  */
 export const CHIP_ROW_MIN_HEIGHT_CLASS = "min-h-[44px]";
 
@@ -91,23 +93,23 @@ const CHIP_ROW_RESERVE_CLASS = "pr-[5.25rem]";
 
 /**
  * The room the owner's name leaves for the chips overlaid at the end of its line, indexed by
- * how many chips are actually on that line.
+ * how many chips are actually on that line. Nothing on the line, no reserve.
  *
- * It was one constant, on the argument that a name truncating to a different width depending on
- * whether its team had an injury is its own kind of jitter. That held while the row could only
- * hold one chip. It cannot: the elimination ruling and `Projection unavailable` moved into this
- * row, and `pr-24` is one chip's worth of room — two chips ran straight over the name they were
- * meant to sit beside, which is worse jitter than a name cut to two widths.
+ * Both figures are measured in a browser, laying out this markup against this project's own
+ * Tailwind build at the chip's own 11px face — not estimated. `resolveChipKinds` is what makes
+ * the two-chip figure a *worst* case rather than a guess: the only pair the card can now carry
+ * is `2 starters out` (86.5px) and `partial` (48.2px), which with the row's `gap-1` is 138.7px.
+ * `pr-36` (144px) is the next step up, with 5.3px of slack.
  *
- * One chip is the reserve as it was. Two is `2 starters out` (102px) and `Eliminated week 18`
- * (144px) plus the row's `gap-1` — 250px, measured in the browser at the card's own 11px
- * `Inter var`, not estimated. On a card narrower than about 26rem that reserve is the whole
- * name field and the name gives up its line rather than be written over; on a wide one it
- * keeps a readable stub. Three chips fit behind no reserve at all, so they leave the line
- * entirely — see `CHIP_STACK_THRESHOLD`.
+ * Two numbers from the same session that this reserve does not fix, because they are properties
+ * of the line rather than of the padding, and both are in the report's fix-round-3 concerns.
+ * On a 375px phone the card is 343px and the owner's name field is 141px, so a 144px reserve is
+ * all of it: a two-chip card shows no name at all. And a lone `Projection unavailable` (131.8px)
+ * or `Eliminated week 18` (116.5px) is wider than this one-chip `pr-24`, so it overlaps the
+ * name it sits beside by 35.8px and 20.5px — both are one-chip cards under the rule.
  */
 export const OWNER_NAME_RESERVE_ONE_CHIP_CLASS = "pr-24";
-export const OWNER_NAME_RESERVE_TWO_CHIP_CLASS = "pr-[15.75rem]";
+export const OWNER_NAME_RESERVE_TWO_CHIP_CLASS = "pr-36";
 
 /** The reserve by chip count, so the name is padded for the chips the card actually has. */
 const OWNER_NAME_RESERVE_CLASSES = [
@@ -115,13 +117,6 @@ const OWNER_NAME_RESERVE_CLASSES = [
   OWNER_NAME_RESERVE_ONE_CHIP_CLASS,
   OWNER_NAME_RESERVE_TWO_CHIP_CLASS,
 ] as const;
-
-/**
- * The chip count from which the row stops being an overlay on the owner's name and becomes a
- * row of its own below the summary line. Three chips — an out starter, a caveat on the number
- * and an elimination — are the most the card can carry at once.
- */
-const CHIP_STACK_THRESHOLD = OWNER_NAME_RESERVE_CLASSES.length;
 
 /** Label for a team eliminated in a week the data layer does not know yet. */
 const ELIMINATED_LABEL = "Eliminated";
@@ -155,7 +150,7 @@ const CHIP_BORDER_CLASS: Record<ChipTone, string> = {
 
 interface SummaryChipProps {
   /** The `data-chip` handle, so a test names the state rather than the styling. */
-  kind: "out" | "partial" | "unavailable" | "eliminated";
+  kind: ChipKind;
   /** The short, visible wording. */
   text: string;
   /** The same thing spelled out for a screen reader, whether or not the tooltip is open. */
@@ -379,63 +374,61 @@ export const TeamCard = memo(function TeamCard({
       ? ELIMINATED_LABEL
       : `${ELIMINATED_LABEL} week ${team.eliminatedWeek}`;
 
-  // Everything qualifying this card, in reading order, decided once. The row renders this list
-  // and the owner's name reserves room against its length: two answers to "what is on this
-  // line?" is how the name came to be padded for one chip while wearing two.
-  const chips: SummaryChipProps[] = [];
+  // What each state would say, if the card is allowed to say it. Building the wording is not
+  // deciding to show it: `resolveChipKinds` owns that, in one place, so the mutual exclusions
+  // read as a rule rather than as four conditions that happen to agree.
+  const chipCopy: Partial<Record<ChipKind, SummaryChipProps>> = {};
   if (availability.outChipText !== null && availability.outChipTitle !== null) {
-    chips.push({
+    chipCopy.out = {
       kind: "out",
       tone: "destructive",
       text: availability.outChipText,
       label: availability.outChipText,
       description: availability.outChipTitle,
-    });
+    };
   }
-  if (
-    isPartial &&
-    projection.caveatLabel !== null &&
-    partialDescription !== undefined
-  ) {
-    chips.push({
+  if (projection.caveatLabel !== null && partialDescription !== undefined) {
+    chipCopy.partial = {
       kind: "partial",
       tone: "muted",
       text: PARTIAL_BADGE_TEXT,
       label: projection.caveatLabel,
       description: partialDescription,
       computedText,
-    });
+    };
   }
   // The em dash state: there is no number, and no sentence to add to that.
   if (projection.caveat === "unavailable" && projection.caveatLabel !== null) {
-    chips.push({
+    chipCopy.unavailable = {
       kind: "unavailable",
       tone: "muted",
       text: projection.caveatLabel,
       label: projection.caveatLabel,
-    });
+    };
   }
-  if (team.isEliminated) {
-    chips.push({
-      kind: "eliminated",
-      tone: "muted",
-      text: eliminatedText,
-      label: eliminatedText,
-      description:
-        team.eliminationSource === "sleeper_inferred"
-          ? PROVISIONAL_ELIMINATION_TITLE
-          : undefined,
-    });
-  }
+  chipCopy.eliminated = {
+    kind: "eliminated",
+    tone: "muted",
+    text: eliminatedText,
+    label: eliminatedText,
+    description:
+      team.eliminationSource === "sleeper_inferred"
+        ? PROVISIONAL_ELIMINATION_TITLE
+        : undefined,
+  };
 
-  // Past two, no reserve leaves the name anything to read, so the chips give the line back and
-  // stack in the row below the summary instead. Both rows are always mounted, so this is a
-  // change of which row holds the chips, never a row appearing on one card and not another.
-  const isStacked = chips.length >= CHIP_STACK_THRESHOLD;
-  const overlayChips: SummaryChipProps[] = isStacked ? [] : chips;
-  const stackedChips: SummaryChipProps[] = isStacked ? chips : [];
-  const ownerNameReserveClass =
-    OWNER_NAME_RESERVE_CLASSES[overlayChips.length] ?? "";
+  // The ruling after fix round 2: the chip set is mutually limited, so a card carries at most
+  // two short chips and the owner's name has a measured worst case to reserve against. The
+  // fallback row a third chip used to fall into is gone with the third chip.
+  const chips = resolveChipKinds({
+    isEliminated: team.isEliminated,
+    hasProjection: projection.kind === "value",
+    outCount: availability.outCount,
+    isPartial,
+  })
+    .map((kind) => chipCopy[kind])
+    .filter((chip): chip is SummaryChipProps => chip !== undefined);
+  const ownerNameReserveClass = OWNER_NAME_RESERVE_CLASSES[chips.length] ?? "";
 
   return (
     <li>
@@ -553,8 +546,9 @@ export const TeamCard = memo(function TeamCard({
               is inert (`pointer-events-none`) and the chips take their events back one by one,
               so an empty row never swallows a tap meant for the card.
 
-              It holds at most two chips, because the name it is laid over has to keep some of
-              its own line; a third sends all of them to the stacked row below.
+              It holds at most two chips, and that is a property of the chip set rather than of
+              this row: see `derive/chips.ts`. That is what lets the name reserve a measured
+              worst case and keep the rest of its own line.
             */}
             <div
               data-chip-row
@@ -564,7 +558,7 @@ export const TeamCard = memo(function TeamCard({
                 CHIP_ROW_RESERVE_CLASS,
               )}
             >
-              {overlayChips.map((chip) => (
+              {chips.map((chip) => (
                 <SummaryChip key={chip.kind} {...chip} />
               ))}
             </div>
@@ -589,28 +583,6 @@ export const TeamCard = memo(function TeamCard({
                 )}
               />
             </button>
-
-            {/*
-              Where the chips go when there are more of them than the owner's line can hold: a
-              row of their own, under the summary line and across the full width of the card,
-              with the whole card's width to spread into rather than the end of a name.
-
-              Mounted on every card and floored at the same 44px whether or not it holds
-              anything, for the reason the overlay row is: a row that appears on the one card
-              carrying three chips is exactly the height difference Ben asked to be rid of. It
-              is inert, like the other row, and each chip takes its own events back.
-            */}
-            <div
-              data-chip-stack
-              className={cn(
-                "pointer-events-none col-span-2 col-start-1 row-start-2 flex flex-nowrap items-center gap-1 overflow-hidden",
-                CHIP_ROW_MIN_HEIGHT_CLASS,
-              )}
-            >
-              {stackedChips.map((chip) => (
-                <SummaryChip key={chip.kind} {...chip} />
-              ))}
-            </div>
           </div>
 
           {/*
