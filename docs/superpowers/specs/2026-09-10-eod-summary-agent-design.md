@@ -60,6 +60,12 @@ one note to `#guillotine-ops` on the edge and `ug ops health` carries the standi
 
 ## Inputs
 
+Before the read, the scheduled run pulls the rosters and the transaction log from Sleeper
+itself (`sync_season` and `sync_transactions`, under a savepoint; a failure is one ops note and
+the post goes out from what is on file). The two syncs run every ten minutes on their own
+phase, and a 10:12 post after a 10:08 waiver clear cannot wait on them. `--no-refresh` skips
+it; dry runs never refresh.
+
 All from Supabase, through the Advisor's existing six-query `SnapshotRepository.load()` (rosters,
 lineup slots, this week's projections, coverage, FAAB, elimination), joined with:
 

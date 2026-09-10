@@ -940,8 +940,10 @@ put in the wrong state is the likeliest way an odds number is wrong.
 
 1. Reads the week; outside the regular season it prints `eod: skipped` and stays
    green.
-2. Loads the league, the scores, the players directory, the gulag events, tonight's
-   moves, and Sleeper's schedule.
+2. Pulls the rosters and the transaction log from Sleeper first (waivers clear
+   at 10:08 and the post fires at 10:12; the ten-minute syncs run on their own
+   phase), then loads the league, the scores, the players directory, the gulag
+   events, the moves since the previous post, and Sleeper's schedule.
 3. Simulates 10,000 weeks when the schedule was read and projections cover at
    least 95 percent of the starters still to play; otherwise composes a factual
    message with no percentages and names the reason in the footer.
@@ -970,6 +972,7 @@ nothing on success.
 | `EOD summary colour unavailable: <class>` | the model call failed; same |
 | `EOD summary colour declined: <reason>` | the verifier threw the model's answer out; same |
 | `EOD summary attachment failed after the text went out: <class>` | the text arrived, the file did not; the run still succeeded |
+| `EOD summary refresh failed, posting from what is on file: <class>` | Sleeper could not be pulled before the read; the post used the last good rows |
 | `eod-summary: run failed at <time> UTC` | the night failed outright -- no snapshot, a delivery mismatch; see the run's `error` |
 | `EOD summary could not deliver: <reason>` (alerts) | the delivery target did not match; the recap stays a draft |
 

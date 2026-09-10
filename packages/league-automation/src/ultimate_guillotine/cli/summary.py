@@ -31,10 +31,14 @@ from ultimate_guillotine.cli.deps import (
     post_ops,
     run_scheduled_with_notes,
 )
+from ultimate_guillotine.cli.sleeper import SYNC_YEAR, weeks_to_sync
+from ultimate_guillotine.cli.sleeper import _season_id as season_id_for
 from ultimate_guillotine.config import Settings, load_settings
 from ultimate_guillotine.core.hermes_cli import find_hermes_binary
 from ultimate_guillotine.sleeper.client import SleeperClient
 from ultimate_guillotine.sleeper.state import current_week
+from ultimate_guillotine.sleeper.sync import sync_season
+from ultimate_guillotine.sleeper.transactions import sync_transactions
 from ultimate_guillotine.summary.agent import (
     AGENT,
     EodSummaryAgent,
@@ -87,6 +91,12 @@ def register(subparsers) -> None:
         "--out",
         default=".",
         help="where a dry run writes the HTML file (default: the current directory)",
+    )
+    eod.add_argument(
+        "--no-refresh",
+        dest="no_refresh",
+        action="store_true",
+        help="post from what is on file without pulling rosters and transactions first",
     )
     eod.add_argument(
         "--quiet",
@@ -241,6 +251,35 @@ def _dry_run(
     return 0
 
 
+def _refresh(deps, client, conn, state, now: datetime) -> None:
+    """Pull the rosters and the transaction log before the read.
+
+    Waivers clear at 10:08 and the post fires at 10:12; the roster and transaction
+    syncs run every ten minutes on their own phase, so the post pulls both itself
+    rather than trusting whatever the last fire happened to see. Under a savepoint,
+    so a refresh that fails leaves the run's transaction usable, and the failure is
+    one ops note: the data layer's last good rows are on file and the footer
+    stamps their age.
+    """
+    try:
+        with conn.transaction():
+            league_id = deps.settings.sleeper_league_id
+            sync_season(client, conn, SYNC_YEAR, league_id, week=state.week)
+            sync_transactions(
+                client,
+                conn,
+                league_id,
+                season_id_for(conn, state.season),
+                weeks_to_sync(state.week, None, False),
+                now,
+            )
+    except Exception as exc:  # noqa: BLE001 - reported, never fatal
+        post_ops(
+            deps.notifier,
+            f"EOD summary refresh failed, posting from what is on file: {exc.__class__.__name__}",
+        )
+
+
 def cmd_eod(args: argparse.Namespace) -> int:
     if args.fixture:
         return _dry_run(fixture_eod(), FIXTURE_NOW, None, args)
@@ -275,6 +314,8 @@ def cmd_eod(args: argparse.Namespace) -> int:
             if not args.quiet:
                 print("eod: skipped, season over")
             return 0
+        if not args.no_refresh:
+            _refresh(deps, client, conn, state, now)
         try:
             snapshot = load_snapshot(conn, client, now)
         except SnapshotUnavailable as exc:
