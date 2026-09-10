@@ -366,7 +366,9 @@ def run_case(
                 case, "-", f"error:{exc.__class__.__name__}", False, "model call failed"
             )
         kind = extracted.kind
-        if kind == "not_a_trade":
+        if kind in ("not_a_trade", "rescission"):
+            # A cancellation in the chat does nothing since 2026-09-10 (Ben): the
+            # registrar records the run and says nothing, exactly like a joke.
             outcome = "not_a_trade"
         else:
             try:
