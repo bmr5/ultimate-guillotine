@@ -22,10 +22,14 @@ class InboundMessage(BaseModel, frozen=True):
 
 def _record_to_message(record: dict) -> InboundMessage | None:
     chats = record.get("chats") or []
-    chat_guid = record.get("chatGuid") or (
-        chats[0].get("guid") if chats else None
-    )
+    chat_guid = record.get("chatGuid") or (chats[0].get("guid") if chats else None)
     if not chat_guid or not record.get("guid"):
+        return None
+    if _is_reaction(record):
+        # A tapback arrives as a message whose text is the reaction word plus the
+        # whole quoted original ("Liked “🚨 Trade alert …”"), so it reads exactly
+        # like a repost of the alert. It is not a message anyone wrote; nothing
+        # downstream should ever see it.
         return None
     handle = record.get("handle") or {}
     created = record.get("dateCreated") or 0
@@ -38,6 +42,16 @@ def _record_to_message(record: dict) -> InboundMessage | None:
         is_group=bool(record.get("isGroup")) or ";+;" in chat_guid,
         sent_at=datetime.fromtimestamp(created / 1000, tz=UTC),
     )
+
+
+def _is_reaction(record: dict) -> bool:
+    """BlueBubbles marks a tapback with the guid it reacts to and a type: the
+    iMessage numeric codes (2000-2005 add, 3000-3005 remove, 2006/3006 the
+    custom-emoji kind) or, on newer servers, a word such as ``like``."""
+    if record.get("associatedMessageGuid"):
+        return True
+    kind = record.get("associatedMessageType")
+    return bool(kind) and kind not in (0, "0")
 
 
 def parse_webhook(payload: dict) -> InboundMessage | None:
@@ -79,16 +93,15 @@ class BlueBubblesClient:
         return self._request("GET", "/api/v1/server/info").get("data") or {}
 
     def chat_participants(self, chat_guid: str) -> list[str]:
-        data = self._request(
-            "GET",
-            f"/api/v1/chat/{quote(chat_guid, safe='')}",
-            params={"with": "participants"},
-        ).get("data") or {}
-        return [
-            p.get("address")
-            for p in data.get("participants") or []
-            if p.get("address")
-        ]
+        data = (
+            self._request(
+                "GET",
+                f"/api/v1/chat/{quote(chat_guid, safe='')}",
+                params={"with": "participants"},
+            ).get("data")
+            or {}
+        )
+        return [p.get("address") for p in data.get("participants") or [] if p.get("address")]
 
     def messages_after(
         self, chat_guid: str, after: datetime, limit: int = 100
@@ -99,11 +112,14 @@ class BlueBubblesClient:
             "limit": str(limit),
             "with": "handle",
         }
-        data = self._request(
-            "GET",
-            f"/api/v1/chat/{quote(chat_guid, safe='')}/message",
-            params=params,
-        ).get("data") or []
+        data = (
+            self._request(
+                "GET",
+                f"/api/v1/chat/{quote(chat_guid, safe='')}/message",
+                params=params,
+            ).get("data")
+            or []
+        )
         return [m for m in (_record_to_message(r) for r in data) if m]
 
     def send_text(self, chat_guid: str, text: str) -> str:
@@ -112,9 +128,7 @@ class BlueBubblesClient:
             "tempGuid": uuid.uuid4().hex,
             "message": text,
         }
-        data = self._request("POST", "/api/v1/message/text", json=body).get(
-            "data"
-        ) or {}
+        data = self._request("POST", "/api/v1/message/text", json=body).get("data") or {}
         guid = data.get("guid")
         if not guid:
             raise BlueBubblesError("send returned no message guid")
@@ -124,6 +138,4 @@ class BlueBubblesClient:
         existing = self._request("GET", "/api/v1/webhook").get("data") or []
         if any(w.get("url") == url for w in existing):
             return
-        self._request(
-            "POST", "/api/v1/webhook", json={"url": url, "events": ["new-message"]}
-        )
+        self._request("POST", "/api/v1/webhook", json={"url": url, "events": ["new-message"]})
