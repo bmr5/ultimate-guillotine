@@ -2,6 +2,7 @@ import { useId, useState } from "react";
 
 import { cn } from "@/lib/utils";
 
+import { bandTagline } from "../derive/bandTagline";
 import {
   curveBands,
   curveHeightAt,
@@ -66,6 +67,8 @@ export function FaabCurveChart({ tiers }: { tiers: FaabTiers }) {
       ),
     );
   const activeTeams = active === null ? [] : teamsIn(active);
+  const richest = teams[0]?.team ?? null;
+  const poorest = teams.length ? teams[teams.length - 1].team : null;
 
   return (
     <figure className="rounded-xl border bg-card p-4">
@@ -182,6 +185,15 @@ export function FaabCurveChart({ tiers }: { tiers: FaabTiers }) {
           <>
             <p className="text-xs text-muted-foreground">
               {bandLabel(bands[active])}
+            </p>
+            <p data-band-tagline className="italic">
+              {bandTagline(
+                bands[active],
+                curve,
+                activeTeams.map(({ team }) => team),
+                richest,
+                poorest,
+              )}
             </p>
             {activeTeams.length === 0 ? (
               <p>Nobody in this band.</p>
