@@ -69,6 +69,15 @@ login (`higgsfield account status`). Do not loop on generation to tune the promp
 52 credits. The generated clip is kept in `data/media/generated/`, so a re-render with different
 words is `--base data/media/generated/<file>.mp4` and costs nothing.
 
+## What the one generated clip looked like (2026-09-10)
+
+Seedance 2.5 in `omni_reference` mode with the Denzo clip as the reference produced an 8 s
+vertical clip that is, to the eye, Adam Schefter in his home office delivering news: same face,
+blazer, bookshelves and helmet, no text, animated speech. It composites cleanly
+(`data/media/renders/manual-20260910-050648.mp4`). That is a real person's likeness generated
+from his footage, so whether generated clips are ever posted is Ben's call; the ESPN footage
+path uses the real segment the reference used.
+
 ## Not done yet
 
 - On-demand from Discord ("video T-2026-003" in `#guillotine-ops`) needs a Hermes channel prompt
