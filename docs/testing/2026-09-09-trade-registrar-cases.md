@@ -1,6 +1,6 @@
 # Trade Registrar case suite (2026-09-09)
 
-83 end-to-end cases for the Trade Registrar, written to be run overnight against the real
+89 end-to-end cases for the Trade Registrar, written to be run overnight against the real
 extraction model without sending anything. Nothing here writes to the league chat: the
 runner calls `extract_trade` + `resolve_extracted` + `validate` directly, the same path
 `ug trades extract --text "<alert>"` takes.
@@ -76,7 +76,7 @@ uv run --project packages/league-automation python scripts/registrar_cases.py --
 
 Results land in `docs/testing/2026-09-09-trade-registrar-results.md`.
 
-## Happy paths (18)
+## Happy paths (22)
 
 | # | Input | Kind | Status | Reply | Prereq | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -98,6 +98,10 @@ Results land in `docs/testing/2026-09-09-trade-registrar-results.md`.
 | 16 | `🚨 Trade Alert 🚨 ⏎ Week 7: nfsilveira90 sends the Buffalo Bills defense and 40 FAAB to scrappyCon16 for Chase Brown` | `permanent` | `created` | `🚨 Trade <code> logged` | — | Defense named in full plus FAAB plus a player, with the week stated. |
 | 74 | `🚨 Trade Alert 🚨 ⏎ I sent Ja'Marr Chase to mdurgin for 450 FAAB` | `permanent` | `created` | `🚨 Trade <code> logged` | — | From kpbowe. The commonest real shape there is: a member announcing their own trade in the first person. `I` names the announcer, so the alert has two parties after all. Case 75 is the same text with nobody behind it. |
 | 79 | `🚨 Trade Alert 🚨 ⏎ kpbowe sends Rhamondre to mdurgin for 200 FAAB` | `permanent` | `created` | `🚨 Trade <code> logged` | — | A player named by first name alone, which is how the chat writes a familiar player -- the real message behind this was a `1 week Rhamondre rental`. No exact name, no surname, no defense, so he is only findable on the giving party's roster. |
+| 57 | `Trade alert: chobes sends DJ Moore to jrayay for 125 FAAB` | `permanent` | `created` | `🚨 Trade <code> logged` | — | A real trade written without a siren. This case expected `not_a_trade` for three waves and its note said why: no siren, so the detector answered before the model did. That was a description of the detector rather than a judgement about the message, and the league chat proved it wrong. The wider rule reads a bare `trade alert` header, so this is now logged. |
+| 84 | `kpbowe buys Quentin Johnston from mdurgin for $65 FAAB` | `permanent` | `created` | `🚨 Trade <code> logged` | — | The shape that started the shadow wave: no siren, no header, a buy verb and a price. Both halves are required -- a verb alone or a price alone is half the chat. |
+| 85 | `chobes sells Zay Flowers to kpbowe for a 3rd round pick` | `permanent` | `created` | `🚨 Trade <code> logged` | — | No siren and no money: `round` and `pick` are asset words too, so an alert paid in draft capital is not held out for lack of a FAAB figure. |
+| 86 | `mdurgin sends Khalil Shakir to chobes as a 2 week rental, back after the Week 6 games` | `rental` | `created` | `🚨 Trade <code> logged` | — | A rental with no siren. `rental` is an asset word, so it satisfies the second half of the rule beside `sends`. |
 
 ## Sloppy phrasing (23)
 
@@ -157,7 +161,7 @@ Results land in `docs/testing/2026-09-09-trade-registrar-results.md`.
 | 50 | `🚨 Trade Alert 🚨 ⏎ Rescind T-2026-007. New deal: RylandRad sends Tucker Kraft to scrappyCon16 for 40 FAAB` | `rescission` | `rescinded` | `🚨 Trade <code> rescinded` | 7 | Known limitation: the coded rescission short-circuits before extraction, so the second trade in the same message is never logged and nobody is told. |
 | 78 | `🚨 Trade Alert 🚨 ⏎ I'm cancelling my trade with mdurgin` | `rescission` | `clarification` | `🚨 Trade not logged yet:` | — | From kpbowe. A rescission in the first person: `I` and `my trade` name the announcer, so both sides of the cancelled deal are known without a T- code. With nothing on file to match the bot still has to ask for the code, which is also what a dry run sees. |
 
-## Not a trade (8)
+## Not a trade (10)
 
 | # | Input | Kind | Status | Reply | Prereq | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -167,8 +171,10 @@ Results land in `docs/testing/2026-09-09-trade-registrar-results.md`.
 | 54 | `🚨 whoever traded for Tyreek Hill sold their whole season 🚨` | `not_a_trade` | `not_a_trade` | none | — | Trash talk containing a trade word and a player name. |
 | 55 | `🚨 Trade T-2026-001 logged ⏎ blandon receives: Ja'Marr Chase ⏎ Week ? · Permanent ⏎ — 🤖 Guillotine Bot` | `not_a_trade` | `not_a_trade` | none | — | The bot's own confirmation echoed back. The listener drops signed text before the trigger runs, so this must never reach extraction at all. |
 | 56 | `🚨 Trade Alert 🚨 Over in the dynasty league, Barnaby sends CMC to Quill for 300 FAAB` | `permanent` | `clarification` | `🚨 Trade not logged yet:` | — | Known false positive: an alert about another league. Neither name is a member, so the bot asks the chat a pointless question instead of staying quiet. |
-| 57 | `Trade alert: chobes sends DJ Moore to jrayay for 125 FAAB` | `not_a_trade` | `not_a_trade` | none | — | No siren, so is_trade_candidate is false and no model call happens. The runner reports this as not-a-candidate, which satisfies not_a_trade. |
 | 58 | `🚨🚨🚨 FAAB 🚨🚨🚨` | `not_a_trade` | `not_a_trade` | none | — | Siren plus a bare trade word and nothing else; detection passes, the model must not. |
+| 87 | `that trade was highway robbery, he gave up a whole rental for nothing` | `not_a_trade` | `not_a_trade` | none | — | Trash talk that clears the wider detector on `for` and `rental` and has to be stopped by the model. The detector was widened on purpose to let messages like this through rather than risk holding a real alert out. |
+| 88 | `anyone trading a WR? I'll pay 200 FAAB for the right one` | `not_a_trade` | `not_a_trade` | none | — | An offer, not an announcement: nobody is on the other side and nothing has happened. Clears the detector on `for` and `FAAB`. |
+| 89 | `thanks for the draft advice last night, saved my whole season` | `not_a_trade` | `not_a_trade` | none | — | A `for` sentence that is not a trade. `for` plus `draft` is exactly the pair the wider rule accepts, which makes this the cheapest false positive the detector can produce: one model call, one silent run row, nothing in the chat. |
 
 ## Unclear (10)
 

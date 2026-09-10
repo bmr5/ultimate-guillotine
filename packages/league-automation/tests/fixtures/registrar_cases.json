@@ -506,12 +506,12 @@
     },
     {
       "id": 57,
-      "category": "not_a_trade",
+      "category": "happy",
       "text": "Trade alert: chobes sends DJ Moore to jrayay for 125 FAAB",
-      "expected_kind": "not_a_trade",
-      "expected_status": "not_a_trade",
+      "expected_kind": "permanent",
+      "expected_status": "created",
       "prereq": null,
-      "notes": "No siren, so is_trade_candidate is false and no model call happens. The runner reports this as not-a-candidate, which satisfies not_a_trade."
+      "notes": "A real trade written without a siren. This case was `not_a_trade` for three waves, and its note said so plainly: no siren, so `is_trade_candidate` was false and no model call happened. That was never a judgement about the message -- it is a perfectly clear alert -- it was a description of the detector, and on 2026-09-10 the league chat proved it wrong by announcing a real trade the same way. The wider rule reads a `trade alert` header with no siren, so this now reaches the model and is logged."
     },
     {
       "id": 58,
@@ -751,6 +751,60 @@
       "expected_status": "clarification",
       "prereq": null,
       "notes": "More FAAB than the payer has. The `FAAB remaining` section of the context pack is the one part of it that is a check rather than a spelling aid: an amount a team cannot cover is answered with a question, never quietly lowered to what they can afford. Everybody in the runner's synthetic league holds 900, and this asks for 950."
+    },
+    {
+      "id": 84,
+      "category": "happy",
+      "text": "kpbowe buys Quentin Johnston from mdurgin for $65 FAAB",
+      "expected_kind": "permanent",
+      "expected_status": "created",
+      "prereq": null,
+      "notes": "The shape that started the shadow wave: no siren, no header, a buy verb and a price. `buys` moves something and `FAAB` says what pays for it, and the wider rule needs both -- either alone is half the chat."
+    },
+    {
+      "id": 85,
+      "category": "happy",
+      "text": "chobes sells Zay Flowers to kpbowe for a 3rd round pick",
+      "expected_kind": "permanent",
+      "expected_status": "created",
+      "prereq": null,
+      "notes": "No siren, and the price is not money: `round` and `pick` are asset words too, so an alert paid in draft capital is not held out for lack of a FAAB figure. The pick itself has no player and no amount, so it is an `other` asset with the phrase copied verbatim."
+    },
+    {
+      "id": 86,
+      "category": "happy",
+      "text": "mdurgin sends Khalil Shakir to chobes as a 2 week rental, back after the Week 6 games",
+      "expected_kind": "rental",
+      "expected_status": "created",
+      "prereq": null,
+      "notes": "No siren on a rental. `rental` is both a verb-ish word and an asset word in the wider rule, so it satisfies the test on its own alongside `sends`. The return condition is stated, which is what keeps `validate` from asking for one."
+    },
+    {
+      "id": 87,
+      "category": "not_a_trade",
+      "text": "that trade was highway robbery, he gave up a whole rental for nothing",
+      "expected_kind": "not_a_trade",
+      "expected_status": "not_a_trade",
+      "prereq": null,
+      "notes": "Trash talk that clears the wider detector -- `for` and `rental` are both in it -- and has to be stopped by the model. This is the case that says out loud whose job the second gate is: the detector was widened on purpose to let messages like this through rather than risk holding a real alert out."
+    },
+    {
+      "id": 88,
+      "category": "not_a_trade",
+      "text": "anyone trading a WR? I'll pay 200 FAAB for the right one",
+      "expected_kind": "not_a_trade",
+      "expected_status": "not_a_trade",
+      "prereq": null,
+      "notes": "An offer, not an announcement: nobody is named on the other side and nothing has happened yet. It clears the detector on `for` and `FAAB`, so the `not_a_trade` verdict is doing the work."
+    },
+    {
+      "id": 89,
+      "category": "not_a_trade",
+      "text": "thanks for the draft advice last night, saved my whole season",
+      "expected_kind": "not_a_trade",
+      "expected_status": "not_a_trade",
+      "prereq": null,
+      "notes": "A `for` sentence that is not a trade. `for` plus `draft` is exactly the pair the wider rule accepts, which makes this the cheapest false positive the detector can produce -- one model call, one silent run row, no message in the chat."
     }
   ]
 }
