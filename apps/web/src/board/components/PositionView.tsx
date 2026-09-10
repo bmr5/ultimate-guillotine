@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { injuryTag } from "../derive/availability";
 import { LIKELY_BIDDER_REASONS, type PositionRow } from "../derive/position";
 import { layoutStarters } from "../derive/roster";
+import { BOARD_GRID } from "../layout";
 import type { PositionFilter } from "../types";
 import { RosterPanel } from "./RosterPanel";
 
@@ -288,9 +289,9 @@ interface PositionViewProps {
 /**
  * The whole league at one position, one row per team, in the order `positionView` decided.
  *
- * A single column rather than the board's grid: the rows are wide and shallow — owner, budget,
- * the players inline — and reading down one column is how the question is actually asked ("who
- * would bid on a tight end?").
+ * The same single column the board itself now holds (`BOARD_GRID`): the rows are wide and
+ * shallow — owner, budget, the players inline — and reading down one column is how the question
+ * is actually asked ("who would bid on a tight end?").
  */
 export function PositionView({
   position,
@@ -301,7 +302,7 @@ export function PositionView({
   rosterPositions,
 }: PositionViewProps) {
   return (
-    <ul className="grid grid-cols-1 gap-3">
+    <ul className={BOARD_GRID}>
       {rows.map((row) => (
         <PositionTeamRow
           key={row.teamId}

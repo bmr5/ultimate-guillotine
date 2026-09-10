@@ -15,6 +15,7 @@ import { positionView } from "@/board/derive/position";
 import { resolveCardEmphasis } from "@/board/derive/score";
 import { filterTeams } from "@/board/derive/search";
 import { selectEffectiveSortMode, sortBoardTeams } from "@/board/derive/sort";
+import { BOARD_GRID, BOARD_WIDTH } from "@/board/layout";
 import { REALTIME_POLL_MS } from "@/board/realtime";
 import {
   parsePositionFilter,
@@ -26,8 +27,6 @@ import {
 import { useBoardData } from "@/board/useBoardData";
 import { useDebouncedValue } from "@/board/useDebouncedValue";
 import { useLeagueBoardRealtime } from "@/board/useLeagueBoardRealtime";
-
-const GRID = "grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3";
 
 /** The URL parameter the sort is shared through. */
 const SORT_PARAM = "sort";
@@ -206,7 +205,7 @@ export function BoardPage() {
   const isReconnecting = realtime.hasConnectedOnce && !realtime.isConnected;
 
   return (
-    <main className="px-4 pb-10 sm:px-0">
+    <main className={`${BOARD_WIDTH} px-4 pb-10 sm:px-0`}>
       <BoardHeader
         // The header names `display_week`; `board.week` is what the numbers are scoped to, and
         // outside the regular season the two are different weeks.
@@ -254,7 +253,7 @@ export function BoardPage() {
 
         {showList && positionFilter === null ? (
           <>
-            <ul className={GRID}>
+            <ul className={BOARD_GRID}>
               {sorted.active.map((team, index) => (
                 <TeamCard
                   key={team.teamId}
@@ -272,7 +271,7 @@ export function BoardPage() {
             {sorted.eliminated.length > 0 ? (
               <>
                 <EliminatedDivider count={sorted.eliminated.length} />
-                <ul className={GRID}>
+                <ul className={BOARD_GRID}>
                   {sorted.eliminated.map((team, index) => (
                     <TeamCard
                       key={team.teamId}
