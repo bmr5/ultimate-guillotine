@@ -9,6 +9,7 @@ import {
   SLOT_LABELS,
   type StarterSlotRow,
 } from "../derive/roster";
+import { LIVE_SCORE_PILL_CLASS } from "../layout";
 import type { RosterPlayer } from "../types";
 import { PlayerName } from "./PlayerName";
 
@@ -120,7 +121,11 @@ const PlayerRow = memo(function PlayerRow({
       )}
     >
       <span className="flex min-w-0 items-center gap-2">
-        <PlayerName player={player} ownerName={ownerName} onOpen={onOpenPlayer} />
+        <PlayerName
+          player={player}
+          ownerName={ownerName}
+          onOpen={onOpenPlayer}
+        />
         {meta === "" ? null : (
           <span className="shrink-0 text-muted-foreground">{meta}</span>
         )}
@@ -140,7 +145,7 @@ const PlayerRow = memo(function PlayerRow({
               className={
                 player.livePoints === 0
                   ? "text-muted-foreground"
-                  : "text-foreground"
+                  : LIVE_SCORE_PILL_CLASS
               }
             >
               <span aria-hidden="true">

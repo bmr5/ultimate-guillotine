@@ -17,7 +17,7 @@ import {
   type PositionRow,
 } from "../derive/position";
 import { layoutStarters } from "../derive/roster";
-import { BOARD_GRID } from "../layout";
+import { BOARD_GRID, LIVE_SCORE_PILL_CLASS } from "../layout";
 import type { PositionFilter } from "../types";
 import { PlayerName } from "./PlayerName";
 import { RosterPanel } from "./RosterPanel";
@@ -224,8 +224,21 @@ const PositionTeamRow = memo(function PositionTeamRow({
                       <span className="shrink-0 text-muted-foreground tabular-nums">
                         {player.isStarter && player.livePoints !== null ? (
                           <>
+                            <span
+                              aria-hidden="true"
+                              data-live-points
+                              className={
+                                player.livePoints === 0
+                                  ? undefined
+                                  : LIVE_SCORE_PILL_CLASS
+                              }
+                            >
+                              {player.livePoints.toFixed(
+                                PLAYER_PROJECTION_DECIMALS,
+                              )}
+                            </span>
                             <span aria-hidden="true">
-                              {`${player.livePoints.toFixed(PLAYER_PROJECTION_DECIMALS)}${LIVE_POINTS_SEPARATOR}${projectionText(player.projectedPoints)}`}
+                              {`${LIVE_POINTS_SEPARATOR}${projectionText(player.projectedPoints)}`}
                             </span>
                             <span className="sr-only">{`${LIVE_POINTS_LABEL} ${player.livePoints.toFixed(
                               PLAYER_PROJECTION_DECIMALS,
