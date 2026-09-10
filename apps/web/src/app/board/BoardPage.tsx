@@ -203,6 +203,8 @@ export function BoardPage() {
   const handlePositionFilterChange = useCallback(
     (position: PositionFilter | null) => {
       const next = new URLSearchParams(searchParams);
+      // Choosing a position (or All) leaves the tiers view.
+      next.delete(VIEW_PARAM);
       // Absent, never `?pos=all`: the whole board is the parameter's absence, not a value.
       if (position === null) {
         next.delete(POSITION_PARAM);

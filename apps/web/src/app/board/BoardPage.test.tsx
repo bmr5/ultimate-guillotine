@@ -754,3 +754,25 @@ describe("BoardPage FAAB tiers", () => {
     );
   });
 });
+
+describe("BoardPage leaving the FAAB tiers", () => {
+  it("returns to the board when a position or All is chosen", async () => {
+    renderPage("/?view=tiers");
+    await screen.findByRole("list", { name: /FAAB tiers/i });
+    fireEvent.click(screen.getByRole("radio", { name: "TE" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("list", { name: /FAAB tiers/i })).toBeNull(),
+    );
+    expect(screen.getByRole("radio", { name: "TE" })).toHaveAttribute(
+      "data-state",
+      "on",
+    );
+    fireEvent.click(screen.getByRole("radio", { name: /All positions/i }));
+    await waitFor(() =>
+      expect(
+        screen.getByRole("radio", { name: /All positions/i }),
+      ).toHaveAttribute("data-state", "on"),
+    );
+    expect(screen.queryByRole("list", { name: /FAAB tiers/i })).toBeNull();
+  });
+});
