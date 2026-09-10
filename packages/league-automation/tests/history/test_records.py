@@ -24,6 +24,7 @@ from ultimate_guillotine.history.records import (
     read_winners,
     season_result_rows,
 )
+from ultimate_guillotine.trades.names import normalize_name
 
 WORKBOOK = Path(__file__).resolve().parents[4] / "history/league/ultimate-guillotine-records.xlsx"
 LOADED_AT = datetime(2026, 9, 9, 12, 0, tzinfo=UTC)
@@ -150,7 +151,9 @@ def test_unresolved_champion_is_counted_not_named() -> None:
 
 def test_a_resolved_champion_is_an_id_and_costs_no_count(workbook) -> None:
     champion = read_winners(workbook)[-1].champion_name
-    index = {champion.strip().lower(): 7}
+    # Keyed the way the loader keys it: `build_label_index` normalizes, so a test that
+    # lower-cased by hand would pass on a plain name and lie about a punctuated one.
+    index = {normalize_name(champion): 7}
 
     rows, unresolved, _ = season_result_rows(WORKBOOK, index=index, notes={}, loaded_at=LOADED_AT)
     by_season = {row.season: row for row in rows}
