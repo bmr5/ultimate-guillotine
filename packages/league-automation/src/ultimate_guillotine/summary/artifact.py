@@ -23,7 +23,6 @@ from ultimate_guillotine.summary.models import LOCAL_TZ, EodPacket, TeamLine
 from ultimate_guillotine.summary.render import (
     View,
     build_sections,
-    colour_text,
     move_suffix,
     moves_heading,
     plural,
@@ -95,22 +94,13 @@ def _bar(view: View, team: TeamLine) -> str:
     return f'<span class="bar {_pct_class(view, team)}"><i style="width:{width}%"></i></span>'
 
 
-def _stand(view: View, team: TeamLine) -> str:
-    """Where a team stands, as the gulag and block rows say it."""
-    if view.outlook:
-        return f"proj {escape(view.projected(team))}" if view.result else view.left(team)
-    return f"{team.points:.1f} · {view.left(team)}"
-
-
 def _pair_row(view: View, team: TeamLine, *, to_lose: bool) -> str:
-    cells = [
-        f'<span class="who">{escape(team.label)}</span>',
-        f'<span class="num">{_stand(view, team)}</span>',
-    ]
-    if view.result is not None:
-        risk = view.risk(team)
-        label = risk if (risk == "safe" or not to_lose) else f"{risk} to lose"
-        cells.append(f'<span class="pct {_pct_class(view, team)}">{escape(label)}</span>')
+    """Ben's line: the team, its risk, then ``proj · actual``."""
+    risk = view.loss_risk(team) if to_lose else view.block_risk(team)
+    cells = [f'<span class="who">{escape(team.label)}</span>']
+    if risk is not None:
+        cells.append(f'<span class="pct {_pct_class(view, team)}">{escape(risk)}</span>')
+    cells.append(f'<span class="num">{escape(view.stand(team))}</span>')
     return f'<div class="row">{"".join(cells)}</div>'
 
 
@@ -148,20 +138,21 @@ def _gulag_card(view: View) -> str | None:
 
 
 def _block_card(view: View) -> str:
-    top, sweating = view.block()
-    title = view.block_title.capitalize() if view.block_title != "THE FINAL" else "The final"
-    if view.block_title == "ON THE BLOCK":
-        title = "On the block"
+    top, _sweating = view.block()
+    title = "The final" if view.block_title == "THE FINAL" else "On the block"
     rows = "".join(_pair_row(view, team, to_lose=False) for team in top)
-    sweat = ""
-    if sweating:
-        sweat = '<p class="sweat">Sweating: ' + " · ".join(
-            f"{escape(t.label)} {escape(view.risk(t))}" for t in sweating
-        ) + "</p>"
     return (
         f'<section class="card"><h2>{view.block_emoji} {title}</h2>'
-        f'<p class="note">{escape(view.block_note)}</p>{rows}{sweat}</section>'
+        f'<p class="note">{escape(view.block_note)}</p>{rows}</section>'
     )
+
+
+def _sweating_card(view: View) -> str | None:
+    _top, sweating = view.block()
+    if not sweating:
+        return None
+    rows = "".join(_pair_row(view, team, to_lose=False) for team in sweating)
+    return f'<section class="card"><h2>⚰️ Sweating</h2>{rows}</section>'
 
 
 def _board_card(view: View) -> str:
@@ -232,8 +223,8 @@ def render_html(packet: EodPacket, color: EodColor | None, now: datetime) -> str
     cards = [_hero(view, now)]
     if color is not None:
         cards.append(_colour_card(color))
-    cards.extend(c for c in (_gulag_card(view), _block_card(view), _board_card(view),
-                             _watch_card(view), _moves_card(view)) if c)
+    cards.extend(c for c in (_gulag_card(view), _block_card(view), _sweating_card(view),
+                             _board_card(view), _watch_card(view), _moves_card(view)) if c)
     cards.append(f"<footer>{escape(' · '.join(view.footer_parts()))}</footer>")
     title = escape(f"Guillotine Daily · Week {view.snap.week}")
     return (
@@ -246,22 +237,25 @@ def render_html(packet: EodPacket, color: EodColor | None, now: datetime) -> str
 
 
 def short_text(packet: EodPacket, color: EodColor | None, now: datetime) -> str:
-    """The chat text that travels ahead of the file: header, colour, gulag, block, footer.
+    """The chat text that travels ahead of the file: header, gulag, block, sweating, footer.
 
-    The board, the roster watch and the moves live in the attachment; the text
-    says so, so a member who never opens the file knows what it holds.
+    Ben (2026-09-10): no commentary in the iMessage. The colour still leads the
+    file, so ``color`` is accepted and deliberately unused here. The board, the
+    roster watch and the moves live in the attachment; the text says so, so a
+    member who never opens the file knows what it holds.
     """
+    del color
     sections = build_sections(packet, now)
     parts = [sections.header]
-    if color is not None:
-        parts.append(colour_text(color))
     if sections.gulag:
         parts.append(sections.gulag)
     parts.append(sections.block)
+    if sections.sweating:
+        parts.append(sections.sweating)
     snap = packet.snapshot
     teams = len(snap.live_teams())
     window = (
-        f"moves since {window_stamp(snap.moves_since).title()}"
+        f"moves since {window_stamp(snap.moves_since)}"
         if snap.moves_since is not None
         else "recent moves"
     )

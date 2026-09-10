@@ -66,9 +66,12 @@ def clock(stamp: datetime) -> str:
 
 
 def window_stamp(stamp: datetime) -> str:
-    """``FRI 11:50 PM``: the weekday and the clock, in the league's time."""
+    """``Fri 11:50 PM``: the weekday and the clock, in the league's time.
+
+    Never title-cased downstream: ``.title()`` turns ``PM`` into ``Pm``.
+    """
     local = stamp.astimezone(LOCAL_TZ)
-    return f"{local:%a} {local.strftime('%-I:%M %p')}".upper()
+    return f"{local:%a} {local.strftime('%-I:%M %p')}"
 
 
 def moves_heading(snap, *, title_case: bool = False) -> str:
@@ -76,7 +79,7 @@ def moves_heading(snap, *, title_case: bool = False) -> str:
     if snap.moves_since is None:
         return "Recent moves" if title_case else "RECENT MOVES"
     stamp = window_stamp(snap.moves_since)
-    return f"Moves since {stamp.title()}" if title_case else f"MOVES SINCE {stamp}"
+    return f"Moves since {stamp}" if title_case else f"MOVES SINCE {stamp.upper()}"
 
 
 def move_suffix(kind: str, bid: int | None) -> str:
@@ -266,21 +269,36 @@ class View:
 
     # -- one line of text ----------------------------------------------------
 
-    def team_line(self, team: TeamLine, *, suffix: str | None = None) -> str:
-        """A team in the gulag or on the block: label, where it stands, the odds.
+    def stand(self, team: TeamLine) -> str:
+        """Where a team stands: its projected finish and its actual score.
 
-        Before kickoff nobody has scored, so ``0.0 · 8 left`` says nothing: the
-        projected finish is the number the pairing is judged on until somebody
-        plays, and it stands in for the score until then.
+        Ben's line (2026-09-10): the team, its risk, ``Projected · Actual``. Before
+        kickoff nobody has scored, so the actual is left off; in factual mode
+        there is no projected finish, so the actual and the players left stand.
         """
+        if self.result is None:
+            return self.left(team) if self.outlook else f"actual {team.points:.1f} · {self.left(team)}"
         if self.outlook:
-            parts = [team.label]
-            parts.append(f"proj {self.projected(team)}" if self.result else self.left(team))
-        else:
-            parts = [team.label, f"{team.points:.1f}", self.left(team)]
-        if suffix is not None:
-            parts.append(suffix)
+            return f"proj {self.projected(team)}"
+        return f"proj {self.projected(team)} · actual {team.points:.1f}"
+
+    def team_line(self, team: TeamLine, *, risk: str | None = None) -> str:
+        """``Ben R · 37% · proj 88 · actual 7.8``, the risk left out when there is none."""
+        parts = [team.label]
+        if risk is not None:
+            parts.append(risk)
+        parts.append(self.stand(team))
         return " · ".join(parts)
+
+    def loss_risk(self, team: TeamLine) -> str | None:
+        """The gulag's wording: ``84% to lose``, or ``safe`` on its own."""
+        if self.result is None:
+            return None
+        risk = self.risk(team)
+        return risk if risk == "safe" else f"{risk} to lose"
+
+    def block_risk(self, team: TeamLine) -> str | None:
+        return None if self.result is None else self.risk(team)
 
 
 @dataclass(frozen=True)
@@ -290,13 +308,18 @@ class Sections:
     header: str
     gulag: str | None
     block: str
+    sweating: str | None
     board: str
     watch: str | None
     moves: str | None
     footer: str
 
     def middle(self) -> list[str]:
-        return [s for s in (self.gulag, self.block, self.board, self.watch, self.moves) if s]
+        return [
+            s
+            for s in (self.gulag, self.block, self.sweating, self.board, self.watch, self.moves)
+            if s
+        ]
 
 
 def _header(view: View, now: datetime) -> str:
@@ -311,23 +334,28 @@ def _gulag_section(view: View) -> str | None:
         return f"⚔️ THE GULAG · {problem}"
     lines = ["⚔️ THE GULAG · loser is out"]
     for team in view.gulag_pair():
-        if view.result is None:
-            lines.append(view.team_line(team))
-            continue
-        risk = view.risk(team)
-        lines.append(view.team_line(team, suffix=risk if risk == "safe" else f"{risk} to lose"))
+        lines.append(view.team_line(team, risk=view.loss_risk(team)))
     if view.gulag_provisional():
         lines.append("(pairing inferred from last week's scores)")
     return "\n".join(lines)
 
 
 def _block_section(view: View) -> str:
-    top, sweating = view.block()
+    top, _sweating = view.block()
     lines = [f"{view.block_emoji} {view.block_title} · {view.block_note}"]
     for team in top:
-        lines.append(view.team_line(team, suffix=None if view.result is None else view.risk(team)))
-    if sweating:
-        lines.append("Sweating: " + " · ".join(f"{t.label} {view.risk(t)}" for t in sweating))
+        lines.append(view.team_line(team, risk=view.block_risk(team)))
+    return "\n".join(lines)
+
+
+def _sweating_section(view: View) -> str | None:
+    """The teams behind the block at ten percent or more, one line each."""
+    _top, sweating = view.block()
+    if not sweating:
+        return None
+    lines = ["⚰️ SWEATING"]
+    for team in sweating:
+        lines.append(view.team_line(team, risk=view.block_risk(team)))
     return "\n".join(lines)
 
 
@@ -384,6 +412,7 @@ def build_sections(packet: EodPacket, now: datetime) -> Sections:
         header=_header(view, now),
         gulag=_gulag_section(view),
         block=_block_section(view),
+        sweating=_sweating_section(view),
         board=_board_section(view),
         watch=_watch_section(view),
         moves=_moves_section(view),
@@ -398,6 +427,7 @@ def facts_text(packet: EodPacket) -> str:
     sections = (
         _gulag_section(view),
         _block_section(view),
+        _sweating_section(view),
         _board_section(view),
         _watch_section(view),
         _moves_section(view),

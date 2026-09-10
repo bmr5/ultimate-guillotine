@@ -4,6 +4,7 @@ Small leagues built from the helpers pin each section's wording; the closed-form
 fixture pins the whole thing's size and that no team is left out.
 """
 
+import re
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
@@ -11,7 +12,7 @@ from tests.summary.helpers import NOW, done_team, phase, snapshot, starter, team
 from ultimate_guillotine.summary.color import EodColor
 from ultimate_guillotine.summary.fixture import FIXTURE_NOW, fixture_eod
 from ultimate_guillotine.summary.models import EodPacket, Move
-from ultimate_guillotine.summary.render import facts_text, percent, render
+from ultimate_guillotine.summary.render import facts_text, percent, render, window_stamp
 from ultimate_guillotine.summary.survival import simulate
 
 
@@ -92,8 +93,8 @@ def test_the_gulag_pair_are_listed_by_their_odds_of_losing() -> None:
     text = render(_packet(snap), None, NOW)
     assert "⚔️ THE GULAG · loser is out" in text
     gulag = text.split("⚔️ THE GULAG · loser is out\n", 1)[1].split("\n\n", 1)[0].splitlines()
-    assert gulag[0] == "Member05 · 70.0 · 0 left · locked to lose"
-    assert gulag[1] == "Member06 · 80.0 · 0 left · safe"
+    assert gulag[0] == "Member05 · locked to lose · proj 70 · actual 70.0"
+    assert gulag[1] == "Member06 · safe · proj 80 · actual 80.0"
     assert "inferred" not in text
 
 
@@ -125,11 +126,13 @@ def test_the_block_names_the_two_likeliest_and_who_is_sweating() -> None:
     text = render(_packet(snapshot(teams)), None, NOW)
     block = text.split("⚰️ ON THE BLOCK · bottom 2 enter the Week 2 gulag\n", 1)[1]
     block = block.split("\n\n", 1)[0].splitlines()
-    assert len(block) == 3
-    assert block[0].startswith("Member0")
-    assert " · 1 left · " in block[0] or " · 0 left · " in block[0]
-    assert block[2].startswith("Sweating: ")
-    assert "Member01" not in block[2]
+    # Ben's line: the team, its risk, its projected finish, its actual score.
+    assert len(block) == 2
+    assert re.fullmatch(r"Member0\d · \d+% · proj \d+ · actual \d+\.\d", block[0]), block[0]
+    sweating = text.split("⚰️ SWEATING\n", 1)[1].split("\n\n", 1)[0].splitlines()
+    assert 1 <= len(sweating) <= 2
+    assert all(re.fullmatch(r"Member0\d · \d+% · proj \d+ · actual \d+\.\d", s) for s in sweating)
+    assert "Member01" not in text.split("⚰️ SWEATING\n", 1)[1].split("\n\n", 1)[0]
 
 
 def test_a_cut_week_puts_one_team_on_the_block() -> None:
@@ -137,8 +140,8 @@ def test_a_cut_week_puts_one_team_on_the_block() -> None:
                     phase_=phase(14, "cut"), day_state="final")
     text = render(_packet(snap), None, NOW)
     assert "⚰️ ON THE BLOCK · lowest score is cut" in text
-    assert "Member03 · 60.0 · 0 left · locked" in text
-    assert "Sweating" not in text
+    assert "Member03 · locked · proj 60 · actual 60.0" in text
+    assert "SWEATING" not in text
 
 
 def test_the_final_names_the_title_at_stake() -> None:
@@ -192,11 +195,10 @@ def test_before_kickoff_the_block_and_the_gulag_lines_carry_the_projection_not_a
                     day_state="outlook", games_final=0)
     text = render(_packet(snap), None, NOW)
     gulag = text.split("⚔️ THE GULAG · loser is out\n", 1)[1].split("\n\n", 1)[0].splitlines()
-    assert gulag[0].startswith("Member06 · proj 50 · ")
-    assert gulag[0].endswith(" to lose")
-    assert " left" not in gulag[0]
+    assert re.fullmatch(r"Member06 · \d+% to lose · proj 50", gulag[0]), gulag[0]
+    assert "actual" not in gulag[0] and " left" not in gulag[0]
     block = text.split("⚰️ ON THE BLOCK · bottom 2 enter the Week 6 gulag\n", 1)[1]
-    assert block.splitlines()[0].startswith("Member04 · proj 70 · ")
+    assert re.fullmatch(r"Member04 · \d+% · proj 70", block.splitlines()[0])
 
 
 def test_the_outlook_board_drops_the_score_and_the_players_left() -> None:
@@ -269,6 +271,11 @@ def test_no_moves_means_no_section() -> None:
     assert "🔁" not in render(_packet(_entry_week()), None, NOW)
 
 
+def test_the_window_stamp_keeps_its_meridiem_upper_case() -> None:
+    """Ben's paste read `moves since Wed 9:10 Am`: a title-casing slip."""
+    assert window_stamp(NOW - timedelta(hours=48)) == "Fri 11:50 PM"
+
+
 def test_a_moves_window_nobody_recorded_is_called_recent() -> None:
     moves = (Move("waiver", NOW, "Member03", ("New Guy",), (), None),)
     text = render(_packet(snapshot((done_team(1, "1"), done_team(2, "2"), done_team(3, "3")),
@@ -295,8 +302,9 @@ def test_factual_mode_carries_no_percentage_and_says_why() -> None:
     assert "No odds tonight: coverage 50% of remaining starters" in text.splitlines()[-1]
     assert "⚰️ ON THE BLOCK · bottom 2 enter the Week 2 gulag" in text
     block = text.split("⚰️ ON THE BLOCK · bottom 2 enter the Week 2 gulag\n", 1)[1]
-    assert block.splitlines()[0] == "Member04 · 45.0 · 1 left"
-    assert block.splitlines()[1] == "Member03 · 50.0 · 0 left"
+    assert block.splitlines()[0] == "Member04 · actual 45.0 · 1 left"
+    assert block.splitlines()[1] == "Member03 · actual 50.0 · 0 left"
+    assert "SWEATING" not in text
     assert "📊 THE BOARD · score · left" in text
 
 

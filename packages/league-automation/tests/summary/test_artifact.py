@@ -56,7 +56,8 @@ def test_the_page_carries_every_section_and_every_live_team() -> None:
     html = render_html(packet, None, FIXTURE_NOW)
     for live in packet.snapshot.live_teams():
         assert live.label in html
-    for heading in ("The gulag", "On the block", "The board", "Roster watch", "Moves since"):
+    for heading in ("The gulag", "On the block", "Sweating", "The board", "Roster watch",
+                    "Moves since Sat 11:50 PM"):
         assert heading in html
     assert "Week 6" in html
     assert "Member17" in html and "wk 5" in html
@@ -114,20 +115,24 @@ def test_the_gulag_pair_are_marked_on_the_board() -> None:
 # -- the chat text that travels with the file -----------------------------
 
 
-def test_the_short_text_is_the_header_the_colour_the_block_and_the_footer() -> None:
+def test_the_short_text_is_the_header_the_gulag_the_block_the_sweating_and_the_footer(
+) -> None:
+    """Ben (2026-09-10): no commentary in the iMessage -- the colour stays in the
+    file -- and the sweating teams as their own list."""
     packet = _fixture_packet()
     color = EodColor(headline="Knives out", blurb="Member18 is in trouble.")
     text = short_text(packet, color, FIXTURE_NOW)
     lines = text.splitlines()
     assert lines[0] == "🗡️ GUILLOTINE DAILY · Week 6 · Sunday"
-    assert "🔥 Knives out" in text
+    assert "🔥" not in text and "Knives out" not in text
     assert "⚔️ THE GULAG" in text
     assert "⚰️ ON THE BLOCK" in text
+    assert "⚰️ SWEATING" in text
     assert "📊 THE BOARD" not in text
     assert "🩹" not in text
-    assert "Full board attached" in text
+    assert "moves since Sat 11:50 PM" in text
     assert text.rstrip().endswith("estimates, not rulings")
-    assert len(text) < 900
+    assert len(text) < 1000
 
 
 def test_the_short_text_without_colour_has_no_gap() -> None:

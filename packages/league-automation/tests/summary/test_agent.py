@@ -175,7 +175,7 @@ def test_compose_also_yields_the_short_text_and_the_artifact() -> None:
     """The chat gets the short text and the file; the full text is the record."""
     composed = _agent(ai=FakeAI()).compose(_league(), NOW, simulations=50)
     assert composed.short.startswith("🗡️ GUILLOTINE DAILY · Week 1 · Sunday")
-    assert "🔥 Knives out" in composed.short
+    assert "🔥" not in composed.short
     assert "Full board attached" in composed.short
     assert "📊 THE BOARD" not in composed.short
     assert composed.html.startswith("<!doctype html>")

@@ -146,9 +146,12 @@ These are estimates, never rulings. The footer says so on every post.
 Two things travel to the chat, under one run: a short text, then a file. Ben (2026-09-10,
 after the first dry run): "what I would prefer here is an html that can be sent, similar to a
 claude artifact pattern." The text goes first so a member who never opens the file still has
-the answer -- the header, the colour, the gulag, the block, one line saying the full board is
-attached, and the footer -- and the file is the whole summary: every section below, the board
-as a table with the odds as bars. It is the League Agent's artifact pattern: tapping the file on
+the answer -- the header, the gulag, the block, the sweating list, one line saying the full
+board is attached, and the footer -- and the file is the whole summary: the colour, every
+section below, the board as a table with the odds as bars. Ben's refinements after the first
+real send (2026-09-10): no commentary in the iMessage (the colour leads the file instead), and
+every team line as ``<team> · <risk> · proj <finish> · actual <score>``, with the teams sweating
+behind the block as their own list rather than one crowded line. It is the League Agent's artifact pattern: tapping the file on
 an iPhone opens Quick Look, which renders HTML with inline CSS and nothing else.
 
 The full deterministic text below is still composed on every run: it is what the colour is
@@ -157,9 +160,11 @@ written over and checked against, and what the recap's facts hash covers. In ord
 1. **Header** — `🗡️ GUILLOTINE EOD · Week N · Sunday`, then one line on the day: games final
    this week, teams with players still to play.
 2. **Colour** (optional) — a headline and one or two sentences from the model, see below.
-3. **On the block** — the two teams currently in the adverse position with score, players left
-   and odds; then `Sweating:` for anyone else at 10 percent or more. In a gulag week this is
-   preceded by **the gulag**: the pair, their scores, and each one's odds of losing.
+3. **On the block** — the two teams currently in the adverse position, each as risk, projected
+   finish and actual score; then **Sweating**, the same line for anyone else at 10 percent or
+   more. In a gulag week this is preceded by **the gulag**: the pair, each one's odds of losing,
+   projected finish and score. Before kickoff the actual score is left off; in factual mode the
+   risk and the projection are.
 4. **The board** — every live team, ranked by projected finish (points so far plus remaining
    projection): rank, label, score, projected finish, players left, odds. In `outlook` the score
    and the players-left column are dropped and the projected total stands alone. Eliminated
