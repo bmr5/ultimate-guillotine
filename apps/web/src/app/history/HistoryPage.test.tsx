@@ -36,7 +36,7 @@ describe("HistoryPage", () => {
     expect(screen.getByText("No seasons loaded yet.")).toBeInTheDocument();
   });
 
-  it("lists the winners strip and one card per season, newest first", () => {
+  it("lists one card per season, newest first, and nothing else", () => {
     state.seasons = [
       {
         season: 2024,
@@ -75,6 +75,6 @@ describe("HistoryPage", () => {
       "Champion 2024",
       "Champion 2023",
     ]);
-    expect(screen.getByRole("list", { name: /winners/i })).toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: /winners/i })).toBeNull();
   });
 });

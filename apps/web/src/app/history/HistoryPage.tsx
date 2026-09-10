@@ -1,7 +1,6 @@
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SeasonCard } from "@/history/components/SeasonCard";
-import { WinnersStrip } from "@/history/components/WinnersStrip";
 import { useSeasonResults } from "@/history/useSeasonResults";
 
 export function HistoryPage() {
@@ -26,18 +25,17 @@ export function HistoryPage() {
         </p>
       )}
 
+      {/* The champion cards are the whole page (Ben, 2026-09-10: the winners table said
+          the same thing twice). */}
       {seasons.length > 0 && (
-        <>
-          <WinnersStrip seasons={seasons} />
-          <ul
-            aria-label="Seasons"
-            className="grid grid-cols-1 gap-2 sm:grid-cols-2"
-          >
-            {seasons.map((season) => (
-              <SeasonCard key={season.season} season={season} />
-            ))}
-          </ul>
-        </>
+        <ul
+          aria-label="Seasons"
+          className="grid grid-cols-1 gap-2 sm:grid-cols-2"
+        >
+          {seasons.map((season) => (
+            <SeasonCard key={season.season} season={season} />
+          ))}
+        </ul>
       )}
     </section>
   );
