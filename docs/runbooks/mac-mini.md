@@ -356,6 +356,56 @@ record GUIDs or handles here or anywhere else in this file. Production
 promotion (`DELIVERY_MODE=production` and a production target) is a
 separate, explicit decision by Ben after this gate.
 
+### Shadow mode: hear the league chat, answer in the self-test chat
+
+Until now the listener refused every webhook from a chat with no
+delivery-target row, so in `DELIVERY_MODE=test` the only conversation
+the automation could hear was the self-test chat. A real alert in the
+league chat was invisible: the Registrar never saw the trade Ben
+announced there, because the chat was not one it was allowed to read.
+
+Shadow mode separates the two questions. A **listen-only** target is a
+chat the listener processes messages from and never posts to:
+
+```sh
+ug targets listen --label 'league chat'
+```
+
+With no `--chat-guid` the chat is taken from `PRODUCTION_CHAT_GUID` in
+`.env`, which is what it is for — nobody should have to paste a chat GUID
+at a prompt. The command prints a count and nothing else. `ug targets
+counts` says what is registered, again in counts only. Restart the
+listener afterwards; the allowlist and the trigger are both built at
+startup.
+
+What Ben will then see: **every** `🚨`-worthy alert in the league chat is
+picked up, and the reply arrives in the **self-test chat**, with a
+`TEST-` trade code. The league sees nothing. That holds because delivery
+is resolved separately: `DeliveryService` asks
+`private.delivery_targets` for the row whose `mode` matches
+`DELIVERY_MODE`, and a listen-only row carries no mode at all, so it can
+never be answered with. Each shadow pickup also posts one line to
+`#guillotine-ops` — `Trade Registrar: shadow candidate -> created` (or
+`clarification`, `not_a_trade`, …) — because the answer appears in a chat
+away from the alert and would otherwise be easy to miss. The note carries
+the outcome only: no chat, no text, no sender.
+
+The Trade Advisor is deliberately **not** part of this. It answers
+someone who asked it a question, and a chat we are only shadowing is
+exactly where an answer would be a surprise, so it stays in the self-test
+chat alone.
+
+Turning it off is a row removal, and the automation worker holds no
+DELETE grant on that table, so it is done from the Supabase dashboard or
+a superuser psql:
+
+```sql
+delete from private.delivery_targets where role = 'listen';
+```
+
+Then restart the listener. Nothing in this repository can do it for you,
+which is the same protection the trade tables have.
+
 ### Replay history
 
 `ug trades replay` runs a season of past announcements out of the

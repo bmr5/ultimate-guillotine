@@ -12,6 +12,7 @@ import pytest
 
 from ultimate_guillotine.ai.structured import AIUnavailable, AIUsage
 from ultimate_guillotine.config import Settings
+from ultimate_guillotine.data.repositories import chat_guid_hash
 from ultimate_guillotine.messages.bluebubbles import InboundMessage
 from ultimate_guillotine.sleeper.players import Player
 from ultimate_guillotine.trades import registrar as registrar_module
@@ -241,7 +242,7 @@ class RefusingTrades(FakeTrades):
 
 
 def build(ai, trades=None, delivery=None, conn=None, members=None, runs=None, sleeper=None,
-          sources=None, season=None, contacts=None):
+          sources=None, season=None, contacts=None, shadow=frozenset()):
     settings = Settings(database_url="postgresql://x:y@example.invalid/db", delivery_mode="test",
                         test_chat_guid=CHAT, _env_file=None)
     runs, notifier = runs or FakeRuns(), FakeNotifier()
@@ -251,6 +252,7 @@ def build(ai, trades=None, delivery=None, conn=None, members=None, runs=None, sl
                          contacts_repo=contacts,
                          sources_repo=sources if sources is not None else FakeSources(),
                          sleeper_client=sleeper, season=season,
+                         shadow_chat_hashes=shadow,
                          clock=lambda: datetime(2026, 9, 10, tzinfo=UTC))
     return reg, runs, notifier
 
@@ -594,3 +596,42 @@ def test_the_context_pack_reaches_the_model(monkeypatch: pytest.MonkeyPatch) -> 
     assert "Current NFL week: 4" in ai.users[0]
     # A pack that was built is a pack that did not degrade: no ops note about it.
     assert not [note for note in notifier.ops_sent if "context pack" in note]
+
+
+def test_a_candidate_from_a_listen_only_chat_is_reported_as_shadow() -> None:
+    """The answer to a league alert appears in a different chat, so ops is the
+    only place the pickup is visible. The note carries the outcome and the word
+    `shadow` -- never the chat, the announcement, or who sent it."""
+    reg, _runs, notifier = build(
+        FakeAI(good_extraction()), shadow={chat_guid_hash(CHAT)}
+    )
+
+    assert reg.handle(msg("🚨 Member01 sends Player Alpha to Member02 for 450 FAAB")) == "created"
+
+    assert notifier.ops_sent == ["Trade Registrar: shadow candidate -> created"]
+
+
+def test_a_candidate_from_the_delivery_chat_is_not_reported_as_shadow() -> None:
+    """The self-test chat is where the bot already answers: a note there would be
+    a second copy of something Ben is looking straight at."""
+    reg, _runs, notifier = build(
+        FakeAI(good_extraction()), shadow={chat_guid_hash("iMessage;+;chat-league")}
+    )
+
+    assert reg.handle(msg("🚨 Member01 sends Player Alpha to Member02 for 450 FAAB")) == "created"
+
+    assert notifier.ops_sent == []
+
+
+def test_the_trigger_reads_every_chat_it_is_given() -> None:
+    """Shadow mode at the trigger: one registrar, two chats it reads alerts in."""
+    reg, _, _ = build(FakeAI(error=AssertionError("model must not be called")))
+    trigger = trade_trigger(reg, frozenset({CHAT, "iMessage;+;chat-league"}))
+
+    assert trigger.matches(msg("🚨 Member01 sends Player Alpha to Member02"))
+    assert trigger.matches(
+        msg("🚨 Member01 sends Player Alpha to Member02", chat="iMessage;+;chat-league")
+    )
+    assert not trigger.matches(
+        msg("🚨 Member01 sends Player Alpha to Member02", chat="iMessage;+;chat-elsewhere")
+    )
