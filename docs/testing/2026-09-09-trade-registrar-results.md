@@ -1,6 +1,6 @@
 # Trade Registrar case results
 
-Run 2026-09-10 00:01 UTC against the live extraction model.
+Run 2026-09-10 01:47 UTC against the live extraction model.
 Cases come from `packages/league-automation/tests/fixtures/registrar_cases.json`;
 case text is deliberately not repeated here.
 
@@ -10,7 +10,7 @@ one marked `dropped_upstream`, which the listener discards before the agent is
 reached at all. Asking the model about a message it never sees in production would
 score an answer nothing depends on.
 
-**58 run · 58 passed · 0 failed · 14 skipped (prerequisite state) · 1 dropped upstream.**
+**63 run · 63 passed · 0 failed · 14 skipped (prerequisite state) · 1 dropped upstream.**
 
 | # | category | expected kind | expected status | actual kind | outcome | result | mismatch |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -72,17 +72,23 @@ score an answer nothing depends on.
 | 71 | scale | `permanent` | `created` | `permanent` | `created` | pass | — |
 | 72 | scale | `permanent` | `created` | `permanent` | `created` | pass | — |
 | 73 | unclear | `unclear` | `clarification` | `unclear` | `clarification` | pass | — |
+| 74 | happy | `permanent` | `created` | `permanent` | `created` | pass | — |
+| 75 | unclear | `unclear` | `clarification` | `unclear` | `clarification` | pass | — |
+| 76 | sloppy | `permanent` | `created` | `permanent` | `created` | pass | — |
+| 77 | unclear | `unclear` | `clarification` | `unclear` | `clarification` | pass | — |
+| 78 | rescission | `rescission` | `clarification` | `rescission` | `clarification` | pass | — |
 
 ## Totals by category
 
 | category | run | passed | failed |
 | --- | --- | --- | --- |
-| happy | 16 | 16 | 0 |
-| sloppy | 20 | 20 | 0 |
+| happy | 17 | 17 | 0 |
+| sloppy | 21 | 21 | 0 |
 | not_a_trade | 7 | 7 | 0 |
-| unclear | 6 | 6 | 0 |
+| unclear | 8 | 8 | 0 |
 | privacy | 5 | 5 | 0 |
 | scale | 4 | 4 | 0 |
+| rescission | 1 | 1 | 0 |
 
 ## Skipped
 
