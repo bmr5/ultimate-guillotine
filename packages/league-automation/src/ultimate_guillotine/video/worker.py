@@ -17,12 +17,11 @@ import psycopg
 from ultimate_guillotine.ai.structured import StructuredOutputClient
 from ultimate_guillotine.data.repositories import MemberAliasRepository, RunRepository
 from ultimate_guillotine.messages.delivery import DeliveryService
-from ultimate_guillotine.trades.format import party_labels
 from ultimate_guillotine.trades.models import TradeProposal
 from ultimate_guillotine.trades.repository import TradeRepository
 from ultimate_guillotine.video import pipeline
 from ultimate_guillotine.video.assets import Assets
-from ultimate_guillotine.video.copy import trade_copy
+from ultimate_guillotine.video.copy import on_air_labels, trade_copy
 from ultimate_guillotine.video.jobs import VideoJobRepository
 from ultimate_guillotine.video.script import generate_script
 
@@ -102,7 +101,7 @@ class Worker:
         if trade is None:
             raise LookupError(f"trade {trade_code} is no longer on file")
         proposal = TradeProposal(**trade["terms"])
-        copy = trade_copy(proposal, party_labels(self.members.all_members()))
+        copy = trade_copy(proposal, on_air_labels(self.members.all_members()))
         read = self.write_script(self.script_ai(), copy, self.seconds)
         request = pipeline.RenderRequest(
             copy=copy,

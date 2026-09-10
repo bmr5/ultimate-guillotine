@@ -177,6 +177,22 @@ ffmpeg`, the Higgsfield CLI logged in (`higgsfield auth login`), `uv sync` for P
 `git pull` for `data/media/reference`, and `hermes/guillotine/install.sh` to register the cron
 job. `ug video assets` says whether it is all there.
 
+## Names and facts on air
+
+- The writer gets the trade fact by fact, not just the lower third: the announcement as it
+  was posted, then `X gives Y: …` per asset, the special terms verbatim, the week. The
+  announcement wins any disagreement. This is `TradeCopy.facts` (`video/copy.py`); it exists
+  because the rehearsal trade of 2026-09-10 ("Max agrees to go to gulag for Ben in exchange
+  for $200") came out with the wrong man in the gulag when the read was written from
+  "Ben R gets go to gulag for Ben" alone.
+- An obligation (an `other` asset) shows on the bar in the announcer's words, taken from the
+  special terms: `Max gets $200 · Max agrees to go to gulag for Ben · Week 1`.
+- On-air names: `ON_AIR_NAMES` in `video/copy.py` maps a Sleeper display name to what the
+  video calls the member. Ben (`benray887`) is "the Commish" (his ruling of 2026-09-10).
+  The chat confirmations and the board keep the nickname (`Ben R`). Aliases
+  (`ug members aliases`) are for reading alerts, not for naming people on air; "Commish" is
+  already one of Ben's.
+
 ## Not done yet
 
 - The mini's one-time setup above, and a first request in the self-test chat to prove the

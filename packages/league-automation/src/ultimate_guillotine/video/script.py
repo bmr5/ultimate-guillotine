@@ -34,8 +34,16 @@ SYSTEM = (
     "of disbelief, an abrupt ending. The league is the Sovereign Guillotine League; the "
     "parties are league members, not NFL teams. Waiver money is spoken as plain dollars "
     '("twenty dollars"); never say FAAB on air. State only the facts you are given: never '
-    "invent contract terms, injuries, or reactions from real people. Keep the read at or "
-    "under the word limit, and as short as the facts allow: a plain two-side swap in about "
+    "invent contract terms, injuries, or reactions from real people. The brief lists the "
+    "trade fact by fact under the announcement as it was posted, and the announcement wins "
+    "any disagreement. A side can give a player, waiver dollars, real dollars, or an "
+    "obligation: a favor, a duty, a place taken. In this league the gulag is where the "
+    "week's two lowest scorers fight for survival, and a member may pay another to take his "
+    "place in it: whoever takes the place goes to the gulag, whoever pays stays out. Say who "
+    "does what for whom, and never swap the one who is paid with the one who pays. The "
+    "commissioner is 'the Commish' on air, even where the announcement says Ben. Keep the "
+    "read at or under the word limit, and as short as the facts allow: a plain two-side "
+    "swap in about "
     "twenty words; a bigger deal condensed, never rushed. Fill the whole clip: beats run "
     "from 0.0 to the end of the read in order with no gaps, each with a one-phrase delivery "
     "direction (how he says it, where he looks, a pause, a small self-correction)."
@@ -161,10 +169,14 @@ def _brief(copy: TradeCopy, seconds: float | None) -> str:
         length = (
             f"Clip length: {seconds:g} seconds. Word limit: {word_budget(seconds)} words in total."
         )
+    facts = "".join(f"- {spoken(fact)}\n" for fact in copy.facts)
+    if facts:
+        facts = f"The trade, fact by fact (state only these):\n{facts}"
     return (
         f"{length}\n"
         f"Lower third headline: {spoken(copy.headline)}\n"
         f"Terms, with waiver money in dollars: {spoken(copy.subline)}\n"
+        f"{facts}"
         f"Caption on screen, for context only: {copy.caption}"
     )
 

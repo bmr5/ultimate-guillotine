@@ -55,6 +55,13 @@ def _asset_part(asset: TradeAsset) -> str | None:
     return asset.description or asset.kind
 
 
+def asset_words(asset: TradeAsset) -> str | None:
+    """One asset as chat text (``Player Alpha``, ``450 FAAB``, ``$25``, an ``other``
+    asset's description), or ``None`` when it has nothing to say. Public because
+    the trade video's fact list words assets the way the chat does."""
+    return _asset_part(asset)
+
+
 def _receives(proposal: TradeProposal, member_id: int) -> str:
     """What one party gets: players, then amounts, then other terms."""
     players: list[str] = []
