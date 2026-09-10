@@ -117,13 +117,15 @@ def register(subparsers) -> None:
     listing.add_argument("--limit", type=int, default=10)
     listing.set_defaults(handler=cmd_jobs_list)
     run_one = jobs_sub.add_parser("run", help="render the next queued video and deliver it")
-    run_one.add_argument("--seconds", type=int, default=8, help="length of the voiced clip")
+    run_one.add_argument(
+        "--seconds", type=int, default=None, help="clip length; default fits the read"
+    )
     run_one.add_argument(
         "--verbose", action="store_true", help="say so when there is nothing to do"
     )
     run_one.set_defaults(handler=cmd_jobs_run)
     watch = jobs_sub.add_parser("watch", help="keep rendering queued videos until stopped")
-    watch.add_argument("--seconds", type=int, default=8)
+    watch.add_argument("--seconds", type=int, default=None)
     watch.add_argument("--interval", type=int, default=30, help="seconds between looks")
     watch.set_defaults(handler=cmd_jobs_watch)
     add = jobs_sub.add_parser("add", help="queue a video for a trade code by hand")
@@ -139,7 +141,10 @@ def add_script_args(parser: argparse.ArgumentParser) -> None:
         "--no-ai", action="store_true", help="use the template read instead of the model"
     )
     parser.add_argument(
-        "--generate-seconds", type=int, default=8, help="length of the generated clip"
+        "--generate-seconds",
+        type=int,
+        default=None,
+        help="length of the generated clip; default is as long as the read needs (4 to 15)",
     )
 
 
@@ -237,7 +242,7 @@ def cmd_cost(args: argparse.Namespace) -> int:
 
 def cmd_script(args: argparse.Namespace) -> int:
     copy = resolve_copy(args)
-    print(format_script(resolve_script(copy, args), args.generate_seconds))
+    print(format_script(resolve_script(copy, args)))
     return 0
 
 
@@ -250,7 +255,7 @@ def cmd_render(args: argparse.Namespace) -> int:
         music_gain = VOICED_MUSIC_GAIN_DB if args.voiced else 0.0
     script = resolve_script(copy, args) if args.voiced else None
     if script is not None:
-        print(format_script(script, args.generate_seconds))
+        print(format_script(script))
     req = RenderRequest(
         copy=copy,
         base=base,

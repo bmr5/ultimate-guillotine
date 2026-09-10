@@ -152,6 +152,15 @@ def test_script_with_no_ai_prints_the_template_read(capsys) -> None:
     assert out.strip().endswith("words for 12 s (budget 31)")
 
 
+def test_script_sizes_the_clip_to_the_read_by_default(capsys) -> None:
+    args = parse(
+        "script", "--no-ai", "--headline", "SOURCES: X TRADED TO Y", "--subline", "Y gets X"
+    )
+    assert args.handler(args) == 0
+    # 17 words at 2.6 a second, plus a second of air: an 8 s clip.
+    assert "words for 8 s (budget 20)" in capsys.readouterr().out
+
+
 def test_script_from_typed_text_needs_no_model(capsys) -> None:
     args = parse(
         "script", "--script", "Breaking news. Josh is gone.", "--headline", "h", "--subline", "s"

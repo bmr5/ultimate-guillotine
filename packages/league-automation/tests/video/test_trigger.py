@@ -96,7 +96,7 @@ def test_a_reply_to_the_alert_queues_that_trade_and_says_so() -> None:
     assert jobs.enqueued == [(5, "T-2026-003", "reply-1")]
     assert conn.commits == 1
     assert delivery.sent == [
-        (AGENT, "🎬 Making the video for T-2026-003 — usually 5 to 10 minutes.")
+        (AGENT, "🎬 On it — the video for T-2026-003 usually takes 5 to 10 minutes.")
     ]
 
 
@@ -106,7 +106,7 @@ def test_a_code_in_the_text_works_without_a_reply() -> None:
         msg("@bot video for TEST-2026-002 please")
     )
     assert jobs.enqueued[0][1] == "T-2026-003"
-    assert delivery.sent[0][1].startswith("🎬 Making the video for T-2026-003")
+    assert delivery.sent[0][1].startswith("🎬 On it — the video for T-2026-003")
 
 
 def test_a_reply_to_the_bots_confirmation_resolves_through_the_outbound_lookup() -> None:
@@ -154,7 +154,7 @@ def test_the_trigger_listens_only_in_the_alert_chats_and_ignores_its_own_posts()
     assert trigger.matches(msg("@bot create trade video"))
     assert not trigger.matches(msg("@bot create trade video", chat=OTHER_CHAT))
     assert not trigger.matches(msg("@bot advice please"))
-    signed = "🎬 Making the video for T-2026-003 — usually 5 to 10 minutes."
+    signed = "🎬 On it — the video for T-2026-003 usually takes 5 to 10 minutes."
     assert not is_signed(signed) or not trigger.matches(msg(signed))
     trigger.handle(msg("@bot create trade video", guid="g9"))
     assert handled == ["g9"]

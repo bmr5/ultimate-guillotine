@@ -23,9 +23,11 @@ from ultimate_guillotine.video.assets import (
 from ultimate_guillotine.video.card import Layout, render_card
 from ultimate_guillotine.video.copy import TradeCopy
 from ultimate_guillotine.video.prompt import footage_prompt, voiced_prompt
-from ultimate_guillotine.video.script import Script, template_script
+from ultimate_guillotine.video.script import Script, script_seconds, template_script
 
 STAMP = "%Y%m%d-%H%M%S"
+#: Silent generated footage has no read to size it; 8 s renders in about five minutes.
+SILENT_SECONDS = 8
 
 
 class RenderError(RuntimeError):
@@ -41,7 +43,9 @@ class RenderRequest:
     keep_voice: bool = False
     music_gain_db: float = 0.0
     name: str = "trade"
-    generate_seconds: int = 8
+    #: Length of generated footage. ``None`` means: as long as the read needs
+    #: when voiced (see ``script.seconds_for``), 8 s when silent.
+    generate_seconds: int | None = None
     resolution: str = "720p"
     #: Generated footage that speaks: the read goes into the prompt as dialogue,
     #: Seedance generates the voice, and it is kept under the music.
@@ -97,13 +101,15 @@ def prepare(
     elif req.base == "generated":
         if req.voiced:
             script = req.script or template_script(req.copy, req.generate_seconds)
-            prompt = voiced_prompt(req.copy, script, req.generate_seconds)
+            seconds = req.generate_seconds or script_seconds(script)
+            prompt = voiced_prompt(req.copy, script, seconds)
         else:
-            prompt = footage_prompt(req.copy, req.generate_seconds)
+            seconds = req.generate_seconds or SILENT_SECONDS
+            prompt = footage_prompt(req.copy, seconds)
         request = hf.GenerateRequest(
             prompt=prompt,
             reference_video=assets.reference_video,
-            duration=req.generate_seconds,
+            duration=seconds,
             resolution=req.resolution,
             aspect_ratio=req.aspect,
             generate_audio=req.voiced,

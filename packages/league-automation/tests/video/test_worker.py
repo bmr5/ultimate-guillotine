@@ -101,7 +101,9 @@ class FakeConn:
 
 
 def fake_script(_client, copy, seconds):
-    return Script(beats=[Beat(start=0, end=seconds, direction="urgent", text="Breaking news.")])
+    return Script(
+        beats=[Beat(start=0, end=seconds or 4, direction="urgent", text="Breaking news.")]
+    )
 
 
 def worker(tmp_path: Path, queued: VideoJob | None, render) -> tuple[Worker, dict]:
@@ -135,6 +137,7 @@ def rendered(tmp_path: Path):
     def render(request, assets, *, ffmpeg, ffprobe, report):
         assert request.voiced and request.base == "generated" and request.name == "TEST-2026-002"
         assert request.script.read == "Breaking news." and request.music_gain_db == -12.0
+        assert request.generate_seconds is None
         assert request.copy.headline == "SOURCES: RHAMONDRE TRADED TO MEMBER02"
         report("higgsfield job j1 queued")
         out = tmp_path / "TEST-2026-002-x.mp4"

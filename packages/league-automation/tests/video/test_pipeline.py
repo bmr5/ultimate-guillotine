@@ -151,6 +151,8 @@ def test_voiced_render_puts_the_read_in_the_prompt_and_keeps_the_voice(assets: A
     req = seen["req"]
     assert req.generate_audio is True
     assert '"Breaking news."' in req.prompt and "his own voice" in req.prompt
+    # No length was given: the 23-word template read for this trade needs 10 s.
+    assert req.duration == 10 and "10 seconds" in req.prompt
     assert job.composite.keep_voice is True and job.composite.music_gain_db == -12
     assert "amix=inputs=2" in " ".join(job.command)
 
@@ -171,3 +173,24 @@ def test_voiced_render_over_silent_footage_does_not_try_to_mix_a_voice(assets: A
         now=now,
     )
     assert job.composite.keep_voice is False
+
+
+def test_a_given_length_still_wins_over_the_read(assets: Assets) -> None:
+    seen = {}
+
+    def fake_generate(req, dest):
+        seen["req"] = req
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(b"")
+        return dest
+
+    prepare(
+        RenderRequest(COPY, base="generated", name="voiced", voiced=True, generate_seconds=12),
+        assets,
+        ffmpeg="ffmpeg",
+        ffprobe="ffprobe",
+        probe=fake_probe,
+        generate=fake_generate,
+        now=now,
+    )
+    assert seen["req"].duration == 12
