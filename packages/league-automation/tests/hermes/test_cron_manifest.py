@@ -60,6 +60,7 @@ def test_the_scheduled_agents_are_the_ones_the_cli_records() -> None:
     assert {job["agent"] for job in JOBS} == {
         "health", "gap-fill", "sleeper-sync", "run-audit", "players-sync",
         "nfl-state", "projections-sync", "scores-sync", "draft-sync", "transactions-sync",
+        "eod-summary",
     }
 
 
@@ -134,3 +135,15 @@ def test_the_player_card_jobs_are_pinned() -> None:
         "transactions-sync", "every 10m", "discord:#guillotine-ops",
     )
     assert int(transactions["max_gap_minutes"]) >= 30
+
+
+def test_the_eod_summary_posts_once_a_night_after_the_late_games() -> None:
+    """Ben's ask was end-of-day summaries. 11:50 PM Central clears the Thursday and
+    Sunday night games and most Monday nights; a game still on the field is reported
+    as such. The gap budget is the daily run-audit's, and the job speaks in the ops
+    channel because it fires once a day, so a failure is one line, not a flood."""
+    job = next(j for j in JOBS if j["name"] == "guillotine-eod-summary")
+    assert (job["agent"], job["schedule"], job["deliver"]) == (
+        "eod-summary", "50 23 * * *", "discord:#guillotine-ops",
+    )
+    assert int(job["max_gap_minutes"]) > 24 * 60

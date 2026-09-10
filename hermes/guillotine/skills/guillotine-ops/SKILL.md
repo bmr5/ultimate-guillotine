@@ -131,6 +131,23 @@ somebody adds to `private.delivery_targets`.
 It never registers a trade. Announce a trade with a 🚨 alert and the Trade
 Registrar logs it.
 
+## Compose tonight's EOD summary without sending
+
+```
+cd <repo> && uv run --project packages/league-automation ug summary eod --dry-run
+```
+
+A safe dry run: it prints the nightly summary -- every team's score and projected
+finish, the gulag pair, who is on the block and their odds, the roster problems,
+the day's moves -- and writes nothing, sends nothing, and records no run.
+`--no-ai` skips the model's headline; `--json` prints the fact packet instead and
+makes no model call; `--fixture` answers out of the built-in league with no
+database at all.
+
+The scheduled job (`guillotine-eod-summary`, 11:50 PM) posts the same message to
+the chat through the delivery layer and previews it in `#guillotine-drafts`. Run
+again the same night it prints `eod: already_sent`; `--force` posts again.
+
 ## List league members and how many nicknames each has
 
 ```

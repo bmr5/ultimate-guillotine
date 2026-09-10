@@ -138,3 +138,16 @@ jobs:
     script: guillotine_sleeper_transactions.sh
     deliver: "discord:#guillotine-ops"
     max_gap_minutes: 30
+  # The nightly summary: every roster's score and projected finish, who is on the
+  # block, the gulag pair, and the odds. 11:50 PM Central clears the Thursday and
+  # Sunday night games and most Monday nights -- a game still on the field at that
+  # hour is reported as still on the field. Once a day, so it speaks in the channel.
+  # The summary itself goes to the chat through the delivery layer (self-test chat in
+  # test mode) and is previewed in #guillotine-drafts; the stdout Hermes delivers is
+  # one status line. 1500 is the run-audit's daily budget.
+  - name: guillotine-eod-summary
+    agent: eod-summary
+    schedule: "50 23 * * *"
+    script: guillotine_eod_summary.sh
+    deliver: "discord:#guillotine-ops"
+    max_gap_minutes: 1500

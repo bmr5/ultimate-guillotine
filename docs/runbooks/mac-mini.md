@@ -861,3 +861,123 @@ scripts/mac-mini/install_listener.sh
 `disabled` has no chat to answer in, so every trigger — the Advisor, the
 Registrar and the ping — is left unregistered and the listener still
 ingests messages without answering any of them.
+
+## 11. EOD Summary rollout
+
+The EOD Summary posts one signed message a night, at 11:50 PM Mac mini time: every
+live team's score and projected finish, the gulag pair and the two teams on the
+block with their odds, the roster problems worth fixing before the next kickoff,
+and the day's moves. Spec:
+`docs/superpowers/specs/2026-09-10-eod-summary-agent-design.md`. The odds are
+Monte Carlo estimates over Sleeper's projections and the footer says so on every
+post; nothing here is a ruling.
+
+Ben asked for it on 2026-09-10 and was not available to answer questions, so the
+design section "Decisions Taken Without Ben" lists every call made in his absence
+and where to change each one.
+
+### Install
+
+On the Mac mini, re-run the profile installer. It registers the
+`guillotine-eod-summary` cron job by name (idempotent) and reloads the expected
+runs the audit compares against:
+
+```bash
+hermes/guillotine/install.sh
+```
+
+Confirm with `HERMES_HOME=~/.hermes/profiles/guillotine hermes cron list` — the
+job is listed at `50 23 * * *` — and `ug ops health` prints nothing new (until
+the first fire the audit reports `Expected job guillotine-eod-summary has never
+run`, which is correct and clears at 11:50 PM).
+
+### The safe dry runs
+
+Three commands, none of which writes, sends, or records a run:
+
+| Command | What it does |
+| --- | --- |
+| `ug summary eod --fixture --no-ai` | the message over the built-in 18-team league: no database, no Sleeper, no Hermes |
+| `ug summary eod --dry-run` | the message over the real league, printed; add `--no-ai` to skip the colour |
+| `ug summary eod --json` | the fact packet the message is built from -- every team, every starter, every number -- with no model call |
+
+`--seed N` and `--simulations N` make a run reproducible and faster. Read the
+`--json` output before trusting a night's post: every starter's status (`done`,
+`remaining`, `live`, `out`, `bye`, `empty`) is there, and a starter the schedule
+put in the wrong state is the likeliest way an odds number is wrong.
+
+### What the scheduled run does
+
+1. Reads the week; outside the regular season it prints `eod: skipped` and stays
+   green.
+2. Loads the league, the scores, the players directory, the gulag events, tonight's
+   moves, and Sleeper's schedule.
+3. Simulates 10,000 weeks when the schedule was read and projections cover at
+   least 95 percent of the starters still to play; otherwise composes a factual
+   message with no percentages and names the reason in the footer.
+4. Asks the `guillotine` profile for a headline and a blurb, verifies that every
+   number in them is in the facts and that nothing looks like private data, and
+   drops the colour if not.
+5. Writes `public.survival_snapshots` and a `public.recaps` draft, previews the
+   message in `#guillotine-drafts` (every mode but production), sends it through
+   the delivery layer (self-test chat in test mode), and marks the recap `sent`.
+
+The stdout Hermes delivers to `#guillotine-ops` is one line:
+`eod: sent, week N, odds yes, model <model>`. Under `--quiet` (the cron job)
+nothing on success.
+
+### What `#guillotine-ops` may say
+
+| Line | Means |
+| --- | --- |
+| `EOD summary colour disabled: hermes CLI not found` | no Hermes on the machine; the message went out without colour |
+| `EOD summary colour unavailable: <class>` | the model call failed; same |
+| `EOD summary colour declined: <reason>` | the verifier threw the model's answer out; same |
+| `eod-summary: run failed at <time> UTC` | the night failed outright -- no snapshot, a delivery mismatch; see the run's `error` |
+| `EOD summary could not deliver: <reason>` (alerts) | the delivery target did not match; the recap stays a draft |
+
+### Gate pending
+
+With `DELIVERY_MODE=test`. Fill the date and outcome on each line; do not record
+message text here.
+
+- [ ] 0. `ug summary eod --fixture --no-ai` prints a message with a gulag section,
+  a block, an 18-line board, a roster watch and a moves line.
+  _date:_ · _outcome:_
+- [ ] 1. `ug summary eod --dry-run` against the real league prints a message
+  whose board names all 18 teams by the labels the site shows and whose footer
+  carries tonight's scores stamp.
+  _date:_ · _outcome:_
+- [ ] 2. `ug summary eod --json` shows every starter in the right state for the
+  night (Thursday: one game `done`; Sunday: Monday's players `remaining`).
+  _date:_ · _outcome:_
+- [ ] 3. The 11:50 PM run lands in `#guillotine-drafts` and the self-test chat,
+  signed, and `#guillotine-feed` shows the mirror.
+  _date:_ · _outcome:_
+- [ ] 4. `ug summary eod` run again the same night prints `eod: already_sent`
+  and sends nothing; `ug summary eod --force` sends again.
+  _date:_ · _outcome:_
+- [ ] 5. Read the post back: no phone number, handle, chat identifier or dues
+  mention; every number in the colour appears in the sections below it.
+  _date:_ · _outcome:_
+- [ ] 6. Week 2's post carries a gulag section naming week 1's bottom two, marked
+  `(pairing inferred from last week's scores)` until an Adjudicator exists.
+  _date:_ · _outcome:_
+
+### Verify
+
+Counts only:
+
+```sql
+select week, game_window, simulations, model_version, jsonb_array_length(results)
+from public.survival_snapshots order by id desc limit 5;
+
+select week, recap_kind, publication_state, length(body), prompt_version
+from public.recaps where recap_kind like 'eod:%' order by id desc limit 5;
+```
+
+### Turning it off in a hurry
+
+`DELIVERY_MODE=disabled` keeps the preview in `#guillotine-drafts` and sends
+nothing; the recap stays a draft. To stop the job itself, disable
+`guillotine-eod-summary` under the `guillotine` profile with `hermes cron`.
