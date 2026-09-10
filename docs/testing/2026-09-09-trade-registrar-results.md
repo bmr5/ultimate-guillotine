@@ -1,6 +1,6 @@
 # Trade Registrar case results
 
-Run 2026-09-09 23:37 UTC against the live extraction model.
+Run 2026-09-10 00:01 UTC against the live extraction model.
 Cases come from `packages/league-automation/tests/fixtures/registrar_cases.json`;
 case text is deliberately not repeated here.
 
@@ -10,7 +10,7 @@ one marked `dropped_upstream`, which the listener discards before the agent is
 reached at all. Asking the model about a message it never sees in production would
 score an answer nothing depends on.
 
-**57 run · 55 passed · 2 failed · 14 skipped (prerequisite state) · 1 dropped upstream.**
+**58 run · 58 passed · 0 failed · 14 skipped (prerequisite state) · 1 dropped upstream.**
 
 | # | category | expected kind | expected status | actual kind | outcome | result | mismatch |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -56,10 +56,10 @@ score an answer nothing depends on.
 | 54 | not_a_trade | `not_a_trade` | `not_a_trade` | `not_a_trade` | `not_a_trade` | pass | — |
 | 56 | not_a_trade | `not_a_trade` | `not_a_trade` | `not_a_trade` | `not_a_trade` | pass | — |
 | 57 | not_a_trade | `not_a_trade` | `not_a_trade` | `-` | `not-a-candidate` | pass | — |
-| 58 | not_a_trade | `not_a_trade` | `not_a_trade` | `unclear` | `clarification` | FAIL | kind unclear, outcome clarification |
+| 58 | not_a_trade | `not_a_trade` | `not_a_trade` | `not_a_trade` | `not_a_trade` | pass | — |
 | 59 | unclear | `unclear` | `clarification` | `unclear` | `clarification` | pass | — |
 | 60 | unclear | `unclear` | `clarification` | `unclear` | `clarification` | pass | — |
-| 61 | unclear | `unclear` | `clarification` | `permanent` | `clarification` | FAIL | kind permanent |
+| 61 | unclear | `unclear` | `clarification` | `unclear` | `clarification` | pass | — |
 | 62 | unclear | `rental` | `clarification` | `rental` | `clarification` | pass | — |
 | 63 | unclear | `unclear` | `clarification` | `unclear` | `clarification` | pass | — |
 | 64 | privacy | `permanent` | `created` | `permanent` | `created` | pass | — |
@@ -71,6 +71,7 @@ score an answer nothing depends on.
 | 70 | scale | `permanent` | `created` | `permanent` | `created` | pass | — |
 | 71 | scale | `permanent` | `created` | `permanent` | `created` | pass | — |
 | 72 | scale | `permanent` | `created` | `permanent` | `created` | pass | — |
+| 73 | unclear | `unclear` | `clarification` | `unclear` | `clarification` | pass | — |
 
 ## Totals by category
 
@@ -78,8 +79,8 @@ score an answer nothing depends on.
 | --- | --- | --- | --- |
 | happy | 16 | 16 | 0 |
 | sloppy | 20 | 20 | 0 |
-| not_a_trade | 7 | 6 | 1 |
-| unclear | 5 | 4 | 1 |
+| not_a_trade | 7 | 7 | 0 |
+| unclear | 6 | 6 | 0 |
 | privacy | 5 | 5 | 0 |
 | scale | 4 | 4 | 0 |
 
