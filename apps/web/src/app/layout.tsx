@@ -19,8 +19,8 @@ import { MusicToggle } from "@/music/MusicToggle";
  */
 const LINKS: [to: string, label: string, end: boolean][] = [
   ["/", "Board", true],
-  ["/draft", "Draft", false],
   ["/trades", "Trades", false],
+  ["/draft", "Draft", false],
   ["/history", "History", false],
 ];
 
