@@ -52,6 +52,7 @@ def test_sync_players_upserts_and_records_time(conn) -> None:
 def test_sync_players_deactivates_players_the_feed_dropped(conn) -> None:
     """A player who retires disappears from Sleeper's dump. Deleting the row
     would orphan every trade that names it, so the row is marked inactive."""
+
     class FakeClient:
         def __init__(self, raw):
             self._raw = raw
@@ -70,14 +71,13 @@ def test_sync_players_deactivates_players_the_feed_dropped(conn) -> None:
 
     assert dropped not in {p.sleeper_player_id for p in repo.all_active()}
     with conn.cursor() as cur:
-        cur.execute(
-            "select active from public.players where sleeper_player_id = %s", (dropped,)
-        )
+        cur.execute("select active from public.players where sleeper_player_id = %s", (dropped,))
         assert cur.fetchone() == (False,)
 
 
 def test_sync_players_refuses_an_empty_feed(conn) -> None:
     """A thin 200 from Sleeper must not flip the whole directory inactive."""
+
     class FakeClient:
         def __init__(self, raw):
             self._raw = raw
@@ -122,6 +122,7 @@ def test_sync_players_writes_and_clears_injury_status(conn) -> None:
     """The flag is a current-state fact, so it has to come *off* a player who
     recovers as readily as it goes on -- an upsert that only ever set it would
     leave last month's `Out` on a healthy starter forever."""
+
     class FakeClient:
         def __init__(self, raw):
             self._raw = raw
@@ -160,6 +161,7 @@ def test_sync_players_survives_a_status_it_has_never_seen(conn) -> None:
     over one string, on a job that had just read 12,000 records correctly. Now the
     run writes everything, stores no flag for that player, and reports the count so
     ops can go and read about it."""
+
     class FakeClient:
         def __init__(self, raw):
             self._raw = raw

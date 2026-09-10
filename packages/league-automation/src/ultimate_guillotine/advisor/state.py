@@ -393,9 +393,7 @@ class SnapshotRepository:
                     lineup_position=row[5],
                     slot_index=row[6],
                     week=week,
-                    projected_points=MappingProxyType(
-                        dict(points_by_player.get(row[1], {}))
-                    ),
+                    projected_points=MappingProxyType(dict(points_by_player.get(row[1], {}))),
                 )
             )
             stamps.append(row[7])
@@ -413,9 +411,7 @@ class SnapshotRepository:
         for row in team_rows:
             team_id = row[0]
             if row[9] is None:
-                raise SnapshotUnavailable(
-                    f"no public.team_season_state row for team {team_id}"
-                )
+                raise SnapshotUnavailable(f"no public.team_season_state row for team {team_id}")
             stamps.append(row[9])
 
             by_week = team_weeks.get(team_id, {})

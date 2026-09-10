@@ -58,8 +58,17 @@ def test_only_the_projections_baseline_delivers_to_the_ops_channel() -> None:
 
 def test_the_scheduled_agents_are_the_ones_the_cli_records() -> None:
     assert {job["agent"] for job in JOBS} == {
-        "health", "gap-fill", "sleeper-sync", "run-audit", "players-sync",
-        "nfl-state", "projections-sync", "scores-sync",
+        "health",
+        "gap-fill",
+        "sleeper-sync",
+        "run-audit",
+        "players-sync",
+        "nfl-state",
+        "projections-sync",
+        "scores-sync",
+        "transactions-sync",
+        "eod-summary",
+        "video-jobs",
     }
 
 
@@ -83,9 +92,9 @@ def test_the_scores_jobs_fire_every_minute_in_a_game_window() -> None:
     }
     assert schedules == {
         "guillotine-sleeper-scores": "*/5 * * * *",
-        "guillotine-sleeper-scores-thursday": "* 20-23 * * 4",
-        "guillotine-sleeper-scores-sunday": "* 13-23 * * 0",
-        "guillotine-sleeper-scores-monday": "* 20-23 * * 1",
+        "guillotine-sleeper-scores-thursday": "* 19-23 * * 4",
+        "guillotine-sleeper-scores-sunday": "* 12-23 * * 0",
+        "guillotine-sleeper-scores-monday": "* 19-23 * * 1",
     }
     # The gap budget has to clear the *baseline*, not the burst: outside a game window the
     # */15 row is the only thing firing, and a budget under it would alarm every Tuesday.
@@ -99,9 +108,9 @@ def test_every_scores_job_stays_off_the_ops_channel() -> None:
     post the same line sixty times an hour. The baseline is local too — at */15 it is still
     four an hour — and `run_scheduled_with_notes` posts the one note that matters, on the
     edge, while `ug ops health` is the standing answer in between."""
-    assert {
-        job["deliver"] for job in JOBS if job["script"] == "guillotine_sleeper_scores.sh"
-    } == {"local"}
+    assert {job["deliver"] for job in JOBS if job["script"] == "guillotine_sleeper_scores.sh"} == {
+        "local"
+    }
 
 
 def test_every_script_template_is_used_by_a_job() -> None:
@@ -118,3 +127,46 @@ def test_the_players_sync_runs_often_enough_to_track_injuries() -> None:
     job = next(j for j in JOBS if j["name"] == "guillotine-players-sync")
     assert job["schedule"] == "0 */4 * * *"
     assert int(job["max_gap_minutes"]) > 4 * 60
+
+
+def test_the_transactions_job_is_pinned_and_the_draft_has_none() -> None:
+    """The transaction log moves any time a manager does, so it runs with the roster sync's
+    cadence and speaks in the channel like it. The auction is a fact that changes once a
+    year and is synced by hand -- Ben (2026-09-10): "drop the cron it's a waste" -- so no
+    job may name `draft-sync`."""
+    assert not any(j["agent"] == "draft-sync" for j in JOBS)
+    transactions = next(j for j in JOBS if j["name"] == "guillotine-sleeper-transactions")
+    assert (transactions["agent"], transactions["schedule"], transactions["deliver"]) == (
+        "transactions-sync",
+        "every 10m",
+        "discord:#guillotine-ops",
+    )
+    assert int(transactions["max_gap_minutes"]) >= 30
+
+
+def test_the_summary_posts_on_the_mornings_ben_named() -> None:
+    """Ben (2026-09-10): a break on Tuesdays and Fridays; 8:15 AM Wednesday, Sunday
+    and Monday; 10:12 AM Thursday and Saturday, after each waiver round -- Ben saw them
+    finish at 10:08. Two rows, one agent, like the projections
+    jobs: the per-agent run key and the health check both see one job. The gap
+    budget clears the Monday-to-Wednesday gap."""
+    rows = {j["name"]: j for j in JOBS if j["agent"] == "eod-summary"}
+    assert set(rows) == {"guillotine-eod-summary", "guillotine-eod-summary-waivers"}
+    assert {j["script"] for j in rows.values()} == {"guillotine_eod_summary.sh"}
+    assert {j["deliver"] for j in rows.values()} == {"discord:#guillotine-ops"}
+    assert rows["guillotine-eod-summary"]["schedule"] == "15 8 * * 0,1,3"
+    assert rows["guillotine-eod-summary-waivers"]["schedule"] == "12 10 * * 4,6"
+    assert all(int(j["max_gap_minutes"]) > 48 * 60 for j in rows.values())
+
+
+def test_the_video_worker_polls_the_queue_and_speaks_in_the_ops_channel() -> None:
+    """A request from the chat should be picked up within a couple of minutes, and a
+    render that fails (78 credits each) is worth a line in the channel. The gap budget
+    clears a render that is still running when the next fire comes round."""
+    job = next(j for j in JOBS if j["name"] == "guillotine-video-jobs")
+    assert (job["agent"], job["schedule"], job["deliver"]) == (
+        "video-jobs",
+        "every 2m",
+        "discord:#guillotine-ops",
+    )
+    assert int(job["max_gap_minutes"]) >= 30

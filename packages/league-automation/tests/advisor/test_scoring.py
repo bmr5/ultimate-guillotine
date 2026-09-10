@@ -287,9 +287,7 @@ def test_surplus_never_offers_a_starter() -> None:
     replacement = replacement_levels(snapshot)
     for team in snapshot.teams:
         for position in POSITIONS:
-            assert all(
-                h.slot == "bench" for h in team_surplus(team, position, replacement)
-            )
+            assert all(h.slot == "bench" for h in team_surplus(team, position, replacement))
 
 
 def test_score_league_scores_every_member_the_same_way() -> None:
@@ -414,9 +412,7 @@ def test_every_number_the_scoring_produces_is_a_decimal() -> None:
     snapshot = fixture_snapshot()
     assert all(isinstance(v, Decimal) for v in replacement_levels(snapshot).values())
     assert all(
-        isinstance(value, Decimal)
-        for slots in league_medians(snapshot).values()
-        for value in slots
+        isinstance(value, Decimal) for slots in league_medians(snapshot).values() for value in slots
     )
     scores = score_league(snapshot)
     assert all(

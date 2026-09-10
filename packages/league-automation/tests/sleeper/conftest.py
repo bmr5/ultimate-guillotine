@@ -16,7 +16,12 @@ from pathlib import Path
 
 import pytest
 
-from ultimate_guillotine.sleeper.models import SleeperLeague, SleeperRoster, SleeperUser
+from ultimate_guillotine.sleeper.models import (
+    SleeperDraft,
+    SleeperLeague,
+    SleeperRoster,
+    SleeperUser,
+)
 
 FIXTURES = Path(__file__).parent.parent / "fixtures" / "sleeper"
 
@@ -49,6 +54,15 @@ class FakeClient:
 
     def get_rosters(self, league_id: str) -> list[SleeperRoster]:
         return [SleeperRoster.model_validate(item) for item in self._roster_payload]
+
+    def get_draft(self, draft_id: str) -> SleeperDraft:
+        return SleeperDraft.model_validate(load_fixture("draft_2026.json"))
+
+    def get_draft_picks(self, draft_id: str) -> list[dict]:
+        return load_fixture("draft_picks_2026.json")
+
+    def get_transactions(self, league_id: str, week: int) -> list[dict]:
+        return load_fixture("transactions_2026_w1.json") if week == 1 else []
 
 
 @pytest.fixture

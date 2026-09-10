@@ -12,10 +12,12 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { REVEAL_CLASS, revealStyle } from "@/motion/reveal";
 
 import { announcedByLine } from "../derive/announcedBy";
 import { formerManagerPhrase } from "../derive/ownerLabel";
 import { tradeDateLine } from "../derive/tradeDate";
+import { TRADE_CARD_HEIGHT_CLASS } from "../layout";
 import type { CatalogTrade } from "../types";
 
 /**
@@ -41,7 +43,7 @@ const TRADE_CODE_DESCRIPTION =
  * quotation is not a grid. Room for the three header lines, a three-line quotation and a row
  * of chips; anything longer is what the modal is for.
  */
-const CARD_HEIGHT_CLASS = "h-44";
+const CARD_HEIGHT_CLASS = TRADE_CARD_HEIGHT_CLASS;
 
 /**
  * What sits between two owners in the title. A trade goes both ways, so the arrow does too —
@@ -224,7 +226,17 @@ function TradeDetail({
   );
 }
 
-export function TradeCard({ trade }: { trade: CatalogTrade }) {
+/**
+ * `revealIndex` is the card's place in the page's cascade (`src/motion/reveal.ts`); the page
+ * counts it from below its strips. Defaulted so a card rendered on its own settles first.
+ */
+export function TradeCard({
+  trade,
+  revealIndex = 0,
+}: {
+  trade: CatalogTrade;
+  revealIndex?: number;
+}) {
   const category = categoryLabel(trade);
   const owners = ownersTitle(trade);
   // A trade whose parties were never recorded has no owners to be named between, so it keeps
@@ -233,7 +245,11 @@ export function TradeCard({ trade }: { trade: CatalogTrade }) {
   const title = owners === "" ? category : owners;
 
   return (
-    <li data-rescinded={trade.rescinded} className="list-none">
+    <li
+      data-rescinded={trade.rescinded}
+      className={cn("list-none", REVEAL_CLASS)}
+      style={revealStyle(revealIndex)}
+    >
       <Dialog>
         {/* `relative` so the trigger's stretched hit area below is the card and not the page. */}
         <Card

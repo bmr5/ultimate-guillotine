@@ -3,6 +3,8 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { TRADES_LOADING_LABEL } from "@/history/components/TradesSkeleton";
+
 import { TradesPage } from "./TradesPage";
 
 const trades = vi.hoisted(() => ({ value: [] as unknown[] }));
@@ -182,6 +184,10 @@ describe("TradesPage", () => {
     // of trades past the reader; a URL that names its own season has nothing to wait for.
     expect(screen.queryAllByRole("listitem")).toHaveLength(0);
     expect(screen.queryByText(/No trades/)).not.toBeInTheDocument();
+    // And says so: a page of grey blocks with no word on them reads as frozen, not loading.
+    expect(
+      screen.getByRole("status", { name: TRADES_LOADING_LABEL }),
+    ).toBeInTheDocument();
   });
 
   it("shows every season when the current one cannot be read", () => {

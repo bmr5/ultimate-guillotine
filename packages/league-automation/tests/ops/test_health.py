@@ -141,10 +141,7 @@ def test_the_line_quotes_the_tightest_budget_of_the_agents_jobs() -> None:
     runs = FakeRuns({"projections-sync": NOW - timedelta(minutes=60)})
 
     assert missed_runs(NOW, runs, jobs) == [
-        (
-            "Expected job guillotine-sleeper-projections-sunday last ran 60 minutes "
-            "ago (limit 45)"
-        )
+        ("Expected job guillotine-sleeper-projections-sunday last ran 60 minutes ago (limit 45)")
     ]
 
 
@@ -175,9 +172,12 @@ def test_a_succeeding_or_never_finished_agent_is_not_reported() -> None:
     fresh = {"projections-sync": NOW - timedelta(minutes=4)}
 
     assert failing_agents(FakeRuns(fresh), _projections_jobs()) == []
-    assert failing_agents(
-        FakeRuns(fresh, finished={"projections-sync": "succeeded"}), _projections_jobs()
-    ) == []
+    assert (
+        failing_agents(
+            FakeRuns(fresh, finished={"projections-sync": "succeeded"}), _projections_jobs()
+        )
+        == []
+    )
 
 
 def test_four_cron_rows_sharing_one_agent_are_one_failure_line() -> None:
@@ -191,4 +191,46 @@ def test_four_cron_rows_sharing_one_agent_are_one_failure_line() -> None:
     # jobs this check speaks for.
     assert failing_agents(runs, _projections_jobs()) == [
         "projections-sync: last run failed at 2026-09-08 11:56 UTC"
+    ]
+
+
+def test_a_job_registered_inside_its_budget_is_not_late_yet() -> None:
+    """A nightly job installed at noon has no run to show until 11:50 PM, and the
+    5-minute health check would otherwise page the alerts channel every fire until
+    then. Registered more recently than its own gap budget, silence is on time."""
+    expected = FakeExpected(
+        [
+            ExpectedRun(
+                "guillotine-eod-summary",
+                "eod-summary",
+                1500,
+                "50 23 * * *",
+                created_at=NOW - timedelta(hours=1),
+            )
+        ]
+    )
+    assert missed_runs(NOW, FakeRuns({}), expected) == []
+
+
+def test_a_job_registered_longer_ago_than_its_budget_and_never_run_is_reported() -> None:
+    expected = FakeExpected(
+        [
+            ExpectedRun(
+                "guillotine-eod-summary",
+                "eod-summary",
+                1500,
+                "50 23 * * *",
+                created_at=NOW - timedelta(hours=26),
+            )
+        ]
+    )
+    assert missed_runs(NOW, FakeRuns({}), expected) == [
+        "Expected job guillotine-eod-summary has never run"
+    ]
+
+
+def test_a_job_with_no_registration_time_on_file_is_reported_as_before() -> None:
+    expected = FakeExpected([ExpectedRun("guillotine-gap-fill", "gap-fill", 15, "every 3m")])
+    assert missed_runs(NOW, FakeRuns({}), expected) == [
+        "Expected job guillotine-gap-fill has never run"
     ]

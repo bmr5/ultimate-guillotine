@@ -151,6 +151,7 @@ class TradeRegistrar:
         re-running a failed candidate on purpose must not be treated as a
         duplicate webhook.
         """
+        self._reply_to = msg.chat_guid
         key = f"trade:{msg.guid}"
         if retry:
             key = f"{key}:retry:{int(self._clock().timestamp())}"
@@ -430,7 +431,9 @@ class TradeRegistrar:
             return RosterIndex.empty()
 
     def _deliver(self, run_id: int, content: str) -> None:
-        self._delivery.deliver(run_id, AGENT, content)
+        # Answer in the chat the alert came from when that is the self-test chat;
+        # the delivery service decides, this only says where the alert was.
+        self._delivery.deliver(run_id, AGENT, content, reply_to=getattr(self, "_reply_to", None))
         self._commit()
 
     def _finish(

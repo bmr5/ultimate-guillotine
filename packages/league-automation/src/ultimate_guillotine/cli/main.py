@@ -16,8 +16,10 @@ from ultimate_guillotine.cli import (
     members,
     ops,
     sleeper,
+    summary,
     targets,
     trades,
+    video,
 )
 
 
@@ -34,6 +36,8 @@ def build_parser() -> argparse.ArgumentParser:
         members,
         advisor,
         history,
+        summary,
+        video,
     ):
         module.register(subparsers)
     return parser

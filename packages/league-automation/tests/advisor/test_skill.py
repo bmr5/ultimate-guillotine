@@ -37,8 +37,13 @@ QUESTION = "@bot who should I trade with for a RB"
 
 def msg(text: str, guid: str = "g1", sender: str = "+15555550100") -> InboundMessage:
     return InboundMessage(
-        guid=guid, chat_guid=CHAT, sender_address=sender, text=text,
-        is_from_me=False, is_group=True, sent_at=NOW,
+        guid=guid,
+        chat_guid=CHAT,
+        sender_address=sender,
+        text=text,
+        is_from_me=False,
+        is_group=True,
+        sent_at=NOW,
     )
 
 
@@ -82,10 +87,15 @@ class FakeRuns:
         return len(self.reserved) if self._reserves else None
 
     def finish(self, run_id, status, output_hash=None, error=None, input_version=None):
-        self.finished.append({
-            "run_id": run_id, "status": status, "output_hash": output_hash,
-            "error": error, "input_version": input_version,
-        })
+        self.finished.append(
+            {
+                "run_id": run_id,
+                "status": status,
+                "output_hash": output_hash,
+                "error": error,
+                "input_version": input_version,
+            }
+        )
 
 
 class FakeNotifier:
@@ -166,15 +176,26 @@ def build(ai, *, contacts=None, snapshots=None, delivery=None, runs=None, conn=N
     """A wired advisor plus the doubles a test asserts against."""
     settings = Settings(
         database_url="postgresql://x:y@example.invalid/db",
-        delivery_mode="test", test_chat_guid=CHAT, _env_file=None,
+        delivery_mode="test",
+        test_chat_guid=CHAT,
+        _env_file=None,
     )
     runs = runs or FakeRuns()
     notifier = FakeNotifier()
     delivery = delivery or FakeDelivery()
     snapshots = snapshots or FakeSnapshots()
     advisor = TradeAdvisor(
-        settings, conn, ai, delivery, notifier, contacts or FakeContacts(),
-        FakeMembers(), snapshots, FakePrices(), runs, clock=lambda: NOW,
+        settings,
+        conn,
+        ai,
+        delivery,
+        notifier,
+        contacts or FakeContacts(),
+        FakeMembers(),
+        snapshots,
+        FakePrices(),
+        runs,
+        clock=lambda: NOW,
     )
     return advisor, runs, notifier, delivery, snapshots
 
@@ -229,9 +250,7 @@ def test_a_rental_ask_loads_the_weeks_the_rental_actually_covers() -> None:
 
 
 def test_an_unknown_sender_is_asked_who_they_are_and_the_model_never_runs() -> None:
-    advisor, runs, _, delivery, _ = build(
-        _never_called(), contacts=FakeContacts(member=None)
-    )
+    advisor, runs, _, delivery, _ = build(_never_called(), contacts=FakeContacts(member=None))
 
     assert advisor.handle(msg("@bot who should I trade with")) == "unknown_asker"
 
@@ -261,9 +280,7 @@ def test_an_asker_with_no_team_in_the_snapshot_is_asked_who_they_are() -> None:
 
 def test_a_stale_snapshot_reports_its_age_instead_of_advising() -> None:
     stale = fixture_snapshot(synced_at=NOW - timedelta(minutes=47))
-    advisor, runs, _, delivery, _ = build(
-        _never_called(), snapshots=FakeSnapshots(stale)
-    )
+    advisor, runs, _, delivery, _ = build(_never_called(), snapshots=FakeSnapshots(stale))
 
     assert advisor.handle(msg("@bot any trade ideas")) == "stale"
 
@@ -441,7 +458,12 @@ def test_the_trigger_gates_on_the_chat_the_tag_the_intent_and_the_signature() ->
     assert not trigger.matches(msg(sign("@bot who should I trade with")))
     assert not trigger.matches(
         InboundMessage(
-            guid="g9", chat_guid="iMessage;+;chat-elsewhere", sender_address="+1",
-            text="@bot trade ideas", is_from_me=False, is_group=True, sent_at=NOW,
+            guid="g9",
+            chat_guid="iMessage;+;chat-elsewhere",
+            sender_address="+1",
+            text="@bot trade ideas",
+            is_from_me=False,
+            is_group=True,
+            sent_at=NOW,
         )
     )

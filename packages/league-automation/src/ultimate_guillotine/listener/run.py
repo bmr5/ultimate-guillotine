@@ -46,6 +46,8 @@ from ultimate_guillotine.sleeper.client import SleeperClient
 from ultimate_guillotine.sleeper.players import PlayerRepository
 from ultimate_guillotine.trades.registrar import TradeRegistrar, trade_trigger
 from ultimate_guillotine.trades.repository import TradeRepository, code_prefix_for
+from ultimate_guillotine.video.jobs import VideoJobRepository
+from ultimate_guillotine.video.trigger import VideoRequests, code_in, video_trigger
 
 log = logging.getLogger(__name__)
 
@@ -190,8 +192,10 @@ def _register_trade_advisor(
     cannot start a second answer.
     """
     if chat_guid is None:
-        log.info("trade advisor disabled: registered self-test chat only, mode is %s",
-                 settings.delivery_mode)
+        log.info(
+            "trade advisor disabled: registered self-test chat only, mode is %s",
+            settings.delivery_mode,
+        )
         return
     if find_hermes_binary() is None:
         log.warning("trade advisor disabled: hermes CLI not found")
@@ -213,8 +217,13 @@ def _register_trade_advisor(
 
 
 def _register_trade_registrar(
-    settings: Settings, conn, delivery, notifier, registry,
-    chat_guids: frozenset[str], listen_guids: Iterable[str] = (),
+    settings: Settings,
+    conn,
+    delivery,
+    notifier,
+    registry,
+    chat_guids: frozenset[str],
+    listen_guids: Iterable[str] = (),
 ) -> None:
     """Register the Trade Registrar, or say once why it is not running.
 
@@ -269,6 +278,27 @@ def _register_trade_registrar(
     registry.register(trade_trigger(registrar, chat_guids))
 
 
+def _register_trade_video(conn, delivery, registry, chat_guids: frozenset[str]) -> None:
+    """Register the video request trigger in every chat trade alerts are read in.
+
+    It queues work and acknowledges; the render runs in `ug video jobs run`.
+    No alert chat means the registrar is off too, and a request nobody can
+    hear is not worth registering.
+    """
+    if not chat_guids:
+        log.info("trade video disabled: no chat to hear requests in")
+        return
+    outbound = OutboundRepository(conn)
+    requests = VideoRequests(
+        TradeRepository(conn),
+        VideoJobRepository(conn),
+        delivery,
+        conn,
+        code_for_outbound_guid=lambda guid: code_in(outbound.content_for_guid(guid)),
+    )
+    registry.register(video_trigger(requests, chat_guids))
+
+
 def build_processor(
     settings: Settings, conn, client, delivery, notifier
 ) -> tuple[InboundProcessor, set[str]]:
@@ -295,22 +325,35 @@ def build_processor(
     if settings.delivery_mode is DeliveryMode.TEST and settings.test_chat_guid:
         registry.register(ping_trigger(delivery, settings.test_chat_guid))
     _register_trade_registrar(
-        settings, conn, delivery, notifier, registry,
+        settings,
+        conn,
+        delivery,
+        notifier,
+        registry,
         trade_chat_guids(settings, production_target, listen_guids),
         listen_guids,
     )
     _register_trade_advisor(
-        settings, conn, delivery, notifier, registry,
+        settings,
+        conn,
+        delivery,
+        notifier,
+        registry,
         advisor_chat_guid(settings, test_target),
     )
+    # Requests are heard wherever alerts are, and in the self-test chat in every mode:
+    # in production a request there is answered there (`DeliveryService.reply_to`), so
+    # Ben can keep trying the bot out without the league seeing a thing.
+    video_chats = trade_chat_guids(settings, production_target, listen_guids)
+    if test_target is not None:
+        video_chats = video_chats | {test_target.chat_guid}
+    _register_trade_video(conn, delivery, registry, video_chats)
     processor = InboundProcessor(
         allowed,
         registry,
         CommittingRepo(ReceiptRepository(conn), conn),
         CommittingRepo(SourceMessageRepository(conn), conn),
-        on_error=lambda name, exc: notifier.ops(
-            f"trigger {name} failed: {exc.__class__.__name__}"
-        ),
+        on_error=lambda name, exc: notifier.ops(f"trigger {name} failed: {exc.__class__.__name__}"),
     )
     return processor, allowed
 

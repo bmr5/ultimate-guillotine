@@ -83,24 +83,27 @@ def make(mode: DeliveryMode, client=None, outbound=None, **kw):
         production_chat_guid=PROD_GUID,
         production_participant_fingerprint=participant_fingerprint(PROD_MEMBERS),
     )
-    targets = FakeTargets({
-        DeliveryMode.TEST: DeliveryTarget(
-            1, "test", TEST_GUID, None, "self-test"
-        ),
-        DeliveryMode.PRODUCTION: DeliveryTarget(
-            2,
-            "production",
-            PROD_GUID,
-            participant_fingerprint(PROD_MEMBERS),
-            "league",
-        ),
-    })
+    targets = FakeTargets(
+        {
+            DeliveryMode.TEST: DeliveryTarget(1, "test", TEST_GUID, None, "self-test"),
+            DeliveryMode.PRODUCTION: DeliveryTarget(
+                2,
+                "production",
+                PROD_GUID,
+                participant_fingerprint(PROD_MEMBERS),
+                "league",
+            ),
+        }
+    )
     client = client or FakeClient()
     outbound = outbound or FakeOutbound()
     notifier = FakeNotifier()
-    return DeliveryService(
-        settings, client, targets, outbound, notifier, **kw
-    ), client, outbound, notifier
+    return (
+        DeliveryService(settings, client, targets, outbound, notifier, **kw),
+        client,
+        outbound,
+        notifier,
+    )
 
 
 def test_test_mode_sends_signed_to_test_chat_only() -> None:
@@ -130,9 +133,7 @@ def test_production_rejects_participant_change() -> None:
 
 
 def test_crash_after_send_then_retry_reconciles() -> None:
-    service, client, outbound, _ = make(
-        DeliveryMode.TEST, crash_after_send=True
-    )
+    service, client, outbound, _ = make(DeliveryMode.TEST, crash_after_send=True)
     with pytest.raises(RuntimeError):
         service.deliver(None, "self-test", "hello")
     assert outbound.records[1]["state"] == "sending"
@@ -154,23 +155,17 @@ def test_crash_after_send_then_retry_reconciles() -> None:
             sent_at=datetime.now(UTC),
         )
     ]
-    retry, _, _, retry_notifier = make(
-        DeliveryMode.TEST, client=client, outbound=outbound
-    )
+    retry, _, _, retry_notifier = make(DeliveryMode.TEST, client=client, outbound=outbound)
     result = retry.deliver(None, "self-test", "hello")
     assert result.status == "reconciled"
     assert len(client.sent) == 1
     assert outbound.records[1]["state"] == "reconciled"
-    reconciled_posts = [
-        post for post in retry_notifier.feed_posts if "reconciled" in post
-    ]
+    reconciled_posts = [post for post in retry_notifier.feed_posts if "reconciled" in post]
     assert len(reconciled_posts) == 1
 
 
 def test_reconciliation_ignores_whitespace_differences() -> None:
-    service, client, outbound, _ = make(
-        DeliveryMode.TEST, crash_after_send=True
-    )
+    service, client, outbound, _ = make(DeliveryMode.TEST, crash_after_send=True)
     with pytest.raises(RuntimeError):
         service.deliver(None, "self-test", "hello")
     assert outbound.records[1]["state"] == "sending"
@@ -194,9 +189,7 @@ def test_reconciliation_ignores_whitespace_differences() -> None:
             sent_at=datetime.now(UTC),
         )
     ]
-    retry, _, _, _ = make(
-        DeliveryMode.TEST, client=client, outbound=outbound
-    )
+    retry, _, _, _ = make(DeliveryMode.TEST, client=client, outbound=outbound)
     result = retry.deliver(None, "self-test", "hello")
     assert result.status == "reconciled"
     assert len(client.sent) == 1
@@ -252,8 +245,12 @@ def test_deliver_attachment_reconciles_a_crashed_send_by_filename() -> None:
     )
     client.history = [
         InboundMessage(
-            guid="p:0/BOT-3", chat_guid=TEST_GUID, sender_address=None, text="",
-            is_from_me=True, is_group=True,
+            guid="p:0/BOT-3",
+            chat_guid=TEST_GUID,
+            sender_address=None,
+            text="",
+            is_from_me=True,
+            is_group=True,
             sent_at=datetime(2026, 9, 10, 12, 0, 5, tzinfo=UTC),
             attachment_names=("bowers-hold-week-6.html",),
         )
@@ -264,3 +261,24 @@ def test_deliver_attachment_reconciles_a_crashed_send_by_filename() -> None:
     assert result.status == "reconciled" and result.outbound_id == 3
     assert result.message_guid == "p:0/BOT-3"
     assert client.sent == []
+
+
+def test_production_sends_a_file_asked_for_in_the_self_test_chat_there() -> None:
+    service, client, _, _ = make(DeliveryMode.PRODUCTION)
+    service.deliver_attachment(None, "trade-video", "clip.mp4", b"mp4", reply_to=TEST_GUID)
+    assert client.sent[-1] == (TEST_GUID, "clip.mp4", b"mp4")
+    service.deliver_attachment(None, "trade-video", "clip2.mp4", b"mp4", reply_to=None)
+    assert client.sent[-1] == (PROD_GUID, "clip2.mp4", b"mp4")
+
+
+def test_production_answers_the_self_test_chat_in_the_self_test_chat() -> None:
+    """Ben (2026-09-10): the league chat is live, and the self-test chat keeps
+    working for trying the bot out. A message from the self-test chat is answered
+    there; anything else goes to the league chat."""
+    service, client, _, _ = make(DeliveryMode.PRODUCTION)
+    service.deliver(None, "trade-registrar", "hello", reply_to=TEST_GUID)
+    assert client.sent == [(TEST_GUID, sign("hello"))]
+    service.deliver(None, "trade-registrar", "league", reply_to=PROD_GUID)
+    assert client.sent[-1] == (PROD_GUID, sign("league"))
+    service.deliver(None, "trade-registrar", "elsewhere", reply_to="iMessage;+;chat-unknown")
+    assert client.sent[-1] == (PROD_GUID, sign("elsewhere"))

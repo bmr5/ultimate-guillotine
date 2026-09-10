@@ -43,9 +43,7 @@ def test_replay_rows_prints_one_line_per_row_and_a_summary(
         ("Week 5", "🚨 Member07 sends Player Epsilon to Member08", ["Member07"]),
     ]
     seen: list[tuple[int, str]] = []
-    outcomes = iter(
-        ["created", "clarification: I don't know Player Gamma", "revised", "failed"]
-    )
+    outcomes = iter(["created", "clarification: I don't know Player Gamma", "revised", "failed"])
 
     def run_row(index: int, text: str) -> str:
         seen.append((index, text))
@@ -95,7 +93,8 @@ class NoSeasonConn:
 
 def _settings() -> Settings:
     return Settings(
-        database_url="postgresql://x:y@example.invalid/db", delivery_mode="disabled",
+        database_url="postgresql://x:y@example.invalid/db",
+        delivery_mode="disabled",
         _env_file=None,
     )
 
@@ -117,9 +116,7 @@ def test_replay_write_mode_refuses_without_a_season_row(
     monkeypatch.setattr(trades_cli, "build_deps", lambda: deps)
     monkeypatch.setattr(trades_cli, "build_ai", lambda _deps: None)
 
-    exit_code = trades_cli.cmd_replay(
-        argparse.Namespace(xlsx=str(path), limit=None, dry_run=False)
-    )
+    exit_code = trades_cli.cmd_replay(argparse.Namespace(xlsx=str(path), limit=None, dry_run=False))
 
     assert exit_code == 2
     assert capsys.readouterr().out == "no public.seasons row for 2025; insert it first\n"

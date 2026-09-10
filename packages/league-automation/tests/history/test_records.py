@@ -81,9 +81,7 @@ def test_the_dues_sheet_cannot_be_opened(workbook) -> None:
 def test_a_whole_load_opens_only_the_allowlisted_sheets(monkeypatch: pytest.MonkeyPatch) -> None:
     """Not "the loader means to skip 2025" but "the loader never asked for it"."""
     spy = SheetSpy(load_workbook(WORKBOOK, data_only=True))
-    monkeypatch.setattr(
-        "ultimate_guillotine.history.records.load_workbook", lambda *a, **k: spy
-    )
+    monkeypatch.setattr("ultimate_guillotine.history.records.load_workbook", lambda *a, **k: spy)
 
     season_result_rows(WORKBOOK, index={}, notes={}, loaded_at=LOADED_AT)
 

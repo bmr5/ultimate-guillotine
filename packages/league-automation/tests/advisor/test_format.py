@@ -115,9 +115,7 @@ def test_a_proposal_with_no_candidate_still_gets_a_lineup_line() -> None:
 def test_the_text_is_plain_and_never_more_than_three_ideas() -> None:
     snapshot, candidates = _candidates()
     proposals = [
-        advised_response(candidate, index=index).proposals[0].model_copy(
-            update={"rank": index}
-        )
+        advised_response(candidate, index=index).proposals[0].model_copy(update={"rank": index})
         for index, candidate in enumerate(candidates[:3], start=1)
     ]
     text = format_advice(
@@ -241,7 +239,9 @@ def test_two_proposals_render_exactly_this_message() -> None:
     """The whole message, character for character -- the layout nobody may drift."""
     snapshot, candidates = _candidates()
     proposals = [
-        advised_response(candidate, index=index).proposals[0].model_copy(
+        advised_response(candidate, index=index)
+        .proposals[0]
+        .model_copy(
             update={
                 "rank": index,
                 "reasoning": f"They are deep at RB and you are thin ({index}).",

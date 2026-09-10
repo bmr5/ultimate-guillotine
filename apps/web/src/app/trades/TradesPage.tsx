@@ -3,10 +3,10 @@ import { useSearchParams } from "react-router";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import { StatsStrip } from "@/history/components/StatsStrip";
 import { TradeCard } from "@/history/components/TradeCard";
 import { TradeFilterBar } from "@/history/components/TradeFilterBar";
+import { TradesListSkeleton } from "@/history/components/TradesSkeleton";
 import {
   filterTrades,
   positionOptions,
@@ -15,9 +15,17 @@ import {
 } from "@/history/derive/filter";
 import { ownerLabelFor } from "@/history/derive/ownerLabel";
 import { tradeStats } from "@/history/derive/stats";
+import { CARD_GRID } from "@/history/layout";
 import { parseNumberParam, type TradeFilters } from "@/history/types";
 import { useCurrentSeason } from "@/history/useCurrentSeason";
 import { useTradeCatalog } from "@/history/useTradeCatalog";
+import { REVEAL_CLASS, revealStyle } from "@/motion/reveal";
+
+/**
+ * Where the list sits in the page's cascade: the filter bar is place 0, the stats strip 1, and
+ * the alerts, the placeholders, the empty states and the first card all follow as place 2.
+ */
+const BELOW_STRIP = 2;
 
 /** The query params this page owns. Anything else in the URL is somebody else's and survives. */
 const FILTER_PARAMS = ["season", "type", "pos", "owner", "q"] as const;
@@ -156,22 +164,26 @@ export function TradesPage() {
           identical messages — are two alerts with the same key otherwise, and React keeps only
           one of them. */}
       {errors.map(({ source, error }) => (
-        <Alert key={source} variant="destructive">
+        <Alert
+          key={source}
+          variant="destructive"
+          className={REVEAL_CLASS}
+          style={revealStyle(BELOW_STRIP)}
+        >
           <AlertTitle>Could not load {source.toLowerCase()}</AlertTitle>
           <AlertDescription>{error.message}</AlertDescription>
         </Alert>
       ))}
 
       {(isPending || isSeasonPending) && (
-        <div className="space-y-2">
-          {[0, 1, 2].map((index) => (
-            <Skeleton key={index} className="h-20 w-full" />
-          ))}
-        </div>
+        <TradesListSkeleton revealIndex={BELOW_STRIP} />
       )}
 
       {!isPending && !isSeasonPending && trades.length === 0 && (
-        <p className="rounded-xl border bg-card p-4 text-sm">
+        <p
+          className={`rounded-xl border bg-card p-4 text-sm ${REVEAL_CLASS}`}
+          style={revealStyle(BELOW_STRIP)}
+        >
           No trades loaded yet.
         </p>
       )}
@@ -179,7 +191,10 @@ export function TradesPage() {
         !isSeasonPending &&
         trades.length > 0 &&
         visible.length === 0 && (
-          <div className="space-y-2 rounded-xl border bg-card p-4 text-sm">
+          <div
+            className={`space-y-2 rounded-xl border bg-card p-4 text-sm ${REVEAL_CLASS}`}
+            style={revealStyle(BELOW_STRIP)}
+          >
             <p>No trades match these filters.</p>
             <div className="flex flex-wrap gap-2">
               {/* Clear puts the defaults back, and the default season is the current one — so
@@ -209,9 +224,15 @@ export function TradesPage() {
       {/* Named for the same reason `/history` names its season list: a screen reader announces
           an unlabelled list by its length alone, so "list, 12 items" on a page of filters and
           strips says nothing about which list it reached. */}
-      <ul aria-label="Trades" className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+      <ul aria-label="Trades" className={CARD_GRID}>
         {!isSeasonPending &&
-          visible.map((trade) => <TradeCard key={trade.key} trade={trade} />)}
+          visible.map((trade, index) => (
+            <TradeCard
+              key={trade.key}
+              trade={trade}
+              revealIndex={BELOW_STRIP + index}
+            />
+          ))}
       </ul>
     </section>
   );

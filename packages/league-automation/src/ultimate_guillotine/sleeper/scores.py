@@ -38,6 +38,7 @@ from psycopg.types.json import Jsonb
 
 from ultimate_guillotine.sleeper.client import SleeperClient
 from ultimate_guillotine.sleeper.scoring import CENTS
+from ultimate_guillotine.sleeper.teams import teams_by_roster_id
 
 
 @dataclass(frozen=True)
@@ -168,23 +169,10 @@ class ScoreRepository:
         self._conn = conn
 
     def teams_by_roster_id(self, season_id: int) -> dict[int, int]:
-        """``sleeper_roster_id`` -> ``teams.id`` for one season.
+        """``sleeper_roster_id`` -> ``teams.id`` for one season; see ``sleeper/teams.py``."""
+        return teams_by_roster_id(self._conn, season_id)
 
-        The matchups feed knows rosters; every other table in this data layer knows
-        teams. This is the one hop between them, and it is read from the database
-        rather than from the league payload so a score row can never be attached to a
-        team the rest of the season's rows do not agree on.
-        """
-        with self._conn.cursor() as cur:
-            cur.execute(
-                "select sleeper_roster_id, id from public.teams where season_id = %s",
-                (season_id,),
-            )
-            return {roster_id: team_id for roster_id, team_id in cur.fetchall()}
-
-    def upsert_many(
-        self, season_id: int, week: int, rows: list[TeamScore], now: datetime
-    ) -> int:
+    def upsert_many(self, season_id: int, week: int, rows: list[TeamScore], now: datetime) -> int:
         """Write one row per team for the week, replacing the last run's numbers.
 
         Idempotent by the ``(season_id, team_id, week)`` unique key: this fires once a
@@ -238,9 +226,7 @@ def sync_scores(
     ``players.py`` refusing an empty directory.
     """
     payload = client.get_matchups(league_id, week)
-    rows, unmatched = load_team_scores(
-        payload, ScoreRepository(conn).teams_by_roster_id(season_id)
-    )
+    rows, unmatched = load_team_scores(payload, ScoreRepository(conn).teams_by_roster_id(season_id))
     if not rows:
         raise RuntimeError(f"sleeper returned no matchup rows for week {week}")
     ScoreRepository(conn).upsert_many(season_id, week, rows, now)

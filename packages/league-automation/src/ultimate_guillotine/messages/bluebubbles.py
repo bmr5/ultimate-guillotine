@@ -52,9 +52,7 @@ def _record_to_message(record: dict) -> InboundMessage | None:
         thread_originator_guid=(
             record.get("threadOriginatorGuid") or record.get("replyToGuid") or None
         ),
-        attachment_names=tuple(
-            a.get("transferName") for a in attachments if a.get("transferName")
-        ),
+        attachment_names=tuple(a.get("transferName") for a in attachments if a.get("transferName")),
     )
 
 
@@ -164,9 +162,12 @@ class BlueBubblesClient:
             "name": filename,
         }
         files = {"attachment": (filename, data, mime)}
-        data_out = self._request(
-            "POST", "/api/v1/message/attachment", data=fields, files=files
-        ).get("data") or {}
+        data_out = (
+            self._request("POST", "/api/v1/message/attachment", data=fields, files=files).get(
+                "data"
+            )
+            or {}
+        )
         guid = data_out.get("guid")
         if not guid:
             raise BlueBubblesError("attachment send returned no message guid")

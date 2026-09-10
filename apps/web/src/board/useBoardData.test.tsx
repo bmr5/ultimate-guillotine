@@ -9,6 +9,7 @@ import { useBoardData } from "./useBoardData";
 
 vi.mock("./boardClient", () => ({ boardClient: {} }));
 vi.mock("./fetchers", () => ({
+  fetchDraftPicks: vi.fn(),
   fetchFinalRosters: vi.fn(),
   fetchLatestSeason: vi.fn(),
   fetchMembers: vi.fn(),
@@ -63,6 +64,7 @@ function stubFetchers(): void {
   vi.mocked(fetchers.fetchRosterHoldings).mockResolvedValue([]);
   vi.mocked(fetchers.fetchWeeklyResults).mockResolvedValue([]);
   vi.mocked(fetchers.fetchFinalRosters).mockResolvedValue([]);
+  vi.mocked(fetchers.fetchDraftPicks).mockResolvedValue([]);
   vi.mocked(fetchers.fetchPlayers).mockResolvedValue([]);
   vi.mocked(fetchers.fetchPlayerProjections).mockResolvedValue([]);
 }

@@ -1,0 +1,192 @@
+"""`ug video`: the trade announcement video commands, driven the way the operator runs them."""
+
+import argparse
+import subprocess
+import sys
+
+import pytest
+
+from ultimate_guillotine.cli import video as video_cli
+from ultimate_guillotine.video import ffmpeg as ff
+from ultimate_guillotine.video import higgsfield as hf
+from ultimate_guillotine.video.assets import Assets
+
+UG = [sys.executable, "-m", "ultimate_guillotine.cli.main"]
+
+
+def parse(*argv: str) -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    video_cli.register(parser.add_subparsers())
+    return parser.parse_args(["video", *argv])
+
+
+def touch_reference(root) -> Assets:
+    a = Assets(root)
+    for path in (a.reference_video, a.source_video, a.music):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"")
+    return a
+
+
+def test_video_help_lists_commands() -> None:
+    result = subprocess.run([*UG, "video", "--help"], capture_output=True, text=True, check=False)
+    assert result.returncode == 0
+    for name in ("assets", "card", "cost", "script", "render", "jobs"):
+        assert name in result.stdout
+
+
+def test_jobs_help_lists_the_queue_commands() -> None:
+    result = subprocess.run(
+        [*UG, "video", "jobs", "--help"], capture_output=True, text=True, check=False
+    )
+    assert result.returncode == 0
+    for name in ("list", "run", "watch", "add"):
+        assert name in result.stdout
+
+
+def test_assets_reports_missing_files_and_exits_1(tmp_path, monkeypatch, capsys) -> None:
+    monkeypatch.setenv("UG_MEDIA_ROOT", str(tmp_path))
+    monkeypatch.setattr(video_cli, "find_tool", lambda name: f"/opt/homebrew/bin/{name}")
+    args = parse("assets")
+    assert args.handler(args) == 1
+    out = capsys.readouterr().out
+    assert "MISSING" in out and "ffmpeg" in out
+
+
+def test_assets_is_quiet_and_green_when_everything_is_in_place(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    touch_reference(tmp_path)
+    monkeypatch.setenv("UG_MEDIA_ROOT", str(tmp_path))
+    monkeypatch.setattr(video_cli, "find_tool", lambda name: f"/opt/homebrew/bin/{name}")
+    args = parse("assets")
+    assert args.handler(args) == 0
+    assert "MISSING" not in capsys.readouterr().out
+
+
+def test_card_writes_a_png_from_manual_copy(tmp_path) -> None:
+    out = tmp_path / "card.png"
+    result = subprocess.run(
+        [
+            *UG,
+            *("video", "card"),
+            *("--headline", "SOURCES: X TRADED TO Y"),
+            *("--subline", "Y gets X"),
+            *("--caption", "pov: test"),
+            *("--out", str(out)),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert out.exists() and out.stat().st_size > 0
+    assert str(out) in result.stdout
+
+
+def test_card_needs_a_trade_or_a_headline_and_subline() -> None:
+    result = subprocess.run(
+        [*UG, "video", "card", "--out", "x.png"], capture_output=True, text=True, check=False
+    )
+    assert result.returncode == 2
+    assert "--trade or both --headline and --subline" in result.stderr
+
+
+def test_aspect_must_be_a_known_one() -> None:
+    with pytest.raises(SystemExit):
+        parse("card", "--headline", "h", "--subline", "s", "--out", "x.png", "--aspect", "4:3")
+
+
+def test_cost_prints_the_credits_without_spending_any(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(video_cli, "find_tool", lambda name: f"/opt/homebrew/bin/{name}")
+    monkeypatch.setattr(hf, "run", lambda cmd: '{"credits": 52}')
+    args = parse("cost", "--headline", "h", "--subline", "s")
+    assert args.handler(args) == 0
+    assert capsys.readouterr().out.strip() == "52 credits for one 8 s 720p 9:16 clip"
+
+
+def test_render_dry_run_prints_the_ffmpeg_command_and_encodes_nothing(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    a = touch_reference(tmp_path)
+    monkeypatch.setenv("UG_MEDIA_ROOT", str(tmp_path))
+    monkeypatch.setattr(video_cli, "find_tool", lambda name: f"/opt/homebrew/bin/{name}")
+    monkeypatch.setattr(
+        ff, "probe", lambda path, ffprobe="ffprobe", run=None: ff.Probe(1280, 720, 127.0)
+    )
+    args = parse("render", "--headline", "h", "--subline", "s", "--dry-run")
+    assert args.handler(args) == 0
+    out = capsys.readouterr().out
+    assert out.startswith("/opt/homebrew/bin/ffmpeg ") and "-c:v libx264" in out
+    assert not list(a.renders.glob("*.mp4"))
+
+
+def test_render_dry_run_refuses_to_generate() -> None:
+    args = parse("render", "--headline", "h", "--subline", "s", "--base", "generated", "--dry-run")
+    with pytest.raises(SystemExit):
+        args.handler(args)
+
+
+def test_render_reports_missing_media_as_a_plain_line(tmp_path, monkeypatch, capsys) -> None:
+    monkeypatch.setenv("UG_MEDIA_ROOT", str(tmp_path))
+    monkeypatch.setattr(video_cli, "find_tool", lambda name: f"/opt/homebrew/bin/{name}")
+    args = parse("render", "--headline", "h", "--subline", "s")
+    assert args.handler(args) == 1
+    assert "reference media missing" in capsys.readouterr().err
+
+
+def test_script_with_no_ai_prints_the_template_read(capsys) -> None:
+    args = parse(
+        "script",
+        "--no-ai",
+        "--generate-seconds",
+        "12",
+        "--headline",
+        "SOURCES: JOSH JACOBS TRADED TO CHARLIE",
+        "--subline",
+        "Derek gets 450 FAAB · Charlie gets Josh Jacobs",
+    )
+    assert args.handler(args) == 0
+    out = capsys.readouterr().out
+    assert "Breaking news." in out and "Josh Jacobs traded to Charlie" in out
+    assert out.strip().endswith("words for 12 s (budget 31)")
+
+
+def test_script_sizes_the_clip_to_the_read_by_default(capsys) -> None:
+    args = parse(
+        "script", "--no-ai", "--headline", "SOURCES: X TRADED TO Y", "--subline", "Y gets X"
+    )
+    assert args.handler(args) == 0
+    # 17 words at 2.6 a second, plus a second of air: an 8 s clip.
+    assert "words for 8 s (budget 20)" in capsys.readouterr().out
+
+
+def test_script_from_typed_text_needs_no_model(capsys) -> None:
+    args = parse(
+        "script", "--script", "Breaking news. Josh is gone.", "--headline", "h", "--subline", "s"
+    )
+    assert args.handler(args) == 0
+    assert "(straight to lens) Breaking news. Josh is gone." in capsys.readouterr().out
+
+
+def test_cost_voiced_asks_for_audio(monkeypatch, capsys) -> None:
+    seen = {}
+    monkeypatch.setattr(video_cli, "find_tool", lambda name: f"/opt/homebrew/bin/{name}")
+
+    def fake_run(cmd):
+        seen["cmd"] = cmd
+        return '{"credits": 78}'
+
+    monkeypatch.setattr(hf, "run", fake_run)
+    args = parse("cost", "--voiced", "--duration", "12", "--headline", "h", "--subline", "s")
+    assert args.handler(args) == 0
+    cmd = seen["cmd"]
+    assert cmd[cmd.index("--generate_audio") + 1] == "true"
+    assert '"Breaking news."' in cmd[cmd.index("--prompt") + 1]
+    assert capsys.readouterr().out.strip() == "78 credits for one 12 s 720p 9:16 clip"
+
+
+def test_render_voiced_dry_run_is_refused_like_any_generated_dry_run() -> None:
+    args = parse("render", "--voiced", "--no-ai", "--headline", "h", "--subline", "s", "--dry-run")
+    with pytest.raises(SystemExit):
+        args.handler(args)

@@ -142,9 +142,7 @@ def test_run_scheduled_forwards_an_explicit_trigger_and_key() -> None:
         idempotency_key="self-test:20260908T120000123456",
     )
 
-    assert conn.reserve_args == [
-        ("self-test", "cli", "self-test:20260908T120000123456")
-    ]
+    assert conn.reserve_args == [("self-test", "cli", "self-test:20260908T120000123456")]
 
 
 class FakeNotifier:

@@ -86,7 +86,7 @@ class FakeDelivery:
     def __init__(self):
         self.sent = []
 
-    def deliver(self, run_id, agent, content):
+    def deliver(self, run_id, agent, content, reply_to=None):
         self.sent.append((agent, content))
         return type("R", (), {"status": "sent", "outbound_id": 1, "message_guid": "x"})()
 

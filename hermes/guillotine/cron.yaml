@@ -16,10 +16,10 @@ jobs:
     max_gap_minutes: 15
   - name: guillotine-sleeper-sync
     agent: sleeper-sync
-    schedule: "every 10m"
+    schedule: "every 2m"
     script: guillotine_sleeper_sync.sh
     deliver: "discord:#guillotine-ops"
-    max_gap_minutes: 30
+    max_gap_minutes: 10
   - name: guillotine-run-audit
     agent: run-audit
     schedule: "0 8 * * *"
@@ -61,21 +61,24 @@ jobs:
     script: guillotine_sleeper_projections.sh
     deliver: "discord:#guillotine-ops"
     max_gap_minutes: 90
+  # Game windows are in the Mac mini's local time (Central): Thursday and Monday
+  # kickoffs are 7:15 PM, Sunday's first slate is noon, so each window opens the
+  # hour before and runs to midnight.
   - name: guillotine-sleeper-projections-thursday
     agent: projections-sync
-    schedule: "*/5 20-23 * * 4"
+    schedule: "*/5 19-23 * * 4"
     script: guillotine_sleeper_projections.sh
     deliver: local
     max_gap_minutes: 90
   - name: guillotine-sleeper-projections-sunday
     agent: projections-sync
-    schedule: "*/5 13-23 * * 0"
+    schedule: "*/5 12-23 * * 0"
     script: guillotine_sleeper_projections.sh
     deliver: local
     max_gap_minutes: 90
   - name: guillotine-sleeper-projections-monday
     agent: projections-sync
-    schedule: "*/5 20-23 * * 1"
+    schedule: "*/5 19-23 * * 1"
     script: guillotine_sleeper_projections.sh
     deliver: local
     max_gap_minutes: 90
@@ -101,19 +104,63 @@ jobs:
     max_gap_minutes: 20
   - name: guillotine-sleeper-scores-thursday
     agent: scores-sync
-    schedule: "* 20-23 * * 4"
+    schedule: "* 19-23 * * 4"
     script: guillotine_sleeper_scores.sh
     deliver: local
     max_gap_minutes: 45
   - name: guillotine-sleeper-scores-sunday
     agent: scores-sync
-    schedule: "* 13-23 * * 0"
+    schedule: "* 12-23 * * 0"
     script: guillotine_sleeper_scores.sh
     deliver: local
     max_gap_minutes: 45
   - name: guillotine-sleeper-scores-monday
     agent: scores-sync
-    schedule: "* 20-23 * * 1"
+    schedule: "* 19-23 * * 1"
     script: guillotine_sleeper_scores.sh
     deliver: local
     max_gap_minutes: 45
+  # There is deliberately no draft job here. The auction is synced by hand once a year with
+  # `ug sleeper draft` (Ben, 2026-09-10: "drop the cron it's a waste. have this as a script
+  # that we just run once a year").
+  # The executed transaction log — trades, drops, claims — at the roster sync's cadence,
+  # because it moves whenever a manager does. Current and previous week each run; a full
+  # backfill is `ug sleeper transactions --all` by hand.
+  - name: guillotine-sleeper-transactions
+    agent: transactions-sync
+    schedule: "every 10m"
+    script: guillotine_sleeper_transactions.sh
+    deliver: "discord:#guillotine-ops"
+    max_gap_minutes: 30
+  # The Guillotine Daily: every roster's score and projected finish, who is on the
+  # block, the gulag pair, and the odds -- a short text and an HTML file to the chat
+  # through the delivery layer (self-test chat in test mode), previewed in
+  # #guillotine-drafts. The mornings are Ben's (2026-09-10): a break on Tuesdays
+  # and Fridays; 8:15 AM Central on Wednesday (before the first waiver round
+  # closes), Sunday and Monday (after Saturday's free agency and Sunday's games)
+  # -- after the 8 AM players sync; and 10:12 AM on Thursday and Saturday, after
+  # each waiver round (Ben, 2026-09-10: they finished at 10:08). The Saturday round closes 11 AM CST by
+  # the rules; Sleeper's daily_waivers_hour is 8 UTC, 3 AM Central, so Thursday's
+  # clear is earlier than Ben's 11 -- his call, one line to move. Two rows, one
+  # agent, like the projections jobs: the per-agent run key and the health check
+  # see one job. The gap budget clears the Monday-to-Wednesday gap plus slack.
+  # The first row keeps the agent's codename as its name so the registered job is
+  # edited, never duplicated.
+  - name: guillotine-eod-summary
+    agent: eod-summary
+    schedule: "15 8 * * 0,1,3"
+    script: guillotine_eod_summary.sh
+    deliver: "discord:#guillotine-ops"
+    max_gap_minutes: 3000
+  - name: guillotine-eod-summary-waivers
+    agent: eod-summary
+    schedule: "12 10 * * 4,6"
+    script: guillotine_eod_summary.sh
+    deliver: "discord:#guillotine-ops"
+    max_gap_minutes: 3000
+  - name: guillotine-video-jobs
+    agent: video-jobs
+    schedule: "every 2m"
+    script: guillotine_video_jobs.sh
+    deliver: "discord:#guillotine-ops"
+    max_gap_minutes: 30

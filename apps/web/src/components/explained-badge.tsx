@@ -64,6 +64,13 @@ export function ExplainedBadge({
   // no pointerdown before it is a keyboard activation, and focus has already opened the tooltip.
   const openAtPointerDown = useRef(false);
   const descriptionId = useId();
+  // The quieter line is part of the reason: a reader who cannot see the tooltip still gets the
+  // figure or the timestamp it carries, after the sentence and one full stop.
+  const fullStop = /[.!?]$/.test(description) ? "" : ".";
+  const spokenDescription =
+    secondary === undefined
+      ? description
+      : `${description}${fullStop} ${secondary}`;
 
   return (
     <TooltipProvider>
@@ -96,7 +103,7 @@ export function ExplainedBadge({
         </TooltipContent>
       </Tooltip>
       <span id={descriptionId} className="sr-only">
-        {description}
+        {spokenDescription}
       </span>
     </TooltipProvider>
   );

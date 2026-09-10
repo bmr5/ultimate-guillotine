@@ -18,16 +18,18 @@ from decimal import ROUND_HALF_UP, Decimal
 #: Sleeper's own convenience totals and draft metadata. They are numbers that share the
 #: namespace with real stats but are not stats: scoring them would double-count (the
 #: presets) or invent points out of an average draft position.
-SCORING_DENYLIST = frozenset({
-    "pts_ppr",
-    "pts_half_ppr",
-    "pts_std",
-    "gp",
-    "gms_active",
-    "adp_dd_ppr",
-    "pos_adp_dd_ppr",
-    "cmp_pct",
-})
+SCORING_DENYLIST = frozenset(
+    {
+        "pts_ppr",
+        "pts_half_ppr",
+        "pts_std",
+        "gp",
+        "gms_active",
+        "adp_dd_ppr",
+        "pos_adp_dd_ppr",
+        "cmp_pct",
+    }
+)
 
 _PRESET_KEYS = ("pts_ppr", "pts_half_ppr", "pts_std")
 
@@ -90,9 +92,7 @@ def scoring_version(scoring_settings: dict[str, object]) -> str:
     return hashlib.sha256(encoded).hexdigest()[:12]
 
 
-def preset_drift(
-    league_points: Decimal | None, stat_line: dict[str, object]
-) -> Decimal | None:
+def preset_drift(league_points: Decimal | None, stat_line: dict[str, object]) -> Decimal | None:
     """Distance from ``league_points`` to the nearest Sleeper preset in ``stat_line``.
 
     A large drift across many players means the stat keys stopped lining up with

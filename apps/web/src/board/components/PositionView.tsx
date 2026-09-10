@@ -6,12 +6,20 @@ import { badgeVariants } from "@/components/ui/badge-variants";
 import { Card, CardContent } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
+import { REVEAL_CLASS, revealStyle } from "@/motion/reveal";
 
 import { injuryTag } from "../derive/availability";
-import { LIKELY_BIDDER_REASONS, type PositionRow } from "../derive/position";
+import { FAAB_LABEL, formatFaab } from "../derive/faab";
+import {
+  LIKELY_BIDDER_REASONS,
+  likelyBidderFigures,
+  slotDescription,
+  type PositionRow,
+} from "../derive/position";
 import { layoutStarters } from "../derive/roster";
-import { BOARD_GRID } from "../layout";
+import { BOARD_GRID, LIVE_SCORE_PILL_CLASS } from "../layout";
 import type { PositionFilter } from "../types";
+import { PlayerName } from "./PlayerName";
 import { RosterPanel } from "./RosterPanel";
 
 /** The badge a team likely to bid on this position carries; also what the tests assert on. */
@@ -42,13 +50,6 @@ const NO_PROJECTION_TEXT = "—";
 const LIVE_POINTS_SEPARATOR = "/";
 const LIVE_POINTS_LABEL = "scored";
 const PROJECTED_LABEL = "projected";
-
-/** Shown in place of the FAAB figure when the team has no `team_season_state` row. */
-const FAAB_UNKNOWN_TEXT = "FAAB —";
-
-/** The mark a starter carries inline, and what a screen reader hears in its place. */
-const STARTER_MARK = "★";
-const STARTER_LABEL = "starter";
 
 /** Said once per team that holds nobody at the position: `no TE`. */
 const NO_PLAYER_PREFIX = "no";
@@ -83,6 +84,10 @@ interface PositionTeamRowProps {
   onToggle: (teamId: number) => void;
   highlightedPlayerIds: ReadonlySet<string>;
   rosterPositions: string[];
+  /** Opens a player's card from his name; the page owns the URL it writes. */
+  onOpenPlayer: (sleeperPlayerId: string) => void;
+  /** The row's place in the page's cascade; the header is place 0. */
+  revealIndex: number;
 }
 
 /**
@@ -97,19 +102,18 @@ const PositionTeamRow = memo(function PositionTeamRow({
   onToggle,
   highlightedPlayerIds,
   rosterPositions,
+  onOpenPlayer,
+  revealIndex,
 }: PositionTeamRowProps) {
   const panelId = useId();
   const starterSlots = useMemo(
     () => layoutStarters(rosterPositions, row.team.roster),
     [rosterPositions, row.team.roster],
   );
-  const faab =
-    row.faabRemaining === null
-      ? FAAB_UNKNOWN_TEXT
-      : `FAAB ${row.faabRemaining}`;
+  const faab = formatFaab(row.faabRemaining);
 
   return (
-    <li>
+    <li className={REVEAL_CLASS} style={revealStyle(revealIndex)}>
       {/* Eliminated teams are dimmed in their chrome only, never in their text. */}
       <Card
         data-eliminated={row.isEliminated || undefined}
@@ -138,100 +142,12 @@ const PositionTeamRow = memo(function PositionTeamRow({
               <span className="block truncate text-sm text-muted-foreground">
                 {row.teamName}
               </span>
-              <span className="mt-1 block text-sm">
-                {row.players.length === 0 ? (
-                  // The most interesting row on the page: nobody at all at this position.
-                  <span className="font-medium text-destructive">
-                    {`${NO_PLAYER_PREFIX} ${position}`}
-                  </span>
-                ) : (
-                  row.players.map((player, index) => (
-                    <span
-                      key={player.sleeperPlayerId}
-                      data-player={player.sleeperPlayerId}
-                      data-starter={player.isStarter || undefined}
-                      data-highlighted={
-                        highlightedPlayerIds.has(player.sleeperPlayerId) ||
-                        undefined
-                      }
-                      className={cn(
-                        "mr-1 inline-block",
-                        highlightedPlayerIds.has(player.sleeperPlayerId) &&
-                          "rounded bg-accent px-1 text-accent-foreground",
-                      )}
-                    >
-                      <span className="font-medium">{player.fullName}</span>{" "}
-                      <span className="text-muted-foreground tabular-nums">
-                        {player.isStarter && player.livePoints !== null ? (
-                          <>
-                            <span
-                              data-live-points
-                              className={
-                                player.livePoints === 0
-                                  ? undefined
-                                  : "text-foreground"
-                              }
-                            >
-                              <span aria-hidden="true">
-                                {player.livePoints.toFixed(
-                                  PLAYER_PROJECTION_DECIMALS,
-                                )}
-                              </span>
-                              <span className="sr-only">{`${LIVE_POINTS_LABEL} ${player.livePoints.toFixed(
-                                PLAYER_PROJECTION_DECIMALS,
-                              )}, `}</span>
-                            </span>
-                            <span aria-hidden="true">
-                              {LIVE_POINTS_SEPARATOR}
-                            </span>
-                            <span aria-hidden="true">
-                              {projectionText(player.projectedPoints)}
-                            </span>
-                            <span className="sr-only">{`${PROJECTED_LABEL} ${projectionText(
-                              player.projectedPoints,
-                            )}`}</span>
-                          </>
-                        ) : (
-                          projectionText(player.projectedPoints)
-                        )}
-                      </span>
-                      {/* The same tag the roster panel shows, so the quick view answers
-                          "who is hurt at this position" without expanding a row. */}
-                      {(() => {
-                        const tag = injuryTag(player.injuryStatus);
-                        return tag === null ? null : (
-                          <span
-                            data-injury={tag.status}
-                            title={tag.title}
-                            className={cn(
-                              "ml-1 rounded border px-1 text-[0.6875rem] font-medium",
-                              tag.isUnavailable
-                                ? "border-destructive/40 text-destructive"
-                                : "border-border text-muted-foreground",
-                            )}
-                          >
-                            <span aria-hidden="true">{tag.tag}</span>
-                            <span className="sr-only">{tag.title}</span>
-                          </span>
-                        );
-                      })()}
-                      {player.isStarter ? (
-                        <>
-                          <span aria-hidden="true">{` ${STARTER_MARK}`}</span>
-                          <span className="sr-only">{` ${STARTER_LABEL}`}</span>
-                        </>
-                      ) : null}
-                      {index < row.players.length - 1 ? (
-                        <span aria-hidden="true">,</span>
-                      ) : null}
-                    </span>
-                  ))
-                )}
-              </span>
             </span>
             <span className="shrink-0 text-right">
               <span className="block text-2xl leading-none figures text-foreground">
-                {faab}
+                {/* `$715` alone could be a price of anything: the sr-only copy names it. */}
+                <span aria-hidden="true">{faab}</span>
+                <span className="sr-only">{`${FAAB_LABEL} ${faab}`}</span>
               </span>
               {row.emptySlots > 0 ? (
                 <span className="mt-1 block text-xs font-medium text-destructive">
@@ -251,9 +167,124 @@ const PositionTeamRow = memo(function PositionTeamRow({
             />
           </button>
 
+          {/* One player per line, outside the toggle: each slot chip and injury tag is a real
+              tooltip trigger (Ben, 2026-09-10: "any little thing should have a tooltip"), and a
+              control inside a <button> is invalid HTML. */}
+          <ul
+            className="space-y-1 px-4 pb-3 text-sm"
+            aria-label={`${row.ownerName}'s ${position} players`}
+          >
+            {row.players.length === 0 ? (
+              <li className="font-medium text-destructive">
+                {`${NO_PLAYER_PREFIX} ${position}`}
+              </li>
+            ) : (
+              row.players.map((player) => {
+                const tag = injuryTag(player.injuryStatus);
+                const highlighted = highlightedPlayerIds.has(
+                  player.sleeperPlayerId,
+                );
+                return (
+                  <li
+                    key={player.sleeperPlayerId}
+                    data-player={player.sleeperPlayerId}
+                    data-starter={player.isStarter || undefined}
+                    data-slot={player.slotLabel}
+                    data-highlighted={highlighted || undefined}
+                    className={cn(
+                      "flex items-center gap-2",
+                      highlighted &&
+                        "rounded bg-accent px-1 text-accent-foreground",
+                    )}
+                  >
+                    <ExplainedBadge
+                      description={slotDescription(
+                        player.slotLabel,
+                        player.isStarter,
+                      )}
+                      className="-my-2 inline-flex min-h-[44px] items-center rounded-md"
+                    >
+                      <span
+                        className={cn(
+                          "inline-block w-14 rounded border px-1 text-center text-[0.6875rem] font-medium",
+                          player.isStarter
+                            ? "border-border text-foreground"
+                            : "border-transparent text-muted-foreground",
+                        )}
+                      >
+                        {player.slotLabel}
+                      </span>
+                    </ExplainedBadge>
+                    <span className="flex min-w-0 flex-1 items-center gap-1">
+                      <PlayerName
+                        player={player}
+                        ownerName={row.ownerName}
+                        onOpen={onOpenPlayer}
+                      />
+                      <span className="shrink-0 text-muted-foreground tabular-nums">
+                        {player.isStarter && player.livePoints !== null ? (
+                          <>
+                            <span
+                              aria-hidden="true"
+                              data-live-points
+                              className={
+                                player.livePoints === 0
+                                  ? undefined
+                                  : LIVE_SCORE_PILL_CLASS
+                              }
+                            >
+                              {player.livePoints.toFixed(
+                                PLAYER_PROJECTION_DECIMALS,
+                              )}
+                            </span>
+                            <span aria-hidden="true">
+                              {`${LIVE_POINTS_SEPARATOR}${projectionText(player.projectedPoints)}`}
+                            </span>
+                            <span className="sr-only">{`${LIVE_POINTS_LABEL} ${player.livePoints.toFixed(
+                              PLAYER_PROJECTION_DECIMALS,
+                            )}, ${PROJECTED_LABEL} ${projectionText(player.projectedPoints)}`}</span>
+                          </>
+                        ) : (
+                          <>
+                            <span aria-hidden="true">
+                              {projectionText(player.projectedPoints)}
+                            </span>
+                            <span className="sr-only">{`${PROJECTED_LABEL} ${projectionText(
+                              player.projectedPoints,
+                            )}`}</span>
+                          </>
+                        )}
+                      </span>
+                    </span>
+                    {tag === null ? null : (
+                      <ExplainedBadge
+                        data-injury={tag.status}
+                        description={tag.title}
+                        className="-my-2 inline-flex min-h-[44px] items-center rounded-md"
+                      >
+                        <span
+                          className={cn(
+                            "rounded border px-1 text-[0.6875rem] font-medium",
+                            tag.isUnavailable
+                              ? "border-destructive/40 text-destructive"
+                              : "border-border text-muted-foreground",
+                          )}
+                        >
+                          {tag.tag}
+                        </span>
+                      </ExplainedBadge>
+                    )}
+                  </li>
+                );
+              })
+            )}
+          </ul>
+
           {/* Ben's ruling of 2026-09-09: "I filtered by TE and a likely bidder showed up but I
               have no idea why". The reason used to be a native `title`, which never opens on a
-              tap; now the badge is a real tooltip trigger with the reason behind it. */}
+              tap; now the badge is a real tooltip trigger with the reason behind it. And Ben
+              (2026-09-10): "can you say what the actual median is?" — the figures the flag
+              compared ride under the sentence as the tooltip's quieter second line. */}
           {row.likelyBidder ? (
             <div className="flex flex-wrap gap-2 px-4 pb-3">
               {/* The button is the 44px tap target every control in this view sits on; the
@@ -266,6 +297,7 @@ const PositionTeamRow = memo(function PositionTeamRow({
                     ? LIKELY_BIDDER_FALLBACK_DESCRIPTION
                     : LIKELY_BIDDER_REASONS[row.likelyBidderReason]
                 }
+                secondary={likelyBidderFigures(row) ?? undefined}
                 className="-my-2.5 inline-flex min-h-[44px] items-center rounded-md"
               >
                 <span className={badgeVariants({ variant: "outline" })}>
@@ -284,6 +316,8 @@ const PositionTeamRow = memo(function PositionTeamRow({
                   players={row.team.roster}
                   starterSlots={starterSlots}
                   highlightedPlayerIds={highlightedPlayerIds}
+                  ownerName={row.ownerName}
+                  onOpenPlayer={onOpenPlayer}
                 />
               </CardContent>
             ) : null}
@@ -301,6 +335,7 @@ interface PositionViewProps {
   onToggle: (teamId: number) => void;
   highlightedPlayerIds: ReadonlySet<string>;
   rosterPositions: string[];
+  onOpenPlayer: (sleeperPlayerId: string) => void;
 }
 
 /**
@@ -317,18 +352,21 @@ export function PositionView({
   onToggle,
   highlightedPlayerIds,
   rosterPositions,
+  onOpenPlayer,
 }: PositionViewProps) {
   return (
     <ul className={BOARD_GRID}>
-      {rows.map((row) => (
+      {rows.map((row, index) => (
         <PositionTeamRow
           key={row.teamId}
           row={row}
+          revealIndex={index + 1}
           position={position}
           isOpen={isOpen(row.teamId)}
           onToggle={onToggle}
           highlightedPlayerIds={highlightedPlayerIds}
           rosterPositions={rosterPositions}
+          onOpenPlayer={onOpenPlayer}
         />
       ))}
     </ul>

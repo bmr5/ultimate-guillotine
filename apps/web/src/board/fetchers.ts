@@ -40,6 +40,16 @@ export type FinalRosterRow = Pick<
   TableRow<"final_rosters">,
   "team_id" | "eliminated_week" | "holdings" | "frozen_at"
 >;
+export type DraftPickRow = Pick<
+  TableRow<"draft_picks">,
+  | "team_id"
+  | "sleeper_player_id"
+  | "pick_no"
+  | "round"
+  | "position"
+  | "amount"
+  | "drafted_at"
+>;
 
 interface SupabaseResult<T> {
   data: T[] | null;
@@ -314,4 +324,23 @@ export async function fetchPlayerProjections(
     ),
   );
   return batches.flat();
+}
+
+/**
+ * The season's auction, whole: 162 rows once a year, so it loads with the board rather than
+ * per card, and the mark on every roster row derives from it without a second request.
+ */
+export function fetchDraftPicks(
+  client: BoardClient,
+  seasonId: number,
+): Promise<DraftPickRow[]> {
+  return unwrap<DraftPickRow>(
+    client
+      .from("draft_picks")
+      .select(
+        "team_id, sleeper_player_id, pick_no, round, position, amount, drafted_at",
+      )
+      .eq("season_id", seasonId),
+    "draft_picks",
+  );
 }

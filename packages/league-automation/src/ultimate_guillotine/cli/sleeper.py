@@ -14,6 +14,7 @@ from ultimate_guillotine.cli.deps import (
     run_scheduled_with_notes,
 )
 from ultimate_guillotine.sleeper.client import SleeperClient
+from ultimate_guillotine.sleeper.draft import sync_draft
 from ultimate_guillotine.sleeper.players import sync_players
 from ultimate_guillotine.sleeper.projections import ProjectionRepository, fetch_projection_rows
 from ultimate_guillotine.sleeper.scores import sync_scores
@@ -21,6 +22,7 @@ from ultimate_guillotine.sleeper.scoring import DRIFT_POINTS, scoring_version
 from ultimate_guillotine.sleeper.state import current_week, sync_nfl_state
 from ultimate_guillotine.sleeper.sync import sync_season
 from ultimate_guillotine.sleeper.team_projections import COVERAGE_GATE, recompute_team_week
+from ultimate_guillotine.sleeper.transactions import sync_transactions
 
 #: The league's season. The NFL season a projection belongs to is read from
 #: `nfl_state`, never from this: the two part company every January.
@@ -77,6 +79,26 @@ def register(subparsers) -> None:
         help="print nothing on success so a scheduled run delivers only failures",
     )
     scores_parser.set_defaults(handler=cmd_scores)
+
+    draft_parser = sleeper_sub.add_parser("draft", help="sync the auction results")
+    draft_parser.add_argument(
+        "--quiet",
+        action="store_true",
+        help="print nothing on success so a scheduled run delivers only failures",
+    )
+    draft_parser.set_defaults(handler=cmd_draft)
+
+    tx_parser = sleeper_sub.add_parser("transactions", help="sync the transaction log")
+    tx_parser.add_argument("--week", type=int, default=None, help="one week to sync")
+    tx_parser.add_argument(
+        "--all", action="store_true", help="every week from 1 to the current one (backfill)"
+    )
+    tx_parser.add_argument(
+        "--quiet",
+        action="store_true",
+        help="print nothing on success so a scheduled run delivers only failures",
+    )
+    tx_parser.set_defaults(handler=cmd_transactions)
 
 
 def cmd_sync(args: argparse.Namespace) -> int:
@@ -153,9 +175,7 @@ def _season_row(conn: psycopg.Connection, year: int) -> tuple[int, dict]:
     January run cannot score one season's stat lines with another's settings.
     """
     with conn.cursor() as cur:
-        cur.execute(
-            "select id, scoring_settings from public.seasons where year = %s", (year,)
-        )
+        cur.execute("select id, scoring_settings from public.seasons where year = %s", (year,))
         row = cur.fetchone()
     if row is None:
         raise ValueError(f"no season row for year {year}")
@@ -241,6 +261,111 @@ def cmd_scores(args: argparse.Namespace) -> int:
         return 0
 
     return run_scheduled_with_notes(deps, "scores-sync", now, action)
+
+
+def cmd_draft(args: argparse.Namespace) -> int:
+    """Sync the season's auction into `public.draft_picks`.
+
+    The season is the league's own (`SYNC_YEAR`), not the year `nfl_state` reports:
+    the auction belongs to the league season it opened, and a January run must not
+    file it under the next NFL year. Run by hand once a year, after the auction (Ben,
+    2026-09-10: "drop the cron it's a waste. have this as a script that we just run once
+    a year"); before the auction is complete it reports `skipped`, and a rerun rewrites
+    the same rows, so running it twice costs nothing.
+    """
+    deps = build_deps()
+    conn = deps.conn
+    now = datetime.now(UTC)
+
+    def action(run_id: int) -> int:
+        report = sync_draft(
+            SleeperClient(httpx.Client()),
+            conn,
+            deps.settings.sleeper_league_id,
+            _season_id(conn, SYNC_YEAR),
+            now,
+        )
+        if not args.quiet:
+            if report.skipped:
+                print(f"draft: skipped, status={report.status}")
+            else:
+                print(f"draft: {report.picks} picks")
+        return 0
+
+    return run_scheduled_with_notes(deps, "draft-sync", now, action)
+
+
+def weeks_to_sync(current: int, week: int | None, all_weeks: bool) -> list[int]:
+    """Which weeks a transactions run asks Sleeper for.
+
+    The default is the current week and the one before it, clamped to week 1: a deal
+    processed late at a week boundary lands in the new leg, and the previous week
+    covers the seam. `--all` walks the season for a backfill; `--week` is one week.
+    """
+    if week is not None:
+        return [week]
+    if all_weeks:
+        return list(range(1, current + 1))
+    return [w for w in (current - 1, current) if w >= 1]
+
+
+def _weeks_label(weeks: list[int]) -> str:
+    return f"{weeks[0]}-{weeks[-1]}" if len(weeks) > 1 else str(weeks[0])
+
+
+def cmd_transactions(args: argparse.Namespace) -> int:
+    """Sync the executed transaction log for the weeks `weeks_to_sync` picks.
+
+    Shaped like `cmd_scores`: the week comes from `nfl_state`, the off-season is a
+    no-op rather than a failure, and the run is recorded as `transactions-sync`.
+    Two things can be worth a note without failing the run -- a record of a kind
+    this build has never seen, and a roster no team row names -- and each posts once
+    per run, on the players sync's reasoning that a new Sleeper string is something
+    somebody has to look at, not an outage.
+    """
+    deps = build_deps()
+    conn = deps.conn
+    now = datetime.now(UTC)
+    client = SleeperClient(httpx.Client())
+
+    def action(run_id: int) -> int:
+        state = current_week(client, conn, now)
+        if state.season_type != "regular":
+            if not args.quiet:
+                print(f"transactions: skipped, season_type={state.season_type}")
+            return 0
+        weeks = weeks_to_sync(state.week, args.week, args.all)
+        report = sync_transactions(
+            client,
+            conn,
+            deps.settings.sleeper_league_id,
+            _season_id(conn, state.season),
+            weeks,
+            now,
+        )
+        label = _weeks_label(report.weeks)
+        if not args.quiet:
+            print(
+                f"transactions: {report.transactions} transactions, {report.moves} moves, "
+                f"weeks {label}"
+            )
+        if report.unknown_kinds:
+            kinds = ", ".join(sorted(report.unknown_kinds))
+            post_ops(
+                deps.notifier,
+                f"transactions weeks {label}: {sum(report.unknown_kinds.values())} record(s) "
+                f"of a kind this build does not know ({kinds}); they are skipped until "
+                f"`KINDS` learns them",
+            )
+        if report.unmatched_rosters:
+            post_ops(
+                deps.notifier,
+                f"transactions weeks {label}: {report.unmatched_rosters} record(s) name a "
+                f"roster with no team row; run `ug sleeper sync`",
+            )
+        return 0
+
+    return run_scheduled_with_notes(deps, "transactions-sync", now, action)
 
 
 def cmd_projections(args: argparse.Namespace) -> int:
@@ -358,8 +483,7 @@ def cmd_projections(args: argparse.Namespace) -> int:
             )
             if not is_live_week:
                 print(
-                    f"team totals for week {week} left unchanged "
-                    f"(rosters are current-state only)"
+                    f"team totals for week {week} left unchanged (rosters are current-state only)"
                 )
         return 0
 

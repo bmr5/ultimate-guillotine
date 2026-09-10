@@ -62,10 +62,28 @@ class DeliveryService:
         if self._commit is not None:
             self._commit()
 
-    def _resolve_target(self):
+    def _resolve_target(self, reply_to: str | None = None):
+        """The chat a message goes to.
+
+        ``reply_to`` is the chat the triggering message came from. In production
+        the league chat is the target, but a message posted in the registered
+        self-test chat is still answered there (Ben, 2026-09-10: "monitoring the
+        actual group chat along with the test one so I can still keep testing").
+        Anything else -- a listen-only chat, an unknown chat -- gets the mode's
+        target, never the chat it came from.
+        """
         mode = self._settings.delivery_mode
         if mode is DeliveryMode.DISABLED:
             raise DeliveryDisabled("delivery mode is disabled")
+        if (
+            reply_to is not None
+            and mode is DeliveryMode.PRODUCTION
+            and self._settings.test_chat_guid
+            and reply_to == self._settings.test_chat_guid
+        ):
+            test_target = self._targets.get(DeliveryMode.TEST)
+            if test_target is not None and test_target.chat_guid == reply_to:
+                return test_target
         target = self._targets.get(mode)
         if target is None:
             raise TargetMismatch(f"no delivery target configured for {mode}")
@@ -77,9 +95,7 @@ class DeliveryService:
         if target.chat_guid != expected_guid:
             raise TargetMismatch("stored target does not match configured chat")
         if mode is DeliveryMode.PRODUCTION:
-            observed = participant_fingerprint(
-                self._client.chat_participants(target.chat_guid)
-            )
+            observed = participant_fingerprint(self._client.chat_participants(target.chat_guid))
             if (
                 observed != self._settings.production_participant_fingerprint
                 or observed != target.participant_fingerprint
@@ -88,7 +104,12 @@ class DeliveryService:
         return target
 
     def deliver(
-        self, run_id: int | None, agent: str, content: str
+        self,
+        run_id: int | None,
+        agent: str,
+        content: str,
+        *,
+        reply_to: str | None = None,
     ) -> DeliveryResult:
         """Deliver signed content to the configured chat, effectively once.
 
@@ -97,7 +118,7 @@ class DeliveryService:
         `send_text` crosses the Messages boundary, so a crash mid-send leaves a
         reservation the next attempt can reconcile instead of double-sending.
         """
-        target = self._resolve_target()
+        target = self._resolve_target(reply_to)
         signed = sign(content)
         digest = content_hash(content)
         pending = self._outbound.pending_sending(target.id, digest)
@@ -105,17 +126,13 @@ class DeliveryService:
             since = pending.reserved_at - timedelta(minutes=1)
             for msg in self._client.messages_after(target.chat_guid, since):
                 if msg.is_from_me and _normalized(msg.text) == _normalized(signed):
-                    self._outbound.set_state(
-                        pending.id, "reconciled", bluebubbles_guid=msg.guid
-                    )
+                    self._outbound.set_state(pending.id, "reconciled", bluebubbles_guid=msg.guid)
                     self._notifier.feed(
                         f"[{agent}] [{self._settings.delivery_mode}] "
                         f"outbound #{pending.id} (reconciled after crash)\n{signed}"
                     )
                     return DeliveryResult("reconciled", pending.id, msg.guid)
-            self._outbound.set_state(
-                pending.id, "failed", error="unreconciled send; retrying"
-            )
+            self._outbound.set_state(pending.id, "failed", error="unreconciled send; retrying")
         outbound_id = self._outbound.reserve(run_id, target.id, signed, digest)
         self._persist()
         self._outbound.set_state(outbound_id, "sending")
@@ -125,15 +142,23 @@ class DeliveryService:
             raise RuntimeError("simulated crash after send")
         self._outbound.set_state(outbound_id, "sent", bluebubbles_guid=guid)
         self._notifier.feed(
-            f"[{agent}] [{self._settings.delivery_mode}] "
-            f"outbound #{outbound_id}\n{signed}"
+            f"[{agent}] [{self._settings.delivery_mode}] outbound #{outbound_id}\n{signed}"
         )
         return DeliveryResult("sent", outbound_id, guid)
 
     def deliver_attachment(
-        self, run_id: int | None, agent: str, filename: str, data: bytes
+        self,
+        run_id: int | None,
+        agent: str,
+        filename: str,
+        data: bytes,
+        *,
+        reply_to: str | None = None,
     ) -> DeliveryResult:
         """Send one file to the configured chat, effectively once.
+
+        ``reply_to`` is the chat the request came from, resolved the same way
+        ``deliver`` resolves it: a file asked for in the self-test chat lands there.
 
         The same reserve → commit → send → mark path as ``deliver``. The outbound
         row's content is ``attachment:<filename>`` and its hash is over the bytes,
@@ -141,7 +166,7 @@ class DeliveryService:
         is reconciled by file name among the bot's own recent messages, which is
         the only thing about an attachment that iMessage hands back.
         """
-        target = self._resolve_target()
+        target = self._resolve_target(reply_to)
         digest = attachment_hash(data)
         content = f"attachment:{filename}"
         pending = self._outbound.pending_sending(target.id, digest)

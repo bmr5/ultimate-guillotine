@@ -11,6 +11,7 @@ import { latestFinalWeek } from "./derive/records";
 import { parseRosterPositions } from "./derive/roster";
 import { newestScoreSyncedAt } from "./derive/score";
 import {
+  fetchDraftPicks,
   fetchFinalRosters,
   fetchLatestSeason,
   fetchMembers,
@@ -24,6 +25,7 @@ import {
   fetchTeamWeekProjections,
   fetchTeamWeekScores,
   fetchWeeklyResults,
+  type DraftPickRow,
 } from "./fetchers";
 import { boardKeys, fingerprintIds } from "./queryKeys";
 import type { BoardTeam } from "./types";
@@ -63,6 +65,10 @@ export interface BoardDataResult {
    * slot is called empty, rather than the board inventing holes it cannot see.
    */
   rosterPositions: string[];
+  /** The season's auction, whole; the card's context line is computed from it. */
+  draftPicks: DraftPickRow[];
+  /** `teams.id` -> `members.id`, for matching a Sleeper trade to a registered one. */
+  memberIdByTeamId: ReadonlyMap<number, number>;
   teams: BoardTeam[];
   isPending: boolean;
   isEmpty: boolean;
@@ -241,6 +247,21 @@ export function useBoardData(options: BoardDataOptions): BoardDataResult {
     ...shared,
   });
 
+  const draftPicks = useQuery({
+    queryKey: boardKeys.draftPicks(seasonId ?? 0),
+    queryFn: () => fetchDraftPicks(boardClient, seasonId as number),
+    enabled: hasSeason,
+    ...shared,
+    // The auction is a fact that changes once a year. Window focus still refetches it.
+    staleTime: Number.POSITIVE_INFINITY,
+    refetchInterval: false as const,
+  });
+
+  const memberIdByTeamId = useMemo(
+    () => new Map((teams.data ?? []).map((team) => [team.id, team.member_id])),
+    [teams.data],
+  );
+
   // A player frozen onto an eliminated team's snapshot has usually been dropped, so he is no
   // longer in roster_holdings. Both id sets are needed or those rows render as "Unknown player".
   const heldPlayerIds = useMemo(() => {
@@ -333,6 +354,7 @@ export function useBoardData(options: BoardDataOptions): BoardDataResult {
         playerProjections: playerProjections.data ?? [],
         weeklyResults: weeklyResults.data ?? [],
         finalRosters: finalRosters.data ?? [],
+        draftPicks: draftPicks.data ?? [],
       }),
     [
       teams.data,
@@ -345,6 +367,7 @@ export function useBoardData(options: BoardDataOptions): BoardDataResult {
       playerProjections.data,
       weeklyResults.data,
       finalRosters.data,
+      draftPicks.data,
     ],
   );
 
@@ -383,6 +406,7 @@ export function useBoardData(options: BoardDataOptions): BoardDataResult {
     ["Player projections", playerProjections],
     ["Weekly results", weeklyResults],
     ["Final rosters", finalRosters],
+    ["Draft", draftPicks],
   ];
 
   const errors: BoardQueryError[] = sections
@@ -410,6 +434,8 @@ export function useBoardData(options: BoardDataOptions): BoardDataResult {
     isOffRegularSeason,
     seasonId,
     rosterPositions,
+    draftPicks: draftPicks.data ?? [],
+    memberIdByTeamId,
     teams: boardTeams,
     isPending,
     // No failed query at all, not just no failed teams query. The empty state claims there is

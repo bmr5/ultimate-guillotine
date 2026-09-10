@@ -203,9 +203,7 @@ def cmd_handles_load(args: argparse.Namespace) -> int:
             # a row every future blank handle in the file would then collide
             # with, reported as a member claiming another member's handle.
             digests = [
-                handle_hash(h)
-                for h in entry.get("handles") or []
-                if h and normalize_handle(h)
+                handle_hash(h) for h in entry.get("handles") or [] if h and normalize_handle(h)
             ]
             if not digests:
                 # `replace_handles` is wholesale, so an empty list would wipe

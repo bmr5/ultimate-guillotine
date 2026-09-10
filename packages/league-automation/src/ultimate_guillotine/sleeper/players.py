@@ -118,9 +118,18 @@ class PlayerRepository:
                   -- flag: the column is current state, not a log.
                   injury_status = excluded.injury_status, synced_at = excluded.synced_at
                 """,
-                [(p.sleeper_player_id, p.full_name, p.position, p.team, p.active,
-                  p.injury_status, now)
-                 for p in players],
+                [
+                    (
+                        p.sleeper_player_id,
+                        p.full_name,
+                        p.position,
+                        p.team,
+                        p.active,
+                        p.injury_status,
+                        now,
+                    )
+                    for p in players
+                ],
             )
         return len(players)
 

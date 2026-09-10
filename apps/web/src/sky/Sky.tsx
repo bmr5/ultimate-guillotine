@@ -71,7 +71,10 @@ export function Sky() {
       aria-hidden="true"
       data-sky
       className={cn(
-        "pointer-events-none fixed inset-0 -z-10 h-full w-full transition-opacity duration-1000",
+        // `z-0`, not a negative index: the body paints its own background after negative layers
+        // (the root has a background of its own, so the body's does not propagate), which put an
+        // opaque wash over the whole sky. The page content sits above it at `z-10`.
+        "pointer-events-none fixed inset-0 z-0 h-full w-full transition-opacity duration-1000",
         ready ? "opacity-100" : "opacity-0",
       )}
     />

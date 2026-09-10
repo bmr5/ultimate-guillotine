@@ -108,9 +108,7 @@ def test_parse_reads_json_wrapped_in_code_fences() -> None:
 
 
 def test_an_invalid_answer_is_retried_once_with_a_rejection_note() -> None:
-    runner = FakeRunner(
-        json.dumps({"name": "circle"}), json.dumps({"name": "circle", "sides": 0})
-    )
+    runner = FakeRunner(json.dumps({"name": "circle"}), json.dumps({"name": "circle", "sides": 0}))
     shape, _usage = client(runner).parse("sys", "secret user text", Shape, "shape")
     assert shape == Shape(name="circle", sides=0)
     assert len(runner.calls) == 2
@@ -128,9 +126,7 @@ def test_the_retry_gets_only_what_is_left_of_the_budget(
     for a subprocess, so two full-length calls would double the timeout it asked for."""
     clock = iter([0.0, 10.0])
     monkeypatch.setattr(hermes_module, "monotonic", lambda: next(clock))
-    runner = FakeRunner(
-        json.dumps({"name": "circle"}), json.dumps({"name": "circle", "sides": 0})
-    )
+    runner = FakeRunner(json.dumps({"name": "circle"}), json.dumps({"name": "circle", "sides": 0}))
     client(runner, timeout=60.0).parse("sys", "user text", Shape, "shape")
     assert runner.calls[0][1]["timeout"] == 60.0
     assert runner.calls[1][1]["timeout"] == 50.0

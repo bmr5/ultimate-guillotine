@@ -10,13 +10,22 @@ from typing import Any
 
 import httpx
 
-from ultimate_guillotine.sleeper.models import SleeperLeague, SleeperRoster, SleeperUser
+from ultimate_guillotine.sleeper.models import (
+    SleeperDraft,
+    SleeperLeague,
+    SleeperRoster,
+    SleeperUser,
+)
 
 BASE_URL = "https://api.sleeper.app/v1"
 
 #: Sleeper's projections live outside the versioned API, so this one call uses an
 #: absolute URL instead of the client's pinned ``base_url``. Verified 2026-09-09.
 PROJECTIONS_URL = "https://api.sleeper.app/projections/nfl/{season}/{week}"
+
+#: The NFL schedule sits outside ``/v1`` too: one object per game with ``week``,
+#: ``date``, ``home``, ``away``, ``status`` and ``game_id``. Verified 2026-09-10.
+SCHEDULE_URL = "https://api.sleeper.app/schedule/nfl/regular/{season}"
 
 TIMEOUT = 10.0
 
@@ -75,16 +84,32 @@ class SleeperClient:
         response.raise_for_status()
         return [SleeperRoster.model_validate(item) for item in response.json()]
 
+    def get_draft(self, draft_id: str) -> SleeperDraft:
+        """Fetch one draft's record: type, status, start time, and dimensions."""
+        response = self._http.get(f"/draft/{draft_id}")
+        response.raise_for_status()
+        return SleeperDraft.model_validate(response.json())
+
+    def get_draft_picks(self, draft_id: str) -> list[dict[str, Any]]:
+        """Fetch every pick of a draft, raw.
+
+        Each record carries ``pick_no``, ``round``, ``draft_slot``, ``roster_id``,
+        ``player_id`` and ``metadata.amount`` (a string). Parsing lives in
+        ``sleeper/draft.py``.
+        """
+        response = self._http.get(f"/draft/{draft_id}/picks")
+        response.raise_for_status()
+        return response.json()
+
+    def get_transactions(self, league_id: str, week: int) -> list[dict[str, Any]]:
+        """Fetch the executed transaction log for one week -- Sleeper's ``leg`` -- raw."""
+        response = self._http.get(f"/league/{league_id}/transactions/{week}")
+        response.raise_for_status()
+        return response.json()
+
     def get_matchups(self, league_id: str, week: int) -> list[dict[str, Any]]:
         """Fetch raw matchup data for a given week."""
         response = self._http.get(f"/league/{league_id}/matchups/{week}")
-        response.raise_for_status()
-        result: list[dict[str, Any]] = response.json()
-        return result
-
-    def get_transactions(self, league_id: str, week: int) -> list[dict[str, Any]]:
-        """Fetch the raw transactions -- adds, drops, waivers, trades -- for one week."""
-        response = self._http.get(f"/league/{league_id}/transactions/{week}")
         response.raise_for_status()
         result: list[dict[str, Any]] = response.json()
         return result
@@ -144,7 +169,20 @@ class SleeperClient:
         dropped = len(payload) - len(rows)
         if dropped > 1 and dropped * 100 > len(payload) * MAX_DROPPED_PCT:
             raise ValueError(
-                f"sleeper projections payload dropped {dropped} malformed rows "
-                f"of {len(payload)}"
+                f"sleeper projections payload dropped {dropped} malformed rows of {len(payload)}"
             )
         return rows
+
+    def get_schedule(self, season: int) -> list[dict[str, Any]]:
+        """Fetch the regular-season schedule for ``season``, raw.
+
+        The one source of "has this game been played" the EOD summary's odds rest
+        on. Parsing lives in ``summary/schedule.py``; this only refuses a body that
+        is not the list the feed has always answered with.
+        """
+        response = self._http.get(SCHEDULE_URL.format(season=season), timeout=20.0)
+        response.raise_for_status()
+        payload: Any = response.json()
+        if not isinstance(payload, list):
+            raise ValueError("sleeper schedule payload is not a list")  # noqa: TRY004
+        return payload

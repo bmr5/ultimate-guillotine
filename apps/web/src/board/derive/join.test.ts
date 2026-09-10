@@ -79,6 +79,7 @@ const raw = (over: Partial<BoardRawData> = {}): BoardRawData => ({
     { week: 2, team_id: 7, points: 150.75, is_final: true, state_version: 1 },
   ],
   finalRosters: [],
+  draftPicks: [],
   ...over,
 });
 
@@ -710,5 +711,90 @@ describe("joinBoardTeams live scores", () => {
     // a league-wide lookup, and reading it that way would put another roster's points here.
     expect(board.score).toBeNull();
     expect(board.roster.every((p) => p.livePoints === null)).toBe(true);
+  });
+});
+
+describe("the drafted-here rule", () => {
+  const picks = [
+    {
+      team_id: 7,
+      sleeper_player_id: "4046",
+      pick_no: 1,
+      round: 1,
+      position: "QB",
+      amount: 45,
+      drafted_at: "2026-09-07T23:01:30.433Z",
+    },
+    {
+      team_id: 8,
+      sleeper_player_id: "9999",
+      pick_no: 2,
+      round: 1,
+      position: "RB",
+      amount: 12,
+      drafted_at: "2026-09-07T23:01:30.433Z",
+    },
+  ];
+
+  it("marks a player still on the team that drafted him, and carries the pick", () => {
+    const [team] = joinBoardTeams(raw({ draftPicks: picks }));
+    const mahomes = team.roster.find((p) => p.sleeperPlayerId === "4046");
+    expect(mahomes?.draftedHere).toBe(true);
+    expect(mahomes?.draft).toEqual({
+      teamId: 7,
+      amount: 45,
+      pickNo: 1,
+      round: 1,
+      position: "QB",
+      draftedAt: "2026-09-07T23:01:30.433Z",
+    });
+  });
+
+  it("does not mark a player another team drafted, but still carries his pick", () => {
+    const [team] = joinBoardTeams(raw({ draftPicks: picks }));
+    const acquired = team.roster.find((p) => p.sleeperPlayerId === "9999");
+    expect(acquired?.draftedHere).toBe(false);
+    expect(acquired?.draft?.teamId).toBe(8);
+  });
+
+  it("leaves an undrafted pickup with no pick and no mark", () => {
+    const [team] = joinBoardTeams(raw());
+    for (const player of team.roster) {
+      expect(player.draft).toBeNull();
+      expect(player.draftedHere).toBe(false);
+    }
+  });
+
+  it("applies the same rule to a frozen roster", () => {
+    const frozen: FinalRosterHolding[] = [
+      {
+        sleeper_player_id: "4046",
+        slot: "starter",
+        slot_index: 0,
+        lineup_position: "QB",
+      },
+    ];
+    const [team] = joinBoardTeams(
+      raw({
+        draftPicks: picks,
+        teamSeasonState: [
+          {
+            ...raw().teamSeasonState[0],
+            is_eliminated: true,
+            eliminated_week: 2,
+          },
+        ],
+        finalRosters: [
+          {
+            team_id: 7,
+            eliminated_week: 2,
+            holdings: frozen,
+            frozen_at: "2026-09-20T00:00:00Z",
+          },
+        ],
+      }),
+    );
+    expect(team.isRosterFrozen).toBe(true);
+    expect(team.roster[0]?.draftedHere).toBe(true);
   });
 });

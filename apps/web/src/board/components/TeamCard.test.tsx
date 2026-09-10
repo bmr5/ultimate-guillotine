@@ -38,6 +38,8 @@ const player = (
   projectedPoints: 22.6,
   injuryStatus: null,
   livePoints: null,
+  draft: null,
+  draftedHere: false,
   ...over,
 });
 
@@ -122,6 +124,7 @@ const renderCard = (
         highlightedPlayerIds={highlightedPlayerIds}
         rosterPositions={rosterPositions}
         emphasis={emphasis}
+        onOpenPlayer={noop}
       />
     </ul>,
   );
@@ -274,6 +277,10 @@ const partialTeam = (): Partial<BoardTeam> => ({
 });
 
 /** The sentence Ben asked the badge to carry, spelled out once. */
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 const COVERAGE_SENTENCE =
   "Only 6 of 9 starters have a projection (66.7%). " +
   "The number counts the players Sleeper has projected.";
@@ -401,9 +408,16 @@ describe("TeamCard", () => {
     expect(screen.getByText("112.4")).toBeInTheDocument();
     // Ben's card change 1: the total leads the line, and FAAB follows it.
     expect(screen.getByText("Total 301.5")).toBeInTheDocument();
-    // FAAB is a Sleeper waiver budget, not money: no dollar sign anywhere on the card.
-    expect(screen.getByText(/\b75 FAAB\b/)).toBeInTheDocument();
-    expect(screen.queryByText(/\$/)).toBeNull();
+    // Ben (2026-09-10): the figure is a dollar amount — `$75`, not `75 FAAB`. A review pass
+    // of 2026-09-09 had taken the sign off as "not money"; the word is sr-only copy now.
+    expect(screen.getByText("$75")).toBeInTheDocument();
+    expect(screen.getByText("$75").getAttribute("aria-hidden")).toBe("true");
+    expect(screen.queryByText(/\bFAAB\b/)?.className).toContain("sr-only");
+  });
+
+  it("names the FAAB figure for a reader who cannot see the line", () => {
+    renderCard();
+    expect(screen.getByText("FAAB $75").className).toContain("sr-only");
   });
 
   it("names the total in full for a reader who cannot see the line", () => {
@@ -776,8 +790,12 @@ describe("TeamCard summary chips", () => {
   it("explains the partial chip on a tap, and to a screen reader without one", async () => {
     renderCard(partialTeam());
     const chip = partialChip();
-    // The sentence reaches a screen reader whether or not the tooltip is open.
-    expect(chipDescription(chip)).toBe(COVERAGE_SENTENCE);
+    // The sentence reaches a screen reader whether or not the tooltip is open, and the
+    // computed-at line follows it after the sentence's own full stop — one stop, never two:
+    // `ExplainedBadge` adds a stop only when the sentence ends without one.
+    expect(chipDescription(chip)).toMatch(
+      new RegExp(`^${escapeRegExp(COVERAGE_SENTENCE)}( Computed .*)?$`),
+    );
     expect(screen.queryByRole("tooltip")).toBeNull();
 
     await tap(chip as Element);
@@ -836,7 +854,10 @@ describe("TeamCard summary chips", () => {
     });
     const chip = partialChip();
     expect(chip).not.toBeNull();
-    expect(chipDescription(chip)).toBe("Partial projection coverage");
+    // The computed-at line rides along whenever the row carries a computed-at instant.
+    expect(chipDescription(chip)).toMatch(
+      /^Partial projection coverage(\. Computed .*)?$/,
+    );
     expect(screen.queryByText(/starters have a projection/)).toBeNull();
   });
 

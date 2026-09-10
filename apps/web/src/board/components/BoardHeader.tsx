@@ -6,6 +6,7 @@ import { badgeVariants } from "@/components/ui/badge-variants";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { REVEAL_CLASS, revealStyle } from "@/motion/reveal";
 
 import {
   crossesMinuteBoundary,
@@ -46,6 +47,9 @@ interface BoardHeaderProps {
   /** The position the board is narrowed to, or null for every team's whole roster. */
   positionFilter: PositionFilter | null;
   onPositionFilterChange: (position: PositionFilter | null) => void;
+  /** The rich / medium / poor split is a view of its own, beside the positions. */
+  tiersActive: boolean;
+  onTiersChange: (active: boolean) => void;
   sortFellBack: boolean;
   searchTerm: string;
   onSearchTermChange: (term: string) => void;
@@ -118,6 +122,9 @@ const CLEAR_SEARCH_LABEL = "Clear search";
  * variant and the `h-10` input both land under the floor on their own.
  */
 const TOUCH_TARGET_CLASS = "min-h-[44px]";
+const TIERS_VALUE = "tiers";
+const TIERS_LABEL = "$ Tiers";
+const TIERS_ARIA_LABEL = "FAAB tiers: rich, medium and poor";
 
 /**
  * The board's own header: the week, the sort, the search box and the last-pull indicator. It
@@ -138,6 +145,8 @@ export function BoardHeader({
   onSortModeChange,
   positionFilter,
   onPositionFilterChange,
+  tiersActive,
+  onTiersChange,
   sortFellBack,
   searchTerm,
   onSearchTermChange,
@@ -200,7 +209,11 @@ export function BoardHeader({
   const stale = isStale(primaryUpdatedAt, now);
 
   return (
-    <header className="mb-3 space-y-2 rounded-xl border bg-background/70 px-4 py-3 backdrop-blur-md">
+    <header
+      className={`mb-3 space-y-2 rounded-xl border bg-background/70 px-4 py-3 backdrop-blur-md ${REVEAL_CLASS}`}
+      // The first thing on the board to settle; the cards follow it down the page.
+      style={revealStyle(0)}
+    >
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         {/* The site title lives in the layout; this header names the week only. */}
         <h2 className="text-2xl leading-none figures">
@@ -290,11 +303,17 @@ export function BoardHeader({
       */}
       <ToggleGroup
         type="single"
-        value={positionFilter ?? ALL_POSITIONS_VALUE}
+        value={
+          tiersActive ? TIERS_VALUE : (positionFilter ?? ALL_POSITIONS_VALUE)
+        }
         onValueChange={(value) => {
           // Radix hands back "" when the active item is clicked again; the board is always in
           // exactly one of these states, so that is a no-op rather than an eighth one.
-          if (value !== "") {
+          // One state change per click: the page clears the tiers view itself when a
+          // position (or All) is chosen, so two updates never race over the same URL.
+          if (value === TIERS_VALUE) {
+            onTiersChange(true);
+          } else if (value !== "") {
             onPositionFilterChange(
               value === ALL_POSITIONS_VALUE ? null : (value as PositionFilter),
             );
@@ -322,40 +341,52 @@ export function BoardHeader({
             {position}
           </ToggleGroupItem>
         ))}
+        {/* Ben (2026-09-10): "a fun filter that splits the rosters into tiers of rich medium
+            poor with math". It sits with the positions because it is the same gesture: a
+            different way to read the whole league. */}
+        <ToggleGroupItem
+          value={TIERS_VALUE}
+          aria-label={TIERS_ARIA_LABEL}
+          className={TOUCH_TARGET_CLASS}
+        >
+          {TIERS_LABEL}
+        </ToggleGroupItem>
       </ToggleGroup>
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <ToggleGroup
-          type="single"
-          value={sortMode}
-          onValueChange={(value) => {
-            // Radix hands back "" when the active item is clicked again; the board always has
-            // exactly one sort, so that is a no-op rather than a fourth state.
-            if (value !== "") {
-              onSortModeChange(value as SortMode);
-            }
-          }}
-          aria-label="Sort teams by"
-          variant="outline"
-          size="sm"
-        >
-          {/*
+        {tiersActive ? null : (
+          <ToggleGroup
+            type="single"
+            value={sortMode}
+            onValueChange={(value) => {
+              // Radix hands back "" when the active item is clicked again; the board always has
+              // exactly one sort, so that is a no-op rather than a fourth state.
+              if (value !== "") {
+                onSortModeChange(value as SortMode);
+              }
+            }}
+            aria-label="Sort teams by"
+            variant="outline"
+            size="sm"
+          >
+            {/*
             A position view answers "who can bid and who needs one", so it offers the two sorts
             that speak to that and drops the season total, which speaks to neither.
           */}
-          {(positionFilter === null ? SORT_MODES : POSITION_SORT_MODES).map(
-            (mode) => (
-              <ToggleGroupItem
-                key={mode}
-                value={mode}
-                aria-label={SORT_MODE_LABELS[mode]}
-                className={TOUCH_TARGET_CLASS}
-              >
-                {SORT_MODE_LABELS[mode]}
-              </ToggleGroupItem>
-            ),
-          )}
-        </ToggleGroup>
+            {(positionFilter === null ? SORT_MODES : POSITION_SORT_MODES).map(
+              (mode) => (
+                <ToggleGroupItem
+                  key={mode}
+                  value={mode}
+                  aria-label={SORT_MODE_LABELS[mode]}
+                  className={TOUCH_TARGET_CLASS}
+                >
+                  {SORT_MODE_LABELS[mode]}
+                </ToggleGroupItem>
+              ),
+            )}
+          </ToggleGroup>
+        )}
 
         <div className="flex items-center gap-2 sm:w-auto">
           <Input

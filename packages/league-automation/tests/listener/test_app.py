@@ -147,9 +147,7 @@ def test_webhook_exits_when_the_database_connection_is_dead(
     non-zero hands it to launchd's KeepAlive, which restarts it with a fresh one."""
     client = TestClient(create_app(FakeProcessor(), DeadHeartbeats(), "secret"))
     with pytest.raises(ExitCalled):
-        client.post(
-            "/bluebubbles-webhook?password=secret", json=json.loads(FIXTURE.read_text())
-        )
+        client.post("/bluebubbles-webhook?password=secret", json=json.loads(FIXTURE.read_text()))
     assert exit_codes == [1]
     assert "OperationalError" in caplog.text
     assert "connection to server was lost" not in caplog.text

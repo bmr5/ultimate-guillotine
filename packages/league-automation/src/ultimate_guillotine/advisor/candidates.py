@@ -793,9 +793,7 @@ def _build(
     player_leg = _leg_player(holding, seller.member_label, buyer.member_label)
     faab_leg = _leg_faab(amount, buyer.member_label, seller.member_label)
     gained, given = ([holding], []) if to_asker else ([], [holding])
-    asker_delta = _lineup_delta(
-        _startable(asker_team), gained, given, run.weeks, known=run.known
-    )
+    asker_delta = _lineup_delta(_startable(asker_team), gained, given, run.weeks, known=run.known)
     counterparty_delta = _lineup_delta(
         _startable(other_team), given, gained, run.weeks, known=run.known
     )
@@ -847,9 +845,7 @@ def _acquire(
     """
     if not _wants(asker, position, known=run.known):
         return []
-    price = _price(
-        run.points, position, asker_team.faab_remaining, run.anchor, kinds=run.kinds
-    )
+    price = _price(run.points, position, asker_team.faab_remaining, run.anchor, kinds=run.kinds)
     if price is None:
         return []
     fit_base = (
@@ -860,8 +856,17 @@ def _acquire(
     )
     return [
         _build(
-            run, asker, asker_team, other, other_team, position, holding,
-            to_asker=True, receiver=asker, price=price, fit_base=fit_base,
+            run,
+            asker,
+            asker_team,
+            other,
+            other_team,
+            position,
+            holding,
+            to_asker=True,
+            receiver=asker,
+            price=price,
+            fit_base=fit_base,
         )
         for holding in other.surpluses.get(position, ())[:OFFERS_PER_COUNTERPARTY]
     ]
@@ -886,9 +891,7 @@ def _move(
     """
     if not _wants(other, position, known=run.known):
         return []
-    price = _price(
-        run.points, position, other_team.faab_remaining, run.anchor, kinds=run.kinds
-    )
+    price = _price(run.points, position, other_team.faab_remaining, run.anchor, kinds=run.kinds)
     if price is None:
         return []
     fit_base = (
@@ -899,8 +902,17 @@ def _move(
     )
     return [
         _build(
-            run, asker, asker_team, other, other_team, position, holding,
-            to_asker=False, receiver=other, price=price, fit_base=fit_base,
+            run,
+            asker,
+            asker_team,
+            other,
+            other_team,
+            position,
+            holding,
+            to_asker=False,
+            receiver=other,
+            price=price,
+            fit_base=fit_base,
         )
         for holding in asker.surpluses.get(position, ())[:OFFERS_PER_COUNTERPARTY]
     ]

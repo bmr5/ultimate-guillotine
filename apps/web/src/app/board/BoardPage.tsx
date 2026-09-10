@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 
 import { BoardHeader } from "@/board/components/BoardHeader";
 import {
@@ -11,10 +11,12 @@ import {
 } from "@/board/components/BoardStates";
 import { PositionView } from "@/board/components/PositionView";
 import { TeamCard } from "@/board/components/TeamCard";
+import { TiersView } from "@/board/components/TiersView";
 import { positionView } from "@/board/derive/position";
 import { resolveCardEmphasis } from "@/board/derive/score";
 import { filterTeams } from "@/board/derive/search";
 import { selectEffectiveSortMode, sortBoardTeams } from "@/board/derive/sort";
+import { faabTiers } from "@/board/derive/tiers";
 import { BOARD_GRID, BOARD_WIDTH } from "@/board/layout";
 import { REALTIME_POLL_MS } from "@/board/realtime";
 import {
@@ -27,12 +29,17 @@ import {
 import { useBoardData } from "@/board/useBoardData";
 import { useDebouncedValue } from "@/board/useDebouncedValue";
 import { useLeagueBoardRealtime } from "@/board/useLeagueBoardRealtime";
+import { PlayerCard } from "@/player/components/PlayerCard";
 
 /** The URL parameter the sort is shared through. */
 const SORT_PARAM = "sort";
 
 /** The URL parameter the position quick view is shared through; absent means the whole board. */
 const POSITION_PARAM = "pos";
+const VIEW_PARAM = "view";
+/** The URL parameter an open player card is shared through; absent means no card. */
+const PLAYER_PARAM = "player";
+const TIERS_VIEW = "tiers";
 
 /** Long enough that a typed word settles into one derivation, short enough to feel immediate. */
 const SEARCH_DEBOUNCE_MS = 150;
@@ -42,7 +49,10 @@ const PROJECTION_SOURCE_LINE = "Projections: Sleeper";
 
 export function BoardPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const positionFilter = parsePositionFilter(searchParams.get(POSITION_PARAM));
+  const tiersActive = searchParams.get(VIEW_PARAM) === TIERS_VIEW;
+  const positionFilter = tiersActive
+    ? null
+    : parsePositionFilter(searchParams.get(POSITION_PARAM));
   /**
    * The position view offers two of the three sorts and defaults to FAAB rather than to the
    * board's own default, so `?sort=points_for` carried into a position view reads as FAAB and
@@ -177,9 +187,27 @@ export function BoardPage() {
     [searchParams, setSearchParams],
   );
 
+  const handleTiersChange = useCallback(
+    (active: boolean) => {
+      const next = new URLSearchParams(searchParams);
+      if (active) {
+        next.set(VIEW_PARAM, TIERS_VIEW);
+        next.delete(POSITION_PARAM);
+      } else {
+        next.delete(VIEW_PARAM);
+      }
+      setSearchParams(next, { replace: true });
+    },
+    [searchParams, setSearchParams],
+  );
+
+  const tiers = useMemo(() => faabTiers(board.teams), [board.teams]);
+
   const handlePositionFilterChange = useCallback(
     (position: PositionFilter | null) => {
       const next = new URLSearchParams(searchParams);
+      // Choosing a position (or All) leaves the tiers view.
+      next.delete(VIEW_PARAM);
       // Absent, never `?pos=all`: the whole board is the parameter's absence, not a value.
       if (position === null) {
         next.delete(POSITION_PARAM);
@@ -190,6 +218,46 @@ export function BoardPage() {
     },
     [searchParams, setSearchParams],
   );
+
+  const navigate = useNavigate();
+  const openPlayerId = (searchParams.get(PLAYER_PARAM) ?? "").trim() || null;
+  /**
+   * `setSearchParams` changes identity with the params, and the opener is a prop on every
+   * memoized card, so the latest setter rides in a ref and the opener depends on nothing.
+   */
+  const setSearchParamsRef = useRef(setSearchParams);
+  useEffect(() => {
+    setSearchParamsRef.current = setSearchParams;
+  }, [setSearchParams]);
+  /** True when this page pushed the open card's entry, so closing can pop it. */
+  const openedHereRef = useRef(false);
+
+  const handleOpenPlayer = useCallback((sleeperPlayerId: string) => {
+    openedHereRef.current = true;
+    setSearchParamsRef.current((previous) => {
+      const next = new URLSearchParams(previous);
+      next.set(PLAYER_PARAM, sleeperPlayerId);
+      return next;
+    });
+  }, []);
+
+  const handleClosePlayer = useCallback(() => {
+    if (openedHereRef.current) {
+      // A tap pushed the entry; the back button and the close button do the same thing.
+      openedHereRef.current = false;
+      void navigate(-1);
+      return;
+    }
+    // A shared link: there is no entry of ours to pop, so the URL is replaced in place.
+    setSearchParamsRef.current(
+      (previous) => {
+        const next = new URLSearchParams(previous);
+        next.delete(PLAYER_PARAM);
+        return next;
+      },
+      { replace: true },
+    );
+  }, [navigate]);
 
   const isOpen = (teamId: number) =>
     openOverrides.get(teamId) ?? autoExpanded.has(teamId);
@@ -218,6 +286,8 @@ export function BoardPage() {
         onSortModeChange={handleSortModeChange}
         positionFilter={positionFilter}
         onPositionFilterChange={handlePositionFilterChange}
+        tiersActive={tiersActive}
+        onTiersChange={handleTiersChange}
         // The fallback is about the board's own projection sort; a position view never asks
         // for points for, so the sentence would be answering a question nobody asked.
         sortFellBack={positionFilter === null && effective.fellBack}
@@ -240,7 +310,9 @@ export function BoardPage() {
         {board.isPending ? <BoardSkeleton /> : null}
         {!board.isPending && board.isEmpty ? <BoardEmpty /> : null}
 
-        {showList && positionFilter !== null ? (
+        {showList && tiersActive ? <TiersView tiers={tiers} /> : null}
+
+        {showList && !tiersActive && positionFilter !== null ? (
           <PositionView
             position={positionFilter}
             rows={positionRows}
@@ -248,10 +320,11 @@ export function BoardPage() {
             onToggle={handleToggle}
             highlightedPlayerIds={filtered.matchedPlayerIds}
             rosterPositions={board.rosterPositions}
+            onOpenPlayer={handleOpenPlayer}
           />
         ) : null}
 
-        {showList && positionFilter === null ? (
+        {showList && !tiersActive && positionFilter === null ? (
           <>
             <ul className={BOARD_GRID}>
               {sorted.active.map((team, index) => (
@@ -264,13 +337,18 @@ export function BoardPage() {
                   highlightedPlayerIds={filtered.matchedPlayerIds}
                   rosterPositions={board.rosterPositions}
                   emphasis={emphasis}
+                  onOpenPlayer={handleOpenPlayer}
                 />
               ))}
             </ul>
 
             {sorted.eliminated.length > 0 ? (
               <>
-                <EliminatedDivider count={sorted.eliminated.length} />
+                <EliminatedDivider
+                  count={sorted.eliminated.length}
+                  // The place after the last active card, so the rule settles in with the list.
+                  revealIndex={sorted.active.length + 1}
+                />
                 <ul className={BOARD_GRID}>
                   {sorted.eliminated.map((team, index) => (
                     <TeamCard
@@ -282,6 +360,7 @@ export function BoardPage() {
                       highlightedPlayerIds={filtered.matchedPlayerIds}
                       rosterPositions={board.rosterPositions}
                       emphasis={emphasis}
+                      onOpenPlayer={handleOpenPlayer}
                     />
                   ))}
                 </ul>
@@ -298,6 +377,21 @@ export function BoardPage() {
       <footer className="mt-6 text-xs text-muted-foreground">
         {PROJECTION_SOURCE_LINE}
       </footer>
+
+      {/* Mounted only while the URL names a player, so the card's reads run only then. */}
+      {openPlayerId !== null ? (
+        <PlayerCard
+          sleeperPlayerId={openPlayerId}
+          onClose={handleClosePlayer}
+          board={{
+            season: board.season,
+            seasonId: board.seasonId,
+            teams: board.teams,
+            draftPicks: board.draftPicks,
+            memberIdByTeamId: board.memberIdByTeamId,
+          }}
+        />
+      ) : null}
     </main>
   );
 }

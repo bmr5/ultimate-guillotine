@@ -80,9 +80,7 @@ __all__ = [
 
 
 def _side(legs: Sequence[OfferLeg]) -> str:
-    parts = [
-        f"{leg.amount} FAAB" if leg.kind == "faab" else str(leg.player_name) for leg in legs
-    ]
+    parts = [f"{leg.amount} FAAB" if leg.kind == "faab" else str(leg.player_name) for leg in legs]
     return " + ".join(parts) if parts else "nothing"
 
 
@@ -125,9 +123,7 @@ def _source(snapshot: LeagueSnapshot, projections_known: bool) -> str:
     return f"{SOURCE_PREFIX}registered trades + {basis}"
 
 
-def _candidate_for(
-    proposal: AdvisedTrade, candidates: Sequence[Candidate]
-) -> Candidate | None:
+def _candidate_for(proposal: AdvisedTrade, candidates: Sequence[Candidate]) -> Candidate | None:
     """The candidate a verified proposal points at, if the index resolves.
 
     ``None`` only where the caller passed a candidate list this response was not

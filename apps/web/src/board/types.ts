@@ -26,6 +26,30 @@ type ReadOnlyTable<
 
 export type RosterSlot = "starter" | "bench" | "ir" | "taxi";
 export type EliminationSource = "adjudicator" | "sleeper_inferred" | "manual";
+export type TransactionKind = "trade" | "waiver" | "free_agent" | "commissioner";
+export type MoveAction = "add" | "drop";
+
+/** One entry of `public.transactions.faab_moves`, as the sync writes it. */
+export interface FaabMoveEntry {
+  amount: number;
+  from_team_id: number;
+  to_team_id: number;
+}
+
+/**
+ * The auction pick that brought a player into the league this season, already resolved to a
+ * team id. Defined here rather than in `derive/draft` because `RosterPlayer` carries one.
+ */
+export interface DraftPickInfo {
+  teamId: number;
+  amount: number;
+  pickNo: number;
+  round: number;
+  /** The position Sleeper recorded on the pick, which is what the auction ranked by. */
+  position: string | null;
+  /** The draft's start time, ISO-8601 — the same on every pick. */
+  draftedAt: string;
+}
 
 /**
  * One entry in `public.final_rosters.holdings`. Deliberately identical to the
@@ -281,6 +305,44 @@ export interface Database {
         terms: Json;
         effective_week: number | null;
       }>;
+      /** The auction, one row per pick, keyed by season and player. Spec: player card. */
+      draft_picks: ReadOnlyTable<{
+        id: number;
+        season_id: number;
+        team_id: number;
+        sleeper_player_id: string;
+        sleeper_draft_id: string;
+        pick_no: number;
+        round: number;
+        draft_slot: number;
+        position: string | null;
+        amount: number;
+        drafted_at: string;
+        synced_at: string;
+      }>;
+      /** One completed Sleeper transaction. `raw` is never selected by the web app. */
+      transactions: ReadOnlyTable<{
+        id: number;
+        season_id: number;
+        sleeper_transaction_id: string;
+        kind: TransactionKind;
+        week: number;
+        occurred_at: string;
+        team_ids: number[];
+        faab_moves: FaabMoveEntry[];
+        waiver_bid: number | null;
+        raw: Json;
+        synced_at: string;
+      }>;
+      /** One player on one side of a transaction: the per-player index the card reads. */
+      transaction_moves: ReadOnlyTable<{
+        id: number;
+        transaction_id: number;
+        season_id: number;
+        sleeper_player_id: string;
+        team_id: number;
+        action: MoveAction;
+      }>;
     };
     Views: { [_ in never]: never };
     Functions: { [_ in never]: never };
@@ -316,6 +378,14 @@ export interface RosterPlayer {
    * it through `derive/availability`, never by comparing strings at a call site.
    */
   injuryStatus: string | null;
+  /** The auction pick that brought him in this season, or null for an undrafted pickup. */
+  draft: DraftPickInfo | null;
+  /**
+   * True when `draft` belongs to the team whose row this is — he is still on the team that
+   * drafted him. The one-line rule behind the mark, computed in the join so both roster rows
+   * read the same answer.
+   */
+  draftedHere: boolean;
 }
 
 export interface BoardTeam {

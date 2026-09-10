@@ -22,6 +22,8 @@ const player = (
   projectedPoints: null,
   injuryStatus: null,
   livePoints: null,
+  draft: null,
+  draftedHere: false,
   ...over,
 });
 
@@ -108,8 +110,17 @@ function renderView({
       onToggle={onToggle}
       highlightedPlayerIds={highlightedPlayerIds}
       rosterPositions={LEAGUE_SLOTS}
+      onOpenPlayer={noop}
     />,
   );
+}
+
+function teamRows(): HTMLElement[] {
+  return screen
+    .getAllByRole("listitem")
+    .filter(
+      (li) => li.querySelector(":scope > * button[aria-expanded]") !== null,
+    );
 }
 
 describe("PositionView", () => {
@@ -120,15 +131,25 @@ describe("PositionView", () => {
     window.innerWidth = PHONE_WIDTH;
   });
 
-  it("gives every team a row with its owner, FAAB and players inline", () => {
+  it("gives every team a row with its owner, FAAB and players listed", () => {
     renderView();
-    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+    // Team rows are the list items that carry the toggle; player lines are list items too.
+    expect(teamRows()).toHaveLength(2);
     expect(screen.getByText("Nick R")).toBeInTheDocument();
-    expect(screen.getByText("FAAB 715")).toBeInTheDocument();
+    expect(screen.getByText("$715")).toBeInTheDocument();
     expect(screen.getByText("Travis Kelce")).toBeInTheDocument();
     expect(screen.getByText("Sam LaPorta")).toBeInTheDocument();
     expect(screen.getByText("14.1")).toBeInTheDocument();
     expect(screen.getByText("9.2")).toBeInTheDocument();
+  });
+
+  it("labels each player with the slot he starts in, and the bench as BN", () => {
+    renderView();
+    const starter = screen.getByText("Travis Kelce").closest("[data-player]");
+    const bench = screen.getByText("Sam LaPorta").closest("[data-player]");
+    expect(starter).toHaveAttribute("data-slot", "TE");
+    expect(bench).toHaveAttribute("data-slot", "BN");
+    expect(screen.queryByText("★")).toBeNull();
   });
 
   it("marks the starter at the position and leaves the bench unmarked", () => {
@@ -256,7 +277,7 @@ describe("PositionView", () => {
         team({ teamId: 3, ownerName: "gone", isEliminated: true }),
       ],
     });
-    const rows = screen.getAllByRole("listitem");
+    const rows = teamRows();
     // Eliminated last, whatever its FAAB.
     expect(rows[1]).toHaveTextContent("gone");
     expect(container.querySelectorAll("[data-eliminated]")).toHaveLength(1);
@@ -273,10 +294,58 @@ describe("PositionView", () => {
     ).not.toHaveAttribute("data-highlighted");
   });
 
-  it("says FAAB — rather than a zero for a team with no state row", () => {
+  it("names the FAAB figure for a reader who cannot see the row", () => {
+    renderView();
+    expect(screen.getByText("FAAB $715").className).toContain("sr-only");
+  });
+
+  it("quotes the median the thin-starter flag compared against", () => {
+    // Ben (2026-09-10): "can you say what the actual median is?" Bests are 20, 12 and 4, so
+    // the median is 12 and only the 4 is below it. Every flex is filled by a back, so the
+    // empty-slot reason cannot get in first.
+    const stacked = (teamId: number, ownerName: string, projected: number) =>
+      team({
+        teamId,
+        ownerName,
+        roster: [
+          player({
+            sleeperPlayerId: `te${teamId}`,
+            fullName: `Tight End ${teamId}`,
+            slot: "starter",
+            slotIndex: 5,
+            lineupPosition: "TE",
+            projectedPoints: projected,
+          }),
+          player({
+            sleeperPlayerId: `rb${teamId}`,
+            fullName: `Back ${teamId}`,
+            position: "RB",
+            slot: "starter",
+            slotIndex: 6,
+            lineupPosition: "FLEX",
+            projectedPoints: 10,
+          }),
+        ],
+      });
+    renderView({
+      teams: [stacked(1, "strong", 20), stacked(2, "middle", 12), stacked(3, "thin", 4)],
+    });
+    const badge = screen.getByText(LIKELY_BIDDER_LABEL).closest("button");
+    expect(badge?.closest("li")?.textContent).toContain("thin");
+    expect(badge).toHaveAttribute("data-bidder-reason", "below median");
+    const figures = "Best starter 4.0 · median 12.0";
+    // Mounted as the badge's description too, so a screen reader hears the figures.
+    const describedBy = badge?.getAttribute("aria-describedby") ?? "";
+    expect(document.getElementById(describedBy)).toHaveTextContent(figures);
+    fireEvent.pointerDown(badge as Element);
+    fireEvent.click(badge as Element);
+    expect(screen.getByRole("tooltip")).toHaveTextContent(figures);
+  });
+
+  it("says $— rather than a zero for a team with no state row", () => {
     renderView({
       teams: [team({ teamId: 4, ownerName: "stateless", faabRemaining: null })],
     });
-    expect(screen.getByText("FAAB —")).toBeInTheDocument();
+    expect(screen.getByText("$—")).toBeInTheDocument();
   });
 });

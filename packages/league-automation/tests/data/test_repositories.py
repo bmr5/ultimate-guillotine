@@ -241,22 +241,38 @@ def test_find_repost_matches_the_same_text_from_another_message(conn) -> None:
     sent = datetime.now(UTC)
     chat = chat_guid_hash("iMessage;+;chat-test")
     original = SourceMessage(
-        source_guid="g1", chat_guid_hash=chat, sender_hash=None, direction="inbound",
-        sent_at=sent - timedelta(days=1), content_fingerprint="fp-1", excerpt="🚨 ...",
+        source_guid="g1",
+        chat_guid_hash=chat,
+        sender_hash=None,
+        direction="inbound",
+        sent_at=sent - timedelta(days=1),
+        content_fingerprint="fp-1",
+        excerpt="🚨 ...",
         trigger_name="trade-registrar",
     )
     repo.upsert(original)
     repo.upsert(
         SourceMessage(
-            source_guid="g2", chat_guid_hash=chat, sender_hash=None, direction="inbound",
-            sent_at=sent, content_fingerprint="fp-1", excerpt="🚨 ...",
+            source_guid="g2",
+            chat_guid_hash=chat,
+            sender_hash=None,
+            direction="inbound",
+            sent_at=sent,
+            content_fingerprint="fp-1",
+            excerpt="🚨 ...",
             trigger_name="trade-registrar",
         )
     )
     repo.upsert(
         SourceMessage(
-            source_guid="g3", chat_guid_hash=chat, sender_hash=None, direction="outbound",
-            sent_at=sent, content_fingerprint="fp-bot", excerpt="🚨 ...", trigger_name=None,
+            source_guid="g3",
+            chat_guid_hash=chat,
+            sender_hash=None,
+            direction="outbound",
+            sent_at=sent,
+            content_fingerprint="fp-bot",
+            excerpt="🚨 ...",
+            trigger_name=None,
         )
     )
     since = sent - timedelta(days=7)
@@ -275,9 +291,7 @@ def test_replace_aliases_leaves_the_old_rows_when_one_alias_is_taken(conn) -> No
     the member with no aliases, or leave the transaction unusable."""
     repo = MemberAliasRepository(conn)
     with conn.cursor() as cur:
-        cur.execute(
-            "insert into public.members (display_name) values ('Alias One'), ('Alias Two')"
-        )
+        cur.execute("insert into public.members (display_name) values ('Alias One'), ('Alias Two')")
     repo.replace_aliases("Alias One", ["keeper"])
     repo.replace_aliases("Alias Two", ["taken"])
 
@@ -293,9 +307,7 @@ def test_replace_aliases_skips_aliases_that_are_only_whitespace(conn) -> None:
     nothing can match on, and first in the list it would publish an empty string
     as the member's public label."""
     with conn.cursor() as cur:
-        cur.execute(
-            "insert into public.members (display_name) values ('Blank One') returning id"
-        )
+        cur.execute("insert into public.members (display_name) values ('Blank One') returning id")
         member_id = cur.fetchone()[0]
     repo = MemberAliasRepository(conn)
 
@@ -308,9 +320,7 @@ def test_replace_aliases_skips_aliases_that_are_only_whitespace(conn) -> None:
 
 def test_replace_aliases_of_nothing_but_whitespace_clears_the_nickname(conn) -> None:
     with conn.cursor() as cur:
-        cur.execute(
-            "insert into public.members (display_name) values ('Blank Two') returning id"
-        )
+        cur.execute("insert into public.members (display_name) values ('Blank Two') returning id")
         member_id = cur.fetchone()[0]
     repo = MemberAliasRepository(conn)
 
@@ -325,9 +335,7 @@ def test_replace_aliases_publishes_the_first_alias_as_the_nickname(conn) -> None
     """The board and the Concierge label owners by nickname, so exactly one alias
     becomes public. The rest stay in private.member_aliases, which anon cannot read."""
     with conn.cursor() as cur:
-        cur.execute(
-            "insert into public.members (display_name) values ('Nick One') returning id"
-        )
+        cur.execute("insert into public.members (display_name) values ('Nick One') returning id")
         member_id = cur.fetchone()[0]
     repo = MemberAliasRepository(conn)
 
@@ -342,9 +350,7 @@ def test_replace_aliases_publishes_the_first_alias_as_the_nickname(conn) -> None
 
 def test_a_member_with_no_aliases_has_a_null_nickname(conn) -> None:
     with conn.cursor() as cur:
-        cur.execute(
-            "insert into public.members (display_name) values ('Nick Two') returning id"
-        )
+        cur.execute("insert into public.members (display_name) values ('Nick Two') returning id")
         member_id = cur.fetchone()[0]
     repo = MemberAliasRepository(conn)
 
@@ -373,9 +379,7 @@ def test_a_rejected_alias_load_leaves_the_old_nickname_in_place(conn) -> None:
         repo.replace_aliases("Nick Three", ["fresh", "taken"])
 
     with conn.cursor() as cur:
-        cur.execute(
-            "select nickname from public.members where display_name = 'Nick Three'"
-        )
+        cur.execute("select nickname from public.members where display_name = 'Nick Three'")
         assert cur.fetchone()[0] == "keeper"
 
 
@@ -383,9 +387,7 @@ def test_a_padded_alias_is_stored_and_published_trimmed(conn) -> None:
     """The alias row and the nickname come from the same trimmed spelling, so the
     private list and the public label can never disagree by a stray space."""
     with conn.cursor() as cur:
-        cur.execute(
-            "insert into public.members (display_name) values ('Nick Five') returning id"
-        )
+        cur.execute("insert into public.members (display_name) values ('Nick Five') returning id")
         member_id = cur.fetchone()[0]
     repo = MemberAliasRepository(conn)
 
@@ -445,3 +447,18 @@ def test_a_delivery_target_is_never_answered_with_a_listen_only_row(conn) -> Non
 
     assert targets.get(DeliveryMode.TEST) is None
     assert targets.get(DeliveryMode.PRODUCTION) is None
+
+
+def test_expected_runs_carry_when_they_were_registered(conn) -> None:
+    """The health check reads it: a job installed today has until its gap budget
+    runs out before its silence counts as a missed run."""
+    from datetime import UTC, datetime, timedelta
+
+    from ultimate_guillotine.data.repositories import ExpectedRun, ExpectedRunRepository
+
+    repo = ExpectedRunRepository(conn)
+    repo.replace_all([ExpectedRun("guillotine-eod-summary", "eod-summary", 1500, "50 23 * * *")])
+    (row,) = repo.all()
+    assert row.created_at is not None
+    assert row.created_at.tzinfo is not None
+    assert datetime.now(UTC) - row.created_at < timedelta(minutes=5)

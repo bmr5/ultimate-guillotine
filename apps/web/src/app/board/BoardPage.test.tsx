@@ -1,8 +1,15 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { BOARD_LOADING_LABEL } from "@/board/components/BoardStates";
 import { MS_PER_MINUTE, STALE_AFTER_MS } from "@/board/derive/time";
 import type { BoardTeam, RosterPlayer } from "@/board/types";
 import type { BoardDataResult } from "@/board/useBoardData";
@@ -20,6 +27,30 @@ const realtime = vi.hoisted(() => ({
 
 vi.mock("@/board/useBoardData", () => ({
   useBoardData: () => boardData.current,
+}));
+
+const playerCard = vi.hoisted(() => ({
+  current: {
+    transactions: [],
+    moves: [],
+    seasonScores: [],
+    directory: null as {
+      sleeper_player_id: string;
+      full_name: string;
+      position: string | null;
+      team: string | null;
+      injury_status: string | null;
+    } | null,
+    otherPlayers: [],
+    registered: [],
+    isPending: false,
+    errors: [],
+    refetch: vi.fn(),
+  },
+}));
+
+vi.mock("@/player/usePlayerCard", () => ({
+  usePlayerCard: () => playerCard.current,
 }));
 
 vi.mock("@/board/useLeagueBoardRealtime", () => ({
@@ -68,6 +99,8 @@ const player = (
   projectedPoints: 22.5,
   injuryStatus: null,
   livePoints: null,
+  draft: null,
+  draftedHere: false,
   ...over,
 });
 
@@ -80,6 +113,8 @@ const result = (over: Partial<BoardDataResult> = {}): BoardDataResult => ({
   seasonId: 1,
   // No lineup unless a case is about one: every starter renders and no slot reads empty.
   rosterPositions: [],
+  draftPicks: [],
+  memberIdByTeamId: new Map(),
   teams: [],
   isPending: false,
   isEmpty: false,
@@ -124,12 +159,15 @@ describe("BoardPage", () => {
     boardData.current = result();
   });
 
-  it("shows skeletons while pending", () => {
+  it("shows skeletons while pending, and says what is loading", () => {
     boardData.current = result({ isPending: true });
     const { container } = renderPage();
     expect(container.querySelectorAll(".animate-pulse").length).toBeGreaterThan(
       0,
     );
+    expect(
+      screen.getByRole("status", { name: BOARD_LOADING_LABEL }),
+    ).toBeInTheDocument();
   });
 
   it("shows the waiting card when there are no rows", () => {
@@ -632,7 +670,7 @@ describe("BoardPage position quick view", () => {
 
   it("renders the position view for ?pos=TE, not the team grid", () => {
     renderPage("/?pos=TE");
-    expect(screen.getByText("FAAB 715")).toBeInTheDocument();
+    expect(screen.getByText("$715")).toBeInTheDocument();
     expect(screen.getByText("Travis Kelce")).toBeInTheDocument();
     // The team card's own projection line is not on screen: this is the other view.
     expect(screen.getByText("no TE")).toBeInTheDocument();
@@ -641,18 +679,20 @@ describe("BoardPage position quick view", () => {
 
   it("reads a lower-case parameter as the same position", () => {
     renderPage("/?pos=te");
-    expect(screen.getByText("FAAB 715")).toBeInTheDocument();
+    expect(screen.getByText("no TE")).toBeInTheDocument();
   });
 
   it("round-trips the segmented control through the URL", async () => {
     renderPage();
-    expect(screen.queryByText("FAAB 715")).toBeNull();
+    // `no TE` is the position view's own line: the team card's FAAB figure reads `$715` as
+    // well, so the figure no longer says which view is on screen.
+    expect(screen.queryByText("no TE")).toBeNull();
 
     fireEvent.click(screen.getByRole("radio", { name: "TE" }));
     await waitFor(() => {
       expect(screen.getByTestId("location")).toHaveTextContent("/?pos=TE");
     });
-    expect(screen.getByText("FAAB 715")).toBeInTheDocument();
+    expect(screen.getByText("no TE")).toBeInTheDocument();
 
     // Back to All: the parameter goes away rather than becoming `?pos=all`.
     fireEvent.click(screen.getByRole("radio", { name: "All positions" }));
@@ -660,7 +700,7 @@ describe("BoardPage position quick view", () => {
       expect(screen.getByTestId("location")).toHaveTextContent("/");
     });
     expect(screen.getByTestId("location")).not.toHaveTextContent("pos=");
-    expect(screen.queryByText("FAAB 715")).toBeNull();
+    expect(screen.queryByText("no TE")).toBeNull();
   });
 
   it("offers FAAB and projection only while a position is selected", () => {
@@ -724,5 +764,97 @@ describe("BoardPage position quick view", () => {
         "No projections available, so teams are sorted by total points.",
       ),
     ).toBeNull();
+  });
+});
+
+describe("BoardPage FAAB tiers", () => {
+  it("renders the three tier cards for ?view=tiers and no team grid", async () => {
+    renderPage("/?view=tiers");
+    const tiers = await screen.findByRole("list", { name: /FAAB tiers/i });
+    const cards = within(tiers)
+      .getAllByRole("listitem")
+      .filter((li) => li.hasAttribute("data-tier"));
+    expect(cards.map((li) => li.getAttribute("data-tier"))).toEqual([
+      "rich",
+      "medium",
+      "poor",
+    ]);
+    expect(screen.queryByText(/Total/)).toBeNull();
+    expect(screen.getByRole("radio", { name: /FAAB tiers/i })).toHaveAttribute(
+      "data-state",
+      "on",
+    );
+  });
+});
+
+describe("BoardPage leaving the FAAB tiers", () => {
+  it("returns to the board when a position or All is chosen", async () => {
+    renderPage("/?view=tiers");
+    await screen.findByRole("list", { name: /FAAB tiers/i });
+    fireEvent.click(screen.getByRole("radio", { name: "TE" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("list", { name: /FAAB tiers/i })).toBeNull(),
+    );
+    expect(screen.getByRole("radio", { name: "TE" })).toHaveAttribute(
+      "data-state",
+      "on",
+    );
+    fireEvent.click(screen.getByRole("radio", { name: /All positions/i }));
+    await waitFor(() =>
+      expect(
+        screen.getByRole("radio", { name: /All positions/i }),
+      ).toHaveAttribute("data-state", "on"),
+    );
+    expect(screen.queryByRole("list", { name: /FAAB tiers/i })).toBeNull();
+  });
+});
+
+describe("the player card", () => {
+  const nacua = player({ sleeperPlayerId: "9493", fullName: "Puka Nacua" });
+
+  beforeEach(() => {
+    playerCard.current = { ...playerCard.current, directory: null };
+  });
+
+  it("opens from the URL on load, labelled by the player's name", () => {
+    boardData.current = result({ teams: [team({ teamId: 1, roster: [nacua] })] });
+    renderPage("/?player=9493");
+    expect(screen.getByRole("dialog", { name: "Puka Nacua" })).toBeInTheDocument();
+  });
+
+  it("opens when a name is tapped, and writes the player into the URL", () => {
+    boardData.current = result({ teams: [team({ teamId: 1, roster: [nacua] })] });
+    renderPage("/?sort=faab");
+    fireEvent.click(screen.getByRole("button", { name: /owner1/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Puka Nacua" }));
+    expect(screen.getByRole("dialog", { name: "Puka Nacua" })).toBeInTheDocument();
+    expect(screen.getByTestId("location")).toHaveTextContent(
+      "/?sort=faab&player=9493",
+    );
+  });
+
+  it("closes by taking the player out of the URL, keeping the rest", () => {
+    boardData.current = result({ teams: [team({ teamId: 1, roster: [nacua] })] });
+    renderPage("/?sort=faab&player=9493");
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByTestId("location")).toHaveTextContent("/?sort=faab");
+  });
+
+  it("still opens for a player the board does not hold", () => {
+    boardData.current = result({ teams: [team({ teamId: 1 })] });
+    playerCard.current = {
+      ...playerCard.current,
+      directory: {
+        sleeper_player_id: "9493",
+        full_name: "Puka Nacua",
+        position: "WR",
+        team: "LAR",
+        injury_status: null,
+      },
+    };
+    renderPage("/?player=9493");
+    expect(screen.getByRole("dialog", { name: "Puka Nacua" })).toBeInTheDocument();
+    expect(screen.getByText("Not rostered this week")).toBeInTheDocument();
   });
 });
