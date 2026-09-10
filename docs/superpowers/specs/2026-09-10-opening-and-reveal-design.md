@@ -84,6 +84,32 @@ Data stays on `useQuery`, not `useSuspenseQuery`: every page renders what loaded
 alert for what did not, and the board's queries are scoped by the ones before them. Suspending on
 data would throw away both.
 
+## Loading states
+
+Ben, later the same day: "add a loading message or suspense elements or a spinner for the big
+list elements on each tab. it does feel like the ui just freezes when switching between things."
+
+The freeze had a cause: a navigation is a transition, and inside a transition React keeps an
+already-shown Suspense boundary's old content on screen while the new content's chunk is
+fetched, so a tap on a tab changed nothing visible until the chunk arrived. Two things fix it,
+and one thing says what is happening:
+
+- **The boundary is keyed by the path.** A new key is a new boundary with nothing to keep, so
+  the destination's loading state shows the moment the tab is taken.
+- **The chunks are prefetched** once the browser is idle after the board's first paint, so in
+  practice the wait is gone and the loading state is seen only on a slow connection.
+- **Every big list says what it is loading** (`src/components/loading-state.tsx`): a small
+  ember spinner and a sentence in ash — "Loading the board…", "Loading trades…", "Loading
+  seasons…" — on the line above card-shaped placeholders in the list's own grid, each the size
+  of the card it is waiting for, so nothing moves when the cards land. The sentence is a status
+  region, so a screen reader hears it too, and the placeholders are hidden from one.
+
+The shell's fallback for a page is that page's own skeleton, and the page keeps the same
+skeleton until its data lands, so the handoff from one to the other moves nothing. The sentence
+and the shell's strip placeholders skip the cascade: they are the acknowledgement of a tap and
+have to be there at once. The placeholders and, later, the cards ride the cascade as everything
+else does.
+
 ## Done means
 
 - The opening plays on a cold load at desktop and 375 px, is skippable, and is absent under

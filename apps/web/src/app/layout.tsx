@@ -1,7 +1,10 @@
-import { Suspense } from "react";
-import { NavLink, Outlet } from "react-router";
+import { Suspense, useEffect } from "react";
+import { NavLink, Outlet, useLocation } from "react-router";
 
-import { Skeleton } from "@/components/ui/skeleton";
+import { prefetchPages } from "@/app/lazyPages";
+import { BoardSkeleton } from "@/board/components/BoardStates";
+import { HistoryListSkeleton } from "@/history/components/HistorySkeleton";
+import { TradesPageSkeleton } from "@/history/components/TradesSkeleton";
 import { cn } from "@/lib/utils";
 import { REVEAL_CLASS, revealStyle } from "@/motion/reveal";
 
@@ -17,27 +20,24 @@ const LINKS: [to: string, label: string, end: boolean][] = [
   ["/history", "History", false],
 ];
 
-/** What the outlet says while a page's chunk is on its way; also the placeholder's name. */
-export const PAGE_FALLBACK_LABEL = "Loading the page";
-
-/** The placeholder's rows: a header strip and three cards, the shape every page shares. */
-const PAGE_FALLBACK_ROWS = ["h-28", "h-32", "h-32", "h-32"];
+/**
+ * How long the shell gives the browser to find an idle moment for the prefetch before doing it
+ * anyway, and the plain delay it falls back to where there is no idle callback at all. Both sit
+ * past the opening curtain and the board's first reads, which is the point: the chunks cost the
+ * board's first paint nothing.
+ */
+const PREFETCH_IDLE_TIMEOUT_MS = 3000;
+const PREFETCH_DELAY_MS = 2500;
 
 /**
- * Shown by the Suspense boundary below while a lazily loaded page (`router.tsx`) is still on its
- * way. Each row is wrapped rather than given the cascade class itself: `Skeleton` already
- * animates (its pulse), and one element cannot run both.
+ * What the Suspense boundary below shows while a page's chunk is on its way: the destination's
+ * own loading state, so the shell says what is coming rather than showing a generic block, and
+ * the page's own skeleton takes over from it without anything moving.
  */
-function PageFallback() {
-  return (
-    <div role="status" aria-label={PAGE_FALLBACK_LABEL} className="space-y-3">
-      {PAGE_FALLBACK_ROWS.map((height, index) => (
-        <div key={index} className={REVEAL_CLASS} style={revealStyle(index)}>
-          <Skeleton className={cn("w-full rounded-xl", height)} />
-        </div>
-      ))}
-    </div>
-  );
+function PageFallback({ pathname }: { pathname: string }) {
+  if (pathname.startsWith("/trades")) return <TradesPageSkeleton />;
+  if (pathname.startsWith("/history")) return <HistoryListSkeleton />;
+  return <BoardSkeleton />;
 }
 
 /**
@@ -49,12 +49,29 @@ function PageFallback() {
  * reader announces and the styling below always agree: the current page is set in ink with an
  * ember rule beneath it, the others in ash.
  *
- * The outlet sits inside one Suspense boundary: the trades and history pages arrive in their
- * own chunks, and the boundary is what shows the placeholder rather than an empty outlet while
- * one is fetched. Navigations are transitions, so moving between pages keeps the old page on
- * screen until the new one is ready; the placeholder is only ever seen on a cold load.
+ * The outlet sits inside one Suspense boundary, keyed by the path: the trades and history
+ * pages arrive in their own chunks (`lazyPages.ts`), and a navigation is a transition, inside
+ * which React keeps an already-shown boundary's old content on screen while the new content's
+ * chunk is fetched. That is what made a tap on a tab look like nothing had happened (Ben,
+ * 2026-09-10: "the ui just freezes when switching between things"). A new key is a new
+ * boundary with nothing to keep, so the destination's loading state shows the moment the tab is
+ * taken. The chunks are also prefetched once the browser is idle, so in practice the loading
+ * state is seen only on a slow connection.
  */
 function App() {
+  const { pathname } = useLocation();
+
+  useEffect(() => {
+    if (typeof window.requestIdleCallback === "function") {
+      const handle = window.requestIdleCallback(() => prefetchPages(), {
+        timeout: PREFETCH_IDLE_TIMEOUT_MS,
+      });
+      return () => window.cancelIdleCallback(handle);
+    }
+    const timer = window.setTimeout(() => prefetchPages(), PREFETCH_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, []);
+
   return (
     <div className="min-h-screen w-full">
       <div className="mx-auto w-full max-w-6xl px-4 py-5">
@@ -82,7 +99,10 @@ function App() {
             ))}
           </nav>
         </header>
-        <Suspense fallback={<PageFallback />}>
+        <Suspense
+          key={pathname}
+          fallback={<PageFallback pathname={pathname} />}
+        >
           <Outlet />
         </Suspense>
       </div>

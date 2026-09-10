@@ -6,6 +6,7 @@ import {
   FORMER_MANAGER,
   seasonPlacingLabel,
 } from "../derive/ownerLabel";
+import { SEASON_CARD_MIN_HEIGHT_CLASS } from "../layout";
 import type { SeasonResult } from "../types";
 
 /**
@@ -56,7 +57,9 @@ export function SeasonCard({ season, revealIndex = 0 }: Props) {
       {/* Every season card is the same size (Ben, 2026-09-10): a fixed floor tall enough
           for the champion plus one placings line, whether or not a season has one. */}
       <Card className="h-full">
-        <CardContent className="min-h-[7.5rem] space-y-2 p-4">
+        <CardContent
+          className={`${SEASON_CARD_MIN_HEIGHT_CLASS} space-y-2 p-4`}
+        >
           <p className="text-xs text-muted-foreground">
             Champion {season.season}
           </p>

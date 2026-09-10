@@ -1,6 +1,7 @@
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Skeleton } from "@/components/ui/skeleton";
+import { HistoryListSkeleton } from "@/history/components/HistorySkeleton";
 import { SeasonCard } from "@/history/components/SeasonCard";
+import { CARD_GRID } from "@/history/layout";
 import { useSeasonResults } from "@/history/useSeasonResults";
 import { REVEAL_CLASS, revealStyle } from "@/motion/reveal";
 
@@ -23,13 +24,9 @@ export function HistoryPage() {
         </Alert>
       ))}
 
-      {/* Wrapped rather than given the cascade class: `Skeleton` already animates its pulse,
-          and one element cannot run both. */}
-      {isPending && (
-        <div className={REVEAL_CLASS} style={revealStyle(0)}>
-          <Skeleton className="h-40 w-full" />
-        </div>
-      )}
+      {/* The same skeleton the shell shows while this page's chunk is on its way, so the
+          handoff from one to the other moves nothing. */}
+      {isPending && <HistoryListSkeleton />}
 
       {!isPending && seasons.length === 0 && (
         <p
@@ -43,10 +40,7 @@ export function HistoryPage() {
       {/* The champion cards are the whole page (Ben, 2026-09-10: the winners table said
           the same thing twice). Each card's place in the cascade is its place in the list. */}
       {seasons.length > 0 && (
-        <ul
-          aria-label="Seasons"
-          className="grid grid-cols-1 gap-2 sm:grid-cols-2"
-        >
+        <ul aria-label="Seasons" className={CARD_GRID}>
           {seasons.map((season, index) => (
             <SeasonCard
               key={season.season}
