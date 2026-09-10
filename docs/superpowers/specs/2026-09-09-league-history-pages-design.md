@@ -32,6 +32,8 @@ what does this league do, and who has won. The spec follows the page conventions
    - `2023`: the week grid at rows 3–7 (`Week`, `Safe`, `Gulag`, `Gladiator`, `Cut`, `Winner!`) and
      rows 16–24 (`Week`, `Total Teams`, `Teams in Gulag`, `Teams sent to Gulag`, `Teams cut at EOW`,
      `Teams going into next week`).
+   - `2023` row 9, the upper grid's `Total` row: a team count only, read solely to check it against
+     the summary grid's `Total Teams`; the season publishes a count only if the two agree.
    - **Never loaded, from any sheet:** the `paid` column — dues are private and stay private, the
      hard rule here — the 2025 roster block (seat number, first name, last name, `paid`, the
      replacement / `removed` columns), the 2023 signup block at rows 28–48 (names, three dated

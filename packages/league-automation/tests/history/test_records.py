@@ -165,8 +165,8 @@ def test_team_count_is_read_only_where_the_sheet_states_it() -> None:
     by_season = {row.season: row for row in rows}
 
     assert by_season[2024].team_count == 19
-    # The 2023 sheet's two grids disagree about how many teams there were, so the row
-    # says nothing rather than picking one.
+    # 2023's count has to be stated by both its grids to be published, and the upper
+    # grid's total is an uncached formula, so the row says nothing.
     assert by_season[2023].team_count is None
     assert by_season[2019].team_count is None
 

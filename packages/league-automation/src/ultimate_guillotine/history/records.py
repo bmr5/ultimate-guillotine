@@ -65,6 +65,12 @@ GRID_2024_WINNER_COL = 9
 #: `Winner!` marker in T. Its Cut row is a *cumulative* formula (`=C7+sum(C5:C6)`) with
 #: no cached value, so it states no per-week elimination count at all. Only its Total
 #: row is read here, and only to check it against the summary grid.
+#:
+#: That check is dormant today: row 9 is `=sum(C4:C7)` with no cached value either, so it
+#: reads as `None` and `_team_count` returns nothing for 2023 without ever comparing two
+#: numbers. It only becomes a real comparison once the workbook has been through Excel's
+#: calculation engine and saved -- at which point a rerun either agrees with the summary
+#: grid and publishes a count, or disagrees and keeps publishing nothing.
 GRID_2023_TOTAL_ROW = 9
 GRID_2023_TOTAL_COL = 3
 
@@ -262,10 +268,16 @@ def read_eliminations(workbook, season: int) -> list[dict[str, Any]]:
 def _team_count(workbook, season: int) -> int | None:
     """How many teams the season started with, where the sheet says so once and plainly.
 
-    2024 states it in the first row of its grid. 2023 has two grids that disagree -- the
-    upper one's total is an uncached formula and the summary grid's is a mid-season
-    count -- so the row says nothing rather than publishing whichever one was easier to
-    read. A season with no sheet has no count.
+    2024 states it in the first row of its grid. 2023 has two grids that would have to
+    agree, and the row says nothing unless they do rather than publishing whichever one
+    was easier to read. A season with no sheet has no count.
+
+    For 2023 the comparison is not live yet: the upper grid's total (row 9) is an uncached
+    formula, so it reads as `None` and this returns `None` without the summary grid's
+    mid-season figure ever being weighed against anything. Recalculate the workbook in
+    Excel, save it, and rerun -- then row 9 holds a number and the two grids are really
+    compared. Until then, "2023 has no team count" means "the file does not state one",
+    not "the two grids were checked and disagreed".
     """
     name = str(season)
     if name not in PUBLIC_SHEETS or name not in workbook.sheetnames:
