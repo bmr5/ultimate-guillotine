@@ -1024,6 +1024,13 @@ select week, recap_kind, publication_state, length(body), prompt_version
 from public.recaps where recap_kind like 'eod:%' order by id desc limit 5;
 ```
 
+On the site, the board at `/` reads the newest `survival_snapshots` row for the
+week: every live card leads its chip line with the odds (`Gulag 37%`, the chip's
+tooltip naming the simulation and the snapshot time) and the header shows
+`Odds as of <time>` under the score and projection stamps. The site deploys from
+GitHub `main`, so a merge to the local `main` alone does not put it in front of
+the league.
+
 ### Turning it off in a hurry
 
 `DELIVERY_MODE=disabled` keeps the preview in `#guillotine-drafts` and sends
