@@ -5,6 +5,7 @@ import {
   type RosterPlayer,
   type SortMode,
 } from "../types";
+import { isOut } from "./availability";
 import { A_BEFORE_B, B_BEFORE_A, NAME_COLLATOR, TIED } from "./compare";
 import { layoutStarters } from "./roster";
 import { sortValue } from "./sort";
@@ -40,9 +41,38 @@ export interface PositionPlayer {
   fullName: string;
   /** null means "no projection", never zero. */
   projectedPoints: number | null;
+  /**
+   * What he has actually scored this week, or null when the week has no score row. Unlike
+   * `projectedPoints`, zero here is ordinary — it is what every player reads before kickoff.
+   */
+  livePoints: number | null;
   /** True for a player in the lineup, so the row can mark him. */
   isStarter: boolean;
+  /** `players.injury_status`, so the row can tag him and the flag below can read him. */
+  injuryStatus: string | null;
 }
+
+/**
+ * Why the board thinks a team is in the market, in the order the reasons are checked.
+ *
+ * `starter out` leads because it is a fact about this week rather than a comparison: a team
+ * whose tight end is not playing needs one however well he projects on paper. `empty slot` is
+ * next for the same reason. `below median` is the soft one, and it is relative to the visible
+ * teams, so it is the last thing tried.
+ */
+export type LikelyBidderReason = "starter out" | "empty slot" | "below median";
+
+/**
+ * Each reason in words, for the `title` the `likely bidder` badge carries.
+ *
+ * The reason is the half of the answer a reader acts on: a team whose starter is out will bid
+ * this week whatever his season looks like, and a team that is merely thin might not.
+ */
+export const LIKELY_BIDDER_REASONS: Record<LikelyBidderReason, string> = {
+  "starter out": "Their starter at this position is out",
+  "empty slot": "They have an empty slot this position could fill",
+  "below median": "Their best starter here projects below the visible median",
+};
 
 export interface PositionRow {
   /** The whole team, so a row can expand into the board's usual roster panel. */
@@ -56,8 +86,10 @@ export interface PositionRow {
   players: PositionPlayer[];
   /** Empty lineup slots a player at this position could fill; a FLEX counts for RB, WR and TE. */
   emptySlots: number;
-  /** An empty slot at the position, or a best starter below the visible median. */
+  /** An out starter, an empty slot at the position, or a best starter below the median. */
   likelyBidder: boolean;
+  /** Which of those it was; null when the team is not flagged. */
+  likelyBidderReason: LikelyBidderReason | null;
 }
 
 /** The best projection among a team's starters at the position; null when there is none. */
@@ -134,8 +166,23 @@ function toPositionPlayer(player: RosterPlayer): PositionPlayer {
     sleeperPlayerId: player.sleeperPlayerId,
     fullName: player.fullName,
     projectedPoints: player.projectedPoints,
+    livePoints: player.livePoints,
     isStarter: player.slot === "starter",
+    injuryStatus: player.injuryStatus,
   };
+}
+
+/**
+ * Whether the team is starting somebody at this position who is not playing this week.
+ *
+ * The same `isOut` rule the card's out chip uses, so the two readings of one lineup cannot
+ * disagree: a `Doubtful` starter Sleeper has stopped projecting is a hole here as well.
+ */
+function hasOutStarter(players: PositionPlayer[]): boolean {
+  return players.some(
+    (player) =>
+      player.isStarter && isOut(player.injuryStatus, player.projectedPoints),
+  );
 }
 
 /**
@@ -146,10 +193,12 @@ function toPositionPlayer(player: RosterPlayer): PositionPlayer {
  * replacement." So every team gets a row whether or not it holds the position: a team with none
  * is the most interesting row on the page.
  *
- * `likelyBidder` is a hint, not a ruling: a team with an empty slot the position could fill, or
- * one whose best starter there projects below the median of what is on screen. The median comes
- * from the teams passed in — the search-filtered, visible set — so the flag answers "who bids in
- * what I am looking at" rather than a league-wide constant.
+ * `likelyBidder` is a hint, not a ruling: a team starting somebody at the position who is not
+ * playing this week, a team with an empty slot the position could fill, or one whose best
+ * starter there projects below the median of what is on screen. The median comes from the teams
+ * passed in — the search-filtered, visible set — so the flag answers "who bids in what I am
+ * looking at" rather than a league-wide constant. `likelyBidderReason` says which rule fired,
+ * because "why" is the half of the answer a reader acts on.
  *
  * Pure: sorts copies, and the team and player objects are passed through by reference.
  */
@@ -185,6 +234,7 @@ export function positionView(
       players,
       emptySlots,
       likelyBidder: false,
+      likelyBidderReason: null,
     };
   });
 
@@ -196,9 +246,16 @@ export function positionView(
 
   for (const row of rows) {
     const best = bestStarterProjection(row.players);
-    row.likelyBidder =
-      row.emptySlots > 0 ||
-      (best !== null && leagueMedian !== null && best < leagueMedian);
+    // Reasons in the order they are declared: a fact about this week beats a hole in the
+    // lineup, and both beat a comparison against whoever else is on screen.
+    row.likelyBidderReason = hasOutStarter(row.players)
+      ? "starter out"
+      : row.emptySlots > 0
+      ? "empty slot"
+      : best !== null && leagueMedian !== null && best < leagueMedian
+      ? "below median"
+      : null;
+    row.likelyBidder = row.likelyBidderReason !== null;
   }
 
   // Eliminated teams stay in the payload — they are dimmed and still expandable, and their

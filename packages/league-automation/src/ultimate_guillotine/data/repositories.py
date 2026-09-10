@@ -531,6 +531,31 @@ class ExpectedRunRepository:
             return [ExpectedRun(*row) for row in cur.fetchall()]
 
 
+#: What a member who has left the league is keyed by in ``public.members.display_name``.
+#: A live member's ``display_name`` is their Sleeper username, so the prefix is also the
+#: guarantee that ``ug sleeper sync`` -- which upserts on that column, and only ever writes
+#: names Sleeper handed it -- can never collide with one of these rows.
+FORMER_MEMBER_PREFIX = "former:"
+
+
+def former_display_name(name: str) -> str:
+    """Return the ``public.members.display_name`` key for a departed manager.
+
+    ``display_name`` is unique and not null, so a member without a Sleeper account still
+    needs one; it must not be the person's name, because a real name never reaches a public
+    page and this column is the one every consumer is told to ignore. The slug is
+    ``normalize_name``'s form with its spaces hyphenated, so the same person typed two ways
+    (``"A Name"``, ``" a   name "``) lands on one row rather than two.
+
+    Raises ``ValueError`` for a name that normalizes to nothing: ``former:`` on its own is
+    not a key, and a blank one would collide with the next blank one.
+    """
+    slug = normalize_name(name).replace(" ", "-")
+    if not slug:
+        raise ValueError("a former member needs a name")
+    return FORMER_MEMBER_PREFIX + slug
+
+
 class MemberAliasRepository:
     def __init__(self, conn: psycopg.Connection) -> None:
         self._conn = conn
@@ -542,12 +567,15 @@ class MemberAliasRepository:
                 """
                 select m.id, m.display_name,
                     coalesce(array_agg(a.alias) filter (where a.alias is not null), '{}'),
-                    m.nickname
+                    m.nickname, m.sleeper_display_name
                 from public.members m left join private.member_aliases a on a.member_id = m.id
-                group by m.id, m.display_name, m.nickname order by m.id
+                group by m.id, m.display_name, m.nickname, m.sleeper_display_name order by m.id
                 """
             )
-            return [MemberRef(row[0], row[1], tuple(row[2]), row[3]) for row in cur.fetchall()]
+            return [
+                MemberRef(row[0], row[1], tuple(row[2]), row[3], row[4])
+                for row in cur.fetchall()
+            ]
 
     def replace_aliases(self, member_display_name: str, aliases: list[str]) -> int:
         """Replace a member's aliases wholesale, returning how many rows were written.
@@ -615,6 +643,69 @@ class MemberAliasRepository:
                 (next(iter(wanted.values()), None), member_id),
             )
         return len(wanted)
+
+    def upsert_former(self, name: str, aliases: list[str]) -> tuple[bool, int]:
+        """Create (or refresh) a member for somebody who has left the league.
+
+        Returns ``(created, alias count)`` -- ``created`` is False on a rerun, which is the
+        whole point: the commissioner types the same command again after remembering
+        another nickname and gets one row, not two.
+
+        ``sleeper_display_name`` stays null and no ``public.teams`` row is written, because
+        there is no Sleeper account to tie either to. The label the pages show is the
+        ``nickname``, and it is published exactly the way every other member's is -- as the
+        first alias, through ``replace_aliases`` -- so ``name`` is passed in front of the
+        rest and nothing here has its own idea of what a public label is.
+
+        Member row and aliases share one transaction: an alias another member already holds
+        raises out of ``replace_aliases``, and a half-made profile (a member with no aliases
+        for resolution to match on) is worse than none at all.
+
+        The name's own whitespace is collapsed before either use. The slug already ignores
+        the difference (``normalize_name`` collapses), but the nickname does not:
+        ``replace_aliases`` only strips its aliases, so a rerun typed with a stray double
+        space would land on the same row and republish a double-spaced public label. One
+        collapse here keeps the key and the label agreeing on what the name is.
+        """
+        name = " ".join(name.split())
+        display_name = former_display_name(name)
+        with self._conn.transaction(), self._conn.cursor() as cur:
+            cur.execute(
+                "select id from public.members where display_name = %s", (display_name,)
+            )
+            row = cur.fetchone()
+            created = row is None
+            if row is None:
+                cur.execute(
+                    """
+                    insert into public.members (display_name, nickname, sleeper_display_name)
+                    values (%s, %s, null) returning id
+                    """,
+                    (display_name, name),
+                )
+                inserted = cur.fetchone()
+                if inserted is None:
+                    raise RuntimeError("insert returned no id")
+            else:
+                # sleeper_display_name is renulled rather than left alone: this row is the
+                # profile of somebody with no Sleeper account, and that is the column
+                # saying so.
+                cur.execute(
+                    "update public.members set sleeper_display_name = null where id = %s",
+                    (row[0],),
+                )
+            written = self.replace_aliases(display_name, [name, *aliases])
+        return created, written
+
+    def count_former(self) -> int:
+        """How many members are former members. A count, never the names."""
+        with self._conn.cursor() as cur:
+            cur.execute(
+                "select count(*) from public.members where display_name like %s",
+                (FORMER_MEMBER_PREFIX + "%",),
+            )
+            row = cur.fetchone()
+            return 0 if row is None else int(row[0])
 
 
 class MemberContactRepository:

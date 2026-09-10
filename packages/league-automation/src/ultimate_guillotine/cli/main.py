@@ -10,6 +10,7 @@ import sys
 
 from ultimate_guillotine.cli import (
     advisor,
+    history,
     ingest,
     listener,
     members,
@@ -23,7 +24,17 @@ from ultimate_guillotine.cli import (
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="ug", description="Ultimate Guillotine automation CLI")
     subparsers = parser.add_subparsers(dest="group", required=True)
-    for module in (ops, targets, sleeper, ingest, listener, trades, members, advisor):
+    for module in (
+        ops,
+        targets,
+        sleeper,
+        ingest,
+        listener,
+        trades,
+        members,
+        advisor,
+        history,
+    ):
         module.register(subparsers)
     return parser
 

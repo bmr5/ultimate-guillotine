@@ -19,13 +19,14 @@ export type MemberRow = Pick<
 >;
 export type TeamSeasonStateRow = TableRow<"team_season_state">;
 export type TeamWeekProjectionRow = TableRow<"team_week_projections">;
+export type TeamWeekScoreRow = TableRow<"team_week_scores">;
 export type RosterHoldingRow = Pick<
   TableRow<"roster_holdings">,
   "team_id" | "sleeper_player_id" | "slot" | "slot_index" | "lineup_position"
 >;
 export type PlayerRow = Pick<
   TableRow<"players">,
-  "sleeper_player_id" | "full_name" | "position" | "team"
+  "sleeper_player_id" | "full_name" | "position" | "team" | "injury_status"
 >;
 export type PlayerProjectionRow = Pick<
   TableRow<"player_projections">,
@@ -57,7 +58,11 @@ interface SupabaseResult<T> {
  */
 export const IN_CHUNK_SIZE = 150;
 
-function chunkIds(ids: readonly string[]): string[][] {
+/**
+ * Split an id list into `.in(...)`-sized batches. Exported because `/trades` reads the same
+ * `public.players` table through the same URL-length limit — one chunking rule for both pages.
+ */
+export function chunkIds(ids: readonly string[]): string[][] {
   const batches: string[][] = [];
   for (let start = 0; start < ids.length; start += IN_CHUNK_SIZE) {
     batches.push(ids.slice(start, start + IN_CHUNK_SIZE));
@@ -187,6 +192,30 @@ export function fetchTeamWeekProjections(
   );
 }
 
+/**
+ * The week's live scores, one row per team.
+ *
+ * Deliberately not chunked. The chunking rule above is about `.in(...)` id lists, which travel
+ * in the query string and grow past the proxy's URL limit; this is two equality filters over a
+ * table that holds one row per team per week, exactly like `fetchTeamWeekProjections` beside it.
+ */
+export function fetchTeamWeekScores(
+  client: BoardClient,
+  seasonId: number,
+  week: number,
+): Promise<TeamWeekScoreRow[]> {
+  return unwrap<TeamWeekScoreRow>(
+    client
+      .from("team_week_scores")
+      .select(
+        "season_id, team_id, week, points, players_points, starters, synced_at",
+      )
+      .eq("season_id", seasonId)
+      .eq("week", week),
+    "team_week_scores",
+  );
+}
+
 export function fetchRosterHoldings(
   client: BoardClient,
   seasonId: number,
@@ -247,7 +276,7 @@ export async function fetchPlayers(
       unwrap<PlayerRow>(
         client
           .from("players")
-          .select("sleeper_player_id, full_name, position, team")
+          .select("sleeper_player_id, full_name, position, team, injury_status")
           .in("sleeper_player_id", ids),
         "players",
       ),

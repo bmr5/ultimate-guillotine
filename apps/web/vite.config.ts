@@ -1,12 +1,13 @@
+import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
-import { appAliases } from "./aliases";
+import { appAliases } from "./aliases.ts";
 
 export default defineConfig({
   resolve: {
-    alias: appAliases(__dirname),
+    alias: appAliases(import.meta.dirname),
   },
 
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
 });

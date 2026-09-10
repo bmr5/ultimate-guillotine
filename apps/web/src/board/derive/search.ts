@@ -45,9 +45,20 @@ export function normalizeSearchText(value: string): string {
  * the whitespace, so a single space is the only separator left; a blank term yields no tokens,
  * which is the "not filtering" case.
  */
-function tokenize(term: string): string[] {
+export function tokenizeSearchTerm(term: string): string[] {
   const needle = normalizeSearchText(term);
   return needle === "" ? [] : needle.split(" ");
+}
+
+/**
+ * Whether an already-normalized haystack answers every token. No tokens is "not filtering", so
+ * it matches. Shared with `/trades` so a term behaves identically on both pages.
+ */
+export function matchesAllTokens(
+  normalizedText: string,
+  tokens: readonly string[],
+): boolean {
+  return tokens.every((token) => normalizedText.includes(token));
 }
 
 export interface TeamSearchMatch {
@@ -71,7 +82,7 @@ export interface TeamSearchMatch {
  * search was actually about.
  */
 export function matchTeam(team: BoardTeam, term: string): TeamSearchMatch {
-  const tokens = tokenize(term);
+  const tokens = tokenizeSearchTerm(term);
   if (tokens.length === 0) {
     return { matches: true, matchedPlayerIds: [] };
   }
@@ -80,9 +91,7 @@ export function matchTeam(team: BoardTeam, term: string): TeamSearchMatch {
     normalizeSearchText(player.fullName),
   );
   const matchedPlayerIds = team.roster
-    .filter((_, index) =>
-      tokens.every((token) => playerNames[index].includes(token)),
-    )
+    .filter((_, index) => matchesAllTokens(playerNames[index], tokens))
     .map((player) => player.sleeperPlayerId);
 
   const ownerName = normalizeSearchText(team.ownerName);

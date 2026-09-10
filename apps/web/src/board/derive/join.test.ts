@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import type { FinalRosterHolding } from "../types";
+import type { FinalRosterHolding, TableRow } from "../types";
 import { joinBoardTeams, resolveOwnerLabel, type BoardRawData } from "./join";
 
 const raw = (over: Partial<BoardRawData> = {}): BoardRawData => ({
@@ -13,6 +13,9 @@ const raw = (over: Partial<BoardRawData> = {}): BoardRawData => ({
     { id: 7, member_id: 3, sleeper_roster_id: 1, team_name: "The Choppers" },
   ],
   members: [{ id: 3, sleeper_display_name: "benray", nickname: "Ben" }],
+  // Empty by default: the shape before the first score sync of a week has landed, in which
+  // every card reads `0.0` and no roster row carries a live figure.
+  teamWeekScores: [],
   teamSeasonState: [
     {
       season_id: 1,
@@ -67,6 +70,7 @@ const raw = (over: Partial<BoardRawData> = {}): BoardRawData => ({
       full_name: "Patrick Mahomes",
       position: "QB",
       team: "KC",
+      injury_status: null,
     },
   ],
   playerProjections: [{ sleeper_player_id: "4046", league_points: 22.6 }],
@@ -133,6 +137,29 @@ describe("joinBoardTeams", () => {
       lineupPosition: "QB",
       projectedPoints: 22.6,
     });
+  });
+
+  it("carries the directory's injury status onto the roster row", () => {
+    const [team] = joinBoardTeams(raw());
+    expect(team.roster[0].injuryStatus).toBeNull();
+
+    const injured = raw();
+    injured.players = injured.players.map((player) =>
+      player.sleeper_player_id === "4046"
+        ? { ...player, injury_status: "Out" }
+        : player,
+    );
+    const [withInjury] = joinBoardTeams(injured);
+    expect(withInjury.roster[0].injuryStatus).toBe("Out");
+  });
+
+  it("reads a holding with no directory row as available, not injured", () => {
+    // `roster_holdings` has no FK to `players` on purpose, so an id the filtered directory
+    // drops still gets a row. Nothing is known about it — including whether he is hurt.
+    const [team] = joinBoardTeams(raw());
+    const unknown = team.roster.find((p) => p.sleeperPlayerId === "9999");
+    expect(unknown?.fullName).toBe("Unknown player 9999");
+    expect(unknown?.injuryStatus).toBeNull();
   });
 
   it("keeps a holding whose player id is not in the filtered player directory", () => {
@@ -540,6 +567,7 @@ describe("joinBoardTeams", () => {
           full_name: "Justin Jefferson",
           position: "WR",
           team: "MIN",
+          injury_status: "Out",
         },
       ],
       finalRosters: [
@@ -600,5 +628,87 @@ describe("joinBoardTeams", () => {
     expect(
       board.flatMap((t) => t.roster.map((p) => p.sleeperPlayerId)),
     ).not.toContain("5000");
+  });
+});
+
+/**
+ * Ben's ruling: the card shows the current score beside the projection. The join is where a
+ * `team_week_scores` row becomes a card's `score` and a roster row's `livePoints`.
+ */
+describe("joinBoardTeams live scores", () => {
+  const scoreRow = (over: Partial<TableRow<"team_week_scores">> = {}) => ({
+    season_id: 1,
+    team_id: 7,
+    week: 3,
+    points: 84.24,
+    players_points: { "4046": 12.4, "9999": 3.5 },
+    starters: ["4046"],
+    synced_at: "2026-09-13T17:30:00Z",
+    ...over,
+  });
+
+  it("puts the week's points and stamp on the team", () => {
+    const [board] = joinBoardTeams(raw({ teamWeekScores: [scoreRow()] }));
+    expect(board.score).toBe(84.24);
+    expect(board.scoreSyncedAt).toBe("2026-09-13T17:30:00Z");
+  });
+
+  it("leaves both null when the week has no score row", () => {
+    // Null is "no row", which the card renders as `0.0`. The distinction still matters to the
+    // header, which shows the scores stamp only when a row exists.
+    const [board] = joinBoardTeams(raw({ teamWeekScores: [] }));
+    expect(board.score).toBeNull();
+    expect(board.scoreSyncedAt).toBeNull();
+  });
+
+  it("hangs each player's live points off his roster row, bench included", () => {
+    const [board] = joinBoardTeams(raw({ teamWeekScores: [scoreRow()] }));
+    const byId = new Map(board.roster.map((p) => [p.sleeperPlayerId, p]));
+    expect(byId.get("4046")?.livePoints).toBe(12.4);
+    // The map covers the whole roster; only the panel decides which rows show the number.
+    expect(byId.get("9999")?.livePoints).toBe(3.5);
+  });
+
+  it("leaves a player the points map does not name at null, never at zero", () => {
+    const [board] = joinBoardTeams(
+      raw({ teamWeekScores: [scoreRow({ players_points: { "4046": 12.4 } })] }),
+    );
+    const byId = new Map(board.roster.map((p) => [p.sleeperPlayerId, p]));
+    expect(byId.get("9999")?.livePoints).toBeNull();
+  });
+
+  it("narrows a stored points map rather than trusting its declared type", () => {
+    // jsonb: the sync writes numbers and the typed `Database` says so, but a stored row is
+    // data some earlier build wrote. A NaN would otherwise reach a roster row as the text
+    // `NaN`, since that is what `toFixed` renders it as.
+    const [board] = joinBoardTeams(
+      raw({
+        teamWeekScores: [
+          scoreRow({
+            players_points: {
+              "4046": Number.NaN,
+              "9999": 3.5,
+            } as Record<string, number>,
+          }),
+        ],
+      }),
+    );
+    const byId = new Map(board.roster.map((p) => [p.sleeperPlayerId, p]));
+    expect(byId.get("4046")?.livePoints).toBeNull();
+    expect(byId.get("9999")?.livePoints).toBe(3.5);
+  });
+
+  it("keeps one team's live points off another team's roster", () => {
+    const [board] = joinBoardTeams(
+      raw({
+        teamWeekScores: [
+          scoreRow({ team_id: 8, players_points: { "4046": 99.9 } }),
+        ],
+      }),
+    );
+    // Team 7 has no row of its own, so its starter has no live figure — team 8's map is not
+    // a league-wide lookup, and reading it that way would put another roster's points here.
+    expect(board.score).toBeNull();
+    expect(board.roster.every((p) => p.livePoints === null)).toBe(true);
   });
 });

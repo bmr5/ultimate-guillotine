@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter, useLocation } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { MS_PER_MINUTE, STALE_AFTER_MS } from "@/board/derive/time";
@@ -39,6 +39,8 @@ const team = (over: Partial<BoardTeam> & { teamId: number }): BoardTeam => ({
   teamName: `Team ${over.teamId}`,
   ownerName: `owner${over.teamId}`,
   sleeperRosterId: over.teamId,
+  score: null,
+  scoreSyncedAt: null,
   projectedPoints: 100,
   coveragePct: 100,
   isProvisional: false,
@@ -64,6 +66,8 @@ const player = (
   slotIndex: 0,
   lineupPosition: "QB",
   projectedPoints: 22.5,
+  injuryStatus: null,
+  livePoints: null,
   ...over,
 });
 
@@ -81,6 +85,7 @@ const result = (over: Partial<BoardDataResult> = {}): BoardDataResult => ({
   isEmpty: false,
   errors: [],
   projectionsUpdatedAt: Date.now(),
+  scoresUpdatedAt: null,
   refetchAll: vi.fn(),
   ...over,
 });
@@ -199,6 +204,127 @@ describe("BoardPage", () => {
     boardData.current = result({ teams: [team({ teamId: 1 })] });
     renderPage();
     expect(screen.getByText(/^Updated /)).toBeInTheDocument();
+  });
+
+  /**
+   * Ben: "why does it show that it updated at 9:30PM it should always be realtime!" The stamp
+   * was `team_week_projections.computed_at`, which only moves when a projection is recomputed.
+   * Once the week has a score row, the header leads with the score sync's own `synced_at` and
+   * keeps the projections time as a smaller second line, because the two figures on every card
+   * are pulled on different clocks and one stamp cannot truthfully describe both.
+   */
+  describe("the last-pull stamps", () => {
+    const stamp = (container: HTMLElement) =>
+      container.querySelector("[data-stamp]");
+
+    it("leads with the scores once the week has a score row", () => {
+      boardData.current = result({
+        teams: [team({ teamId: 1 })],
+        scoresUpdatedAt: Date.now(),
+      });
+      const { container } = renderPage();
+      expect(stamp(container)).toHaveAttribute("data-stamp", "scores");
+      expect(screen.getByText(/^Scores updated /)).toBeInTheDocument();
+    });
+
+    it("keeps the projections time as a smaller second line", () => {
+      boardData.current = result({
+        teams: [team({ teamId: 1 })],
+        scoresUpdatedAt: Date.now(),
+        projectionsUpdatedAt: Date.now() - 20 * MS_PER_MINUTE,
+      });
+      const { container } = renderPage();
+      const second = container.querySelector("[data-projection-stamp]");
+      expect(second).not.toBeNull();
+      expect(second).toHaveTextContent(/^Projections pulled /);
+      // Hidden from assistive tech like the two stamps above it: the live region is the one
+      // thing that should speak about freshness, and it speaks on minute boundaries.
+      expect(second).toHaveAttribute("aria-hidden", "true");
+    });
+
+    it("falls back to the one plain stamp before the first score sync", () => {
+      // No score row yet, so the line above is already the projections stamp and repeating it
+      // underneath would say the same thing twice.
+      boardData.current = result({
+        teams: [team({ teamId: 1 })],
+        scoresUpdatedAt: null,
+      });
+      const { container } = renderPage();
+      expect(stamp(container)).toHaveAttribute("data-stamp", "projections");
+      expect(screen.getByText(/^Updated /)).toBeInTheDocument();
+      expect(container.querySelector("[data-projection-stamp]")).toBeNull();
+    });
+
+    it("measures staleness against the scores once they lead", () => {
+      // The scores are the newer of the two by construction, so an hours-old `computed_at`
+      // beside a score pulled a minute ago is not a stale board.
+      boardData.current = result({
+        teams: [team({ teamId: 1 })],
+        scoresUpdatedAt: Date.now(),
+        projectionsUpdatedAt: Date.now() - STALE_AFTER_MS - MS_PER_MINUTE,
+      });
+      renderPage();
+      expect(screen.queryByText("Stale data")).not.toBeInTheDocument();
+    });
+
+    it("still badges a board whose scores themselves have gone stale", () => {
+      boardData.current = result({
+        teams: [team({ teamId: 1 })],
+        scoresUpdatedAt: Date.now() - STALE_AFTER_MS - MS_PER_MINUTE,
+      });
+      renderPage();
+      expect(screen.getByText("Stale data")).toBeInTheDocument();
+    });
+  });
+
+  /**
+   * The emphasis is a board-wide decision, made once and handed to every card, so the two
+   * figure columns line up down the grid.
+   */
+  describe("score emphasis", () => {
+    const emphasized = (container: HTMLElement) =>
+      [...container.querySelectorAll("[data-figure][data-emphasized]")].map(
+        (node) => node.getAttribute("data-figure"),
+      );
+
+    it("emphasises the projection while every team is scoreless", () => {
+      boardData.current = result({
+        teams: [team({ teamId: 1, score: 0 }), team({ teamId: 2, score: 0 })],
+      });
+      const { container } = renderPage();
+      expect(emphasized(container)).toEqual(["projection", "projection"]);
+    });
+
+    it("emphasises the score on every card once any team has scored", () => {
+      boardData.current = result({
+        teams: [
+          team({ teamId: 1, score: 0 }),
+          team({ teamId: 2, score: 88.1 }),
+        ],
+      });
+      const { container } = renderPage();
+      expect(emphasized(container)).toEqual(["score", "score"]);
+    });
+
+    it("does not flip the emphasis because a search narrowed the board", async () => {
+      // The question is what the week is doing, not what is currently on screen: narrowing to
+      // the one scoreless team must not put every visible card back on projection emphasis.
+      boardData.current = result({
+        teams: [
+          team({ teamId: 1, score: 0, ownerName: "quiet" }),
+          team({ teamId: 2, score: 88.1, ownerName: "loud" }),
+        ],
+      });
+      const { container } = renderPage();
+      fireEvent.change(screen.getByLabelText(SEARCH_LABEL), {
+        target: { value: "quiet" },
+      });
+      // The search box is debounced, so the narrowing lands a tick later than the keystroke.
+      await waitFor(() => {
+        expect(screen.queryByText("loud")).not.toBeInTheDocument();
+      });
+      expect(emphasized(container)).toEqual(["score"]);
+    });
   });
 
   it("shows the paused banner when realtime is down", () => {

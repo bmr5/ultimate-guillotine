@@ -13,6 +13,9 @@ export type OwnerLabelSource = Pick<
   "sleeper_display_name" | "nickname"
 >;
 
+/** What a member with no public label reads as, here and anywhere else that needs the word. */
+export const UNKNOWN_OWNER = "Unknown owner";
+
 /**
  * Ben's decision 4: the nickname from `public.members.nickname` when there is one, otherwise
  * `public.members.sleeper_display_name`. `members.display_name` — the bare Sleeper username —
@@ -34,10 +37,10 @@ export function resolveOwnerLabel(
 }
 
 /**
- * The eleven flat row sets the board reads, already scoped by the caller.
+ * The twelve flat row sets the board reads, already scoped by the caller.
  *
  * **The caller must pass single-season, single-week rows.** Every join key here is a team id
- * alone: `teamSeasonState`, `teamWeekProjections` and `finalRosters` are each keyed into a `Map`
+ * alone: `teamSeasonState`, `teamWeekProjections`, `teamWeekScores` and `finalRosters` are each keyed into a `Map`
  * by `team_id`, and `season_id` / `week` are read but never matched on. So a `teamSeasonState`
  * carrying two seasons, or a `teamWeekProjections` carrying two weeks, silently collapses to
  * whichever row for that team came last in the array — not an error, just the wrong number on
@@ -58,13 +61,15 @@ export interface BoardRawData {
   teamSeasonState: TableRow<"team_season_state">[];
   /** One row per team, for one season and one week. */
   teamWeekProjections: TableRow<"team_week_projections">[];
+  /** One row per team, for one season and one week. Absent until the first score sync lands. */
+  teamWeekScores: TableRow<"team_week_scores">[];
   rosterHoldings: Pick<
     TableRow<"roster_holdings">,
     "team_id" | "sleeper_player_id" | "slot" | "slot_index" | "lineup_position"
   >[];
   players: Pick<
     TableRow<"players">,
-    "sleeper_player_id" | "full_name" | "position" | "team"
+    "sleeper_player_id" | "full_name" | "position" | "team" | "injury_status"
   >[];
   playerProjections: Pick<
     TableRow<"player_projections">,
@@ -134,6 +139,32 @@ function narrowFrozenHoldings(
   return narrowed;
 }
 
+/**
+ * `team_week_scores.players_points` is jsonb: `sleeper_player_id` -> points.
+ *
+ * Narrowed on the way in for the same reason `narrowFrozenHoldings` is — the typed `Database`
+ * describes what the sync writes, and a stored row is data some earlier build wrote that no
+ * `tsc` run over this one can vouch for. A non-finite value is dropped rather than reaching a
+ * roster row as `NaN`, which `toFixed` would render as the literal text `NaN`.
+ */
+function narrowPlayersPoints(
+  players_points: Record<string, number>,
+): Map<string, number> {
+  const points = new Map<string, number>();
+  const entries: unknown = players_points;
+  if (typeof entries !== "object" || entries === null) {
+    return points;
+  }
+  for (const [playerId, value] of Object.entries(
+    entries as Record<string, unknown>,
+  )) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      points.set(playerId, value);
+    }
+  }
+  return points;
+}
+
 export function joinBoardTeams(raw: BoardRawData): BoardTeam[] {
   const memberById = new Map(raw.members.map((m) => [m.id, m]));
   const stateByTeamId = new Map(raw.teamSeasonState.map((s) => [s.team_id, s]));
@@ -143,6 +174,17 @@ export function joinBoardTeams(raw: BoardRawData): BoardTeam[] {
   const projectionByTeamId = new Map(
     raw.teamWeekProjections.map((p) => [p.team_id, p]),
   );
+  const scoreByTeamId = new Map(raw.teamWeekScores.map((s) => [s.team_id, s]));
+  // Every team's live points in one map, keyed `${team_id}:${player_id}`. Per-team rather than
+  // global because a player can sit on two rosters across the season's frozen snapshots, and a
+  // bench player's points belong to whoever is holding him on the row being built.
+  const livePointsByTeamAndPlayer = new Map<number, Map<string, number>>();
+  for (const row of raw.teamWeekScores) {
+    livePointsByTeamAndPlayer.set(
+      row.team_id,
+      narrowPlayersPoints(row.players_points),
+    );
+  }
   const playerById = new Map(raw.players.map((p) => [p.sleeper_player_id, p]));
   const pointsByPlayerId = new Map(
     raw.playerProjections.map((p) => [p.sleeper_player_id, p.league_points]),
@@ -152,8 +194,14 @@ export function joinBoardTeams(raw: BoardRawData): BoardTeam[] {
   // roster_holdings has no FK to players on purpose: Sleeper rosters can carry ids the
   // filtered skill-position directory drops. Those still get a row on the board. The same
   // builder serves the frozen final_rosters entries, which have the same four fields.
-  const buildRosterPlayer = (holding: FinalRosterHolding): RosterPlayer => {
+  const buildRosterPlayer = (
+    holding: FinalRosterHolding,
+    teamId: number,
+  ): RosterPlayer => {
     const player = playerById.get(holding.sleeper_player_id);
+    const livePoints = livePointsByTeamAndPlayer
+      .get(teamId)
+      ?.get(holding.sleeper_player_id);
     return {
       sleeperPlayerId: holding.sleeper_player_id,
       fullName:
@@ -164,12 +212,20 @@ export function joinBoardTeams(raw: BoardRawData): BoardTeam[] {
       slotIndex: holding.slot_index,
       lineupPosition: holding.lineup_position,
       projectedPoints: pointsByPlayerId.get(holding.sleeper_player_id) ?? null,
+      // The map covers the starters only, so a bench player has no entry and lands on `null`
+      // by the same path as a starter Sleeper has not scored yet. Every row is built the same
+      // way regardless; only the roster panel decides which of them show the number.
+      livePoints: livePoints ?? null,
+      // A holding with no directory row carries no status either: `null` is "nothing is
+      // known", which is exactly what an unmatched id means, and the card reads it as
+      // available rather than inventing an injury.
+      injuryStatus: player?.injury_status ?? null,
     };
   };
 
   const rosterByTeamId = new Map<number, RosterPlayer[]>();
   for (const holding of raw.rosterHoldings) {
-    const entry = buildRosterPlayer(holding);
+    const entry = buildRosterPlayer(holding, holding.team_id);
     const existing = rosterByTeamId.get(holding.team_id);
     if (existing === undefined) {
       rosterByTeamId.set(holding.team_id, [entry]);
@@ -181,6 +237,7 @@ export function joinBoardTeams(raw: BoardRawData): BoardTeam[] {
   return raw.teams.map((team) => {
     const state = stateByTeamId.get(team.id) ?? null;
     const projection = projectionByTeamId.get(team.id) ?? null;
+    const score = scoreByTeamId.get(team.id) ?? null;
     const summary = summaryByTeamId.get(team.id) ?? null;
 
     // Ben's decision 3: once a team is eliminated its roster comes from the snapshot taken at
@@ -205,6 +262,11 @@ export function joinBoardTeams(raw: BoardRawData): BoardTeam[] {
       teamName: team.team_name,
       ownerName: resolveOwnerLabel(memberById.get(team.member_id)),
       sleeperRosterId: team.sleeper_roster_id,
+      // null only when the week has no score row at all. A team that has scored nothing has a
+      // row saying `0`, and the card renders that as `0.0` rather than as an em dash: before
+      // kickoff that is true of every team, and it is a fact, not a gap.
+      score: score === null ? null : score.points,
+      scoreSyncedAt: score === null ? null : score.synced_at,
       projectedPoints: projection === null ? null : projection.projected_points,
       coveragePct: projection === null ? null : projection.coverage_pct,
       // No projection row for the week is as provisional as it gets.
@@ -224,7 +286,9 @@ export function joinBoardTeams(raw: BoardRawData): BoardTeam[] {
       emptySlots: projection === null ? null : projection.empty_slots,
       isRosterFrozen,
       roster: isRosterFrozen
-        ? orderRoster(frozenRoster.map(buildRosterPlayer))
+        ? orderRoster(
+            frozenRoster.map((holding) => buildRosterPlayer(holding, team.id)),
+          )
         : orderRoster(rosterByTeamId.get(team.id) ?? []),
     };
   });

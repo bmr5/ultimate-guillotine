@@ -22,6 +22,8 @@ const player = (
   slotIndex: null,
   lineupPosition: null,
   projectedPoints: null,
+  injuryStatus: null,
+  livePoints: null,
   ...over,
 });
 
@@ -44,6 +46,8 @@ const team = (over: Partial<BoardTeam> & { teamId: number }): BoardTeam => ({
   teamName: `Team ${over.teamId}`,
   ownerName: `owner${over.teamId}`,
   sleeperRosterId: over.teamId,
+  score: null,
+  scoreSyncedAt: null,
   projectedPoints: 100,
   coveragePct: 100,
   isProvisional: false,
@@ -162,6 +166,117 @@ describe("positionView", () => {
       [2, true],
     ]);
     expect(rows[1].emptySlots).toBe(1);
+  });
+
+  it("flags a team whose starter at the position is out, and says so", () => {
+    // Ben's addendum: "my TE just got injured and I need to figure out who would bid on his
+    // replacement." A team holding a tight end who is not playing needs one as surely as a
+    // team holding none, and the reason is the useful half of the answer.
+    const rows = positionView(
+      [
+        team({ teamId: 1, roster: [te("kelce", 20, 0)] }),
+        team({
+          teamId: 2,
+          roster: [
+            player({
+              sleeperPlayerId: "hurt",
+              slot: "starter",
+              slotIndex: 0,
+              lineupPosition: "TE",
+              position: "TE",
+              projectedPoints: null,
+              injuryStatus: "Out",
+            }),
+          ],
+        }),
+      ],
+      "TE",
+      ["TE"],
+    );
+    expect(rows.map((r) => [r.teamId, r.likelyBidder])).toEqual([
+      [1, false],
+      [2, true],
+    ]);
+    expect(rows[1].likelyBidderReason).toBe("starter out");
+    expect(rows[0].likelyBidderReason).toBeNull();
+    // The slot is filled, so this is not the empty-slot rule firing under another name.
+    expect(rows[1].emptySlots).toBe(0);
+    expect(rows[1].players[0].injuryStatus).toBe("Out");
+  });
+
+  it("leaves a questionable starter unflagged: a doubt is not an absence", () => {
+    const rows = positionView(
+      [
+        team({ teamId: 1, roster: [te("kelce", 20, 0)] }),
+        team({
+          teamId: 2,
+          roster: [
+            player({
+              sleeperPlayerId: "maybe",
+              slot: "starter",
+              slotIndex: 0,
+              lineupPosition: "TE",
+              position: "TE",
+              // The same projection as the other team's starter, so the median rule cannot
+              // fire and the only thing under test is the status.
+              projectedPoints: 20,
+              injuryStatus: "Questionable",
+            }),
+          ],
+        }),
+      ],
+      "TE",
+      ["TE"],
+    );
+    expect(rows.find((r) => r.teamId === 2)?.likelyBidderReason).toBeNull();
+  });
+
+  it("flags a doubtful starter Sleeper has stopped projecting, like the card does", () => {
+    // The out chip and this view read one lineup, so they read it the same way: a known flag
+    // with the projection withdrawn is an absence, not missing data.
+    const rows = positionView(
+      [
+        team({ teamId: 1, roster: [te("kelce", 20, 0)] }),
+        team({
+          teamId: 2,
+          roster: [
+            player({
+              sleeperPlayerId: "bowers",
+              slot: "starter",
+              slotIndex: 0,
+              lineupPosition: "TE",
+              position: "TE",
+              projectedPoints: null,
+              injuryStatus: "Doubtful",
+            }),
+          ],
+        }),
+      ],
+      "TE",
+      ["TE"],
+    );
+    const row = rows.find((r) => r.teamId === 2);
+    expect(row?.likelyBidderReason).toBe("starter out");
+    // The slot is filled, so this is not the empty-slot rule firing under another name.
+    expect(row?.emptySlots).toBe(0);
+  });
+
+  it("names the empty slot and the thin starter as their own reasons", () => {
+    const rows = positionView(
+      [
+        team({ teamId: 1, roster: [te("best", 20, 0)] }),
+        team({ teamId: 2, roster: [te("mid", 10, 0)] }),
+        team({ teamId: 3, roster: [te("worst", 4, 0)] }),
+        team({ teamId: 4, roster: [] }),
+      ],
+      "TE",
+      ["TE"],
+    );
+    const reason = (teamId: number) =>
+      rows.find((r) => r.teamId === teamId)?.likelyBidderReason;
+    expect(reason(1)).toBeNull();
+    expect(reason(3)).toBe("below median");
+    expect(reason(4)).toBe("empty slot");
   });
 
   it("flags a team whose best starter is below the league median", () => {

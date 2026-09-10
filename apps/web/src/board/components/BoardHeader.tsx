@@ -12,6 +12,8 @@ import {
   formatUpdatedAt,
   formatUpdatedTitle,
   isStale,
+  PROJECTIONS_PULLED_LABEL,
+  SCORES_UPDATED_LABEL,
   TICK_INTERVAL_MS,
 } from "../derive/time";
 import {
@@ -44,8 +46,18 @@ interface BoardHeaderProps {
   sortFellBack: boolean;
   searchTerm: string;
   onSearchTermChange: (term: string) => void;
-  /** When the projections were pulled — `team_week_projections.computed_at`. */
+  /** When the projections were computed — `team_week_projections.computed_at`. */
   projectionsUpdatedAt: number | null;
+  /**
+   * When the scores were pulled — the newest `team_week_scores.synced_at` for the week, or
+   * null when the week has no score row yet.
+   *
+   * When it exists it is the stamp the header leads with, and the projections stamp drops to a
+   * smaller second line. Ben: "why does it show that it updated at 9:30PM it should always be
+   * realtime!" — `computed_at` only moves when a projection is recomputed, and leading with it
+   * beside a live score would go on making exactly that claim.
+   */
+  scoresUpdatedAt: number | null;
   /**
    * True only once the socket has been up and has since gone down. A cold load is not a
    * reconnect, so the page computes this from `hasConnectedOnce && !isConnected` rather than
@@ -107,8 +119,22 @@ export function BoardHeader({
   searchTerm,
   onSearchTermChange,
   projectionsUpdatedAt,
+  scoresUpdatedAt,
   isReconnecting,
 }: BoardHeaderProps) {
+  /**
+   * The stamp the header leads with, and the one everything else about freshness is measured
+   * against: the scores when the week has them, the projections otherwise.
+   *
+   * The scores are the newer of the two by construction — the sync writes `synced_at` every
+   * run — so once they exist they are also the honest answer to "is this board stale?".
+   */
+  const hasScoreStamp = scoresUpdatedAt !== null;
+  const primaryUpdatedAt = hasScoreStamp
+    ? scoresUpdatedAt
+    : projectionsUpdatedAt;
+  const primaryLabel = hasScoreStamp ? SCORES_UPDATED_LABEL : undefined;
+
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const timer = window.setInterval(
@@ -129,7 +155,7 @@ export function BoardHeader({
    */
   const previousElapsedRef = useRef<number | null>(null);
   const elapsed =
-    projectionsUpdatedAt === null ? 0 : Math.max(0, now - projectionsUpdatedAt);
+    primaryUpdatedAt === null ? 0 : Math.max(0, now - primaryUpdatedAt);
   useEffect(() => {
     const previousElapsed = previousElapsedRef.current;
     previousElapsedRef.current = elapsed;
@@ -138,18 +164,20 @@ export function BoardHeader({
     }
     if (crossesMinuteBoundary(previousElapsed, elapsed)) {
       setAnnounced(
-        `${formatUpdatedAt(projectionsUpdatedAt, now)}, ${formatUpdatedAgo(
-          projectionsUpdatedAt,
+        `${formatUpdatedAt(
+          primaryUpdatedAt,
           now,
-        )}`,
+          {},
+          primaryLabel,
+        )}, ${formatUpdatedAgo(primaryUpdatedAt, now)}`,
       );
     }
-  }, [elapsed, projectionsUpdatedAt, now]);
+  }, [elapsed, primaryUpdatedAt, primaryLabel, now]);
 
-  const stale = isStale(projectionsUpdatedAt, now);
+  const stale = isStale(primaryUpdatedAt, now);
 
   return (
-    <header className="sticky top-0 z-20 -mx-4 mb-3 space-y-2 border-b bg-background/95 px-4 py-3 backdrop-blur sm:mx-0 sm:px-0">
+    <header className="sticky top-0 z-20 -mx-4 mb-3 space-y-2 border-b bg-background/95 px-4 py-3 backdrop-blur-sm sm:mx-0 sm:px-0">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         {/* The site title lives in the layout; this header names the week only. */}
         <h2 className="text-lg font-semibold">
@@ -164,14 +192,15 @@ export function BoardHeader({
           reader should hear about the pull time, and it speaks only on minute boundaries.
         */}
         <span
+          data-stamp={hasScoreStamp ? "scores" : "projections"}
           className="text-sm text-muted-foreground"
-          title={formatUpdatedTitle(projectionsUpdatedAt)}
+          title={formatUpdatedTitle(primaryUpdatedAt, {}, primaryLabel)}
           aria-hidden="true"
         >
-          {formatUpdatedAt(projectionsUpdatedAt, now)}
+          {formatUpdatedAt(primaryUpdatedAt, now, {}, primaryLabel)}
         </span>
         <span className="text-xs text-muted-foreground/80" aria-hidden="true">
-          {formatUpdatedAgo(projectionsUpdatedAt, now)}
+          {formatUpdatedAgo(primaryUpdatedAt, now)}
         </span>
         {isSeasonFallback ? (
           <Badge variant="outline">{seasonFallbackLabel(season)}</Badge>
@@ -183,6 +212,37 @@ export function BoardHeader({
           </span>
         ) : null}
       </div>
+
+      {/*
+        The projections stamp, kept as a smaller second line once the scores lead. Two figures
+        sit side by side on every card and they are pulled on different clocks — the scores
+        every minute in a game window, the projections every five — so one stamp cannot
+        truthfully describe both. Dropped entirely when there is no score row: the line above
+        is then already the projections stamp, and repeating it would say the same thing twice.
+
+        `aria-hidden` for the same reason as the two spans above: the live region below is the
+        one thing a screen reader should hear about freshness, and it speaks on minute
+        boundaries. A second unhidden timestamp would be read out on every render instead.
+      */}
+      {hasScoreStamp ? (
+        <p
+          data-projection-stamp
+          className="text-xs text-muted-foreground/80"
+          aria-hidden="true"
+          title={formatUpdatedTitle(
+            projectionsUpdatedAt,
+            {},
+            PROJECTIONS_PULLED_LABEL,
+          )}
+        >
+          {formatUpdatedAt(
+            projectionsUpdatedAt,
+            now,
+            {},
+            PROJECTIONS_PULLED_LABEL,
+          )}
+        </p>
+      ) : null}
 
       <p className="sr-only" aria-live="polite">
         {announced}

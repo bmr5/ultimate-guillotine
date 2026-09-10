@@ -2,6 +2,7 @@ import json
 from dataclasses import replace
 from pathlib import Path
 
+from ultimate_guillotine.data.repositories import MemberAliasRepository
 from ultimate_guillotine.sleeper.models import SleeperLeague, SleeperRoster, SleeperUser
 from ultimate_guillotine.sleeper.sync import SyncReport, sync_season
 
@@ -91,3 +92,38 @@ def test_sync_season_is_idempotent(conn) -> None:
             """
         )
         assert cur.fetchone()[0] == "The Guillotine Blades"
+
+
+def test_sync_leaves_a_former_member_alone(conn) -> None:
+    """A departed manager's profile is not Sleeper's to reconcile.
+
+    `sync_season` upserts `public.members` on `display_name` and never deletes, so the only
+    thing standing between a hand-written profile and being overwritten (or, worse, having
+    its `sleeper_display_name` filled in from somebody else's account) is that the key it
+    was given cannot be a Sleeper username. `former:` is that guarantee, and this is the
+    test that says so.
+    """
+    repo = MemberAliasRepository(conn)
+    created, aliases = repo.upsert_former("Sentinel Former", ["Sentinel Nick"])
+    assert (created, aliases) == (True, 2)
+
+    sync_season(FakeSleeperClient(), conn, year=2026, league_id=LEAGUE_ID)
+
+    with conn.cursor() as cur:
+        cur.execute(
+            "select nickname, sleeper_display_name from public.members where display_name = %s",
+            ("former:sentinel-former",),
+        )
+        assert cur.fetchone() == ("Sentinel Former", None)
+        # And the sync did not adopt the row into the league either: no team points at it.
+        cur.execute(
+            """
+            select count(*) from public.teams t
+            join public.members m on m.id = t.member_id
+            where m.display_name = 'former:sentinel-former'
+            """
+        )
+        assert cur.fetchone()[0] == 0
+        cur.execute("select count(*) from public.members")
+        # The league's 18, plus the one profile that is not part of it.
+        assert cur.fetchone()[0] == 19

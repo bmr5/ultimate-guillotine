@@ -9,26 +9,33 @@ import {
   REALTIME_BACKOFF_JITTER_MAX,
   REALTIME_BACKOFF_JITTER_MIN,
   REALTIME_DEBOUNCE_MS,
-  REALTIME_MAX_EVENTS_PER_BURST,
+  REALTIME_MAX_EVENTS_PER_TABLE,
   REALTIME_MAX_WAIT_MS,
   REALTIME_POLL_MS,
 } from "./realtime";
 
 describe("realtime constants", () => {
-  it("subscribes only to the four published tables", () => {
+  it("subscribes only to the five published tables", () => {
     expect([...BOARD_REALTIME_TABLES]).toEqual([
       "roster_holdings",
       "team_season_state",
       "team_week_projections",
+      "team_week_scores",
       "nfl_state",
     ]);
   });
 
   it("uses the spec's timings", () => {
     expect(REALTIME_DEBOUNCE_MS).toBe(750);
-    expect(REALTIME_MAX_EVENTS_PER_BURST).toBe(18);
+    expect(REALTIME_MAX_EVENTS_PER_TABLE).toBe(24);
     expect(REALTIME_POLL_MS).toBe(60_000);
     expect(REALTIME_BACKOFF_CAP_MS).toBe(30_000);
+  });
+
+  it("leaves a run of eighteen rows room under the per-table ceiling", () => {
+    // Two jobs write eighteen rows each on the same minute boundary through a game window, so
+    // the ceiling has to be per table and has to sit clear of a single run rather than on it.
+    expect(REALTIME_MAX_EVENTS_PER_TABLE).toBeGreaterThan(18);
   });
 
   it("forces a flush before a sustained burst can starve the refetch", () => {
@@ -121,6 +128,25 @@ describe("keysForTable", () => {
     expect(keysForTable("team_week_projections", context)).toEqual([
       boardKeys.teamWeekProjections(1, 3),
     ]);
+  });
+
+  it("maps a score change to the week's score query and nothing else", () => {
+    // The reason the table is published: Ben asked for the score to be realtime. A run writes
+    // one row per team, and eighteen events debounce into this one invalidation rather than
+    // dragging the whole board — including the id-fingerprinted player directory — with them.
+    expect(keysForTable("team_week_scores", context)).toEqual([
+      boardKeys.teamWeekScores(1, 3),
+    ]);
+  });
+
+  it("falls back to the whole board for a score event before the context resolves", () => {
+    expect(
+      keysForTable("team_week_scores", {
+        seasonId: null,
+        season: null,
+        week: null,
+      }),
+    ).toEqual([boardKeys.all]);
   });
 
   it("maps an nfl_state change to the nfl_state query alone", () => {

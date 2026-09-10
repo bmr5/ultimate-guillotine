@@ -3,7 +3,7 @@ import ReactDOM from "react-dom/client";
 
 import "./globals.css";
 
-import { RouterProvider } from "react-router-dom";
+import { RouterProvider } from "react-router/dom";
 
 import { ThemeProvider } from "@/components/theme-provider";
 

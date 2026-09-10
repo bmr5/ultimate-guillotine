@@ -5,12 +5,22 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { boardKeys } from "./queryKeys";
 import type { BoardRealtimeTable } from "./realtime";
-import { REALTIME_MAX_WAIT_MS } from "./realtime";
+import {
+  REALTIME_MAX_EVENTS_PER_TABLE,
+  REALTIME_MAX_WAIT_MS,
+} from "./realtime";
 import type {
   FakeableChannel,
   RealtimeTransport,
 } from "./useLeagueBoardRealtime";
 import { useLeagueBoardRealtime } from "./useLeagueBoardRealtime";
+
+/**
+ * Every test below injects its own transport, so the real client is never reached — but the hook
+ * module imports it at the top level, and `createClient` refuses an empty URL before any test
+ * can run. The same isolation `useBoardData.test.tsx` gives `boardClient`.
+ */
+vi.mock("@/supabaseClient", () => ({ supabase: {} }));
 
 /**
  * A fresh object per `channel()` call, exactly as `supabase.channel` returns — so a test can
@@ -111,6 +121,7 @@ describe("useLeagueBoardRealtime", () => {
       "roster_holdings",
       "team_season_state",
       "team_week_projections",
+      "team_week_scores",
       "nfl_state",
     ]);
   });
@@ -267,7 +278,7 @@ describe("useLeagueBoardRealtime", () => {
     });
   });
 
-  it("collapses to one whole-board refetch past the eighteen-event ceiling", () => {
+  it("collapses to one whole-board refetch past the per-table ceiling", () => {
     const fake = createFakeTransport();
     const invalidate = vi
       .spyOn(queryClient, "invalidateQueries")
@@ -281,7 +292,7 @@ describe("useLeagueBoardRealtime", () => {
     invalidate.mockClear();
 
     act(() => {
-      for (let index = 0; index < 25; index += 1) {
+      for (let index = 0; index <= REALTIME_MAX_EVENTS_PER_TABLE; index += 1) {
         fake.emit("roster_holdings");
       }
       vi.advanceTimersByTime(750);
@@ -289,6 +300,40 @@ describe("useLeagueBoardRealtime", () => {
 
     expect(invalidate).toHaveBeenCalledTimes(1);
     expect(invalidate).toHaveBeenCalledWith({ queryKey: boardKeys.all });
+  });
+
+  it("keeps a two-table Sunday burst targeted rather than refetching the board", () => {
+    // The every-five-minutes case: `ug sleeper scores` writes a row per team on the minute and
+    // the projections job writes a row per team on the same boundary. Thirty-six events, but
+    // eighteen on each table, so neither is flooding and both keys stay targeted.
+    const fake = createFakeTransport();
+    const invalidate = vi
+      .spyOn(queryClient, "invalidateQueries")
+      .mockResolvedValue();
+
+    mount(fake);
+
+    act(() => {
+      fake.setStatus("SUBSCRIBED");
+    });
+    invalidate.mockClear();
+
+    act(() => {
+      for (let index = 0; index < 18; index += 1) {
+        fake.emit("team_week_scores");
+        fake.emit("team_week_projections");
+      }
+      vi.advanceTimersByTime(750);
+    });
+
+    expect(invalidate).toHaveBeenCalledTimes(2);
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: boardKeys.teamWeekScores(1, 3),
+    });
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: boardKeys.teamWeekProjections(1, 3),
+    });
+    expect(invalidate).not.toHaveBeenCalledWith({ queryKey: boardKeys.all });
   });
 
   it("reports the connection state and refetches everything on reconnect", () => {

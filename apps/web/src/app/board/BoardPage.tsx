@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router";
 
 import { BoardHeader } from "@/board/components/BoardHeader";
 import {
@@ -12,6 +12,7 @@ import {
 import { PositionView } from "@/board/components/PositionView";
 import { TeamCard } from "@/board/components/TeamCard";
 import { positionView } from "@/board/derive/position";
+import { resolveCardEmphasis } from "@/board/derive/score";
 import { filterTeams } from "@/board/derive/search";
 import { selectEffectiveSortMode, sortBoardTeams } from "@/board/derive/sort";
 import { REALTIME_POLL_MS } from "@/board/realtime";
@@ -88,6 +89,9 @@ export function BoardPage() {
 
   const nextPollingMs = realtime.isConnected ? false : REALTIME_POLL_MS;
   useEffect(() => {
+    // The one-render feedback described above `pollingMs`: the hook that owns the answer runs
+    // after the hook that needs it, so a state update is the only way back.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setPollingMs(nextPollingMs);
   }, [nextPollingMs]);
 
@@ -125,6 +129,18 @@ export function BoardPage() {
     [filtered.teams, positionFilter, board.rosterPositions, requestedSort],
   );
 
+  /**
+   * Which figure the cards emphasise, decided once for the whole board rather than per card.
+   *
+   * Off `board.teams`, not `filtered.teams`: a search that narrows the board to one scoreless
+   * team must not flip every visible card back to projection emphasis mid-Sunday. The question
+   * is what the week is doing, and that does not change because somebody typed a name.
+   */
+  const emphasis = useMemo(
+    () => resolveCardEmphasis(board.teams),
+    [board.teams],
+  );
+
   const autoExpanded = useMemo(
     () => new Set(filtered.autoExpandTeamIds),
     [filtered.autoExpandTeamIds],
@@ -134,10 +150,13 @@ export function BoardPage() {
    * The toggle has to know whether the card it is closing was auto-expanded, but it must stay
    * referentially stable across a search — it is a prop on every memoized `TeamCard`, and a new
    * identity on every keystroke would re-render the whole board. A ref carries the current
-   * auto-expand set into a callback that depends on nothing.
+   * auto-expand set into a callback that depends on nothing. The ref is written from an effect,
+   * the one place React allows, and the toggle is a click handler, so it always runs after.
    */
   const autoExpandedRef = useRef(autoExpanded);
-  autoExpandedRef.current = autoExpanded;
+  useEffect(() => {
+    autoExpandedRef.current = autoExpanded;
+  }, [autoExpanded]);
 
   const handleToggle = useCallback((teamId: number) => {
     setOpenOverrides((current) => {
@@ -206,6 +225,7 @@ export function BoardPage() {
         searchTerm={rawSearch}
         onSearchTermChange={setRawSearch}
         projectionsUpdatedAt={board.projectionsUpdatedAt}
+        scoresUpdatedAt={board.scoresUpdatedAt}
         isReconnecting={isReconnecting}
       />
 
@@ -244,6 +264,7 @@ export function BoardPage() {
                   onToggle={handleToggle}
                   highlightedPlayerIds={filtered.matchedPlayerIds}
                   rosterPositions={board.rosterPositions}
+                  emphasis={emphasis}
                 />
               ))}
             </ul>
@@ -261,6 +282,7 @@ export function BoardPage() {
                       onToggle={handleToggle}
                       highlightedPlayerIds={filtered.matchedPlayerIds}
                       rosterPositions={board.rosterPositions}
+                      emphasis={emphasis}
                     />
                   ))}
                 </ul>

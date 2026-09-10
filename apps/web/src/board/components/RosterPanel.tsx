@@ -3,6 +3,7 @@ import { AlertTriangle } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
+import { injuryTag } from "../derive/availability";
 import {
   groupRosterBySlot,
   SLOT_LABELS,
@@ -16,8 +17,61 @@ const NO_PROJECTION_TEXT = "—";
 /** Decimals a player projection is shown with, matching the team projection above it. */
 const PLAYER_PROJECTION_DECIMALS = 1;
 
+/**
+ * The word after a starter's two numbers: `12.4 / 14.1 proj`.
+ *
+ * Ben asked for the live score beside the projection on the card; a starter's row is where the
+ * same question is asked one player at a time — who is carrying the number and who has not
+ * played yet. Only starters get it: a bench player's live points are real but they are not part
+ * of this week's total, and putting them on every row would bury the nine that are.
+ */
+const LIVE_POINTS_SEPARATOR = " / ";
+const PROJECTION_SUFFIX = " proj";
+
+/** Spoken forms, so a row is not read out as `12.4 slash 14.1 proj`. */
+const LIVE_POINTS_LABEL = "scored";
+const PROJECTION_LABEL = "projected";
+
 /** Separator between a player's position and NFL team, so `QB · KC` reads as one line. */
 const META_SEPARATOR = " · ";
+
+/**
+ * The injury tag, after the position and NFL team a reader already scans for.
+ *
+ * Ben's addendum: a starter who is out and a starter nobody has projected read identically on
+ * the board. `Out`, `IR`, `Q`, `D` and the rest sit on the row itself so the reason is on the
+ * roster, not only in the count on the collapsed card. The six unavailable statuses take the
+ * warning token, because they are the ones that cost points this week; `Q` and `D` stay muted.
+ *
+ * The short tag is what shows; the full wording rides along as the native `title` a reader
+ * hovers and as the visually hidden text a screen reader gets whether or not it is hovered.
+ */
+const InjuryTag = memo(function InjuryTag({
+  status,
+}: {
+  status: string | null;
+}) {
+  const tag = injuryTag(status);
+  if (tag === null) {
+    return null;
+  }
+  return (
+    <span
+      // The state's stable handle: restyling the tag must not mean rewriting the test.
+      data-injury={tag.status}
+      title={tag.title}
+      className={cn(
+        "ml-1.5 rounded border px-1 text-[0.6875rem] font-medium",
+        tag.isUnavailable
+          ? "border-destructive/40 text-destructive"
+          : "border-border text-muted-foreground",
+      )}
+    >
+      <span aria-hidden="true">{tag.tag}</span>
+      <span className="sr-only">{tag.title}</span>
+    </span>
+  );
+});
 
 /** Shown when a team has a card but no roster rows behind it yet. */
 export const EMPTY_ROSTER_LABEL =
@@ -26,6 +80,12 @@ export const EMPTY_ROSTER_LABEL =
 interface PlayerRowProps {
   player: RosterPlayer;
   isHighlighted: boolean;
+  /**
+   * True for a row in the lineup. The live figure is a starter's alone — see
+   * `LIVE_POINTS_SEPARATOR` — and the panel knows which rows those are because it renders them
+   * from `starterSlots` rather than from `players`.
+   */
+  isStarter?: boolean;
 }
 
 /**
@@ -35,6 +95,7 @@ interface PlayerRowProps {
 const PlayerRow = memo(function PlayerRow({
   player,
   isHighlighted,
+  isStarter = false,
 }: PlayerRowProps) {
   // A placeholder row for a player missing from the directory carries neither, so the whole
   // meta span is dropped rather than rendering a bare separator.
@@ -56,11 +117,54 @@ const PlayerRow = memo(function PlayerRow({
         {meta === "" ? null : (
           <span className="ml-2 text-muted-foreground">{meta}</span>
         )}
+        <InjuryTag status={player.injuryStatus} />
       </span>
       <span className="shrink-0 tabular-nums text-muted-foreground">
-        {player.projectedPoints === null
-          ? NO_PROJECTION_TEXT
-          : player.projectedPoints.toFixed(PLAYER_PROJECTION_DECIMALS)}
+        {isStarter && player.livePoints !== null ? (
+          <>
+            {/*
+              The live figure leads and takes the foreground; the projection follows, muted and
+              labelled, so the pair reads as "this is what he has, that is what was expected".
+              A starter who has not scored yet shows `0.0` in the muted token rather than being
+              hidden — before kickoff that is every starter, and it is a fact, not an absence.
+            */}
+            <span
+              data-live-points
+              className={
+                player.livePoints === 0
+                  ? "text-muted-foreground"
+                  : "text-foreground"
+              }
+            >
+              <span aria-hidden="true">
+                {player.livePoints.toFixed(PLAYER_PROJECTION_DECIMALS)}
+              </span>
+              <span className="sr-only">{`${LIVE_POINTS_LABEL} ${player.livePoints.toFixed(
+                PLAYER_PROJECTION_DECIMALS,
+              )}, `}</span>
+            </span>
+            <span aria-hidden="true">{LIVE_POINTS_SEPARATOR}</span>
+            <span>
+              <span aria-hidden="true">
+                {player.projectedPoints === null
+                  ? NO_PROJECTION_TEXT
+                  : player.projectedPoints.toFixed(PLAYER_PROJECTION_DECIMALS)}
+                {PROJECTION_SUFFIX}
+              </span>
+              <span className="sr-only">
+                {player.projectedPoints === null
+                  ? `no ${PROJECTION_LABEL}`
+                  : `${PROJECTION_LABEL} ${player.projectedPoints.toFixed(
+                      PLAYER_PROJECTION_DECIMALS,
+                    )}`}
+              </span>
+            </span>
+          </>
+        ) : player.projectedPoints === null ? (
+          NO_PROJECTION_TEXT
+        ) : (
+          player.projectedPoints.toFixed(PLAYER_PROJECTION_DECIMALS)
+        )}
       </span>
     </li>
   );
@@ -154,6 +258,7 @@ export function RosterPanel({
                 <PlayerRow
                   key={row.player.sleeperPlayerId}
                   player={row.player}
+                  isStarter
                   isHighlighted={highlightedPlayerIds.has(
                     row.player.sleeperPlayerId,
                   )}

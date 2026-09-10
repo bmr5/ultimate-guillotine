@@ -26,12 +26,18 @@ jobs:
     script: guillotine_run_audit.sh
     deliver: "discord:#guillotine-ops"
     max_gap_minutes: 1500
+  # Every four hours, not nightly: the directory now carries Sleeper's injury_status,
+  # which is the one column on public.players that changes during a week. A Friday
+  # afternoon `Out` that only landed at 05:30 the next morning would have the board
+  # calling an injured starter a coverage hole all Saturday. 300 = the four-hour
+  # cadence plus an hour of slack, so `ug ops audit-runs` does not false-alarm on a
+  # single skipped fire.
   - name: guillotine-players-sync
     agent: players-sync
-    schedule: "30 5 * * *"
+    schedule: "0 */4 * * *"
     script: guillotine_players_sync.sh
     deliver: "discord:#guillotine-ops"
-    max_gap_minutes: 1500
+    max_gap_minutes: 300
   - name: guillotine-nfl-state
     agent: nfl-state
     schedule: "every 10m"
@@ -73,3 +79,41 @@ jobs:
     script: guillotine_sleeper_projections.sh
     deliver: local
     max_gap_minutes: 90
+  # The four scores jobs share the agent name `scores-sync`, exactly as the projections rows
+  # share theirs: one job on four schedules, with the per-agent, per-minute idempotency key in
+  # run_scheduled absorbing an overlap between the baseline and a game-window fire. Cron fields
+  # are the Mac mini's LOCAL time (America/New_York), not UTC.
+  #
+  # Every minute in a game window, because that is the whole point — Ben: "why does it show that
+  # it updated at 9:30PM it should always be realtime!". Outside those windows nothing is being
+  # scored, so */15 keeps the row warm without asking Sleeper 1,440 times a day for a number that
+  # has not moved.
+  #
+  # All four deliver `local`, the baseline included. Even at */15 an outage would post four lines
+  # an hour to the channel, and at */1 it is sixty; the run history on the mini is where these
+  # live, `ug ops health` is the standing answer between edges, and `run_scheduled_with_notes`
+  # still posts one note to #guillotine-ops on the edge — the first failure and the recovery.
+  - name: guillotine-sleeper-scores
+    agent: scores-sync
+    schedule: "*/15 * * * *"
+    script: guillotine_sleeper_scores.sh
+    deliver: local
+    max_gap_minutes: 45
+  - name: guillotine-sleeper-scores-thursday
+    agent: scores-sync
+    schedule: "* 20-23 * * 4"
+    script: guillotine_sleeper_scores.sh
+    deliver: local
+    max_gap_minutes: 45
+  - name: guillotine-sleeper-scores-sunday
+    agent: scores-sync
+    schedule: "* 13-23 * * 0"
+    script: guillotine_sleeper_scores.sh
+    deliver: local
+    max_gap_minutes: 45
+  - name: guillotine-sleeper-scores-monday
+    agent: scores-sync
+    schedule: "* 20-23 * * 1"
+    script: guillotine_sleeper_scores.sh
+    deliver: local
+    max_gap_minutes: 45

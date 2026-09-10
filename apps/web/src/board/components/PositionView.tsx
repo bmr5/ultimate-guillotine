@@ -6,7 +6,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 
-import type { PositionRow } from "../derive/position";
+import { injuryTag } from "../derive/availability";
+import { LIKELY_BIDDER_REASONS, type PositionRow } from "../derive/position";
 import { layoutStarters } from "../derive/roster";
 import type { PositionFilter } from "../types";
 import { RosterPanel } from "./RosterPanel";
@@ -19,6 +20,18 @@ const PLAYER_PROJECTION_DECIMALS = 1;
 
 /** The board's stand-in for "there is no number here"; never a zero. */
 const NO_PROJECTION_TEXT = "—";
+
+/**
+ * A starter's live figure, ahead of his projection: `12.4 / 14.1`. Same pairing the roster
+ * panel uses, minus the `proj` word — this view lists several players on one line and the
+ * column has no room for it, so the wording rides along for a screen reader instead.
+ *
+ * Starters only, for the same reason: a bench player's live points are real but they are not
+ * part of this week's total, and every row carrying two numbers would bury the ones that are.
+ */
+const LIVE_POINTS_SEPARATOR = "/";
+const LIVE_POINTS_LABEL = "scored";
+const PROJECTED_LABEL = "projected";
 
 /** Shown in place of the FAAB figure when the team has no `team_season_state` row. */
 const FAAB_UNKNOWN_TEXT = "FAAB —";
@@ -45,7 +58,7 @@ const emptySlotsDescription = (position: PositionFilter) =>
  * bare `<button>`s rather than `Button`s, so they have to name it themselves.
  */
 const FOCUS_RING_CLASS =
-  "ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
+  "ring-offset-background focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
 
 function projectionText(points: number | null): string {
   return points === null
@@ -139,8 +152,59 @@ const PositionTeamRow = memo(function PositionTeamRow({
                     >
                       <span className="font-medium">{player.fullName}</span>{" "}
                       <span className="tabular-nums text-muted-foreground">
-                        {projectionText(player.projectedPoints)}
+                        {player.isStarter && player.livePoints !== null ? (
+                          <>
+                            <span
+                              data-live-points
+                              className={
+                                player.livePoints === 0
+                                  ? undefined
+                                  : "text-foreground"
+                              }
+                            >
+                              <span aria-hidden="true">
+                                {player.livePoints.toFixed(
+                                  PLAYER_PROJECTION_DECIMALS,
+                                )}
+                              </span>
+                              <span className="sr-only">{`${LIVE_POINTS_LABEL} ${player.livePoints.toFixed(
+                                PLAYER_PROJECTION_DECIMALS,
+                              )}, `}</span>
+                            </span>
+                            <span aria-hidden="true">
+                              {LIVE_POINTS_SEPARATOR}
+                            </span>
+                            <span aria-hidden="true">
+                              {projectionText(player.projectedPoints)}
+                            </span>
+                            <span className="sr-only">{`${PROJECTED_LABEL} ${projectionText(
+                              player.projectedPoints,
+                            )}`}</span>
+                          </>
+                        ) : (
+                          projectionText(player.projectedPoints)
+                        )}
                       </span>
+                      {/* The same tag the roster panel shows, so the quick view answers
+                          "who is hurt at this position" without expanding a row. */}
+                      {(() => {
+                        const tag = injuryTag(player.injuryStatus);
+                        return tag === null ? null : (
+                          <span
+                            data-injury={tag.status}
+                            title={tag.title}
+                            className={cn(
+                              "ml-1 rounded border px-1 text-[0.6875rem] font-medium",
+                              tag.isUnavailable
+                                ? "border-destructive/40 text-destructive"
+                                : "border-border text-muted-foreground",
+                            )}
+                          >
+                            <span aria-hidden="true">{tag.tag}</span>
+                            <span className="sr-only">{tag.title}</span>
+                          </span>
+                        );
+                      })()}
                       {player.isStarter ? (
                         <>
                           <span aria-hidden="true">{` ${STARTER_MARK}`}</span>
@@ -179,7 +243,17 @@ const PositionTeamRow = memo(function PositionTeamRow({
 
           {row.likelyBidder ? (
             <div className="flex flex-wrap gap-2 px-4 pb-3">
-              <Badge variant="outline">{LIKELY_BIDDER_LABEL}</Badge>
+              <Badge
+                variant="outline"
+                data-bidder-reason={row.likelyBidderReason ?? undefined}
+                title={
+                  row.likelyBidderReason === null
+                    ? undefined
+                    : LIKELY_BIDDER_REASONS[row.likelyBidderReason]
+                }
+              >
+                {LIKELY_BIDDER_LABEL}
+              </Badge>
             </div>
           ) : null}
 

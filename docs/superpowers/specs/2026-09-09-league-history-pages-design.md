@@ -32,6 +32,8 @@ what does this league do, and who has won. The spec follows the page conventions
    - `2023`: the week grid at rows 3–7 (`Week`, `Safe`, `Gulag`, `Gladiator`, `Cut`, `Winner!`) and
      rows 16–24 (`Week`, `Total Teams`, `Teams in Gulag`, `Teams sent to Gulag`, `Teams cut at EOW`,
      `Teams going into next week`).
+   - `2023` row 9, the upper grid's `Total` row: a team count only, read solely to check it against
+     the summary grid's `Total Teams`; the season publishes a count only if the two agree.
    - **Never loaded, from any sheet:** the `paid` column — dues are private and stay private, the
      hard rule here — the 2025 roster block (seat number, first name, last name, `paid`, the
      replacement / `removed` columns), the 2023 signup block at rows 28–48 (names, three dated
@@ -88,7 +90,7 @@ ug history load-results history/league/ultimate-guillotine-records.xlsx
 Both follow `cli/members.py`: build deps, read the file, upsert, commit, print **counts only**, exit
 non-zero only when nothing loaded. Neither ever prints a member name, a player name, a nickname, or a
 line of source text — output is `catalog: 214 rows, 3 updated, 5 unresolved parties` and `results: 6
-seasons, 2 unresolved names`. Both are idempotent, upserting on `catalog_id` and `season`.
+seasons, 6 updated, 2 unresolved names, 0 weeks with no count`. Both are idempotent, upserting on `catalog_id` and `season`.
 
 `load-catalog` copies fields through an explicit **allowlist** — `id`, `season`, `week_or_date`,
 `type`, `structure`, `parties`, `assets`, `faab_total`, `confidence` — not by deleting private fields
@@ -133,14 +135,19 @@ Queries use a five-minute `staleTime` plus `refetchOnWindowFocus` and no channel
 footer shows `Loaded <date>` from `max(loaded_at)` through the board's `formatUpdatedAt`. An empty
 table renders "No trades loaded yet", a filter matching nothing shows a clear-filters button, and a
 failed query shows the board's `Alert` pattern without blanking the rest. When a trade's
-`party_count` is one owner short, the card says "and 1 unidentified owner" — never a raw name.
+`party_count` is one owner short, the card says "and a former manager" — never a raw name.
 
 ## Privacy and Safety
 
 - **No dues.** The `paid` columns are never read, stored, or rendered; the sheet allowlist and a test
   asserting no 2025-sheet value reaches the database enforce it.
-- **No chat text.** `source_texts` and `notes` from the classification JSON are never loaded; the
-  only free text in either table is `season_results.notes`, typed by Ben on the command line.
+- **One piece of chat text, by name.** `notes` from the classification JSON is never loaded, and
+  neither is any field the allowlist does not name. `source_texts` — the league's own
+  announcement of a trade — is loaded into `trade_catalog.announcement` by Ben's decision of
+  2026-09-10, and the Registrar's `terms.evidence_excerpt` is read for the same purpose on
+  registered trades. `parties[].display_name`, `assets[].player_name` and
+  `assets[].description` are still dropped by `normalizeRegisteredTrade`. The loaders still
+  print counts only: a field published on a page is not a licence to echo it into a terminal.
 - **No usernames.** Neither table stores a person's name. Parties and champions are `members` ids,
   labelled `nickname` else `sleeper_display_name`, never `display_name`; unresolved is a count.
 - **No private schema.** Both pages read only these two tables plus `members`, `seasons`,
@@ -152,8 +159,8 @@ pgTAP in `supabase/tests/league_history_pages.sql`: both tables exist, RLS is on
 matches the two policies per table, `automation_worker` holds no `delete` on either, the checks
 reject a bad `confidence` or `source`, and the natural-key uniques reject a duplicate. Python tests
 against the local stack: an upsert rerun leaves one row with identical content; the allowlist drops
-`notes` and `source_texts`, asserted with a sentinel string in those fields that must appear nowhere
-in the table; an unresolved party is counted, not guessed; the workbook loader reads only the three
+`notes`, asserted with a sentinel string in that field that must appear nowhere in the table, while
+a differently spelled sentinel in `source_texts` must appear in `announcement` and nowhere else; an unresolved party is counted, not guessed; the workbook loader reads only the three
 allowlisted sheets and writes no value appearing on the `2025` sheet; both print counts only. Web
 tests with Vitest: `mergeTradeSources` hides and counts a registered season's catalog rows; filters
 combine with AND; the stats strip sums FAAB; a season card renders counts when `member_id` is null.
@@ -178,3 +185,23 @@ table, and Ben has reviewed the Vercel preview at 375 px in light and dark.
 4. **Position filter.** QB/RB/WR/TE, matching the board, or K and DEF too?
 5. **How far back should `/trades` go?** The catalog may reach 2020; cap the page at 2023 instead?
 6. **Elimination detail for 2023 and 2024.** Worth a later pass to name who went out each week?
+
+## Decisions from Ben (2026-09-09)
+
+- Answering question 2: a champion who has left the league gets a member profile that is not tied to Sleeper (`ug members former add`, keyed `former:<slug>` with the name as the nickname), and because the rest of the catalog's old nicknames will not be mapped one by one, every party these pages still cannot name reads as "a former manager" — on the trade cards, on the champion line and on a named elimination line — rather than as "unidentified owner" or "Unlisted"; the owner filter leaves them out entirely, since one such option would stand for every unmapped party at once. A placing `season_results` never recorded at all is a different fact and reads "Not recorded": "former manager" is for somebody the sheet named and the directory cannot, and a season with no champion on file named nobody.
+
+## Decisions from Ben (2026-09-10)
+
+- **The trade cards show the announcement.** "include the actual text of the trade to give more
+  context, it is hard to understand these tiles". The classification record's `source_texts`
+  loads into `trade_catalog.announcement` (a message per paragraph) and a registered trade's
+  card quotes the Registrar's `terms.evidence_excerpt`. It is rendered as a `<blockquote>`,
+  clamped to four lines until the card is opened, and a trade with no text renders nothing at
+  all rather than an empty quote. The search box matches it, since a card that shows a word
+  should be findable by it. Ben knows the page is public.
+- **The card is named between its owners.** "the titles are dumb … I would prefer the category
+  be shown in like a sublabel and trade named between the owners". The title is the parties
+  joined with ` ↔ ` in the trade's own order, with the ones the page cannot name folded into one
+  "a former manager" / "N former managers" segment; the category and structure move to a muted
+  sublabel in sentence case (`Rental · player for FAAB`), above `Season 2024 · Week 3`. The
+  owners are no longer also badges — the rescinded mark and the trade code chip stay.

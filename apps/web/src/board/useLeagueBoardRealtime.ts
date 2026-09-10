@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { supabase } from "@/supabaseClient";
@@ -9,7 +9,7 @@ import {
   BOARD_REALTIME_TABLES,
   keysForTable,
   REALTIME_DEBOUNCE_MS,
-  REALTIME_MAX_EVENTS_PER_BURST,
+  REALTIME_MAX_EVENTS_PER_TABLE,
   REALTIME_MAX_WAIT_MS,
   type BoardRealtimeTable,
 } from "./realtime";
@@ -69,14 +69,6 @@ const defaultTransport: RealtimeTransport = {
 
 const DISCONNECTED_STATUSES = new Set(["CHANNEL_ERROR", "TIMED_OUT", "CLOSED"]);
 
-/**
- * A Realtime topic is a server-side identity: two channels on one topic are the same
- * subscription, and React StrictMode mounts every hook twice, so a topic built from the
- * reconnect nonce alone would have the discarded first mount and the surviving second one
- * racing for it — the teardown of the first can drop the second. Every mount gets its own id.
- */
-let nextMountId = 0;
-
 export function useLeagueBoardRealtime(
   args: UseLeagueBoardRealtimeArgs,
 ): LeagueBoardRealtime {
@@ -94,14 +86,24 @@ export function useLeagueBoardRealtime(
    */
   const [reconnectNonce, setReconnectNonce] = useState(0);
   const attemptsRef = useRef(0);
-  const mountIdRef = useRef<number | null>(null);
-  if (mountIdRef.current === null) {
-    nextMountId += 1;
-    mountIdRef.current = nextMountId;
-  }
+  /**
+   * A Realtime topic is a server-side identity: two channels on one topic are the same
+   * subscription, and React StrictMode mounts every hook twice, so a topic built from the
+   * reconnect nonce alone would have the discarded first mount and the surviving second one
+   * racing for it — the teardown of the first can drop the second. `useId` gives every mount
+   * its own id.
+   */
+  const mountId = useId();
 
+  /**
+   * The three "latest" refs below are written from an effect rather than during render, which
+   * is the one place React allows a ref to be assigned. Every reader is an effect, a channel
+   * callback or a timer — all of them run after the sync effect has committed the new value.
+   */
   const randomRef = useRef(random);
-  randomRef.current = random;
+  useEffect(() => {
+    randomRef.current = random;
+  }, [random]);
 
   /**
    * The first SUBSCRIBED is the page's own connect, on a board whose queries have just
@@ -110,13 +112,22 @@ export function useLeagueBoardRealtime(
   const wasConnectedRef = useRef(false);
 
   const contextRef = useRef({ seasonId, season, week });
-  contextRef.current = { seasonId, season, week };
+  useEffect(() => {
+    contextRef.current = { seasonId, season, week };
+  }, [seasonId, season, week]);
 
   const onConnectionChangeRef = useRef(onConnectionChange);
-  onConnectionChangeRef.current = onConnectionChange;
+  useEffect(() => {
+    onConnectionChangeRef.current = onConnectionChange;
+  }, [onConnectionChange]);
 
-  const pendingTablesRef = useRef(new Set<BoardRealtimeTable>());
-  const burstEventCountRef = useRef(0);
+  /**
+   * The tables a burst has touched, each with how many events landed on it. Keyed per table
+   * because the burst ceiling is per table: the scores job and the projections job share a
+   * minute boundary through a game window, and a count pooled across both would call an
+   * ordinary Sunday a storm and refetch the whole board every five minutes.
+   */
+  const pendingTablesRef = useRef(new Map<BoardRealtimeTable, number>());
   const flushTimerRef = useRef<number | null>(null);
   const maxWaitTimerRef = useRef<number | null>(null);
 
@@ -147,22 +158,25 @@ export function useLeagueBoardRealtime(
 
   const flush = useCallback(() => {
     clearTimers();
-    const tables = [...pendingTablesRef.current];
-    const eventCount = burstEventCountRef.current;
-    pendingTablesRef.current = new Set();
-    burstEventCountRef.current = 0;
+    const counts = pendingTablesRef.current;
+    pendingTablesRef.current = new Map();
 
-    if (tables.length === 0) {
+    if (counts.size === 0) {
       return;
     }
-    // Past the ceiling, one whole-board refetch is cheaper than a key-by-key storm.
-    if (eventCount > REALTIME_MAX_EVENTS_PER_BURST) {
+    // Past the ceiling, one whole-board refetch is cheaper than a key-by-key storm — but only
+    // when a single table is the one flooding. Several tables each writing a normal run's worth
+    // of rows on the same boundary is the every-five-minutes case, not a storm.
+    const flooded = [...counts.values()].some(
+      (count) => count > REALTIME_MAX_EVENTS_PER_TABLE,
+    );
+    if (flooded) {
       invalidateAll();
       return;
     }
 
     const seen = new Set<string>();
-    for (const table of tables) {
+    for (const table of counts.keys()) {
       for (const queryKey of keysForTable(table, contextRef.current)) {
         const fingerprint = JSON.stringify(queryKey);
         if (seen.has(fingerprint)) {
@@ -176,8 +190,8 @@ export function useLeagueBoardRealtime(
 
   const enqueue = useCallback(
     (table: BoardRealtimeTable) => {
-      pendingTablesRef.current.add(table);
-      burstEventCountRef.current += 1;
+      const counts = pendingTablesRef.current;
+      counts.set(table, (counts.get(table) ?? 0) + 1);
       if (flushTimerRef.current !== null) {
         window.clearTimeout(flushTimerRef.current);
       }
@@ -200,7 +214,7 @@ export function useLeagueBoardRealtime(
     let cancelled = false;
 
     const channel = active.channel(
-      `league-board-${mountIdRef.current}-${reconnectNonce}`,
+      `league-board-${mountId}-${reconnectNonce}`,
     );
     // Unfiltered on purpose: `roster_holdings`, `team_season_state` and `team_week_projections`
     // all carry a `season_id`, but the league runs exactly one live season at a time, so every
@@ -262,11 +276,10 @@ export function useLeagueBoardRealtime(
       // A rebuilt channel re-subscribes and refetches the whole board, so a queue held over
       // from the dead one would only duplicate that work.
       clearTimers();
-      pendingTablesRef.current = new Set();
-      burstEventCountRef.current = 0;
+      pendingTablesRef.current = new Map();
       active.removeChannel(channel);
     };
-  }, [clearTimers, enqueue, invalidateAll, reconnectNonce, transport]);
+  }, [clearTimers, enqueue, invalidateAll, mountId, reconnectNonce, transport]);
 
   return { isConnected, hasConnectedOnce, reconnectAttempts, refreshNow };
 }
