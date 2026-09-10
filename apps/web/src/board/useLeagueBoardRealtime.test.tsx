@@ -13,6 +13,13 @@ import type {
 import { useLeagueBoardRealtime } from "./useLeagueBoardRealtime";
 
 /**
+ * Every test below injects its own transport, so the real client is never reached — but the hook
+ * module imports it at the top level, and `createClient` refuses an empty URL before any test
+ * can run. The same isolation `useBoardData.test.tsx` gives `boardClient`.
+ */
+vi.mock("@/supabaseClient", () => ({ supabase: {} }));
+
+/**
  * A fresh object per `channel()` call, exactly as `supabase.channel` returns — so a test can
  * reach a channel the hook has already torn down and check that its callbacks are inert.
  */
