@@ -108,7 +108,7 @@ def prepare(
             prompt = footage_prompt(req.copy, seconds)
         request = hf.GenerateRequest(
             prompt=prompt,
-            reference_video=assets.reference_video,
+            reference_video=assets.generation_reference,
             duration=seconds,
             resolution=req.resolution,
             aspect_ratio=req.aspect,

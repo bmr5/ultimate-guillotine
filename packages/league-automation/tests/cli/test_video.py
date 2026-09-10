@@ -22,7 +22,7 @@ def parse(*argv: str) -> argparse.Namespace:
 
 def touch_reference(root) -> Assets:
     a = Assets(root)
-    for path in (a.reference_video, a.source_video, a.music):
+    for path in (a.reference_video, a.source_video, a.generation_reference, a.music):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(b"")
     return a

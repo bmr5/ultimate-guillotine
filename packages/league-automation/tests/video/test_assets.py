@@ -22,6 +22,7 @@ def test_paths_hang_off_the_root() -> None:
         "/m/reference/source/espn-tMgvUrwtaiw-schefter-parsons-breaking-news.mp4"
     )
     assert a.music == Path("/m/reference") / assets_mod.MUSIC
+    assert a.generation_reference == Path("/m/reference/source/espn-schefter-clean-1024.mp4")
     assert (a.renders, a.generated, a.work) == (
         Path("/m/renders"),
         Path("/m/generated"),
@@ -33,7 +34,7 @@ def test_missing_lists_only_the_reference_files_that_are_not_on_disk(tmp_path: P
     a = Assets(tmp_path)
     a.music.parent.mkdir(parents=True)
     a.music.write_bytes(b"")
-    assert a.missing() == [a.reference_video, a.source_video]
+    assert a.missing() == [a.reference_video, a.source_video, a.generation_reference]
 
 
 def test_find_tool_raises_a_plain_error_for_an_unknown_tool(

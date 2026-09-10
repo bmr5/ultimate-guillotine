@@ -392,8 +392,9 @@ def _refresh_wire(monkeypatch: pytest.MonkeyPatch, *, failure: Exception | None 
 
     def fake_sync_transactions(client, conn, league_id, season_id, weeks, now):
         calls.append(f"sync_transactions:{league_id}:{season_id}:{list(weeks)}")
-        return SimpleNamespace(transactions=1, moves=2, weeks=list(weeks),
-                               unknown_kinds={}, unmatched_rosters=0)
+        return SimpleNamespace(
+            transactions=1, moves=2, weeks=list(weeks), unknown_kinds={}, unmatched_rosters=0
+        )
 
     monkeypatch.setattr(summary_cli, "sync_season", fake_sync_season)
     monkeypatch.setattr(summary_cli, "sync_transactions", fake_sync_transactions)
@@ -444,6 +445,7 @@ def test_a_failed_refresh_is_one_ops_note_and_the_post_still_goes(
 
 def test_a_dry_run_never_refreshes(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     calls, _notes = _refresh_wire(monkeypatch)
-    summary_cli.cmd_eod(parse("--dry-run", "--no-ai", "--simulations", "20", "--out",
-                              str(tmp_path)))
+    summary_cli.cmd_eod(
+        parse("--dry-run", "--no-ai", "--simulations", "20", "--out", str(tmp_path))
+    )
     assert calls == ["load_snapshot"]

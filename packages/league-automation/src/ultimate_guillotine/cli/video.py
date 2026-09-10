@@ -182,7 +182,7 @@ def generate_request(copy: TradeCopy, args: argparse.Namespace) -> hf.GenerateRe
         prompt = footage_prompt(copy, args.duration)
     return hf.GenerateRequest(
         prompt=prompt,
-        reference_video=load_assets().reference_video,
+        reference_video=load_assets().generation_reference,
         duration=args.duration,
         resolution=args.resolution,
         aspect_ratio=args.aspect,
@@ -212,7 +212,12 @@ def cmd_assets(args: argparse.Namespace) -> int:
     assets = load_assets()
     missing = assets.missing()
     ok = True
-    for path in (assets.reference_video, assets.source_video, assets.music):
+    for path in (
+        assets.reference_video,
+        assets.source_video,
+        assets.generation_reference,
+        assets.music,
+    ):
         state = "MISSING" if path in missing else "ok"
         print(f"{state:8}{path}")
     for name in TOOLS:
