@@ -25,7 +25,11 @@ from datetime import UTC, datetime, timedelta
 
 from ultimate_guillotine.config import Settings
 from ultimate_guillotine.core.signature import is_signed
-from ultimate_guillotine.data.repositories import SeasonRepository, chat_guid_hash
+from ultimate_guillotine.data.repositories import (
+    SeasonRepository,
+    chat_guid_hash,
+    handle_hash,
+)
 from ultimate_guillotine.listener.processing import Trigger
 from ultimate_guillotine.messages.bluebubbles import InboundMessage
 from ultimate_guillotine.trades.detect import is_rescission_candidate, is_trade_candidate
@@ -38,6 +42,7 @@ from ultimate_guillotine.trades.format import (
     format_updated,
 )
 from ultimate_guillotine.trades.resolve import (
+    MemberRef,
     RosterIndex,
     Unresolved,
     build_roster_index,
@@ -75,6 +80,11 @@ class TradeRegistrar:
     it is read from ``public.seasons`` once per ``handle``, which is what the
     listener wants -- the calendar year is wrong for a January trade in a season
     that started the previous September.
+
+    ``contacts_repo`` places the sender, so `I sent X to Y` names its announcer.
+    ``None`` -- or a sender whose handle has never been loaded -- means no
+    announcer, and a first-person alert ends in a question, which is what
+    happened before there was an announcer at all.
     """
 
     def __init__(
@@ -88,6 +98,7 @@ class TradeRegistrar:
         players_repo,
         trades_repo,
         runs_repo,
+        contacts_repo=None,
         sources_repo=None,
         sleeper_client=None,
         season: int | None = None,
@@ -102,6 +113,7 @@ class TradeRegistrar:
         self._players = players_repo
         self._trades = trades_repo
         self._runs = runs_repo
+        self._contacts = contacts_repo
         self._sources = sources_repo
         self._sleeper = sleeper_client
         self._season = season
@@ -186,8 +198,14 @@ class TradeRegistrar:
 
         members = self._members.all_members()
         season = self._resolve_season()
+        announcer = self._announcer(msg)
         extracted, usage = extract_trade(
-            self._ai, msg.text, season, None, [_member_line(m) for m in members]
+            self._ai,
+            msg.text,
+            season,
+            None,
+            [_member_line(m) for m in members],
+            announcer.display_name if announcer else None,
         )
         input_version = f"{PROMPT_VERSION}:{usage.model}"
 
@@ -208,6 +226,7 @@ class TradeRegistrar:
                 msg.text[:EXCERPT_LIMIT],
                 PROMPT_VERSION,
                 usage.model,
+                announcer=announcer,
             )
             if extracted.kind == "rescission":
                 return self._rescind_by_context(run_id, msg, proposal, input_version)
@@ -230,6 +249,27 @@ class TradeRegistrar:
         self._deliver(run_id, content)
         self._finish(run_id, "succeeded", content=content, input_version=input_version)
         return acceptance.status
+
+    def _announcer(self, msg: InboundMessage) -> MemberRef | None:
+        """Which member posted this alert, when that can be answered.
+
+        League members announce their own trades in the first person, so the
+        extraction needs a name for `I`. The sender is placed the way the Advisor
+        places its asker -- the hashed handle, never the handle -- and an empty
+        sender is nobody rather than a lookup of the empty string's digest, which
+        no handle can ever have produced. ``is_from_me`` is not a special case:
+        Ben announces trades like everyone else, and his own handle is loaded
+        like everyone else's; a webhook that carries no handle for it simply has
+        no announcer.
+
+        A handle nobody has loaded is a `None` the caller has to respect -- the
+        alternative is guessing which member wrote `my team`, and a guessed party
+        would be logged as fact. Nothing here logs the handle, its digest, or the
+        member it found.
+        """
+        if self._contacts is None or not msg.sender_address:
+            return None
+        return self._contacts.member_for_handle_hash(handle_hash(msg.sender_address))
 
     def _rescind_by_code(self, run_id: int, msg: InboundMessage) -> str | None:
         """Handle a rescission that names its trade code, before any model call.
