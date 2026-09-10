@@ -3,6 +3,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { formatFaab } from "../derive/faab";
 import type { FaabTiers } from "../derive/tiers";
 import { BOARD_GRID } from "../layout";
+import { FaabCurveChart } from "./FaabCurveChart";
 
 /** Three cards, richest tier first: the owner and the team, nothing else (Ben, 2026-09-10). */
 export function TiersView({ tiers }: { tiers: FaabTiers }) {
@@ -23,11 +24,21 @@ export function TiersView({ tiers }: { tiers: FaabTiers }) {
                 </p>
                 <ul className="space-y-1 text-sm">
                   {tier.teams.map((team) => (
-                    <li key={team.teamId} data-team={team.teamId}>
-                      <span className="font-medium text-foreground">
-                        {team.ownerName}
+                    <li
+                      key={team.teamId}
+                      data-team={team.teamId}
+                      className="flex items-baseline justify-between gap-3"
+                    >
+                      <span className="min-w-0 truncate">
+                        <span className="font-medium text-foreground">
+                          {team.ownerName}
+                        </span>
+                        <span className="text-muted-foreground">{` · ${team.teamName}`}</span>
                       </span>
-                      <span className="text-muted-foreground">{` · ${team.teamName}`}</span>
+                      {/* Ben (2026-09-10): "put the teams FAAB $ amount!" */}
+                      <span className="shrink-0 text-foreground tabular-nums">
+                        {formatFaab(team.faabRemaining as number)}
+                      </span>
                     </li>
                   ))}
                 </ul>
@@ -36,6 +47,7 @@ export function TiersView({ tiers }: { tiers: FaabTiers }) {
           </li>
         ))}
       </ul>
+      <FaabCurveChart tiers={tiers} />
       <p className="text-xs text-muted-foreground">
         {`Split by ${tiers.method}.`}
         {tiers.unknown.length > 0
