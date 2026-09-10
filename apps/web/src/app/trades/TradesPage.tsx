@@ -3,10 +3,10 @@ import { useSearchParams } from "react-router";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import { StatsStrip } from "@/history/components/StatsStrip";
 import { TradeCard } from "@/history/components/TradeCard";
 import { TradeFilterBar } from "@/history/components/TradeFilterBar";
+import { TradesListSkeleton } from "@/history/components/TradesSkeleton";
 import {
   filterTrades,
   positionOptions,
@@ -15,6 +15,7 @@ import {
 } from "@/history/derive/filter";
 import { ownerLabelFor } from "@/history/derive/ownerLabel";
 import { tradeStats } from "@/history/derive/stats";
+import { CARD_GRID } from "@/history/layout";
 import { parseNumberParam, type TradeFilters } from "@/history/types";
 import { useCurrentSeason } from "@/history/useCurrentSeason";
 import { useTradeCatalog } from "@/history/useTradeCatalog";
@@ -175,19 +176,7 @@ export function TradesPage() {
       ))}
 
       {(isPending || isSeasonPending) && (
-        <div className="space-y-2">
-          {/* Wrapped rather than given the cascade class: `Skeleton` already animates its
-              pulse, and one element cannot run both. */}
-          {[0, 1, 2].map((index) => (
-            <div
-              key={index}
-              className={REVEAL_CLASS}
-              style={revealStyle(BELOW_STRIP + index)}
-            >
-              <Skeleton className="h-20 w-full" />
-            </div>
-          ))}
-        </div>
+        <TradesListSkeleton revealIndex={BELOW_STRIP} />
       )}
 
       {!isPending && !isSeasonPending && trades.length === 0 && (
@@ -235,7 +224,7 @@ export function TradesPage() {
       {/* Named for the same reason `/history` names its season list: a screen reader announces
           an unlabelled list by its length alone, so "list, 12 items" on a page of filters and
           strips says nothing about which list it reached. */}
-      <ul aria-label="Trades" className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+      <ul aria-label="Trades" className={CARD_GRID}>
         {!isSeasonPending &&
           visible.map((trade, index) => (
             <TradeCard

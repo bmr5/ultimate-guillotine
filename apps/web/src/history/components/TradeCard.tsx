@@ -17,6 +17,7 @@ import { REVEAL_CLASS, revealStyle } from "@/motion/reveal";
 import { announcedByLine } from "../derive/announcedBy";
 import { formerManagerPhrase } from "../derive/ownerLabel";
 import { tradeDateLine } from "../derive/tradeDate";
+import { TRADE_CARD_HEIGHT_CLASS } from "../layout";
 import type { CatalogTrade } from "../types";
 
 /**
@@ -42,7 +43,7 @@ const TRADE_CODE_DESCRIPTION =
  * quotation is not a grid. Room for the three header lines, a three-line quotation and a row
  * of chips; anything longer is what the modal is for.
  */
-const CARD_HEIGHT_CLASS = "h-44";
+const CARD_HEIGHT_CLASS = TRADE_CARD_HEIGHT_CLASS;
 
 /**
  * What sits between two owners in the title. A trade goes both ways, so the arrow does too —

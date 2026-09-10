@@ -3,15 +3,20 @@ import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 
+import { SEASONS_LOADING_LABEL } from "@/history/components/HistorySkeleton";
+
 import { HistoryPage } from "./HistoryPage";
 
-const state = vi.hoisted(() => ({ seasons: [] as unknown[] }));
+const state = vi.hoisted(() => ({
+  seasons: [] as unknown[],
+  isPending: false,
+}));
 
 vi.mock("@/history/useSeasonResults", () => ({
   useSeasonResults: () => ({
     seasons: state.seasons,
     loadedAt: Date.parse("2026-09-09T12:00:00Z"),
-    isPending: false,
+    isPending: state.isPending,
     errors: [],
   }),
 }));
@@ -32,8 +37,20 @@ function renderPage() {
 describe("HistoryPage", () => {
   it("shows the empty state when nothing is loaded", () => {
     state.seasons = [];
+    state.isPending = false;
     renderPage();
     expect(screen.getByText("No seasons loaded yet.")).toBeInTheDocument();
+  });
+
+  it("says what it is loading while the seasons are on their way", () => {
+    state.seasons = [];
+    state.isPending = true;
+    renderPage();
+    expect(
+      screen.getByRole("status", { name: SEASONS_LOADING_LABEL }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("No seasons loaded yet.")).toBeNull();
+    state.isPending = false;
   });
 
   it("lists one card per season, newest first, and nothing else", () => {

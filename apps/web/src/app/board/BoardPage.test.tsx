@@ -9,6 +9,7 @@ import {
 import { MemoryRouter, useLocation } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { BOARD_LOADING_LABEL } from "@/board/components/BoardStates";
 import { MS_PER_MINUTE, STALE_AFTER_MS } from "@/board/derive/time";
 import type { BoardTeam, RosterPlayer } from "@/board/types";
 import type { BoardDataResult } from "@/board/useBoardData";
@@ -130,12 +131,15 @@ describe("BoardPage", () => {
     boardData.current = result();
   });
 
-  it("shows skeletons while pending", () => {
+  it("shows skeletons while pending, and says what is loading", () => {
     boardData.current = result({ isPending: true });
     const { container } = renderPage();
     expect(container.querySelectorAll(".animate-pulse").length).toBeGreaterThan(
       0,
     );
+    expect(
+      screen.getByRole("status", { name: BOARD_LOADING_LABEL }),
+    ).toBeInTheDocument();
   });
 
   it("shows the waiting card when there are no rows", () => {

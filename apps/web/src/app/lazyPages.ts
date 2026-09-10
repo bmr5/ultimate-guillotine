@@ -24,3 +24,16 @@ export const HistoryPage = lazy(() =>
     default: module.HistoryPage,
   })),
 );
+
+/**
+ * Fetches both chunks ahead of any tap on their tabs. The shell calls this once the browser is
+ * idle after the board's first paint, so the chunks cost the board nothing and a tab opens at
+ * once when it is taken — Ben, 2026-09-10: "it does feel like the ui just freezes when
+ * switching between things", and the wait for a chunk was the freeze. The same specifiers as
+ * above, so the bundler hands back the same chunks and `lazy` finds them already loaded. A
+ * failed prefetch is nothing to report: the tab will simply fetch its chunk when taken.
+ */
+export function prefetchPages(): void {
+  void import("@/app/trades/TradesPage").catch(() => undefined);
+  void import("@/app/history/HistoryPage").catch(() => undefined);
+}

@@ -1,4 +1,5 @@
 import { Card, CardContent } from "@/components/ui/card";
+import { REVEAL_CLASS, revealStyle } from "@/motion/reveal";
 
 import { formatFaab } from "../derive/faab";
 import type { FaabTiers } from "../derive/tiers";
@@ -9,8 +10,14 @@ export function TiersView({ tiers }: { tiers: FaabTiers }) {
   return (
     <div className="space-y-3">
       <ul className={BOARD_GRID} aria-label="FAAB tiers">
-        {tiers.tiers.map((tier) => (
-          <li key={tier.key} data-tier={tier.key}>
+        {tiers.tiers.map((tier, index) => (
+          // The header is place 0 in the board's cascade; the three tiers follow it down.
+          <li
+            key={tier.key}
+            data-tier={tier.key}
+            className={REVEAL_CLASS}
+            style={revealStyle(index + 1)}
+          >
             <Card className="h-full">
               <CardContent className="space-y-2 p-4">
                 <p className="text-2xl leading-none figures">{tier.label}</p>

@@ -1,3 +1,4 @@
+import { LoadingState } from "@/components/loading-state";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -26,27 +27,39 @@ const POLL_SECONDS = REALTIME_POLL_MS / MS_PER_SECOND;
 
 export const REALTIME_PAUSED_TEXT = `Live updates are paused. Polling every ${POLL_SECONDS} seconds.`;
 
+/** What the board says while its first payload is on its way; also the status region's name. */
+export const BOARD_LOADING_LABEL = "Loading the board";
+
+/**
+ * The list's stand-in before the first board payload resolves: the sentence, then card-shaped
+ * placeholders in the board's own grid. The placeholders are hidden from assistive technology —
+ * the status line says everything they do. The sentence is the one thing on the site that
+ * skips the cascade: it is the acknowledgement of a tap, and it has to be there at once.
+ */
 export function BoardSkeleton() {
   return (
-    <ul className={BOARD_GRID}>
-      {Array.from({ length: SKELETON_CARD_COUNT }, (_, index) => index).map(
-        (index) => (
-          <li
-            key={index}
-            className={REVEAL_CLASS}
-            style={revealStyle(BELOW_HEADER + index)}
-          >
-            <Card>
-              <CardContent className="space-y-2 p-4">
-                <Skeleton className="h-4 w-1/2" />
-                <Skeleton className="h-3 w-2/3" />
-                <Skeleton className="h-3 w-1/3" />
-              </CardContent>
-            </Card>
-          </li>
-        ),
-      )}
-    </ul>
+    <div className="space-y-3">
+      <LoadingState label={BOARD_LOADING_LABEL} />
+      <ul aria-hidden="true" className={BOARD_GRID}>
+        {Array.from({ length: SKELETON_CARD_COUNT }, (_, index) => index).map(
+          (index) => (
+            <li
+              key={index}
+              className={REVEAL_CLASS}
+              style={revealStyle(BELOW_HEADER + 1 + index)}
+            >
+              <Card>
+                <CardContent className="space-y-2 p-4">
+                  <Skeleton className="h-4 w-1/2" />
+                  <Skeleton className="h-3 w-2/3" />
+                  <Skeleton className="h-3 w-1/3" />
+                </CardContent>
+              </Card>
+            </li>
+          ),
+        )}
+      </ul>
+    </div>
   );
 }
 
