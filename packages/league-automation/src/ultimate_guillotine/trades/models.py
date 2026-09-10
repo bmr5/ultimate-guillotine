@@ -6,6 +6,12 @@ from pydantic import BaseModel, ConfigDict
 TradeKind = Literal["permanent", "rental", "payment", "rescission", "unclear", "not_a_trade"]
 AssetKind = Literal["player", "faab", "draft_dollars", "usd", "protection", "other"]
 AssetUnit = Literal["faab", "draft_dollars", "usd"]
+#: Which of the league's two budgets an amount was *quoted* in. The league rule
+#: is that every $1 of unspent draft budget becomes $5 of in-season FAAB, so
+#: people price the same trade both ways -- `$65 FAAB ($13 draft)` is one price
+#: written twice. ``draft`` says the number as written is draft dollars and code
+#: multiplies it by five; ``faab`` says it is already the FAAB figure.
+AssetCurrency = Literal["faab", "draft"]
 
 
 class ExtractedParty(BaseModel):
@@ -23,6 +29,12 @@ class ExtractedAsset(BaseModel):
     player_name: str | None = None
     amount: int | None = None
     unit: AssetUnit | None = None
+    #: Which budget ``amount`` is written in. Defaults to ``faab``, which is what
+    #: every asset the model has ever produced meant, so nothing that predates
+    #: this field changes. ``draft`` is the league's other currency: the prompt
+    #: asks the model to do the conversion itself and write the FAAB figure, and
+    #: this is the guard for when it writes the draft figure instead.
+    currency: AssetCurrency = "faab"
     description: str | None = None
 
 

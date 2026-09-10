@@ -24,6 +24,8 @@ from ultimate_guillotine.messages.bluebubbles import InboundMessage
 
 #: The self-test chat every test in this module configures.
 TEST_CHAT = "iMessage;+;chat-test"
+#: A second chat, registered listen-only: read, never posted to.
+LEAGUE_CHAT = "iMessage;+;chat-league"
 
 
 class StopLoop(Exception):
@@ -265,21 +267,25 @@ class EmptyConnection:
 
 
 class TargetCursor(EmptyCursor):
-    """A cursor that answers the delivery-target lookup for one mode.
+    """A cursor that answers the delivery-target lookups `build_processor` makes.
 
     `private.delivery_targets` is what the listener's trusted-chat allowlist is
     built from, and now what the Advisor's chat comes from, so a test that wants
     the Advisor registered has to have the row rather than only the environment
-    variable.
+    variable. It answers two queries: the one delivery target for a mode, and the
+    listen-only rows -- the chats the listener reads and never posts to.
     """
 
-    def __init__(self, mode: str, chat_guid: str) -> None:
+    def __init__(self, mode: str, chat_guid: str, listen: tuple[str, ...] = ()) -> None:
         self._mode = mode
         self._chat_guid = chat_guid
+        self._listen = listen
         self._row: tuple | None = None
+        self._rows: list[tuple] = []
 
     def execute(self, sql, params=None) -> None:
         wanted = params[0] if params else None
+        self._rows = [(guid,) for guid in self._listen] if "role = 'listen'" in sql else []
         self._row = (
             (1, self._mode, self._chat_guid, "fingerprint", "label")
             if "delivery_targets" in sql and wanted == self._mode
@@ -289,16 +295,25 @@ class TargetCursor(EmptyCursor):
     def fetchone(self):
         return self._row
 
+    def fetchall(self) -> list:
+        return self._rows
+
 
 class ConfiguredConnection(EmptyConnection):
-    """A connection with exactly one registered delivery target."""
+    """A connection with one registered delivery target and any listen-only chats."""
 
-    def __init__(self, mode: str = "test", chat_guid: str = TEST_CHAT) -> None:
+    def __init__(
+        self,
+        mode: str = "test",
+        chat_guid: str = TEST_CHAT,
+        listen: tuple[str, ...] = (),
+    ) -> None:
         self._mode = mode
         self._chat_guid = chat_guid
+        self._listen = listen
 
     def cursor(self) -> TargetCursor:
-        return TargetCursor(self._mode, self._chat_guid)
+        return TargetCursor(self._mode, self._chat_guid, self._listen)
 
 
 class RecordingNotifier:
@@ -393,6 +408,53 @@ def test_the_registrar_trigger_is_gated_on_the_delivery_chat(hermes_installed: N
 
     assert trigger.matches(_alert(TEST_CHAT))
     assert not trigger.matches(_alert("iMessage;+;chat-elsewhere"))
+
+
+def test_a_listen_only_chat_is_heard_but_never_delivered_to(hermes_installed: None) -> None:
+    """Shadow mode. The league chat is read; the answer is not posted there.
+
+    Both halves are asserted here because they are one claim: the registrar
+    matches alerts in the listen-only chat *and* in the self-test chat, and the
+    delivery target is still the self-test chat alone -- `DeliveryService`
+    resolves it from `TargetRepository.get`, which never answers with a listen
+    row.
+    """
+    processor, allowed = run_module.build_processor(
+        _settings(), ConfiguredConnection(listen=(LEAGUE_CHAT,)), None, None,
+        RecordingNotifier(),
+    )
+
+    trigger = _trigger_named(processor, "trade-registrar")
+
+    assert trigger.matches(_alert(LEAGUE_CHAT))
+    assert trigger.matches(_alert(TEST_CHAT))
+    assert not trigger.matches(_alert("iMessage;+;chat-elsewhere"))
+    # The webhook has to be accepted at all before any trigger sees it.
+    assert allowed == {TEST_CHAT, LEAGUE_CHAT}
+
+
+def test_the_advisor_does_not_answer_in_a_listen_only_chat(hermes_installed: None) -> None:
+    """Shadow mode is the Registrar's, and only the Registrar's. The Advisor
+    answers a member who asked it a question, and a chat we are only shadowing is
+    exactly the chat where an answer would be a surprise."""
+    processor, _allowed = run_module.build_processor(
+        _settings(), ConfiguredConnection(listen=(LEAGUE_CHAT,)), None, None,
+        RecordingNotifier(),
+    )
+
+    trigger = _trigger_named(processor, "trade-advisor")
+
+    assert trigger.matches(_advice_request(TEST_CHAT))
+    assert not trigger.matches(_advice_request(LEAGUE_CHAT))
+
+
+def test_a_listen_only_chat_with_nowhere_to_answer_registers_nothing() -> None:
+    """An agent that can hear but has nowhere to speak would extract trades and
+    throw the answers away, which is worse to leave running than an agent that is
+    off. So `disabled` stays disabled however many chats are registered."""
+    settings = _settings(delivery_mode="disabled", test_chat_guid=None)
+
+    assert run_module.trade_chat_guids(settings, None, [LEAGUE_CHAT]) == frozenset()
 
 
 def test_build_processor_skips_the_registrar_when_no_chat_is_configured(

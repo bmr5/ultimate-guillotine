@@ -397,3 +397,51 @@ def test_a_padded_alias_is_stored_and_published_trimmed(conn) -> None:
     member = next(m for m in repo.all_members() if m.member_id == member_id)
     assert member.nickname == "Padded"
     assert set(member.aliases) == {"Padded", "Second"}
+
+
+def test_a_listen_only_target_is_registered_without_a_mode(conn) -> None:
+    """Shadow mode: a chat the listener reads and never posts to.
+
+    It carries no mode, so it can never be what `get` answers with -- the
+    delivery service resolves its destination by mode and must only ever be
+    handed a chat the automation is allowed to post in.
+    """
+    targets = TargetRepository(conn)
+    targets.upsert(DeliveryMode.TEST, "iMessage;+;chat-test", None, "self-test")
+    targets.upsert_listen("iMessage;+;chat-league", "league chat")
+
+    assert targets.listen_chat_guids() == ["iMessage;+;chat-league"]
+    assert targets.get(DeliveryMode.TEST).chat_guid == "iMessage;+;chat-test"
+    assert targets.get(DeliveryMode.PRODUCTION) is None
+
+
+def test_registering_the_same_chat_to_listen_twice_updates_it(conn) -> None:
+    """Nobody wants two rows for one conversation, so the second registration
+    relabels the first rather than accumulating."""
+    targets = TargetRepository(conn)
+    first = targets.upsert_listen("iMessage;+;chat-league", "league chat")
+    second = targets.upsert_listen("iMessage;+;chat-league", "the league chat")
+
+    assert first == second
+    assert targets.listen_chat_guids() == ["iMessage;+;chat-league"]
+
+
+def test_several_chats_can_be_listened_to_at_once(conn) -> None:
+    targets = TargetRepository(conn)
+    targets.upsert_listen("iMessage;+;chat-league", "league chat")
+    targets.upsert_listen("iMessage;+;chat-gulag", "gulag chat")
+
+    assert targets.listen_chat_guids() == [
+        "iMessage;+;chat-league",
+        "iMessage;+;chat-gulag",
+    ]
+
+
+def test_a_delivery_target_is_never_answered_with_a_listen_only_row(conn) -> None:
+    """The one guarantee shadow mode rests on: a chat registered listen-only can
+    never become somewhere the bot posts, whatever the mode is set to."""
+    targets = TargetRepository(conn)
+    targets.upsert_listen("iMessage;+;chat-league", "league chat")
+
+    assert targets.get(DeliveryMode.TEST) is None
+    assert targets.get(DeliveryMode.PRODUCTION) is None

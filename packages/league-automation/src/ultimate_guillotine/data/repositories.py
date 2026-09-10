@@ -57,8 +57,17 @@ def handle_hash(address: str) -> str:
 
 @dataclass(frozen=True)
 class DeliveryTarget:
+    """One registered chat: where a mode delivers, or a chat only listened to.
+
+    ``mode`` is ``None`` for a listen-only target, which is not a missing value
+    but the fact that the question does not apply -- a shadow chat is nobody's
+    destination. Only ``TargetRepository.get`` builds a delivering target, and it
+    asks for ``role = 'deliver'``, so ``mode`` is never ``None`` on anything the
+    delivery service is handed.
+    """
+
     id: int
-    mode: str
+    mode: str | None
     chat_guid: str
     participant_fingerprint: str | None
     label: str
@@ -226,13 +235,20 @@ class TargetRepository:
         self._conn = conn
 
     def get(self, mode: DeliveryMode) -> DeliveryTarget | None:
-        """Look up the delivery target configured for ``mode``."""
+        """Look up the delivery target configured for ``mode``.
+
+        ``role = 'deliver'`` is stated rather than left to the schema. A listen
+        row carries no mode and so could not match this query anyway, but the one
+        place that answers "where does this mode post?" should say out loud that
+        it will never answer with a chat the automation is not allowed to post
+        in.
+        """
         with self._conn.cursor() as cur:
             cur.execute(
                 """
                 select id, mode, chat_guid, participant_fingerprint, label
                 from private.delivery_targets
-                where mode = %s
+                where mode = %s and role = 'deliver'
                 """,
                 (mode.value,),
             )
@@ -240,6 +256,51 @@ class TargetRepository:
             if row is None:
                 return None
             return DeliveryTarget(*row)
+
+    def listen_chat_guids(self) -> list[str]:
+        """Every chat registered listen-only, oldest first.
+
+        The listener processes messages from these and never posts to them: they
+        widen what the automation can *hear*, and the delivery service is
+        untouched, so in test mode a league alert is still answered in the
+        self-test chat.
+        """
+        with self._conn.cursor() as cur:
+            cur.execute(
+                """
+                select chat_guid from private.delivery_targets
+                where role = 'listen'
+                order by id
+                """
+            )
+            return [row[0] for row in cur.fetchall()]
+
+    def upsert_listen(self, chat_guid: str, label: str) -> int:
+        """Register ``chat_guid`` as listen-only, returning its row id.
+
+        Keyed on the hash rather than the GUID, matching the partial unique index:
+        re-registering the same conversation updates that row instead of leaving
+        two rows for one chat. No participant fingerprint is taken -- that check
+        exists to stop the bot *posting* into a chat whose membership changed, and
+        this row is never posted to.
+        """
+        with self._conn.cursor() as cur:
+            cur.execute(
+                """
+                insert into private.delivery_targets
+                    (mode, chat_guid, chat_guid_hash, participant_fingerprint, label, role)
+                values (null, %s, %s, null, %s, 'listen')
+                on conflict (chat_guid_hash) where role = 'listen' do update
+                    set chat_guid = excluded.chat_guid,
+                        label = excluded.label
+                returning id
+                """,
+                (chat_guid, chat_guid_hash(chat_guid), label),
+            )
+            row = cur.fetchone()
+            if row is None:
+                raise RuntimeError("insert returned no id")
+            return row[0]
 
     def upsert(
         self,
@@ -255,8 +316,8 @@ class TargetRepository:
             cur.execute(
                 """
                 insert into private.delivery_targets
-                    (mode, chat_guid, chat_guid_hash, participant_fingerprint, label)
-                values (%s, %s, %s, %s, %s)
+                    (mode, chat_guid, chat_guid_hash, participant_fingerprint, label, role)
+                values (%s, %s, %s, %s, %s, 'deliver')
                 on conflict (mode) do update
                     set chat_guid = excluded.chat_guid,
                         chat_guid_hash = excluded.chat_guid_hash,

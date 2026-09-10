@@ -49,7 +49,10 @@ CASES = json.loads(FIXTURE.read_text(encoding="utf-8"))["cases"]
 
 
 def test_suite_is_the_agreed_size() -> None:
-    assert 60 <= len(CASES) <= 90
+    """A band rather than a number, so a wave may add cases without editing this,
+    and a ceiling so a suite that takes half an hour a run cannot grow by
+    accident. Raised from 90 when the shadow wave took it to 92."""
+    assert 60 <= len(CASES) <= 110
 
 
 def test_ids_are_unique_and_contiguous() -> None:

@@ -6,7 +6,7 @@ messages through the exact same trigger pipeline the live listener uses.
 
 import logging
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from time import sleep
 
 import httpx
@@ -30,6 +30,7 @@ from ultimate_guillotine.data.repositories import (
     RunRepository,
     SourceMessageRepository,
     TargetRepository,
+    chat_guid_hash,
 )
 from ultimate_guillotine.listener.app import _die_on_lost_connection, create_app
 from ultimate_guillotine.listener.committing import CommittingRepo
@@ -116,19 +117,37 @@ def _check_db(connection_factory: Callable[[], psycopg.Connection]) -> bool:
     return True
 
 
-def trade_chat_guid(settings: Settings, production_target) -> str | None:
-    """The one chat the registrar answers trades in, or ``None`` if there isn't one.
+def trade_chat_guids(
+    settings: Settings, production_target, listen_guids: Iterable[str] = ()
+) -> frozenset[str]:
+    """Every chat the registrar reads trade alerts in. Empty means it does not run.
 
-    Test mode answers in the configured test chat; production answers in the
-    production delivery target's chat, which is where the target's identity has
-    already been checked. `disabled` has no chat to answer in at all, so the
-    registrar does not run.
+    The delivery chat comes first and is what the mode is: test mode reads the
+    configured test chat, production reads the production delivery target's chat
+    (where the target's identity has already been checked), `disabled` has no chat
+    at all.
+
+    ``listen_guids`` are the listen-only targets, and they are added in every mode
+    that has a delivery chat -- shadow mode. Reading a chat and answering in it
+    are now two different questions: the registrar hears an alert in the league
+    chat and posts its answer through ``DeliveryService``, which resolves the
+    destination by ``DELIVERY_MODE`` and knows nothing about this set. So in test
+    mode a league alert is answered in the self-test chat, with a ``TEST-`` code,
+    and the league sees nothing.
+
+    A listen-only chat with **no** delivery chat is deliberately nothing: an agent
+    that can hear but has nowhere to speak would extract trades and discard the
+    answers, which is a worse thing to leave running than an agent that is off.
     """
     if settings.delivery_mode is DeliveryMode.TEST:
-        return settings.test_chat_guid
-    if settings.delivery_mode is DeliveryMode.PRODUCTION:
-        return production_target.chat_guid if production_target else None
-    return None
+        delivery = settings.test_chat_guid
+    elif settings.delivery_mode is DeliveryMode.PRODUCTION:
+        delivery = production_target.chat_guid if production_target else None
+    else:
+        delivery = None
+    if delivery is None:
+        return frozenset()
+    return frozenset({delivery, *listen_guids})
 
 
 def advisor_chat_guid(settings: Settings, test_target) -> str | None:
@@ -194,7 +213,8 @@ def _register_trade_advisor(
 
 
 def _register_trade_registrar(
-    settings: Settings, conn, delivery, notifier, registry, chat_guid: str | None
+    settings: Settings, conn, delivery, notifier, registry,
+    chat_guids: frozenset[str], listen_guids: Iterable[str] = (),
 ) -> None:
     """Register the Trade Registrar, or say once why it is not running.
 
@@ -216,8 +236,13 @@ def _register_trade_registrar(
     The contact repository is what lets a first-person alert name its announcer:
     without loaded handles every sender is unplaceable, and `I sent X to Y` ends
     in a question rather than a trade.
+
+    ``chat_guids`` is every chat alerts are read in and ``listen_guids`` the
+    subset that is listen-only. The registrar is given the *hashes* of the second
+    set, never the GUIDs: all it does with them is mark a candidate that came from
+    a shadow chat, and that is not a reason to hand an agent a raw chat id.
     """
-    if chat_guid is None:
+    if not chat_guids:
         log.warning("trade registrar disabled: no target chat for %s", settings.delivery_mode)
         notifier.ops(f"Trade Registrar disabled: no target chat for {settings.delivery_mode}")
         return
@@ -239,8 +264,9 @@ def _register_trade_registrar(
         contacts_repo=MemberContactRepository(conn),
         sources_repo=SourceMessageRepository(conn),
         sleeper_client=SleeperClient(httpx.Client()),
+        shadow_chat_hashes=frozenset(chat_guid_hash(guid) for guid in listen_guids),
     )
-    registry.register(trade_trigger(registrar, chat_guid))
+    registry.register(trade_trigger(registrar, chat_guids))
 
 
 def build_processor(
@@ -250,21 +276,28 @@ def build_processor(
     and `ug ingest gap-fill`.
 
     Returns the processor together with the set of chat GUIDs it accepts messages
-    from (the configured test and production delivery targets). Receipts and source
-    messages are recorded through a `CommittingRepo`, so each processed message
-    commits on its own.
+    from: the configured test and production delivery targets, plus every
+    listen-only target. A listen-only chat is one the automation reads and never
+    posts to, so widening the allowlist with them widens what can be *heard* and
+    nothing else -- every send still goes through `DeliveryService`, which
+    resolves its destination by `DELIVERY_MODE`.
+
+    Receipts and source messages are recorded through a `CommittingRepo`, so each
+    processed message commits on its own.
     """
     targets = TargetRepository(conn)
     test_target = targets.get(DeliveryMode.TEST)
     production_target = targets.get(DeliveryMode.PRODUCTION)
-    allowed = {t.chat_guid for t in (test_target, production_target) if t}
+    listen_guids = targets.listen_chat_guids()
+    allowed = {t.chat_guid for t in (test_target, production_target) if t} | set(listen_guids)
     registry = TriggerRegistry()
     # Agents from later plans register their triggers here, next to ping_trigger.
     if settings.delivery_mode is DeliveryMode.TEST and settings.test_chat_guid:
         registry.register(ping_trigger(delivery, settings.test_chat_guid))
     _register_trade_registrar(
         settings, conn, delivery, notifier, registry,
-        trade_chat_guid(settings, production_target),
+        trade_chat_guids(settings, production_target, listen_guids),
+        listen_guids,
     )
     _register_trade_advisor(
         settings, conn, delivery, notifier, registry,

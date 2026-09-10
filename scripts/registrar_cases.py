@@ -39,12 +39,15 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
+from ultimate_guillotine.advisor.state import SnapshotRepository, SnapshotUnavailable
 from ultimate_guillotine.ai.structured import AIUsage
 from ultimate_guillotine.cli.deps import build_ai, build_deps
-from ultimate_guillotine.data.repositories import MemberAliasRepository, SeasonRepository
+from ultimate_guillotine.data.repositories import (
+    MemberAliasRepository,
+    SeasonRepository,
+)
 from ultimate_guillotine.sleeper.client import SleeperClient
 from ultimate_guillotine.sleeper.players import PlayerRepository
-from ultimate_guillotine.advisor.state import SnapshotRepository
 from ultimate_guillotine.trades.context import (
     TRADE_LIMIT,
     ContextPlayer,
@@ -54,13 +57,18 @@ from ultimate_guillotine.trades.context import (
 )
 from ultimate_guillotine.trades.detect import is_trade_candidate
 from ultimate_guillotine.trades.extract import PROMPT_VERSION, extract_trade
-from ultimate_guillotine.trades.models import ExtractedAsset, ExtractedParty, ExtractedTrade
-from ultimate_guillotine.trades.repository import TradeRepository
+from ultimate_guillotine.trades.models import (
+    ExtractedAsset,
+    ExtractedParty,
+    ExtractedTrade,
+)
 from ultimate_guillotine.trades.names import normalize_name
+from ultimate_guillotine.trades.repository import TradeRepository
 from ultimate_guillotine.trades.resolve import (
     RosterIndex,
     Unresolved,
     build_roster_index,
+    find_member,
     resolve_extracted,
     validate,
 )
@@ -240,18 +248,6 @@ def select(cases: list[dict], ids: str | None, category: str | None, limit: int 
     return cases
 
 
-def find_announcer(members: list, username: str):
-    """The member a case's `announcer` names, matched on display name or alias."""
-    wanted = normalize_name(username)
-    for member in members:
-        names = {normalize_name(member.display_name)} | {
-            normalize_name(alias) for alias in member.aliases
-        }
-        if wanted in names:
-            return member
-    return None
-
-
 def synthetic_league(members: list, players: list) -> tuple[RosterIndex, str]:
     """The rosters and the context pack the cases are read against.
 
@@ -299,7 +295,7 @@ def run_case(
     expected_outcome = EXPECTED_OUTCOME[case["expected_status"]]
     announcer = None
     if case.get("announcer"):
-        announcer = find_announcer(members, case["announcer"])
+        announcer = find_member(members, case["announcer"])
         if announcer is None:
             # Running it anyway would put the unplaceable-sender question to the
             # model and score the answer against the placed-sender expectation.
@@ -487,9 +483,21 @@ def main() -> int:
         rosters = build_roster_index(
             SleeperClient(httpx.Client()), conn, deps.settings.sleeper_league_id, season
         )
-        context = context_from_snapshot(
-            SnapshotRepository(conn).load(), members, TradeRepository(conn).list_recent(TRADE_LIMIT)
-        )
+        # A data layer that cannot describe the league tonight -- no `nfl_state`
+        # row, a season with no teams -- is a reason to keep the synthetic pack,
+        # not to abandon the run: the roster index above is the real league
+        # either way, and a pack of nothing would tell the model every roster is
+        # empty. The note goes to stderr so the results line stays the last thing
+        # on stdout.
+        try:
+            context = context_from_snapshot(
+                SnapshotRepository(conn).load(),
+                members,
+                TradeRepository(conn).list_recent(TRADE_LIMIT),
+            )
+        except SnapshotUnavailable as exc:
+            print(f"--rosters: no league snapshot ({exc.reason}); "
+                  "keeping the synthetic context pack", file=sys.stderr)
     if args.dry_run_fakes and len(members) < 2:
         print("need at least two members in public.members to build fake extractions")
         return 2

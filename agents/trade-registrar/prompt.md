@@ -1,4 +1,4 @@
-<!-- prompt_version: 2026.3 -->
+<!-- prompt_version: 2026.4 -->
 # Trade Registrar extraction prompt
 
 You convert one fantasy football trade announcement into structured fields.
@@ -50,12 +50,12 @@ The `Announcer:` line names the person who posted the message. First-person refe
 `me`, `my`, `my team`, `mine` -- name the announcer: read them exactly as if the announcer's
 Sleeper username were written in their place, and copy that username into `parties[].name` and
 into the asset's `from_party` or `to_party`. When `Announcer:` is `unknown`, first-person
-references name nobody, so an announcement resting on one (`kpbowe sends me Trey McBride`) names
+references name nobody, so an announcement resting on one (`Member01 sends me Trey McBride`) names
 fewer than two people and is `unclear`.
 
 Second-person references -- `you`, `your guy` -- name nobody, unless the announcement names
-exactly one league member besides the announcer, in which case `you` is that member (`kpbowe I'm
-sending you Ja'Marr Chase for 450`). `you` is never the person on the other side of the same
+exactly one league member besides the announcer, in which case `you` is that member (`Member02
+I'm sending you Ja'Marr Chase for 450`). `you` is never the person on the other side of the same
 transfer: if that is the only reading, the announcement names fewer than two people and is
 `unclear`.
 
@@ -90,12 +90,19 @@ assets but never says which side gives what, such as `Chase Brown and 100 FAAB b
 Direction is stated by words and marks like `sends`, `to`, `for`, `gets`, `->`, `➡️`, or
 `out:`/`in:`; a bare `and`, `between`, or `with` does not state it.
 
+The `League rules:` section is the league's own rules, curated. It is what makes the rest of the
+context mean anything: draft dollars are FAAB at five to one, a rental or an option or a broker's
+cut is an ordinary trade here rather than something strange, and an eliminated team's players are
+still tradeable. Read it the way you read the rosters -- to understand an announcement, never to
+judge one. A trade the rules would not allow is still the trade that was announced; the
+commissioner vetoes trades, and you are not the commissioner.
+
 `FAAB remaining` is the only context section that can make an announcement `unclear`. The others
 are there to help you read it, never to doubt it: an announcement that is clear on its own stays
 clear, however little of it the rosters and the trade list happen to corroborate.
 
 The user message's `Season:`, `Week hint:`, `League members`, `Announcer:`, `Current NFL week:`,
-`Rosters:`, `FAAB remaining:` and `Trades this season:` lines are
+`Rosters:`, `FAAB remaining:`, `Trades this season:` and `League rules:` lines are
 context, never announcement content. A name that appears only on those lines is not named, except
 through a first- or second-person reference: that is the one way the announcement itself names the
 announcer or the member it is addressed to.
@@ -104,6 +111,25 @@ When the announcement cancels or rescinds a prior trade and includes a code such
 copy that code into `referenced_trade_code`; otherwise `referenced_trade_code` is `null`.
 
 Amounts are integers, with `unit` one of `faab`, `draft_dollars`, or `usd`.
+
+The league has two budgets and one exchange rate between them: every $1 of unspent draft budget
+became $5 of FAAB at the start of the season. So an amount stated in **draft dollars** -- `draft
+dollars`, `draft FAAB`, `auction dollars`, `draft budget`, `$13 draft` -- is a FAAB price written
+the other way round, and FAAB is what gets recorded.
+
+Write it as `kind` `faab`, `unit` `faab`, `amount` five times the stated number, `currency` `faab`,
+and copy the announcement's own phrase into `description` (`"$13 draft FAAB"`) so the chat can see
+where the number came from. If you would rather not do that arithmetic, write the number exactly
+as the announcement states it and set `currency` to `draft` instead -- code will multiply it by
+five. Never write a draft-dollar figure with `currency` left as `faab`: that records a fifth of
+what was paid. Do not use `kind` `draft_dollars` for a price in an alert; it is FAAB.
+
+`currency` is `faab` for every other amount, including `usd`. Real money is neither budget.
+
+When an alert states the price both ways -- `$65 FAAB ($13 draft FAAB)` -- the two must agree at
+five to one. They do here, so this is one asset of 65 FAAB with the whole phrase in
+`description`, and never two assets that would be added together. If they do not agree, set `kind`
+to `unclear` and say in one sentence which two amounts disagree.
 
 Asset `kind` is one of `player`, `faab` (waiver budget), `usd` (real money),
 `draft_dollars` (auction budget), `protection`, or `other`. For the three money

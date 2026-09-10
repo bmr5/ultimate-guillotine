@@ -6,8 +6,7 @@ import { WinnersStrip } from "@/history/components/WinnersStrip";
 import { useSeasonResults } from "@/history/useSeasonResults";
 
 export function HistoryPage() {
-  const { seasons, loadedAt, labelForMember, isPending, errors } =
-    useSeasonResults();
+  const { seasons, loadedAt, isPending, errors } = useSeasonResults();
 
   return (
     <section className="space-y-3">
@@ -36,11 +35,7 @@ export function HistoryPage() {
             className="grid grid-cols-1 gap-2 sm:grid-cols-2"
           >
             {seasons.map((season) => (
-              <SeasonCard
-                key={season.season}
-                season={season}
-                labelForMember={labelForMember}
-              />
+              <SeasonCard key={season.season} season={season} />
             ))}
           </ul>
         </>

@@ -11,7 +11,6 @@ vi.mock("@/history/useSeasonResults", () => ({
   useSeasonResults: () => ({
     seasons: state.seasons,
     loadedAt: Date.parse("2026-09-09T12:00:00Z"),
-    labelForMember: () => "Bravo",
     isPending: false,
     errors: [],
   }),

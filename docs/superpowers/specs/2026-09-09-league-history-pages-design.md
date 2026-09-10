@@ -126,9 +126,9 @@ any `player` asset's position.
 
 **`/history`.** A winners strip — one line per season, year and champion — then one card per season,
 newest first, the champion as the headline under a small `Champion 2024` eyebrow with runner-up,
-third and team count on a muted line below. An `Eliminations` collapsible holds week rows (`Week 4 —
-2 out of the gulag, 1 from the pool, 14 remaining`, or the named form once the Adjudicator supplies
-it); the `notes` line renders last.
+third and team count on a muted line below, and the `notes` line last. *Revised 2026-09-09, Ben's
+ruling:* the card carries no `Eliminations` section; `season_results.eliminations` is still loaded
+for a later use, and the card does not read it.
 
 **Realtime is not required and is not used**: both tables change a handful of times a year, by hand.
 Queries use a five-minute `staleTime` plus `refetchOnWindowFocus` and no channel or polling; each

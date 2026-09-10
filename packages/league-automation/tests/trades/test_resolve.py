@@ -575,3 +575,131 @@ def test_all_players_is_every_roster_folded_together() -> None:
     assert RosterIndex.empty().all_players() == frozenset()
     assert ROSTERED.players_for(None) == frozenset()
     assert ROSTERED.players_for(99) == frozenset()
+
+
+def test_an_unknown_member_is_asked_about_before_an_unfindable_player() -> None:
+    """Two things wrong, one question: the chat is asked about the member.
+
+    Player names are resolved twice and the answer that gets reported comes from
+    the second pass, which runs *after* the parties -- so an announcement naming
+    both a stranger and a player nobody has heard of ends in the member question,
+    not the player one. Nothing depends on which of the two is asked, but the
+    order is a behaviour rather than an accident, and a change to it should have
+    to edit this test rather than surprise somebody reading the chat.
+    """
+    with pytest.raises(Unresolved) as info:
+        resolve(
+            extracted(
+                parties=[ExtractedParty(name="Nobody"), ExtractedParty(name="Member02")],
+                assets=[player_asset("Nobody Here", from_party="Nobody")],
+            )
+        )
+    assert info.value.reason == "I don't recognize 'Nobody' as a league member"
+
+
+def faab_asset(
+    amount: int,
+    currency: str = "faab",
+    from_party: str = "Member02",
+    to_party: str = "member01",
+    description: str | None = None,
+) -> ExtractedAsset:
+    return ExtractedAsset(
+        kind="faab", from_party=from_party, to_party=to_party, player_name=None,
+        amount=amount, unit="faab", currency=currency, description=description,
+    )
+
+
+def test_a_price_quoted_in_draft_dollars_is_recorded_as_faab() -> None:
+    """The league's own rule: every $1 of unspent draft budget became $5 of FAAB.
+    So `$13 draft` is 65 FAAB, and 13 sitting in a FAAB column would read as a
+    fifth of what was paid."""
+    proposal = resolve(extracted(assets=[faab_asset(13, currency="draft")]))
+    money = proposal.assets[0]
+    assert money.amount == 65
+    assert money.unit == "faab" and money.kind == "faab"
+
+
+def test_an_amount_already_converted_is_not_converted_again() -> None:
+    """The prompt asks the model to do the arithmetic and keep the announcement's
+    own phrase in the label. When it does, the guard has to stay out of the way --
+    `$65 FAAB ($13 draft)` is 65, never 325."""
+    proposal = resolve(
+        extracted(assets=[faab_asset(65, description="$65 FAAB ($13 draft FAAB)")])
+    )
+    money = proposal.assets[0]
+    assert money.amount == 65
+    assert money.description == "$65 FAAB ($13 draft FAAB)"
+
+
+def test_a_price_written_twice_is_recorded_once() -> None:
+    """The plainest thing a model can do with `$65 FAAB ($13 draft)` is write two
+    assets, and two FAAB assets on one leg are added up -- so the trade would be
+    logged as 130 FAAB paid. They are the same money, so one of them is kept: the
+    one already written in FAAB, whose description carries the alert's words."""
+    proposal = resolve(
+        extracted(
+            assets=[
+                faab_asset(65, description="$65 FAAB"),
+                faab_asset(13, currency="draft", description="$13 draft FAAB"),
+            ]
+        )
+    )
+    assert [(a.amount, a.description) for a in proposal.assets] == [(65, "$65 FAAB")]
+
+
+def test_two_prices_that_disagree_are_a_question_for_the_chat() -> None:
+    """`$70 FAAB ($13 draft)` is 70 and 65: the announcement states two different
+    prices and nothing here can pick between them."""
+    with pytest.raises(Unresolved) as info:
+        resolve(
+            extracted(
+                assets=[faab_asset(70), faab_asset(13, currency="draft")]
+            )
+        )
+    assert info.value.reason == "That says 65, 70 FAAB for the same thing; which is it?"
+
+
+def test_the_model_flagging_disagreeing_prices_reaches_the_chat_as_its_reason() -> None:
+    """The prompt asks the model to answer `unclear` when the two amounts do not
+    agree, and its sentence is what the chat is asked."""
+    with pytest.raises(Unresolved) as info:
+        resolve(
+            extracted(
+                kind="unclear",
+                unclear_reason="65 FAAB and 13 draft dollars are different amounts",
+            )
+        )
+    assert info.value.reason == "65 FAAB and 13 draft dollars are different amounts"
+
+
+def test_two_separate_faab_payments_on_one_leg_are_left_alone() -> None:
+    """`50 FAAB now and 50 more after Week 4` is two payments, not one written
+    twice, and collapsing it would silently halve what was paid. Only a leg with
+    a draft quote on it is reconciled at all."""
+    proposal = resolve(
+        extracted(assets=[faab_asset(50, description="now"), faab_asset(50, description="later")])
+    )
+    assert [a.amount for a in proposal.assets] == [50, 50]
+
+
+def test_real_money_is_never_multiplied() -> None:
+    """`usd` is neither of the league's budgets: $13 cash is $13."""
+    proposal = resolve(
+        extracted(
+            assets=[
+                ExtractedAsset(
+                    kind="usd", from_party="Member02", to_party="member01", player_name=None,
+                    amount=13, unit="usd", currency="draft", description=None,
+                )
+            ]
+        )
+    )
+    assert proposal.assets[0].amount == 13 and proposal.assets[0].unit == "usd"
+
+
+def test_an_asset_with_no_currency_stated_is_faab_as_it_always_was() -> None:
+    """The field defaults, so nothing that predates it changes."""
+    assert ExtractedAsset(kind="faab", amount=100, unit="faab").currency == "faab"
+    proposal = resolve(extracted())
+    assert proposal.assets[1].amount == 450
