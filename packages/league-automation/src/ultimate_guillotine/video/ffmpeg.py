@@ -11,7 +11,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from ultimate_guillotine.video.card import CANVAS
+from ultimate_guillotine.video.card import CANVAS, is_wide
 
 
 class FfmpegError(RuntimeError):
@@ -48,8 +48,11 @@ def _even(value: float) -> int:
 def video_filter(c: Composite, footage_w: int, footage_h: int) -> str:
     """Scale and place the footage on the canvas, the same way ``Layout`` does."""
     width, height = CANVAS[c.aspect]
+    square = f"[0:v]crop=min(iw\\,ih):min(iw\\,ih),scale={width}:{width}"
     if c.aspect == "1:1":
-        return f"[0:v]crop=min(iw\\,ih):min(iw\\,ih),scale={width}:{height}[footage]"
+        return f"{square}[footage]"
+    if is_wide(footage_w, footage_h):
+        return f"{square},pad={width}:{height}:0:{(height - width) // 2}:black[footage]"
     scaled_h = _even(footage_h * width / footage_w)
     if scaled_h > height:
         scaled_w = _even(footage_w * height / footage_h)

@@ -20,9 +20,11 @@ def composite(**overrides) -> ff.Composite:
     return ff.Composite(**fields)
 
 
-def test_9_16_letterboxes_the_footage_and_overlays_the_card() -> None:
+def test_9_16_centres_the_square_of_wide_footage_and_overlays_the_card() -> None:
     graph = ff.filter_graph(composite(), 1280, 720)
-    assert graph.startswith("[0:v]scale=1080:608,pad=1080:1920:0:656:black[footage];")
+    assert graph.startswith(
+        "[0:v]crop=min(iw\\,ih):min(iw\\,ih),scale=1080:1080,pad=1080:1920:0:420:black[footage];"
+    )
     assert "[footage][1:v]overlay=0:0:shortest=1[v]" in graph
     assert graph.endswith("[2:a]volume=0.0dB[a]")
 

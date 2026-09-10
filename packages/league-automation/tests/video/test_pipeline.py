@@ -46,7 +46,7 @@ def test_source_base_cuts_the_espn_clip_at_the_measured_start(assets: Assets) ->
     assert job.card == assets.work / "T-2026-001-20260910-023000-card.png"
     assert job.card.exists()
     assert job.composite.output == assets.renders / "T-2026-001-20260910-023000.mp4"
-    assert job.command[0] == "ffmpeg" and "scale=1080:608" in " ".join(job.command)
+    assert job.command[0] == "ffmpeg" and "scale=1080:1080,pad=1080:1920" in " ".join(job.command)
 
 
 def test_generated_base_asks_higgsfield_with_the_reference_and_clamps_the_length(

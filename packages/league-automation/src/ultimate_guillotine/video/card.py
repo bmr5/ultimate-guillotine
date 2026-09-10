@@ -28,6 +28,10 @@ CAPTION_CENTRE = 0.5
 BANNER_TOP_SHARE = 0.75
 BANNER_BOTTOM_SHARE = 0.96
 TAG_SIZE = 24
+#: Wide enough to cover ESPN's own BREAKING NEWS tag in the source footage.
+TAG_MIN_WIDTH = 400
+#: Clear space kept between the caption block and the tag.
+CAPTION_GAP = 24
 HEADLINE_SIZE = 44
 SUBLINE_SIZE = 28
 MARGIN = 24
@@ -65,14 +69,21 @@ class Layout:
 
     @classmethod
     def for_footage(cls, footage_w: int, footage_h: int, aspect: str) -> "Layout":
-        """Where the footage lands on the canvas: a 1:1 canvas is filled by a
-        centre-square crop; a 9:16 canvas fits the footage by width and
-        letterboxes the rest, so 16:9 footage sits in the middle third."""
+        """Where the footage lands on the canvas.
+
+        A 1:1 canvas is filled by a centre-square crop. On a 9:16 canvas, wide
+        footage (the ESPN clip) shows as that same centre square in the middle,
+        which is how TikTok shows the 1:1 reference; vertical footage (a
+        generated clip) is fitted by width.
+        """
         if aspect not in CANVAS:
             raise ValueError(f"unknown aspect {aspect}; use one of {', '.join(CANVAS)}")
         width, height = CANVAS[aspect]
         if aspect == "1:1":
             return cls(width, height, 0, height)
+        if is_wide(footage_w, footage_h):
+            top = (height - width) // 2
+            return cls(width, height, top, top + width)
         scaled_h = min(height, _even(footage_h * width / footage_w))
         top = (height - scaled_h) // 2
         return cls(width, height, top, top + scaled_h)
@@ -80,6 +91,11 @@ class Layout:
 
 def _even(value: float) -> int:
     return round(value / 2) * 2
+
+
+def is_wide(footage_w: int, footage_h: int) -> bool:
+    """Wider than 9:16, so a 9:16 canvas shows its centre square."""
+    return footage_w * 16 > footage_h * 9
 
 
 def wrap(text: str, max_chars: int) -> list[str]:
@@ -117,13 +133,24 @@ def render_card(copy, layout: Layout, out: Path, fonts: Fonts = DEFAULT_FONTS) -
     scale = layout.width / 1080
     img = Image.new("RGBA", (layout.width, layout.height), CLEAR)
     draw = ImageDraw.Draw(img)
+    margin, pad = round(MARGIN * scale), round(PAD * scale)
 
-    # The caption, centred on the footage.
+    # Where the lower third goes: across the bottom of the footage, edge to edge,
+    # so ESPN's own banner in the source clip is covered completely.
+    bar_top = layout.video_top + round(layout.video_height * BANNER_TOP_SHARE)
+    bar_bottom = layout.video_top + round(layout.video_height * BANNER_BOTTOM_SHARE)
+    tag_font = _font(fonts.headline, round(TAG_SIZE * scale))
+    tag_h = round(TAG_SIZE * scale * 1.7)
+    tag_top = bar_top - tag_h + round(6 * scale)
+
+    # The caption, centred on the footage but never touching the tag.
     caption_font = _font(fonts.caption, round(CAPTION_SIZE * scale))
     lines = wrap(copy.caption, CAPTION_MAX_CHARS)[:CAPTION_MAX_LINES]
     line_h = round(CAPTION_SIZE * scale * 1.18)
-    block_top = layout.video_top + round(layout.video_height * CAPTION_CENTRE)
-    y = block_top - (line_h * len(lines)) // 2
+    block_h = line_h * len(lines)
+    centre = layout.video_top + round(layout.video_height * CAPTION_CENTRE)
+    y = min(centre - block_h // 2, tag_top - round(CAPTION_GAP * scale) - block_h)
+    y = max(y, layout.video_top + round(16 * scale))
     for line in lines:
         x = (layout.width - draw.textlength(line, font=caption_font)) / 2
         draw.text(
@@ -136,20 +163,14 @@ def render_card(copy, layout: Layout, out: Path, fonts: Fonts = DEFAULT_FONTS) -
         )
         y += line_h
 
-    # The lower third: a red tag over a white bar, across the bottom of the footage.
-    margin, pad = round(MARGIN * scale), round(PAD * scale)
-    bar_top = layout.video_top + round(layout.video_height * BANNER_TOP_SHARE)
-    bar_bottom = layout.video_top + round(layout.video_height * BANNER_BOTTOM_SHARE)
-    draw.rounded_rectangle(
-        (margin, bar_top, layout.width - margin, bar_bottom), radius=round(8 * scale), fill=WHITE
-    )
-    tag_font = _font(fonts.headline, round(TAG_SIZE * scale))
-    tag_h = round(TAG_SIZE * scale * 1.7)
-    tag_w = draw.textlength(copy.tag, font=tag_font) + 2 * pad
+    # The lower third: a red tag over a white bar.
+    draw.rectangle((0, bar_top, layout.width, bar_bottom), fill=WHITE)
+    tag_text_w = draw.textlength(copy.tag, font=tag_font)
+    tag_w = max(tag_text_w + 2 * pad, round(TAG_MIN_WIDTH * scale))
     tag_left = (layout.width - tag_w) / 2
-    tag_top = bar_top - tag_h + round(6 * scale)
     draw.rectangle((tag_left, tag_top, tag_left + tag_w, bar_top + round(6 * scale)), fill=RED)
-    draw.text((tag_left + pad, tag_top + round(6 * scale)), copy.tag, font=tag_font, fill=WHITE)
+    tag_x = tag_left + (tag_w - tag_text_w) / 2
+    draw.text((tag_x, tag_top + round(6 * scale)), copy.tag, font=tag_font, fill=WHITE)
 
     text_width = layout.width - 2 * margin - 2 * pad
     headline_font = _fit(
