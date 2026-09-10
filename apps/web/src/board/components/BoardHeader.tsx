@@ -149,7 +149,7 @@ export function BoardHeader({
   const stale = isStale(projectionsUpdatedAt, now);
 
   return (
-    <header className="sticky top-0 z-20 -mx-4 mb-3 space-y-2 border-b bg-background/95 px-4 py-3 backdrop-blur sm:mx-0 sm:px-0">
+    <header className="sticky top-0 z-20 -mx-4 mb-3 space-y-2 border-b bg-background/95 px-4 py-3 backdrop-blur-sm sm:mx-0 sm:px-0">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         {/* The site title lives in the layout; this header names the week only. */}
         <h2 className="text-lg font-semibold">

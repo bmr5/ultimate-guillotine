@@ -46,7 +46,7 @@ const emptySlotsDescription = (position: PositionFilter) =>
  * bare `<button>`s rather than `Button`s, so they have to name it themselves.
  */
 const FOCUS_RING_CLASS =
-  "ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
+  "ring-offset-background focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
 
 function projectionText(points: number | null): string {
   return points === null

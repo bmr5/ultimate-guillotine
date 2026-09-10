@@ -14,7 +14,7 @@ import type { CatalogTrade } from "../types";
  * focus at all.
  */
 const FOCUS_RING_CLASS =
-  "ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
+  "ring-offset-background focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
 
 /** Shown in the panel when a trade carries no itemised assets. */
 const NO_ASSETS_TEXT = "No itemised assets recorded";

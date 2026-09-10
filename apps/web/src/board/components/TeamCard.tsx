@@ -51,7 +51,7 @@ const FAAB_UNKNOWN_TEXT = "FAAB —";
  * no visible focus at all.
  */
 const FOCUS_RING_CLASS =
-  "ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
+  "ring-offset-background focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
 
 /**
  * The same ring for a chip, drawn *inside* the chip instead of around it.
@@ -63,7 +63,7 @@ const FOCUS_RING_CLASS =
  * and `ring-offset-background` goes with the offset it no longer has.
  */
 const CHIP_FOCUS_RING_CLASS =
-  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring";
+  "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring";
 
 /** The short, visible form of the below-gate caveat; the full label rides along for readers. */
 const PARTIAL_BADGE_TEXT = "partial";
@@ -89,7 +89,7 @@ const PARTIAL_BADGE_TEXT = "partial";
  * lineup has a hole in it, and a floor that did not clear it would let exactly those cards grow.
  * The toggle's own `min-h-[44px]` is well under the row it sits in and never binds.
  */
-export const SUMMARY_MIN_HEIGHT_CLASS = "min-h-[8rem]";
+export const SUMMARY_MIN_HEIGHT_CLASS = "min-h-32";
 
 /**
  * The chip line's height, fixed rather than floored, so the line occupies the same band on every
@@ -117,7 +117,7 @@ export const CHIP_ROW_INDENT_CLASS = "pl-8";
  * geometry on a 375px card and it does not fit: the name field is 141px and a two-chip set is
  * 139px. The chips have their own line now, and nothing reserves against this any more.
  */
-const PROJECTION_WIDTH_CLASS = "w-[4.5rem]";
+const PROJECTION_WIDTH_CLASS = "w-18";
 
 /** Label for a team eliminated in a week the data layer does not know yet. */
 const ELIMINATED_LABEL = "Eliminated";
