@@ -120,3 +120,21 @@ jobs:
     script: guillotine_sleeper_scores.sh
     deliver: local
     max_gap_minutes: 45
+  # The auction: a fact that changes once a year, synced once a day so a pick Sleeper
+  # corrects reaches the board without anyone remembering. 1500 is the run-audit's own
+  # daily budget. Before the draft is complete the job prints nothing and stays green.
+  - name: guillotine-sleeper-draft
+    agent: draft-sync
+    schedule: "0 6 * * *"
+    script: guillotine_sleeper_draft.sh
+    deliver: "discord:#guillotine-ops"
+    max_gap_minutes: 1500
+  # The executed transaction log — trades, drops, claims — at the roster sync's cadence,
+  # because it moves whenever a manager does. Current and previous week each run; a full
+  # backfill is `ug sleeper transactions --all` by hand.
+  - name: guillotine-sleeper-transactions
+    agent: transactions-sync
+    schedule: "every 10m"
+    script: guillotine_sleeper_transactions.sh
+    deliver: "discord:#guillotine-ops"
+    max_gap_minutes: 30
