@@ -100,10 +100,10 @@ export function SeasonCard({ season, labelForMember }: Props) {
     <li className="list-none">
       <Card>
         <CardContent className="space-y-2 p-4">
-          <p className="text-xs uppercase tracking-wide text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             Champion {season.season}
           </p>
-          <p className="text-2xl font-semibold">
+          <p className="text-3xl leading-none figures">
             {seasonPlacingLabel(season.championLabel, season.championMemberId)}
           </p>
           {runnerUps.length > 0 && (

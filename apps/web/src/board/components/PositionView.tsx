@@ -106,7 +106,7 @@ const PositionTeamRow = memo(function PositionTeamRow({
         data-eliminated={row.isEliminated || undefined}
         className={cn(
           "overflow-hidden",
-          row.isEliminated && "border-dashed bg-muted/60",
+          row.isEliminated && "border-dashed bg-background/50",
         )}
       >
         <Collapsible open={isOpen}>
@@ -118,7 +118,7 @@ const PositionTeamRow = memo(function PositionTeamRow({
             aria-controls={panelId}
             onClick={() => onToggle(row.teamId)}
             className={cn(
-              "flex min-h-[44px] w-full items-start gap-3 p-4 text-left",
+              "flex min-h-[44px] w-full items-start gap-3 px-4 py-3 text-left",
               FOCUS_RING_CLASS,
             )}
           >
@@ -152,7 +152,7 @@ const PositionTeamRow = memo(function PositionTeamRow({
                       )}
                     >
                       <span className="font-medium">{player.fullName}</span>{" "}
-                      <span className="tabular-nums text-muted-foreground">
+                      <span className="text-muted-foreground tabular-nums">
                         {player.isStarter && player.livePoints !== null ? (
                           <>
                             <span
@@ -221,7 +221,7 @@ const PositionTeamRow = memo(function PositionTeamRow({
               </span>
             </span>
             <span className="shrink-0 text-right">
-              <span className="block text-base font-semibold tabular-nums text-foreground">
+              <span className="block text-2xl leading-none figures text-foreground">
                 {faab}
               </span>
               {row.emptySlots > 0 ? (

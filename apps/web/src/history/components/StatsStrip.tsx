@@ -18,13 +18,11 @@ export function StatsStrip({
   ];
   return (
     <div>
-      <dl className="grid grid-cols-3 gap-2 rounded-md border bg-card p-2 text-center">
+      <dl className="grid grid-cols-3 gap-2 rounded-xl border bg-card p-3 text-center">
         {cells.map(([label, value]) => (
           <div key={label}>
-            <dt className="text-[11px] text-muted-foreground uppercase">
-              {label}
-            </dt>
-            <dd className="text-sm font-medium">{value}</dd>
+            <dt className="text-xs text-muted-foreground">{label}</dt>
+            <dd className="mt-1 text-2xl leading-none figures">{value}</dd>
           </div>
         ))}
       </dl>

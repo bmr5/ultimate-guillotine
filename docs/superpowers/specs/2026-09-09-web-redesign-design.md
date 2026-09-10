@@ -49,23 +49,29 @@ not.
 Scale, on a 16px base: 12 / 14 / 16 / 20 / 24 / 32 / 44. A card's emphasized figure is 32, the
 secondary 20, the rank 20 in ash; the wordmark is 24; the stats strip figures 24.
 
-**Layout.** The board's grid, the card's two-row summary, the sticky header, the trade and season
-cards all keep their structure — they are tested and they carry Ben's rulings. What changes:
+**Layout.** The board's single ranked column (Ben's ruling, landed the same day: the ranked
+board is always one column, `max-w-2xl`), the card's two-row summary, the sticky header, the
+trade and season cards all keep their structure — they are tested and they carry Ben's rulings.
+What changes:
 
 ```
 Ultimate Guillotine                       ← wordmark, figures voice, 24
 Board   Trades   History                  ← plain words; the current one in ink with an ember rule
 
-╭ frosted strip (sticky) ─────────────────────────────╮
-│ Week 1   Updated 9:30 PM · 18 min ago                │
-│ All QB RB WR TE K DEF    Projection FAAB Total  [search] │
-╰──────────────────────────────────────────────────────╯
-╭──────────╮ ╭──────────╮ ╭──────────╮
-│ 1 Charlie│ │ 2 Daniel │ │ 3 Evan   │      ← glass cards, 12px radius, no shadow
-│   chobes │ │          │ │          │
-│    122.2 │ │          │ │          │      ← figures voice
-╰──────────╯ ╰──────────╯ ╰──────────╯
-────────── eliminated ──────────           ← a thin blade rule
+        ╭ frosted strip (sticky) ─────────────────────╮
+        │ Week 1   Scores updated 9:30 PM · 18 min ago │
+        │ All QB RB WR TE K DEF                        │
+        │ Projection Score FAAB Total        [search]  │
+        ╰──────────────────────────────────────────────╯
+        ╭──────────────────────────────────────────────╮
+        │ 1  Charlie                    34.5   122.2   │   ← glass card, 12px radius, no shadow;
+        │    chobes                    Score    Proj   │     figures voice, stepping up at sm
+        │    Total 301.5 · 475 FAAB                    │
+        ╰──────────────────────────────────────────────╯
+        ╭──────────────────────────────────────────────╮
+        │ 2  Daniel                     26.2   116.7   │
+        ╰──────────────────────────────────────────────╯
+        ────────────── Eliminated (3) ──────────────       ← a thin blade rule
 ```
 
 Left-aligned throughout; figures right-aligned in their own column. Radius encodes the level:
@@ -99,9 +105,9 @@ leave the fallback in place — the sky is never a reason the board fails to ren
 `vgpu`, `@vgpu/wgsl` (its Vite plugin resolves `.wgsl` imports; `src/wgsl-env.d.ts` types them),
 `@pmndrs/detect-gpu` (lazy, only on the High tier while signals are armed).
 
-**Dark only.** `<html class="dark">` in `index.html`; `ThemeProvider`, `theme-context`,
-`ModeToggle` and `icons.tsx` are deleted; `globals.css` defines the tokens once on `:root` with no
-`.dark` block and no dark variant. The `vite-ui-theme` localStorage key is left alone — nothing
+**Dark only.** `color-scheme: dark` on `html` and a `theme-color` meta; `ThemeProvider`,
+`theme-context`, `ModeToggle` and `icons.tsx` are deleted; `globals.css` defines the tokens once
+on `:root` with no `.dark` class, block or variant. The `vite-ui-theme` localStorage key is left alone — nothing
 reads it any more.
 
 **Primitives.** The ten kept primitives are regenerated from the current shadcn registry now that
@@ -120,7 +126,8 @@ at in the browser at desktop and 375 px, and merges to main:
 
 - All three pages render over the aurora on a WebGPU browser and over the static wash without
   one, with no console errors in either.
-- The tier drops to Low on a throttled frame rate (verified by forcing the frame-health signal).
+- The quality signals arm after the first High frame (the GPU tier and battery readings show in
+  the console); the frame-health downgrade is the example's own, unchanged.
 - Every existing test passes; the ones that pinned a class the design changed are updated with
   the design, not deleted.
 - Keyboard focus is visible on every control; `prefers-reduced-motion` stills the sky.
