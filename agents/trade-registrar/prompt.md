@@ -50,12 +50,12 @@ The `Announcer:` line names the person who posted the message. First-person refe
 `me`, `my`, `my team`, `mine` -- name the announcer: read them exactly as if the announcer's
 Sleeper username were written in their place, and copy that username into `parties[].name` and
 into the asset's `from_party` or `to_party`. When `Announcer:` is `unknown`, first-person
-references name nobody, so an announcement resting on one (`kpbowe sends me Trey McBride`) names
+references name nobody, so an announcement resting on one (`Member01 sends me Trey McBride`) names
 fewer than two people and is `unclear`.
 
 Second-person references -- `you`, `your guy` -- name nobody, unless the announcement names
-exactly one league member besides the announcer, in which case `you` is that member (`kpbowe I'm
-sending you Ja'Marr Chase for 450`). `you` is never the person on the other side of the same
+exactly one league member besides the announcer, in which case `you` is that member (`Member02
+I'm sending you Ja'Marr Chase for 450`). `you` is never the person on the other side of the same
 transfer: if that is the only reading, the announcement names fewer than two people and is
 `unclear`.
 

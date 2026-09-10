@@ -56,6 +56,10 @@ nobody's roster is to leave it exactly as the announcement wrote it, so the case
 pack are unaffected by it, and no case can contradict the pack by trading away a player the pack
 puts on somebody else's roster.
 
+Roster matching is a token subset, never a fuzzy match: every word typed has to be one of the
+candidate's words, so `Rhamondre` reaches Rhamondre Stevenson but a truncated `Rhamon` reaches
+nobody, and `Justin Jefferson` is never answered with Van Jefferson.
+
 `--rosters` swaps the real league in instead. That measures the same cases against whatever the
 rosters happen to be tonight, which is worth doing once and is not a suite.
 

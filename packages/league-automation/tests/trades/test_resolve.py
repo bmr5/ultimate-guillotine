@@ -575,3 +575,23 @@ def test_all_players_is_every_roster_folded_together() -> None:
     assert RosterIndex.empty().all_players() == frozenset()
     assert ROSTERED.players_for(None) == frozenset()
     assert ROSTERED.players_for(99) == frozenset()
+
+
+def test_an_unknown_member_is_asked_about_before_an_unfindable_player() -> None:
+    """Two things wrong, one question: the chat is asked about the member.
+
+    Player names are resolved twice and the answer that gets reported comes from
+    the second pass, which runs *after* the parties -- so an announcement naming
+    both a stranger and a player nobody has heard of ends in the member question,
+    not the player one. Nothing depends on which of the two is asked, but the
+    order is a behaviour rather than an accident, and a change to it should have
+    to edit this test rather than surprise somebody reading the chat.
+    """
+    with pytest.raises(Unresolved) as info:
+        resolve(
+            extracted(
+                parties=[ExtractedParty(name="Nobody"), ExtractedParty(name="Member02")],
+                assets=[player_asset("Nobody Here", from_party="Nobody")],
+            )
+        )
+    assert info.value.reason == "I don't recognize 'Nobody' as a league member"

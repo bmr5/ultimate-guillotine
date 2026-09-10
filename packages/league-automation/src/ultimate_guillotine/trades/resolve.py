@@ -29,6 +29,7 @@ __all__ = [
     "RosterIndex",
     "Unresolved",
     "build_roster_index",
+    "find_member",
     "normalize_name",
     "resolve_extracted",
     "validate",
@@ -325,6 +326,33 @@ def _is_single_token(norm: str) -> bool:
     return len(_without_suffix(norm).split()) == 1
 
 
+def find_member(members, name: str) -> MemberRef | None:
+    """The member ``name`` refers to, matched the way resolution matches a name.
+
+    Display name or alias, normalized on both sides, so a name typed at a
+    terminal or written into a fixture is accepted in exactly the spellings the
+    chat is accepted in. ``None`` for a name nobody answers to, which every
+    caller has to refuse rather than treat as "no member named": a `--as` or an
+    `announcer` that was silently dropped would report the behaviour of a chat
+    with no handles loaded and read as a bug somewhere else.
+
+    Deliberately *not* the resolver the pipeline uses. ``resolve_extracted``
+    disambiguates duplicate names with roster evidence and raises rather than
+    guessing; this answers "which member did the operator mean", where a
+    duplicate is the operator's problem and the first match is as good an answer
+    as an exception. It lives here so the CLI and the case runner share one
+    implementation of the matching rule rather than two that can drift.
+    """
+    wanted = normalize_name(name)
+    for member in members:
+        names = {normalize_name(member.display_name)} | {
+            normalize_name(alias) for alias in member.aliases
+        }
+        if wanted in names:
+            return member
+    return None
+
+
 def _resolve_player(name: str, players: list[Player]) -> str:
     """Resolve a player name against the whole directory, or say it is unknown.
 
@@ -439,6 +467,7 @@ def _resolve_player_with_rosters(
     players: list[Player],
     rosters: RosterIndex,
     giver_member_id: int | None,
+    by_id: dict[str, Player] | None = None,
 ) -> str:
     """Resolve a player name with roster evidence between the certain matches
     and the surname fallback.
@@ -454,11 +483,18 @@ def _resolve_player_with_rosters(
     ``giver_member_id`` is ``None`` when the asset names no giver, or one nobody
     could place; the giver's-roster step is simply skipped and the rest of the
     chain runs as it always did.
+
+    ``by_id`` is the active directory keyed by Sleeper id, which the roster steps
+    look every holding up in. A caller resolving several assets against the same
+    directory builds it once and passes it -- it is the whole player table, and
+    rebuilding it per asset is the one avoidable cost in this chain. Left
+    ``None`` it is built here, so the single-asset callers stay one call.
     """
     found = _match_exactly(name, players)
     if found is not None:
         return found
-    by_id = {p.sleeper_player_id: p for p in players}
+    if by_id is None:
+        by_id = {p.sleeper_player_id: p for p in players}
 
     def rostered(ids: frozenset[str]) -> list[Player]:
         return [by_id[i] for i in sorted(ids) if i in by_id]
@@ -612,10 +648,11 @@ def resolve_extracted(
     # recorded comes from one chain: `Rhamondre` reaches Rhamondre Stevenson on
     # the giver's roster, and a name the first pass placed by exact match is
     # placed by exact match here too, since that step comes first either way.
+    players_by_id = {p.sleeper_player_id: p for p in players}
     for i, asset in enumerate(extracted.assets):
         if asset.kind == "player" and asset.player_name:
             resolved_players[i] = _resolve_player_with_rosters(
-                asset.player_name, players, rosters, sides[i][0]
+                asset.player_name, players, rosters, sides[i][0], players_by_id
             )
 
     trade_assets: list[TradeAsset] = []

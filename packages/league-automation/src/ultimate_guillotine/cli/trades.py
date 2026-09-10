@@ -35,7 +35,6 @@ from ultimate_guillotine.trades.context import TRADE_LIMIT, context_from_snapsho
 from ultimate_guillotine.trades.detect import ALERT, is_trade_candidate
 from ultimate_guillotine.trades.extract import PROMPT_VERSION, extract_trade
 from ultimate_guillotine.trades.models import TradeProposal
-from ultimate_guillotine.trades.names import normalize_name
 from ultimate_guillotine.trades.registrar import TradeRegistrar
 from ultimate_guillotine.trades.repository import TradeRepository, code_prefix_for
 from ultimate_guillotine.trades.resolve import (
@@ -43,6 +42,7 @@ from ultimate_guillotine.trades.resolve import (
     RosterIndex,
     Unresolved,
     build_roster_index,
+    find_member,
     resolve_extracted,
     validate,
 )
@@ -183,24 +183,6 @@ def dry_run_pipeline(
     except Unresolved as exc:
         return exc
     return proposal
-
-
-def find_member(members, name: str) -> MemberRef | None:
-    """The member `--as` names, matched the way resolution matches a name.
-
-    Display name or alias, normalized both sides, so `--as` accepts the same
-    spellings the chat does. An unknown name is refused rather than quietly
-    treated as no announcer at all: a dry run that silently ignored `--as` would
-    report the behaviour of a chat with no handles loaded and look like a bug in
-    the prompt.
-    """
-    wanted = normalize_name(name)
-    for member in members:
-        if wanted in {normalize_name(member.display_name)} | {
-            normalize_name(alias) for alias in member.aliases
-        }:
-            return member
-    return None
 
 
 def league_context(conn, members) -> str | None:
