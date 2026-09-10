@@ -88,6 +88,9 @@ export function BoardPage() {
 
   const nextPollingMs = realtime.isConnected ? false : REALTIME_POLL_MS;
   useEffect(() => {
+    // The one-render feedback described above `pollingMs`: the hook that owns the answer runs
+    // after the hook that needs it, so a state update is the only way back.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setPollingMs(nextPollingMs);
   }, [nextPollingMs]);
 
@@ -134,10 +137,13 @@ export function BoardPage() {
    * The toggle has to know whether the card it is closing was auto-expanded, but it must stay
    * referentially stable across a search — it is a prop on every memoized `TeamCard`, and a new
    * identity on every keystroke would re-render the whole board. A ref carries the current
-   * auto-expand set into a callback that depends on nothing.
+   * auto-expand set into a callback that depends on nothing. The ref is written from an effect,
+   * the one place React allows, and the toggle is a click handler, so it always runs after.
    */
   const autoExpandedRef = useRef(autoExpanded);
-  autoExpandedRef.current = autoExpanded;
+  useEffect(() => {
+    autoExpandedRef.current = autoExpanded;
+  }, [autoExpanded]);
 
   const handleToggle = useCallback((teamId: number) => {
     setOpenOverrides((current) => {

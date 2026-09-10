@@ -2,10 +2,10 @@ import { useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import { UNKNOWN_OWNER } from "@/board/derive/join";
-import { formatUpdatedAt } from "@/board/derive/time";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { LoadedAtLine } from "@/history/components/LoadedAtLine";
 import { StatsStrip } from "@/history/components/StatsStrip";
 import { TradeCard } from "@/history/components/TradeCard";
 import { TradeFilterBar } from "@/history/components/TradeFilterBar";
@@ -151,13 +151,7 @@ export function TradesPage() {
         ))}
       </ul>
 
-      {loadedAt !== null && (
-        // `formatUpdatedAt` needs the instant it is comparing against and already writes its
-        // own "Updated" prefix, so the line is its output alone rather than "Loaded " + it.
-        <p className="text-xs text-muted-foreground">
-          {formatUpdatedAt(loadedAt, Date.now())}
-        </p>
-      )}
+      {loadedAt !== null && <LoadedAtLine loadedAt={loadedAt} />}
     </section>
   );
 }

@@ -1,6 +1,6 @@
-import { formatUpdatedAt } from "@/board/derive/time";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
+import { LoadedAtLine } from "@/history/components/LoadedAtLine";
 import { SeasonCard } from "@/history/components/SeasonCard";
 import { WinnersStrip } from "@/history/components/WinnersStrip";
 import { useSeasonResults } from "@/history/useSeasonResults";
@@ -46,13 +46,7 @@ export function HistoryPage() {
         </>
       )}
 
-      {loadedAt !== null && (
-        // `formatUpdatedAt` needs the instant it is comparing against and already writes its
-        // own "Updated" prefix, so the line is its output alone — the same call `/trades` makes.
-        <p className="text-xs text-muted-foreground">
-          {formatUpdatedAt(loadedAt, Date.now())}
-        </p>
-      )}
+      {loadedAt !== null && <LoadedAtLine loadedAt={loadedAt} />}
     </section>
   );
 }
