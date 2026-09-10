@@ -95,8 +95,10 @@ class FakeDelivery:
     def __init__(self) -> None:
         self.attachments: list[tuple] = []
 
-    def deliver_attachment(self, run_id, agent, filename, data, reply_to=None):
-        self.attachments.append((run_id, agent, filename, data, reply_to))
+    def deliver_attachment(
+        self, run_id, agent, filename, data, reply_to=None, reply_to_message_guid=None
+    ):
+        self.attachments.append((run_id, agent, filename, data, reply_to, reply_to_message_guid))
 
 
 class FakeConn:
@@ -173,7 +175,7 @@ def test_a_queued_job_is_rendered_delivered_and_finished(tmp_path: Path) -> None
     assert outcome.status == "done" and outcome.job_id == 1
     assert parts["runs"].reserved == [(AGENT, "video-job", "video:1:1")]
     assert parts["delivery"].attachments == [
-        (11, AGENT, "TEST-2026-002-x.mp4", b"mp4", "iMessage;+;chat-test")
+        (11, AGENT, "TEST-2026-002-x.mp4", b"mp4", "iMessage;+;chat-test", "reply-1")
     ]
     assert parts["jobs"].finished == [(1, str(tmp_path / "TEST-2026-002-x.mp4"))]
     assert parts["runs"].finished == [(11, "succeeded", None)]

@@ -79,7 +79,12 @@ class Worker:
         try:
             output = self._render(job.trade_id, job.trade_code)
             self.delivery.deliver_attachment(
-                run_id, AGENT, output.name, output.read_bytes(), reply_to=job.chat_guid
+                run_id,
+                AGENT,
+                output.name,
+                output.read_bytes(),
+                reply_to=job.chat_guid,
+                reply_to_message_guid=job.requested_guid,
             )
             self.jobs.finish(job.id, str(output))
             if run_id is not None:

@@ -104,6 +104,17 @@ class BlueBubblesClient:
     def server_info(self) -> dict:
         return self._request("GET", "/api/v1/server/info").get("data") or {}
 
+    def get_message(self, guid: str) -> InboundMessage | None:
+        data = (
+            self._request(
+                "GET",
+                f"/api/v1/message/{quote(guid, safe='')}",
+                params={"with": "chats,handle,attachment"},
+            ).get("data")
+            or {}
+        )
+        return _record_to_message(data)
+
     def chat_participants(self, chat_guid: str) -> list[str]:
         data = (
             self._request(
@@ -136,12 +147,20 @@ class BlueBubblesClient:
         )
         return [m for m in (_record_to_message(r) for r in data) if m]
 
-    def send_text(self, chat_guid: str, text: str) -> str:
+    def send_text(
+        self, chat_guid: str, text: str, *, reply_to_message_guid: str | None = None
+    ) -> str:
         body = {
             "chatGuid": chat_guid,
             "tempGuid": uuid.uuid4().hex,
             "message": text,
         }
+        if reply_to_message_guid:
+            body.update(
+                method="private-api",
+                selectedMessageGuid=reply_to_message_guid,
+                partIndex=0,
+            )
         data = self._request("POST", "/api/v1/message/text", json=body).get("data") or {}
         guid = data.get("guid")
         if not guid:
@@ -149,9 +168,15 @@ class BlueBubblesClient:
         return guid
 
     def send_attachment(
-        self, chat_guid: str, filename: str, data: bytes, mime: str = "text/html"
+        self,
+        chat_guid: str,
+        filename: str,
+        data: bytes,
+        mime: str = "text/html",
+        *,
+        reply_to_message_guid: str | None = None,
     ) -> str:
-        """Send one file to a chat. Multipart, and no Private API needed.
+        """Send a file; only an inline reply needs the Private API.
 
         The `name` form field is what iMessage shows as the file's name, so it
         is the artifact's own name and never a temp name.
@@ -161,6 +186,12 @@ class BlueBubblesClient:
             "tempGuid": uuid.uuid4().hex,
             "name": filename,
         }
+        if reply_to_message_guid:
+            fields.update(
+                method="private-api",
+                selectedMessageGuid=reply_to_message_guid,
+                partIndex="0",
+            )
         files = {"attachment": (filename, data, mime)}
         data_out = (
             self._request("POST", "/api/v1/message/attachment", data=fields, files=files).get(

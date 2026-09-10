@@ -29,6 +29,7 @@ from decimal import Decimal
 import psycopg
 
 from ultimate_guillotine.advisor.state import LeagueSnapshot, SnapshotRepository
+from ultimate_guillotine.history.archive_store import current_gulag_events
 from ultimate_guillotine.sleeper.team_projections import TeamWeekRepository
 from ultimate_guillotine.summary.lineup import build_starters
 from ultimate_guillotine.summary.models import (
@@ -253,6 +254,9 @@ class EodRepository:
             return past
 
     def gulag_events(self, season_id: int) -> list[tuple[int | None, str, dict]]:
+        archived = current_gulag_events(self._conn, season_id)
+        if archived is not None:
+            return archived
         with self._conn.cursor() as cur:
             cur.execute(
                 "select week, event_type, payload from public.league_events"

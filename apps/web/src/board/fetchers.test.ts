@@ -250,9 +250,9 @@ describe("state, projection and roster fetchers", () => {
   });
 
   it("reads the frozen final rosters for the season", async () => {
-    const { client, calls } = createFakeClient({ final_rosters: [] });
+    const { client, calls } = createFakeClient({ effective_final_rosters: [] });
     await fetchFinalRosters(client, 1);
-    expect(calls[0].table).toBe("final_rosters");
+    expect(calls[0].table).toBe("effective_final_rosters");
     expect(calls[0].columns).toBe(
       "team_id, eliminated_week, holdings, frozen_at",
     );

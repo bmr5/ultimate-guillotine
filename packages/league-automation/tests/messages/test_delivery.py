@@ -5,11 +5,12 @@ import pytest
 from ultimate_guillotine.config import DeliveryMode, Settings
 from ultimate_guillotine.core.signature import sign
 from ultimate_guillotine.data.repositories import DeliveryTarget, OutboundRecord
-from ultimate_guillotine.messages.bluebubbles import InboundMessage
+from ultimate_guillotine.messages.bluebubbles import BlueBubblesError, InboundMessage
 from ultimate_guillotine.messages.delivery import (
     DeliveryDisabled,
     DeliveryService,
     TargetMismatch,
+    attachment_hash,
     content_hash,
 )
 from ultimate_guillotine.messages.fingerprint import participant_fingerprint
@@ -24,16 +25,31 @@ class FakeClient:
         self.sent = []
         self.participants = {PROD_GUID: PROD_MEMBERS, TEST_GUID: ["+15555550100"]}
         self.history = []
+        self.reply_guids = []
+        self.info = {"private_api": True, "helper_connected": True}
+        self.messages = {}
+        self.lookups = []
+
+    def server_info(self):
+        return self.info
+
+    def get_message(self, guid):
+        self.lookups.append(guid)
+        return self.messages.get(guid)
 
     def chat_participants(self, chat_guid):
         return self.participants[chat_guid]
 
-    def send_text(self, chat_guid, text):
+    def send_text(self, chat_guid, text, *, reply_to_message_guid=None):
         self.sent.append((chat_guid, text))
+        self.reply_guids.append(reply_to_message_guid)
         return f"guid-{len(self.sent)}"
 
-    def send_attachment(self, chat_guid, filename, data, mime="text/html"):
+    def send_attachment(
+        self, chat_guid, filename, data, mime="text/html", *, reply_to_message_guid=None
+    ):
         self.sent.append((chat_guid, filename, data))
+        self.reply_guids.append(reply_to_message_guid)
         return f"guid-{len(self.sent)}"
 
     def messages_after(self, chat_guid, after, limit=100):
@@ -282,3 +298,191 @@ def test_production_answers_the_self_test_chat_in_the_self_test_chat() -> None:
     assert client.sent[-1] == (PROD_GUID, sign("league"))
     service.deliver(None, "trade-registrar", "elsewhere", reply_to="iMessage;+;chat-unknown")
     assert client.sent[-1] == (PROD_GUID, sign("elsewhere"))
+
+
+def video_request(guid="request-1", chat=TEST_GUID, thread=None):
+    return InboundMessage(
+        guid=guid,
+        chat_guid=chat,
+        sender_address=None,
+        text="@daddy create trade video",
+        is_from_me=False,
+        is_group=True,
+        sent_at=datetime.now(UTC),
+        thread_originator_guid=thread,
+    )
+
+
+@pytest.mark.parametrize("chat", [TEST_GUID, PROD_GUID])
+def test_video_acknowledgement_replies_to_request_in_the_correct_chat(chat) -> None:
+    service, client, outbound, _ = make(DeliveryMode.PRODUCTION)
+    request = video_request(chat=chat, thread="trade-alert")
+    result = service.deliver(
+        None, "trade-video", "On it kitten", reply_to=chat, reply_to_message=request
+    )
+    assert client.sent == [(chat, sign("On it kitten"))]
+    assert client.reply_guids == ["request-1"]
+    assert outbound.records[result.outbound_id]["hash"] == content_hash("On it kitten", "request-1")
+    assert content_hash("On it kitten", "request-1") != content_hash("On it kitten", "request-2")
+
+
+@pytest.mark.parametrize(
+    "info",
+    [
+        {"private_api": False, "helper_connected": False},
+        {"private_api": True, "helper_connected": False},
+    ],
+)
+def test_reply_unavailable_keeps_the_existing_acknowledgement(info) -> None:
+    service, client, _, _ = make(DeliveryMode.TEST)
+    client.info = info
+    service.deliver(None, "trade-video", "On it kitten", reply_to_message=video_request())
+    assert client.sent == [(TEST_GUID, sign("On it kitten"))]
+    assert client.reply_guids == [None]
+
+
+def test_failed_capability_check_does_not_lose_the_acknowledgement() -> None:
+    class Client(FakeClient):
+        def server_info(self):
+            raise BlueBubblesError("unavailable")
+
+    service, client, _, _ = make(DeliveryMode.TEST, client=Client())
+    service.deliver(None, "trade-video", "On it kitten", reply_to_message=video_request())
+    assert client.reply_guids == [None]
+
+
+def test_redirected_delivery_does_not_reply_to_a_message_in_another_chat() -> None:
+    service, client, _, _ = make(DeliveryMode.TEST)
+    service.deliver(
+        None,
+        "trade-video",
+        "On it kitten",
+        reply_to=PROD_GUID,
+        reply_to_message=video_request(chat=PROD_GUID),
+    )
+    assert client.sent == [(TEST_GUID, sign("On it kitten"))]
+    assert client.reply_guids == [None]
+
+
+def test_reply_reconciliation_ignores_identical_acknowledgements_in_other_threads() -> None:
+    service, client, outbound, _ = make(DeliveryMode.TEST, crash_after_send=True)
+    request = video_request(thread="trade-alert")
+    with pytest.raises(RuntimeError):
+        service.deliver(None, "trade-video", "On it kitten", reply_to_message=request)
+    outbound.pending = OutboundRecord(
+        1, "sending", datetime.now(UTC), content_hash("On it kitten", request.guid), None
+    )
+    client.history = [
+        video_request(guid="wrong-reply", thread="different-alert").model_copy(
+            update={"is_from_me": True, "text": sign("On it kitten")}
+        ),
+        video_request(guid="right-reply", thread="p:0/trade-alert").model_copy(
+            update={"is_from_me": True, "text": sign("On it kitten")}
+        ),
+    ]
+    retry, _, _, _ = make(DeliveryMode.TEST, client=client, outbound=outbound)
+    result = retry.deliver(None, "trade-video", "On it kitten", reply_to_message=request)
+    assert result.status == "reconciled" and result.message_guid == "right-reply"
+    assert len(client.sent) == 1
+
+
+def test_failed_reply_send_is_not_retried_as_a_standalone_message() -> None:
+    class Client(FakeClient):
+        def send_text(self, *args, **kwargs):
+            super().send_text(*args, **kwargs)
+            raise BlueBubblesError("send timed out")
+
+    service, client, outbound, _ = make(DeliveryMode.TEST, client=Client())
+    with pytest.raises(BlueBubblesError):
+        service.deliver(None, "trade-video", "On it kitten", reply_to_message=video_request())
+    assert client.reply_guids == ["request-1"]
+    assert outbound.records[1]["state"] == "sending"
+
+
+@pytest.mark.parametrize("chat", [TEST_GUID, PROD_GUID])
+def test_video_file_replies_to_the_original_request_in_its_chat(chat) -> None:
+    service, client, outbound, _ = make(DeliveryMode.PRODUCTION)
+    client.messages["request-1"] = video_request(chat=chat, thread="trade-alert")
+    result = service.deliver_attachment(
+        None,
+        "trade-video",
+        "clip.mp4",
+        b"mp4",
+        reply_to=chat,
+        reply_to_message_guid="request-1",
+    )
+    assert client.sent == [(chat, "clip.mp4", b"mp4")]
+    assert client.reply_guids == ["request-1"]
+    assert outbound.records[result.outbound_id]["hash"] == attachment_hash(b"mp4", "request-1")
+    assert attachment_hash(b"mp4", "request-1") != attachment_hash(b"mp4", "request-2")
+
+
+@pytest.mark.parametrize(
+    "reason", ["disabled", "disconnected", "redirected", "missing", "wrong-chat", "lookup-error"]
+)
+def test_video_file_still_sends_normally_when_reply_is_unavailable(reason) -> None:
+    service, client, _, _ = make(DeliveryMode.TEST)
+    chat = TEST_GUID
+    client.messages["request-1"] = video_request()
+    if reason == "disabled":
+        client.info["private_api"] = False
+    elif reason == "disconnected":
+        client.info["helper_connected"] = False
+    elif reason == "redirected":
+        chat = PROD_GUID
+    elif reason == "missing":
+        client.messages.clear()
+    elif reason == "wrong-chat":
+        client.messages["request-1"] = video_request(chat=PROD_GUID)
+    else:
+
+        def failed_lookup(_guid):
+            raise BlueBubblesError("lookup unavailable")
+
+        client.get_message = failed_lookup
+    service.deliver_attachment(
+        None,
+        "trade-video",
+        "clip.mp4",
+        b"mp4",
+        reply_to=chat,
+        reply_to_message_guid="request-1",
+    )
+    assert client.sent == [(TEST_GUID, "clip.mp4", b"mp4")]
+    assert client.reply_guids == [None]
+    if reason in ("disabled", "disconnected", "redirected"):
+        assert client.lookups == []
+
+
+def test_video_reply_reconciles_only_in_the_original_requests_thread() -> None:
+    service, client, outbound, _ = make(DeliveryMode.TEST, crash_after_send=True)
+    client.messages["request-1"] = video_request(thread="trade-alert")
+    with pytest.raises(RuntimeError):
+        service.deliver_attachment(
+            None,
+            "trade-video",
+            "clip.mp4",
+            b"mp4",
+            reply_to=TEST_GUID,
+            reply_to_message_guid="request-1",
+        )
+    outbound.pending = OutboundRecord(
+        1, "sending", datetime.now(UTC), attachment_hash(b"mp4", "request-1"), None
+    )
+    client.history = [
+        video_request(guid=guid, thread=thread).model_copy(
+            update={"is_from_me": True, "text": "", "attachment_names": ("clip.mp4",)}
+        )
+        for guid, thread in (("wrong-video", "other-alert"), ("right-video", "p:0/trade-alert"))
+    ]
+    retry, _, _, _ = make(DeliveryMode.TEST, client=client, outbound=outbound)
+    result = retry.deliver_attachment(
+        None,
+        "trade-video",
+        "clip.mp4",
+        b"mp4",
+        reply_to=TEST_GUID,
+        reply_to_message_guid="request-1",
+    )
+    assert result.status == "reconciled" and result.message_guid == "right-video"
+    assert len(client.sent) == 1
