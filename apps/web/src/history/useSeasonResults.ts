@@ -118,7 +118,6 @@ export function useSeasonResults() {
   return {
     seasons,
     loadedAt,
-    labelForMember,
     isPending: results.isPending || members.isPending,
     errors,
   };
