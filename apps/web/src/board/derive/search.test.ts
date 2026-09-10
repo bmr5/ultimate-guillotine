@@ -18,6 +18,7 @@ const player = (id: string, fullName: string): RosterPlayer => ({
   slotIndex: 0,
   lineupPosition: "RB",
   projectedPoints: 12,
+  injuryStatus: null,
 });
 
 const team = (over: Partial<BoardTeam> & { teamId: number }): BoardTeam => ({

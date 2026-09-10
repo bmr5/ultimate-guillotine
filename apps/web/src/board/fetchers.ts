@@ -25,7 +25,7 @@ export type RosterHoldingRow = Pick<
 >;
 export type PlayerRow = Pick<
   TableRow<"players">,
-  "sleeper_player_id" | "full_name" | "position" | "team"
+  "sleeper_player_id" | "full_name" | "position" | "team" | "injury_status"
 >;
 export type PlayerProjectionRow = Pick<
   TableRow<"player_projections">,
@@ -247,7 +247,7 @@ export async function fetchPlayers(
       unwrap<PlayerRow>(
         client
           .from("players")
-          .select("sleeper_player_id, full_name, position, team")
+          .select("sleeper_player_id, full_name, position, team, injury_status")
           .in("sleeper_player_id", ids),
         "players",
       ),

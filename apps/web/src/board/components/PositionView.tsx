@@ -6,7 +6,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 
-import type { PositionRow } from "../derive/position";
+import { injuryTag } from "../derive/availability";
+import { LIKELY_BIDDER_REASONS, type PositionRow } from "../derive/position";
 import { layoutStarters } from "../derive/roster";
 import type { PositionFilter } from "../types";
 import { RosterPanel } from "./RosterPanel";
@@ -141,6 +142,26 @@ const PositionTeamRow = memo(function PositionTeamRow({
                       <span className="tabular-nums text-muted-foreground">
                         {projectionText(player.projectedPoints)}
                       </span>
+                      {/* The same tag the roster panel shows, so the quick view answers
+                          "who is hurt at this position" without expanding a row. */}
+                      {(() => {
+                        const tag = injuryTag(player.injuryStatus);
+                        return tag === null ? null : (
+                          <span
+                            data-injury={tag.status}
+                            title={tag.title}
+                            className={cn(
+                              "ml-1 rounded border px-1 text-[0.6875rem] font-medium",
+                              tag.isUnavailable
+                                ? "border-destructive/40 text-destructive"
+                                : "border-border text-muted-foreground",
+                            )}
+                          >
+                            <span aria-hidden="true">{tag.tag}</span>
+                            <span className="sr-only">{tag.title}</span>
+                          </span>
+                        );
+                      })()}
                       {player.isStarter ? (
                         <>
                           <span aria-hidden="true">{` ${STARTER_MARK}`}</span>
@@ -179,7 +200,17 @@ const PositionTeamRow = memo(function PositionTeamRow({
 
           {row.likelyBidder ? (
             <div className="flex flex-wrap gap-2 px-4 pb-3">
-              <Badge variant="outline">{LIKELY_BIDDER_LABEL}</Badge>
+              <Badge
+                variant="outline"
+                data-bidder-reason={row.likelyBidderReason ?? undefined}
+                title={
+                  row.likelyBidderReason === null
+                    ? undefined
+                    : LIKELY_BIDDER_REASONS[row.likelyBidderReason]
+                }
+              >
+                {LIKELY_BIDDER_LABEL}
+              </Badge>
             </div>
           ) : null}
 

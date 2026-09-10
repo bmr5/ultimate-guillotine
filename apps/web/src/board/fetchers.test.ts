@@ -240,7 +240,9 @@ describe("bulk player fetchers", () => {
     await fetchPlayers(client, ["4046", "9999"]);
     expect(calls).toHaveLength(1);
     expect(calls[0].columns).toBe(
-      "sleeper_player_id, full_name, position, team",
+      // `injury_status` rides along on the same request: the card has to tell an injured
+      // starter from a starter Sleeper simply has no number for.
+      "sleeper_player_id, full_name, position, team, injury_status",
     );
     expect(calls[0].filters).toEqual([["sleeper_player_id", ["4046", "9999"]]]);
   });
@@ -266,6 +268,7 @@ describe("bulk player fetchers", () => {
           full_name: `Player ${id}`,
           position: "QB",
           team: "BUF",
+          injury_status: null,
         })),
     });
     const rows = await fetchPlayers(client, ids);

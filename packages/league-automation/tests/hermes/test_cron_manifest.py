@@ -67,3 +67,13 @@ def test_every_script_template_is_used_by_a_job() -> None:
     used = {job["script"] for job in JOBS}
     on_disk = {path.name.removesuffix(".template") for path in SCRIPTS.glob("*.sh.template")}
     assert on_disk == used
+
+
+def test_the_players_sync_runs_often_enough_to_track_injuries() -> None:
+    """`public.players.injury_status` is the one column on the directory that
+    changes mid-week, so a nightly refresh would leave an injured starter reading
+    as a coverage hole on the board for most of a day. The gap budget has to clear
+    the cadence, or `ug ops audit-runs` alarms on a job running exactly to plan."""
+    job = next(j for j in JOBS if j["name"] == "guillotine-players-sync")
+    assert job["schedule"] == "0 */4 * * *"
+    assert int(job["max_gap_minutes"]) > 4 * 60

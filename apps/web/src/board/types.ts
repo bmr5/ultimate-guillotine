@@ -85,6 +85,14 @@ export interface Database {
         position: string | null;
         team: string | null;
         active: boolean;
+        /**
+         * Sleeper's own injury flag, verbatim, or null when the feed carries none — which is
+         * the normal case. The sync writes only the nine strings Sleeper is known to emit
+         * (`Questionable`, `Doubtful`, `Out`, `IR`, `PUP`, `Sus`, `NA`, `COV`, `DNR`) and
+         * stores a tenth as null rather than failing the run, so `derive/availability` can
+         * match on them — and still spells an unrecognised one out rather than dropping it.
+         */
+        injury_status: string | null;
         synced_at: string;
       }>;
       roster_holdings: ReadOnlyTable<{
@@ -187,6 +195,11 @@ export interface RosterPlayer {
   lineupPosition: string | null;
   /** null means "no projection", never zero. */
   projectedPoints: number | null;
+  /**
+   * `players.injury_status`, or null when Sleeper has no flag on the player. The board reads
+   * it through `derive/availability`, never by comparing strings at a call site.
+   */
+  injuryStatus: string | null;
 }
 
 export interface BoardTeam {
