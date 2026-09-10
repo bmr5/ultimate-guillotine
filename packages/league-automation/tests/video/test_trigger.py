@@ -6,6 +6,7 @@ from ultimate_guillotine.video.trigger import (
     AGENT,
     HELP,
     VideoRequests,
+    code_variants,
     is_video_request,
     video_trigger,
 )
@@ -163,3 +164,20 @@ def test_the_trigger_listens_only_in_the_alert_chats_and_ignores_its_own_posts()
     assert not is_signed(signed) or not trigger.matches(msg(signed))
     trigger.handle(msg("@bot create trade video", guid="g9"))
     assert handled == ["g9"]
+
+
+def test_a_test_code_still_resolves_after_the_trade_went_live() -> None:
+    """Going live re-codes TEST-2026-002 to T-2026-002; the bot's old confirmation in
+    the chat still says TEST, and a reply to it must find the trade (2026-09-10)."""
+    assert code_variants("TEST-2026-002") == ["TEST-2026-002", "T-2026-002"]
+    assert code_variants("T-2026-002") == ["T-2026-002", "TEST-2026-002"]
+    live = {"trade_id": 4, "trade_code": "T-2026-002", "status": "accepted", "terms": {}}
+    jobs, delivery = FakeJobs(), FakeDelivery()
+    trades = FakeTrades(by_code={"T-2026-002": live})
+    requests(
+        trades, jobs, delivery, lookup=lambda guid: "TEST-2026-002" if guid == "bot-1" else None
+    ).handle(msg("@bot create trade video", thread="bot-1"))
+    assert jobs.enqueued[0][:2] == (4, "T-2026-002")
+    assert delivery.sent[0][1].startswith("🎬 On it — the video for T-2026-002")
+    requests(trades, FakeJobs(), delivery).handle(msg("@bot video for TEST-2026-002"))
+    assert delivery.sent[-1][1].startswith("🎬 On it — the video for T-2026-002")
