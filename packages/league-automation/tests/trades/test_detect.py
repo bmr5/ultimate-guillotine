@@ -5,7 +5,9 @@ import pytest
 
 from ultimate_guillotine.trades.detect import is_rescission_candidate, is_trade_candidate
 
-ALERTS = json.loads((Path(__file__).parent.parent / "fixtures" / "trades" / "alerts.json").read_text())
+ALERTS = json.loads(
+    (Path(__file__).parent.parent / "fixtures" / "trades" / "alerts.json").read_text()
+)
 
 
 @pytest.mark.parametrize("alert", ALERTS, ids=[a["id"] for a in ALERTS])

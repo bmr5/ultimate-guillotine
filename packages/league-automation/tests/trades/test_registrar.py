@@ -329,7 +329,7 @@ def test_created_trade_sends_confirmation_and_records_run() -> None:
     assert delivery.sent[0][1].startswith("🚨 Trade T-2026-001 logged")
     assert runs.reserved == ["trade:g1"] and runs.finished[0][1] == "succeeded"
     # The run records which prompt and model produced it, and hashes what was sent.
-    assert runs.finished[0][4] == "2026.4:m"
+    assert runs.finished[0][4] == "2026.5:m"
     assert runs.finished[0][3] == hashlib.sha256(delivery.sent[0][1].encode()).hexdigest()
 
 
@@ -751,9 +751,7 @@ def test_a_candidate_from_a_listen_only_chat_is_reported_as_shadow() -> None:
     """The answer to a league alert appears in a different chat, so ops is the
     only place the pickup is visible. The note carries the outcome and the word
     `shadow` -- never the chat, the announcement, or who sent it."""
-    reg, _runs, notifier = build(
-        FakeAI(good_extraction()), shadow={chat_guid_hash(CHAT)}
-    )
+    reg, _runs, notifier = build(FakeAI(good_extraction()), shadow={chat_guid_hash(CHAT)})
 
     assert reg.handle(msg("🚨 Member01 sends Player Alpha to Member02 for 450 FAAB")) == "created"
 

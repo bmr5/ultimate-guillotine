@@ -1,4 +1,4 @@
-<!-- prompt_version: 2026.4 -->
+<!-- prompt_version: 2026.5 -->
 # Trade Registrar extraction prompt
 
 You convert one fantasy football trade announcement into structured fields.
@@ -43,8 +43,8 @@ alert that names no member but places the trade nowhere else is `unclear`, with 
 `unclear_reason`, rather than `not_a_trade`. One league member named in the announcement is enough
 to make it this league's alert; leave any unfamiliar name as written and let code resolve it.
 
-Only when the message announces a transaction: if fewer than two people are named, or no asset is
-named, in the announcement itself, set `kind` to `unclear` with a one-sentence `unclear_reason`.
+Only when the message announces a transaction: if fewer than two people are named
+in the announcement itself, set `kind` to `unclear` with a one-sentence `unclear_reason`.
 
 The `Announcer:` line names the person who posted the message. First-person references -- `I`,
 `me`, `my`, `my team`, `mine` -- name the announcer: read them exactly as if the announcer's
@@ -150,3 +150,8 @@ Party names are copied as written in the announcement.
 The user message lists league members as `Sleeper username: names people use`; when a name in the
 announcement is one of those, copy the announcement's spelling into `parties[].name` unchanged
 (resolution to league members happens in code).
+
+
+The assets are copied through as written and never a reason to withhold a reading: the record
+the league keeps is who traded and the announcement's own words. A missing asset, an amount with
+no unit, or a rental with no stated return still gets its `kind` and its parties.

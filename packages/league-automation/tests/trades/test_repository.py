@@ -32,19 +32,27 @@ def make(conn, **overrides) -> TradeProposal:
             """
         )
     base = {
-        "season": 2026, "effective_week": 2, "kind": "permanent",
+        "season": 2026,
+        "effective_week": 2,
+        "kind": "permanent",
         "parties": [TradeParty(m1, "Member01"), TradeParty(m2, "Member02")],
-        "assets": [TradeAsset("player", m1, m2, "p1", "Player Alpha", None, None, None),
-                   TradeAsset("faab", m2, m1, None, None, 450, "faab", None)],
-        "rental_return_condition": None, "special_terms": [], "referenced_trade_code": None,
-        "source_message_guid": "g1", "evidence_excerpt": "🚨 ...",
-        "prompt_version": "2026.1", "model": "m",
+        "assets": [
+            TradeAsset("player", m1, m2, "p1", "Player Alpha", None, None, None),
+            TradeAsset("faab", m2, m1, None, None, 450, "faab", None),
+        ],
+        "rental_return_condition": None,
+        "special_terms": [],
+        "referenced_trade_code": None,
+        "source_message_guid": "g1",
+        "evidence_excerpt": "🚨 ...",
+        "prompt_version": "2026.1",
+        "model": "m",
     }
     base.update(overrides)
     return TradeProposal(**base)
 
 
-def test_accept_creates_then_detects_duplicate_and_revision(conn) -> None:
+def test_accept_creates_then_detects_duplicate_and_logs_an_amendment_as_new(conn) -> None:
     repo = TradeRepository(conn)
     first = repo.accept(make(conn))
     assert first.status == "created" and first.trade_code == "T-2026-001" and first.revision == 1
@@ -56,17 +64,24 @@ def test_accept_creates_then_detects_duplicate_and_revision(conn) -> None:
         assets=[
             make(conn).assets[0],
             TradeAsset(
-                "faab", make(conn).parties[1].member_id, make(conn).parties[0].member_id,
-                None, None, 500, "faab", None,
+                "faab",
+                make(conn).parties[1].member_id,
+                make(conn).parties[0].member_id,
+                None,
+                None,
+                500,
+                "faab",
+                None,
             ),
         ],
     )
-    revised = repo.accept(amended)
-    assert revised.status == "revised" and revised.revision == 2
-    assert revised.trade_id == first.trade_id
-    assert revised.previous_terms["assets"][1]["amount"] == 450
-    current = repo.find_by_code("T-2026-001")
-    assert current["terms"]["assets"][1]["amount"] == 500 and current["status"] == "accepted"
+    # Ben (2026-09-10): nothing in the chat is a correction, so an amended
+    # alert is a second trade with its own code, and the first stands.
+    second = repo.accept(amended)
+    assert second.status == "created" and second.trade_code == "T-2026-002"
+    assert second.trade_id != first.trade_id and second.revision == 1
+    original = repo.find_by_code("T-2026-001")
+    assert original["terms"]["assets"][1]["amount"] == 450 and original["status"] == "accepted"
 
 
 def test_rescind_marks_trade_and_writes_event(conn) -> None:
@@ -120,8 +135,14 @@ def test_list_recent_orders_newest_first_and_honours_limit(conn) -> None:
             source_message_guid="g4",
             assets=[
                 TradeAsset(
-                    "player", other.parties[0].member_id, other.parties[1].member_id,
-                    "p2", "Player Beta", None, None, None,
+                    "player",
+                    other.parties[0].member_id,
+                    other.parties[1].member_id,
+                    "p2",
+                    "Player Beta",
+                    None,
+                    None,
+                    None,
                 ),
                 other.assets[1],
             ],
@@ -171,8 +192,18 @@ def payment(conn, amount: int, guid: str):
         conn,
         kind="payment",
         source_message_guid=guid,
-        assets=[TradeAsset("faab", base.parties[0].member_id, base.parties[1].member_id,
-                           None, None, amount, "faab", None)],
+        assets=[
+            TradeAsset(
+                "faab",
+                base.parties[0].member_id,
+                base.parties[1].member_id,
+                None,
+                None,
+                amount,
+                "faab",
+                None,
+            )
+        ],
     )
 
 
@@ -188,7 +219,7 @@ def test_a_second_payment_between_the_same_pair_is_a_new_trade(conn) -> None:
     assert second.trade_id != first.trade_id
 
 
-def test_a_correction_after_the_window_is_a_new_trade(conn) -> None:
+def test_every_later_alert_is_a_new_trade(conn) -> None:
     """The same players days later is a new deal, not an amendment of the old one."""
     repo = TradeRepository(conn)
     first = repo.accept(make(conn))
@@ -197,12 +228,20 @@ def test_a_correction_after_the_window_is_a_new_trade(conn) -> None:
         source_message_guid="g3",
         assets=[
             make(conn).assets[0],
-            TradeAsset("faab", make(conn).parties[1].member_id, make(conn).parties[0].member_id,
-                       None, None, 500, "faab", None),
+            TradeAsset(
+                "faab",
+                make(conn).parties[1].member_id,
+                make(conn).parties[0].member_id,
+                None,
+                None,
+                500,
+                "faab",
+                None,
+            ),
         ],
     )
     inside = repo.accept(amended)
-    assert inside.status == "revised" and inside.trade_id == first.trade_id
+    assert inside.status == "created" and inside.trade_id != first.trade_id
 
     with conn.cursor() as cur:
         cur.execute(
@@ -216,12 +255,20 @@ def test_a_correction_after_the_window_is_a_new_trade(conn) -> None:
             source_message_guid="g4",
             assets=[
                 make(conn).assets[0],
-                TradeAsset("faab", make(conn).parties[1].member_id,
-                           make(conn).parties[0].member_id, None, None, 600, "faab", None),
+                TradeAsset(
+                    "faab",
+                    make(conn).parties[1].member_id,
+                    make(conn).parties[0].member_id,
+                    None,
+                    None,
+                    600,
+                    "faab",
+                    None,
+                ),
             ],
         )
     )
-    assert later.status == "created" and later.trade_code == "T-2026-002"
+    assert later.status == "created" and later.trade_code == "T-2026-003"
     assert later.trade_id != first.trade_id
 
 

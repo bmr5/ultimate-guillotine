@@ -145,12 +145,26 @@ SYNTHETIC_TRADES = [
                 {"member_id": 2, "display_name": "kpbowe"},
             ],
             "assets": [
-                {"kind": "player", "from_member_id": 1, "to_member_id": 2,
-                 "player_name": "Michael Pittman", "player_id": None,
-                 "amount": None, "unit": None, "description": None},
-                {"kind": "faab", "from_member_id": 2, "to_member_id": 1,
-                 "player_name": None, "player_id": None,
-                 "amount": 120, "unit": "faab", "description": None},
+                {
+                    "kind": "player",
+                    "from_member_id": 1,
+                    "to_member_id": 2,
+                    "player_name": "Michael Pittman",
+                    "player_id": None,
+                    "amount": None,
+                    "unit": None,
+                    "description": None,
+                },
+                {
+                    "kind": "faab",
+                    "from_member_id": 2,
+                    "to_member_id": 1,
+                    "player_name": None,
+                    "player_id": None,
+                    "amount": 120,
+                    "unit": "faab",
+                    "description": None,
+                },
             ],
         },
     },
@@ -164,9 +178,16 @@ SYNTHETIC_TRADES = [
                 {"member_id": 1, "display_name": "chobes"},
             ],
             "assets": [
-                {"kind": "faab", "from_member_id": 3, "to_member_id": 1,
-                 "player_name": None, "player_id": None,
-                 "amount": 40, "unit": "faab", "description": None},
+                {
+                    "kind": "faab",
+                    "from_member_id": 3,
+                    "to_member_id": 1,
+                    "player_name": None,
+                    "player_id": None,
+                    "amount": 40,
+                    "unit": "faab",
+                    "description": None,
+                },
             ],
         },
     },
@@ -210,18 +231,36 @@ class FakeClient:
             return ExtractedTrade(kind="unclear", unclear_reason="fake client")
         giver, taker = self._members[0].display_name, self._members[1].display_name
         if self._case["expected_status"] == "clarification":
-            # An unresolvable player is the one failure every clarification
-            # case can be forced into without knowing why the real one fails.
+            # An unresolvable *member* is the one failure every clarification
+            # case can be forced into without knowing why the real one fails:
+            # since 2026-09-10 a player the directory cannot place is kept as
+            # text and logs anyway, so only a party nobody answers to asks.
             assets = [
                 ExtractedAsset(
-                    kind="player", from_party=giver, to_party=taker, player_name=UNRESOLVABLE
+                    kind="faab",
+                    from_party=UNRESOLVABLE,
+                    to_party=giver,
+                    amount=100,
+                    unit="faab",
                 )
             ]
-            condition = None
+            return ExtractedTrade(
+                kind=kind,
+                parties=[ExtractedParty(name=giver), ExtractedParty(name=UNRESOLVABLE)],
+                assets=assets,
+                rental_return_condition=None,
+                special_terms=[],
+                referenced_trade_code=None,
+                unclear_reason=None,
+            )
         else:
             assets = [
                 ExtractedAsset(
-                    kind="faab", from_party=taker, to_party=giver, amount=100, unit="faab"
+                    kind="faab",
+                    from_party=taker,
+                    to_party=giver,
+                    amount=100,
+                    unit="faab",
                 )
             ]
             condition = "returned after the Week 4 games" if kind == "rental" else None
@@ -283,7 +322,13 @@ def synthetic_league(members: list, players: list) -> tuple[RosterIndex, str]:
 
 
 def run_case(
-    case: dict, ai, members, players, rosters: RosterIndex, season: int, context: str | None = None
+    case: dict,
+    ai,
+    members,
+    players,
+    rosters: RosterIndex,
+    season: int,
+    context: str | None = None,
 ) -> Result:
     """Extract, resolve, and validate one case, and say whether it matched.
 
@@ -299,7 +344,9 @@ def run_case(
         if announcer is None:
             # Running it anyway would put the unplaceable-sender question to the
             # model and score the answer against the placed-sender expectation.
-            return _result(case, "-", "no-announcer", False, "announcer is not a member")
+            return _result(
+                case, "-", "no-announcer", False, "announcer is not a member"
+            )
     kind, outcome = "-", ""
     if not is_trade_candidate(case["text"]):
         outcome = NOT_A_CANDIDATE
@@ -315,7 +362,9 @@ def run_case(
                 context,
             )
         except Exception as exc:  # noqa: BLE001 - any model failure is reported the same way
-            return _result(case, "-", f"error:{exc.__class__.__name__}", False, "model call failed")
+            return _result(
+                case, "-", f"error:{exc.__class__.__name__}", False, "model call failed"
+            )
         kind = extracted.kind
         if kind == "not_a_trade":
             outcome = "not_a_trade"
@@ -411,8 +460,13 @@ def write_results(
             f"| {r.case_id} | {r.category} | `{r.expected_kind}` | `{r.expected_status}` | "
             f"`{r.actual_kind}` | `{r.outcome}` | {verdict} | {r.reason or '—'} |"
         )
-    lines += ["", "## Totals by category", "", "| category | run | passed | failed |",
-              "| --- | --- | --- | --- |"]
+    lines += [
+        "",
+        "## Totals by category",
+        "",
+        "| category | run | passed | failed |",
+        "| --- | --- | --- | --- |",
+    ]
     for category in dict.fromkeys(r.category for r in results):
         rows = [r for r in results if r.category == category]
         ok = sum(1 for r in rows if r.passed)
@@ -496,8 +550,11 @@ def main() -> int:
                 TradeRepository(conn).list_recent(TRADE_LIMIT),
             )
         except SnapshotUnavailable as exc:
-            print(f"--rosters: no league snapshot ({exc.reason}); "
-                  "keeping the synthetic context pack", file=sys.stderr)
+            print(
+                f"--rosters: no league snapshot ({exc.reason}); "
+                "keeping the synthetic context pack",
+                file=sys.stderr,
+            )
     if args.dry_run_fakes and len(members) < 2:
         print("need at least two members in public.members to build fake extractions")
         return 2

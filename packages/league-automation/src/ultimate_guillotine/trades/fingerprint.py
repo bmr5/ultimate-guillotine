@@ -10,8 +10,13 @@ def message_fingerprint(text: str) -> str:
 
 def _canonical_asset(asset: TradeAsset) -> list:
     return [
-        asset.kind, asset.from_member_id, asset.to_member_id, asset.player_id,
-        (asset.player_name or "").lower(), asset.amount, asset.unit,
+        asset.kind,
+        asset.from_member_id,
+        asset.to_member_id,
+        asset.player_id,
+        (asset.player_name or "").lower(),
+        asset.amount,
+        asset.unit,
         " ".join((asset.description or "").split()).lower(),
     ]
 
@@ -46,9 +51,7 @@ def trade_context_key(proposal: TradeProposal) -> str:
     identical proposal (which the fingerprint already catches as a duplicate).
     """
     players = sorted(
-        a.player_id or (a.player_name or "").lower()
-        for a in proposal.assets
-        if a.kind == "player"
+        a.player_id or (a.player_name or "").lower() for a in proposal.assets if a.kind == "player"
     )
     parties = ",".join(str(p) for p in sorted(p.member_id for p in proposal.parties))
     if not players:
