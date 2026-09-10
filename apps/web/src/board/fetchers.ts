@@ -1,8 +1,8 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { PostgrestClient } from "@supabase/postgrest-js";
 
 import type { Database, TableRow } from "./types";
 
-export type BoardClient = SupabaseClient<Database>;
+export type BoardClient = PostgrestClient<Database>;
 
 export type NflStateRow = Pick<
   TableRow<"nfl_state">,

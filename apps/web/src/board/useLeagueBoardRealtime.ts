@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
-import { supabase } from "@/supabaseClient";
+import { realtime } from "@/supabaseClient";
 
 import { boardKeys } from "./queryKeys";
 import {
@@ -61,9 +61,9 @@ export interface LeagueBoardRealtime {
 }
 
 const defaultTransport: RealtimeTransport = {
-  channel: (name) => supabase.channel(name) as unknown as FakeableChannel,
+  channel: (name) => realtime.channel(name) as unknown as FakeableChannel,
   removeChannel: (channel) => {
-    void supabase.removeChannel(channel as never);
+    void realtime.removeChannel(channel as never);
   },
 };
 
@@ -213,9 +213,7 @@ export function useLeagueBoardRealtime(
     let retryTimer: number | null = null;
     let cancelled = false;
 
-    const channel = active.channel(
-      `league-board-${mountId}-${reconnectNonce}`,
-    );
+    const channel = active.channel(`league-board-${mountId}-${reconnectNonce}`);
     // Unfiltered on purpose: `roster_holdings`, `team_season_state` and `team_week_projections`
     // all carry a `season_id`, but the league runs exactly one live season at a time, so every
     // event on them belongs to the season the board is showing. `keysForTable` scopes the

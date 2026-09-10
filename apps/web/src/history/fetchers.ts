@@ -1,9 +1,9 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { PostgrestClient } from "@supabase/postgrest-js";
 
 import { chunkIds } from "@/board/fetchers";
 import type { Database, TableRow } from "@/board/types";
 
-export type HistoryClient = SupabaseClient<Database>;
+export type HistoryClient = PostgrestClient<Database>;
 
 /**
  * Both row types name exactly the columns their select asks for, and no more — the rule
@@ -104,7 +104,7 @@ async function unwrap<T>(
 }
 
 /**
- * One string literal rather than a concatenation on purpose: supabase-js parses the select
+ * One string literal rather than a concatenation on purpose: postgrest-js parses the select
  * list at the type level, and `"a, " + "b"` widens to `string`, which makes every row it
  * returns `GenericStringError` and silently costs the fetcher its typed result.
  */

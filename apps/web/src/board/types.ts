@@ -7,10 +7,10 @@ export type Json =
   | Json[];
 
 /**
- * The board holds anon `select` only, so Insert/Update exist purely to satisfy supabase-js.
+ * The board holds anon `select` only, so Insert/Update exist purely to satisfy postgrest-js.
  *
  * `Relationships` is empty for every table that is never embedded in another table's select:
- * supabase-js reads it only to decide whether `parent ( column )` returns one row or an array,
+ * postgrest-js reads it only to decide whether `parent ( column )` returns one row or an array,
  * and a table nothing embeds has no such decision to make. The one table that needs it declares
  * its foreign key rather than leaving the shape to be guessed.
  */
@@ -241,7 +241,7 @@ export interface Database {
         loaded_at: string;
       }>;
       /**
-       * The declared foreign key is what tells supabase-js that `seasons ( year )` embedded in
+       * The declared foreign key is what tells postgrest-js that `seasons ( year )` embedded in
        * a `trades` select is one season, not an array of them; without it the fetcher's row
        * type and the row PostgREST actually returns disagree.
        */

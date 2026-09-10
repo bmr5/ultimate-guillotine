@@ -96,7 +96,7 @@ describe("Database row types", () => {
 
   it("types every numeric column as a JS number, never a string", () => {
     // PostgREST serialises the row with postgres `to_json`, and `to_json(numeric)` emits
-    // an unquoted JSON literal, so supabase-js hands the board numbers. This is the wire
+    // an unquoted JSON literal, so postgrest-js hands the board numbers. This is the wire
     // shape every later derivation and sort comparator depends on.
     const wire = JSON.parse(
       '{"points_for":301.50,"coverage_pct":88.75,"league_points":17.30}',

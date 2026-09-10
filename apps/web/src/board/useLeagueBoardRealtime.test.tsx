@@ -20,10 +20,10 @@ import { useLeagueBoardRealtime } from "./useLeagueBoardRealtime";
  * module imports it at the top level, and `createClient` refuses an empty URL before any test
  * can run. The same isolation `useBoardData.test.tsx` gives `boardClient`.
  */
-vi.mock("@/supabaseClient", () => ({ supabase: {} }));
+vi.mock("@/supabaseClient", () => ({ realtime: {} }));
 
 /**
- * A fresh object per `channel()` call, exactly as `supabase.channel` returns — so a test can
+ * A fresh object per `channel()` call, exactly as `realtime.channel` returns — so a test can
  * reach a channel the hook has already torn down and check that its callbacks are inert.
  */
 interface FakeChannel extends FakeableChannel {
