@@ -119,7 +119,7 @@ const PlayerRow = memo(function PlayerRow({
         )}
         <InjuryTag status={player.injuryStatus} />
       </span>
-      <span className="shrink-0 tabular-nums text-muted-foreground">
+      <span className="shrink-0 text-muted-foreground tabular-nums">
         {isStarter && player.livePoints !== null ? (
           <>
             {/*
@@ -248,7 +248,7 @@ export function RosterPanel({
         <div>
           <p
             id={`${labelId}starter`}
-            className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+            className="mb-1 text-xs font-medium text-muted-foreground"
           >
             {SLOT_LABELS.starter}
           </p>
@@ -282,7 +282,7 @@ export function RosterPanel({
           <div key={group.slot}>
             <p
               id={`${labelId}${group.slot}`}
-              className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+              className="mb-1 text-xs font-medium text-muted-foreground"
             >
               {group.label}
             </p>

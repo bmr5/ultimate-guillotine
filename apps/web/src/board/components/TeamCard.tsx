@@ -83,25 +83,20 @@ const PARTIAL_BADGE_TEXT = "partial";
  * A `min-h` alone would not do it; it works because every line inside the summary is bounded and
  * both rows are mounted on every card whatever it has to say.
  *
- * The arithmetic, from the line heights this markup actually uses (16px root):
+ * The arithmetic, from the line heights this markup actually uses (16px root), at `sm` and up:
  *
- * - row 1, the owner block: name 24px (inherited 1rem/1.5) + team name 20px (`text-sm`) +
- *   `mt-1` 4px + total line 16px (`text-xs`) = **64px**;
- * - row 1, the figures block beside it: 28px (`text-xl`, the emphasised figure) + its caption
- *   16px + `mt-1` 4px + empty-slot count 16px = **64px**, level with the owner block. It was
- *   68px when the block held one `text-2xl` projection; two figures side by side step the
- *   emphasised one down to `text-xl`, so this row got *shorter*, not taller, and the floor
- *   below still binds on every card;
+ * - row 1, the owner block: name 24px (`text-base`/1.5) + team name 20px (`text-sm`) + `mt-1`
+ *   4px + total line 16px (`text-xs`) = **64px**;
+ * - row 1, the figures block beside it: 30px (`text-3xl`, `leading-none`, the emphasised
+ *   figure) + `mt-1` 4px + caption 16px + `mt-1` 4px + empty-slot count 16px = **70px**, the
+ *   tall column whenever a lineup has a hole in it; below `sm` the figure is `text-2xl` and the
+ *   block is 64px, level with the owner;
  * - row 2, the chip line: `mt-1` 4px + `h-6` 24px = **28px**;
- * - the card's own `p-4`: 32px.
+ * - the card's own `py-3`: 24px.
  *
- * 32 + 64 + 28 = **124px**, and the floor stays at **128px = 8rem** rather than following it
- * down: the figures block was the tall column, so lowering the floor to its new height would
- * hand the whole grid back to whatever the owner block happens to measure. The ruling estimated
- * 7.75rem from the owner block alone; the extra quarter-rem is the `N empty` line under the
- * captions, which is the taller column whenever a lineup has a hole in it, and a floor that did
- * not clear it would let exactly those cards grow. The toggle's own `min-h-[44px]` is well under
- * the row it sits in and never binds.
+ * 24 + 70 + 28 = **122px**, so the floor stays at **128px = 8rem**: it clears the `N empty`
+ * line, which is exactly the line that would otherwise let those cards grow past the rest.
+ * The toggle's own `min-h-[44px]` is well under the row it sits in and never binds.
  */
 export const SUMMARY_MIN_HEIGHT_CLASS = "min-h-32";
 
@@ -119,9 +114,10 @@ export const CHIP_ROW_HEIGHT_CLASS = "h-6";
 
 /**
  * The chip line's indent, so the chips start at the owner name's left edge rather than at the
- * card's: the rank column's `w-5` (20px) plus the toggle's `gap-3` (12px) is 32px = `pl-8`.
+ * card's: the rank column's `w-5` (20px) plus the toggle's `gap-3` (12px) is 32px = `pl-8`,
+ * and from `sm` the rank is `w-6`, so the indent steps to `pl-9`.
  */
-export const CHIP_ROW_INDENT_CLASS = "pl-8";
+export const CHIP_ROW_INDENT_CLASS = "pl-8 sm:pl-9";
 
 /**
  * The figures block's width. Fixed so the numbers line up down the grid.
@@ -132,35 +128,37 @@ export const CHIP_ROW_INDENT_CLASS = "pl-8";
  * 139px. The chips have their own line now, and nothing reserves against this any more.
  *
  * Widened from `w-18` (72px) to hold two figures rather than one — Ben: "the team cards on the
- * board should show their current score right next to their projected". 112px is the two fixed
- * figure columns below plus the `gap-1` between them: 64 + 4 + 44. On a 375px card that leaves
- * the owner's name 147px (375 − 32 card padding − 20 rank − 12 `gap-3` − 112 − 8 `gap-x-2` −
- * 44 chevron), which is wider than the 141px round 3 measured, and the name no longer has to
- * share that field with anything.
+ * board should show their current score right next to their projected". It is the two fixed
+ * figure columns below plus the `gap-1` between them: 56 + 4 + 44 = 104px below `sm`, and
+ * 80 + 4 + 48 = 132px from `sm`, where the figures step up. On a 375px card that leaves the
+ * owner's name 127px (375 − 32 page padding − 24 card padding − 20 rank − 12 `gap-3` − 104 −
+ * 8 `gap-x-2` − 44 chevron), and the name no longer has to share that field with anything.
  */
-const PROJECTION_WIDTH_CLASS = "w-28";
+const PROJECTION_WIDTH_CLASS = "w-26 sm:w-34";
 
 /**
  * The two figure columns, sized rather than left to the text, so `Score` and `Proj` line up
  * down the whole grid instead of only when both happen to have the same number of digits.
  *
- * 64px holds `199.9` at `text-xl` with `tabular-nums`; 44px holds it at `text-sm`. The
- * emphasis — and therefore which column gets which width — is a board-wide decision, so every
- * card in the grid sizes them the same way at the same time.
+ * In the figures voice (Archivo at 75% width, tabular): 56px holds `199.9` at `text-2xl` and
+ * 80px at `text-3xl`; 44px holds it at `text-base` and 48px at `text-xl`. The emphasis — and
+ * therefore which column gets which width — is a board-wide decision, so every card in the grid
+ * sizes them the same way at the same time.
  */
-const FIGURE_EMPHASIZED_WIDTH_CLASS = "w-16";
-const FIGURE_SECONDARY_WIDTH_CLASS = "w-11";
+const FIGURE_EMPHASIZED_WIDTH_CLASS = "w-14 sm:w-20";
+const FIGURE_SECONDARY_WIDTH_CLASS = "w-11 sm:w-12";
 
 /**
- * The type sizes of the two figures.
- *
- * The single projection was `text-2xl`. Two numbers cannot both be that and still leave a
- * 375px card a readable owner name, so the emphasised one steps down to `text-xl` and the
- * quiet one sits at `text-sm` beside it. The pair is still the loudest thing on the card, and
- * it is still what a thumb lands on — the whole block stays inside the summary's one button.
+ * The type sizes of the two figures, in the figures voice (`figures` in `globals.css`): the
+ * emphasised one `text-3xl`, the quiet one `text-xl` beside it. Below `sm` both step down a
+ * size, because a 375px card cannot hold the pair at full size and still leave the owner's name
+ * readable. The pair is the loudest thing on the card, and it is still what a thumb lands on —
+ * the whole block stays inside the summary's one button.
  */
-const FIGURE_EMPHASIZED_CLASS = "text-xl font-semibold text-foreground";
-const FIGURE_SECONDARY_CLASS = "text-sm font-medium text-muted-foreground";
+const FIGURE_EMPHASIZED_CLASS =
+  "figures text-2xl leading-none text-foreground sm:text-3xl";
+const FIGURE_SECONDARY_CLASS =
+  "figures text-base leading-none text-muted-foreground sm:text-xl";
 
 /** Label for a team eliminated in a week the data layer does not know yet. */
 const ELIMINATED_LABEL = "Eliminated";
@@ -177,7 +175,7 @@ const EMPTY_SLOTS_DESCRIPTION = "empty starter slots";
 
 /** The visible pill: one line, its own border, small enough to sit on the owner's line. */
 const CHIP_FACE_CLASS =
-  "rounded-md border px-1.5 py-0.5 text-[0.6875rem] font-medium leading-4";
+  "rounded-sm border px-1.5 py-0.5 text-[0.6875rem] font-medium leading-4";
 
 /** `destructive` for something costing points now; `muted` for a footnote on the number. */
 type ChipTone = "destructive" | "muted";
@@ -306,7 +304,7 @@ const SummaryChip = memo(function SummaryChip({
             className={cn(
               // The chip covers nothing now, so it needs no `pointer-events-auto` to take its
               // own taps back and no 44px target to keep the card's line reachable around it.
-              "inline-flex shrink-0 items-center whitespace-nowrap rounded-md",
+              "inline-flex shrink-0 items-center rounded-md whitespace-nowrap",
               CHIP_ROW_HEIGHT_CLASS,
               CHIP_TEXT_CLASS[tone],
               CHIP_FOCUS_RING_CLASS,
@@ -315,7 +313,7 @@ const SummaryChip = memo(function SummaryChip({
             {face}
           </button>
         </TooltipTrigger>
-        <TooltipContent className="max-w-[16rem] whitespace-pre-line text-left">
+        <TooltipContent className="max-w-[16rem] text-left whitespace-pre-line">
           <span className="block">{description}</span>
           {computedText === undefined ? null : (
             <span className="mt-1 block text-xs text-muted-foreground">
@@ -504,7 +502,7 @@ export const TeamCard = memo(function TeamCard({
         className={cn(
           TEAM_CARD_CLASS,
           "overflow-hidden",
-          team.isEliminated && "border-dashed bg-muted/60",
+          team.isEliminated && "border-dashed bg-background/50",
         )}
       >
         <Collapsible open={isOpen}>
@@ -519,7 +517,7 @@ export const TeamCard = memo(function TeamCard({
           <div
             data-card-summary
             className={cn(
-              "grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-2 p-4",
+              "grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-2 px-3 py-3 sm:px-4",
               SUMMARY_MIN_HEIGHT_CLASS,
             )}
           >
@@ -534,7 +532,7 @@ export const TeamCard = memo(function TeamCard({
                 FOCUS_RING_CLASS,
               )}
             >
-              <span className="w-5 shrink-0 pt-1 text-sm tabular-nums text-muted-foreground">
+              <span className="w-5 shrink-0 pt-0.5 text-xl leading-none figures text-muted-foreground sm:w-6">
                 {rank}
               </span>
               <span className="min-w-0 flex-1">
@@ -547,7 +545,7 @@ export const TeamCard = memo(function TeamCard({
                 */}
                 <span
                   data-owner-name
-                  className="block truncate font-medium text-foreground"
+                  className="block truncate text-base font-medium text-foreground"
                 >
                   {/* Full-strength foreground even when eliminated; only the chrome dims. */}
                   {team.ownerName}
@@ -614,7 +612,7 @@ export const TeamCard = memo(function TeamCard({
                   words; the sr-only copies name each figure in full, because `84.2` read out
                   after `Score` could be a score of anything.
                 */}
-                <span className="flex items-baseline justify-end gap-1 text-xs text-muted-foreground">
+                <span className="mt-1 flex items-baseline justify-end gap-1 text-xs text-muted-foreground">
                   <span
                     className={cn(
                       "block text-right",
