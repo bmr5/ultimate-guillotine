@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { REVEAL_CLASS, revealStyle } from "@/motion/reveal";
 
 import { FORMER_MANAGER, ownerLabelFor } from "../derive/ownerLabel";
 import type { HistoryMemberRow } from "../fetchers";
@@ -47,7 +48,14 @@ export function TradeFilterBar(props: Props) {
     onClear,
   } = props;
   return (
-    <div className="space-y-2 rounded-xl border bg-background/70 px-4 py-3 backdrop-blur-md">
+    <div
+      className={cn(
+        "space-y-2 rounded-xl border bg-background/70 px-4 py-3 backdrop-blur-md",
+        REVEAL_CLASS,
+      )}
+      // The first thing on the page to settle; the strip and the cards follow it down.
+      style={revealStyle(0)}
+    >
       <div className="flex flex-wrap gap-1.5" role="group" aria-label="Season">
         {/* The vendored `Badge` is a plain div with no `asChild`, so a chip that must be
             clickable and focusable is a `Button` at `size="sm"`, not a Badge wrapping one. */}

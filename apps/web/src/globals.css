@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "@fontsource-variable/archivo/wdth.css";
+@import "./intro/intro.css";
 
 /*
  * Styles every native form control, which is what the `<select>` filters on the trade page
@@ -57,9 +58,10 @@
 @theme inline {
   /* One family in two widths: figures are set narrow and heavy, words at normal width. */
   --font-sans:
-    "Archivo Variable", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
-    "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif,
-    "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+    "Archivo Variable", ui-sans-serif, system-ui, -apple-system,
+    BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial,
+    "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji",
+    "Segoe UI Symbol", "Noto Color Emoji";
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -115,9 +117,17 @@
      * the aurora's colors. The canvas paints over it once it is ready.
      */
     background-image:
-      radial-gradient(60% 45% at 30% 25%, rgb(80 45 120 / 0.35), transparent 70%),
+      radial-gradient(
+        60% 45% at 30% 25%,
+        rgb(80 45 120 / 0.35),
+        transparent 70%
+      ),
       radial-gradient(45% 40% at 75% 60%, rgb(10 70 90 / 0.3), transparent 70%),
-      radial-gradient(35% 30% at 55% 85%, rgb(180 100 40 / 0.14), transparent 70%);
+      radial-gradient(
+        35% 30% at 55% 85%,
+        rgb(180 100 40 / 0.14),
+        transparent 70%
+      );
     background-attachment: fixed;
   }
 }
@@ -140,5 +150,34 @@
   .board-team-card [data-state="closed"] {
     animation: none !important;
     transition: none !important;
+  }
+}
+
+/*
+ * The one entrance (`src/motion/reveal.ts`). Everything that mounts settles into place with the
+ * same short drop — six pixels, the direction the blade goes — in one cascade down the page,
+ * `--reveal-index` steps apart. While the opening curtain is up (`[data-intro="playing"]`, set
+ * by `src/intro/IntroGate.tsx`) every entrance is held at its first frame, so a page that loaded
+ * under the curtain makes its entrance as the curtain parts. Reduced motion stills it, like the
+ * sky and the cards above.
+ */
+@layer components {
+  .reveal {
+    animation: reveal-in 520ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: calc(var(--reveal-index, 0) * 45ms);
+  }
+  [data-intro="playing"] .reveal {
+    animation-play-state: paused;
+  }
+  @keyframes reveal-in {
+    from {
+      opacity: 0;
+      transform: translateY(-6px);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .reveal {
+      animation: none;
+    }
   }
 }
