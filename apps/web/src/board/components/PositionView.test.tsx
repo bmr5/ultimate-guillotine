@@ -110,6 +110,7 @@ function renderView({
       onToggle={onToggle}
       highlightedPlayerIds={highlightedPlayerIds}
       rosterPositions={LEAGUE_SLOTS}
+      onOpenPlayer={noop}
     />,
   );
 }

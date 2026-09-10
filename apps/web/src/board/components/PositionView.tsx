@@ -19,6 +19,7 @@ import {
 import { layoutStarters } from "../derive/roster";
 import { BOARD_GRID } from "../layout";
 import type { PositionFilter } from "../types";
+import { PlayerName } from "./PlayerName";
 import { RosterPanel } from "./RosterPanel";
 
 /** The badge a team likely to bid on this position carries; also what the tests assert on. */
@@ -83,6 +84,8 @@ interface PositionTeamRowProps {
   onToggle: (teamId: number) => void;
   highlightedPlayerIds: ReadonlySet<string>;
   rosterPositions: string[];
+  /** Opens a player's card from his name; the page owns the URL it writes. */
+  onOpenPlayer: (sleeperPlayerId: string) => void;
   /** The row's place in the page's cascade; the header is place 0. */
   revealIndex: number;
 }
@@ -99,6 +102,7 @@ const PositionTeamRow = memo(function PositionTeamRow({
   onToggle,
   highlightedPlayerIds,
   rosterPositions,
+  onOpenPlayer,
   revealIndex,
 }: PositionTeamRowProps) {
   const panelId = useId();
@@ -211,9 +215,13 @@ const PositionTeamRow = memo(function PositionTeamRow({
                         {player.slotLabel}
                       </span>
                     </ExplainedBadge>
-                    <span className="min-w-0 flex-1 truncate">
-                      <span className="font-medium">{player.fullName}</span>{" "}
-                      <span className="text-muted-foreground tabular-nums">
+                    <span className="flex min-w-0 flex-1 items-center gap-1">
+                      <PlayerName
+                        player={player}
+                        ownerName={row.ownerName}
+                        onOpen={onOpenPlayer}
+                      />
+                      <span className="shrink-0 text-muted-foreground tabular-nums">
                         {player.isStarter && player.livePoints !== null ? (
                           <>
                             <span aria-hidden="true">
@@ -295,6 +303,8 @@ const PositionTeamRow = memo(function PositionTeamRow({
                   players={row.team.roster}
                   starterSlots={starterSlots}
                   highlightedPlayerIds={highlightedPlayerIds}
+                  ownerName={row.ownerName}
+                  onOpenPlayer={onOpenPlayer}
                 />
               </CardContent>
             ) : null}
@@ -312,6 +322,7 @@ interface PositionViewProps {
   onToggle: (teamId: number) => void;
   highlightedPlayerIds: ReadonlySet<string>;
   rosterPositions: string[];
+  onOpenPlayer: (sleeperPlayerId: string) => void;
 }
 
 /**
@@ -328,6 +339,7 @@ export function PositionView({
   onToggle,
   highlightedPlayerIds,
   rosterPositions,
+  onOpenPlayer,
 }: PositionViewProps) {
   return (
     <ul className={BOARD_GRID}>
@@ -341,6 +353,7 @@ export function PositionView({
           onToggle={onToggle}
           highlightedPlayerIds={highlightedPlayerIds}
           rosterPositions={rosterPositions}
+          onOpenPlayer={onOpenPlayer}
         />
       ))}
     </ul>

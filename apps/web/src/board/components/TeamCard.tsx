@@ -290,6 +290,8 @@ interface TeamCardProps {
    * its neighbours, and the misalignment is the whole thing this prop exists to prevent.
    */
   emphasis: CardEmphasis;
+  /** Opens a player's card from his name on the roster; the page owns the URL it writes. */
+  onOpenPlayer: (sleeperPlayerId: string) => void;
 }
 
 /**
@@ -308,6 +310,7 @@ export const TeamCard = memo(function TeamCard({
   highlightedPlayerIds,
   rosterPositions,
   emphasis,
+  onOpenPlayer,
 }: TeamCardProps) {
   const panelId = useId();
   // Laid out once per card rather than once per open card: the count below the projection and
@@ -669,6 +672,8 @@ export const TeamCard = memo(function TeamCard({
                   players={team.roster}
                   starterSlots={starterRows}
                   highlightedPlayerIds={highlightedPlayerIds}
+                  ownerName={team.ownerName}
+                  onOpenPlayer={onOpenPlayer}
                 />
               </CardContent>
             ) : null}

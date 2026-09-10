@@ -90,6 +90,17 @@ export function auctionContext(
   };
 }
 
+/** The mark's accessible name; the sentence behind it is `draftedHereDescription`. */
+export const DRAFTED_HERE_LABEL = "Drafted here";
+
+/** What the mark's tooltip says, spelled once so the row and its tests cannot drift. */
+export function draftedHereDescription(
+  ownerName: string,
+  amount: number,
+): string {
+  return `Drafted by ${ownerName} for $${amount}`;
+}
+
 /** The card's context line: `9th priciest pick · 4th RB · RB average $22`. */
 export function auctionContextLine(context: AuctionContext): string {
   const parts = [`${ordinal(context.overallRank)} priciest pick`];

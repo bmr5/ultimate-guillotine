@@ -216,6 +216,9 @@ export function BoardPage() {
     [searchParams, setSearchParams],
   );
 
+  /** Stands in until the player card lands: the name is a control that goes nowhere yet. */
+  const noopOpen = useCallback(() => undefined, []);
+
   const isOpen = (teamId: number) =>
     openOverrides.get(teamId) ?? autoExpanded.has(teamId);
 
@@ -277,6 +280,7 @@ export function BoardPage() {
             onToggle={handleToggle}
             highlightedPlayerIds={filtered.matchedPlayerIds}
             rosterPositions={board.rosterPositions}
+            onOpenPlayer={noopOpen}
           />
         ) : null}
 
@@ -293,6 +297,7 @@ export function BoardPage() {
                   highlightedPlayerIds={filtered.matchedPlayerIds}
                   rosterPositions={board.rosterPositions}
                   emphasis={emphasis}
+                  onOpenPlayer={noopOpen}
                 />
               ))}
             </ul>
@@ -315,6 +320,7 @@ export function BoardPage() {
                       highlightedPlayerIds={filtered.matchedPlayerIds}
                       rosterPositions={board.rosterPositions}
                       emphasis={emphasis}
+                      onOpenPlayer={noopOpen}
                     />
                   ))}
                 </ul>

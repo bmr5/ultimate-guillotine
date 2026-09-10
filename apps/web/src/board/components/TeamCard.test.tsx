@@ -124,6 +124,7 @@ const renderCard = (
         highlightedPlayerIds={highlightedPlayerIds}
         rosterPositions={rosterPositions}
         emphasis={emphasis}
+        onOpenPlayer={noop}
       />
     </ul>,
   );

@@ -10,6 +10,7 @@ import {
   type StarterSlotRow,
 } from "../derive/roster";
 import type { RosterPlayer } from "../types";
+import { PlayerName } from "./PlayerName";
 
 /** The board's stand-in for "this player has no projection"; never a zero. */
 const NO_PROJECTION_TEXT = "—";
@@ -86,6 +87,10 @@ interface PlayerRowProps {
    * from `starterSlots` rather than from `players`.
    */
   isStarter?: boolean;
+  /** The owner label the mark's tooltip names: `Drafted by <owner> for $53`. */
+  ownerName: string;
+  /** Opens the player's card; the name is the control. */
+  onOpenPlayer: (sleeperPlayerId: string) => void;
 }
 
 /**
@@ -96,6 +101,8 @@ const PlayerRow = memo(function PlayerRow({
   player,
   isHighlighted,
   isStarter = false,
+  ownerName,
+  onOpenPlayer,
 }: PlayerRowProps) {
   // A placeholder row for a player missing from the directory carries neither, so the whole
   // meta span is dropped rather than rendering a bare separator.
@@ -108,14 +115,14 @@ const PlayerRow = memo(function PlayerRow({
       // so restyling the highlight does not have to mean rewriting the test.
       data-highlighted={isHighlighted || undefined}
       className={cn(
-        "flex items-baseline justify-between gap-2 py-0.5 text-sm",
+        "flex items-center justify-between gap-2 py-0.5 text-sm",
         isHighlighted && "rounded bg-accent px-1 text-accent-foreground",
       )}
     >
-      <span className="min-w-0 truncate">
-        <span className="font-medium">{player.fullName}</span>
+      <span className="flex min-w-0 items-center gap-2">
+        <PlayerName player={player} ownerName={ownerName} onOpen={onOpenPlayer} />
         {meta === "" ? null : (
-          <span className="ml-2 text-muted-foreground">{meta}</span>
+          <span className="shrink-0 text-muted-foreground">{meta}</span>
         )}
         <InjuryTag status={player.injuryStatus} />
       </span>
@@ -214,6 +221,10 @@ interface RosterPanelProps {
    */
   starterSlots: StarterSlotRow[];
   highlightedPlayerIds: ReadonlySet<string>;
+  /** The owner label every row's mark names. */
+  ownerName: string;
+  /** Opens a player's card from his name. */
+  onOpenPlayer: (sleeperPlayerId: string) => void;
 }
 
 /**
@@ -225,6 +236,8 @@ export function RosterPanel({
   players,
   starterSlots,
   highlightedPlayerIds,
+  ownerName,
+  onOpenPlayer,
 }: RosterPanelProps) {
   // The slot labels are section names inside a card, not document structure, so they are plain
   // label elements wired to their list with `aria-labelledby` rather than headings — a dozen
@@ -262,6 +275,8 @@ export function RosterPanel({
                   isHighlighted={highlightedPlayerIds.has(
                     row.player.sleeperPlayerId,
                   )}
+                  ownerName={ownerName}
+                  onOpenPlayer={onOpenPlayer}
                 />
               ) : (
                 // Two empty slots can carry the same name (`RB`, `RB`), so the index is part
@@ -294,6 +309,8 @@ export function RosterPanel({
                   isHighlighted={highlightedPlayerIds.has(
                     player.sleeperPlayerId,
                   )}
+                  ownerName={ownerName}
+                  onOpenPlayer={onOpenPlayer}
                 />
               ))}
             </ul>
