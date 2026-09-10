@@ -15,7 +15,7 @@ OPEN = ("queued", "running")
 
 _COLUMNS = """
     id, trade_id, trade_code, status, requested_guid, created_at, started_at, finished_at,
-    attempts, output_path, error
+    attempts, output_path, error, chat_guid
 """
 
 
@@ -32,6 +32,8 @@ class VideoJob:
     attempts: int
     output_path: str | None
     error: str | None
+    #: The chat the request came from; the file goes back there. None: the mode's target.
+    chat_guid: str | None = None
 
 
 def _job(row: tuple) -> VideoJob:
@@ -43,7 +45,11 @@ class VideoJobRepository:
         self._conn = conn
 
     def enqueue(
-        self, trade_id: int, trade_code: str, requested_guid: str | None
+        self,
+        trade_id: int,
+        trade_code: str,
+        requested_guid: str | None,
+        chat_guid: str | None = None,
     ) -> tuple[int, bool]:
         """Queue a video for a trade; ``(job id, True)`` when this call created
         it, ``(job id, False)`` when one was already queued or running."""
@@ -57,9 +63,9 @@ class VideoJobRepository:
             if row:
                 return int(row[0]), False
             cur.execute(
-                "insert into private.video_jobs (trade_id, trade_code, requested_guid)"
-                " values (%s, %s, %s) returning id",
-                (trade_id, trade_code, requested_guid),
+                "insert into private.video_jobs (trade_id, trade_code, requested_guid, chat_guid)"
+                " values (%s, %s, %s, %s) returning id",
+                (trade_id, trade_code, requested_guid, chat_guid),
             )
             return int(cur.fetchone()[0]), True
 

@@ -147,9 +147,18 @@ class DeliveryService:
         return DeliveryResult("sent", outbound_id, guid)
 
     def deliver_attachment(
-        self, run_id: int | None, agent: str, filename: str, data: bytes
+        self,
+        run_id: int | None,
+        agent: str,
+        filename: str,
+        data: bytes,
+        *,
+        reply_to: str | None = None,
     ) -> DeliveryResult:
         """Send one file to the configured chat, effectively once.
+
+        ``reply_to`` is the chat the request came from, resolved the same way
+        ``deliver`` resolves it: a file asked for in the self-test chat lands there.
 
         The same reserve → commit → send → mark path as ``deliver``. The outbound
         row's content is ``attachment:<filename>`` and its hash is over the bytes,
@@ -157,7 +166,7 @@ class DeliveryService:
         is reconciled by file name among the bot's own recent messages, which is
         the only thing about an attachment that iMessage hands back.
         """
-        target = self._resolve_target()
+        target = self._resolve_target(reply_to)
         digest = attachment_hash(data)
         content = f"attachment:{filename}"
         pending = self._outbound.pending_sending(target.id, digest)

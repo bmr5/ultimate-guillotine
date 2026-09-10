@@ -89,21 +89,25 @@ class VideoRequests:
         return None
 
     def handle(self, msg: InboundMessage) -> None:
+        # Answers go back to the chat that asked when that is the self-test chat;
+        # the delivery service decides, this only says where the request was.
         trade = self.resolve(msg)
         if trade is None:
-            self._delivery.deliver(None, AGENT, HELP)
+            self._delivery.deliver(None, AGENT, HELP, reply_to=msg.chat_guid)
             return
         code = trade["trade_code"]
         if trade["status"] != "accepted":
-            self._delivery.deliver(None, AGENT, f"{code} was rescinded, so no video for it.")
+            self._delivery.deliver(
+                None, AGENT, f"{code} was rescinded, so no video for it.", reply_to=msg.chat_guid
+            )
             return
-        _job_id, created = self._jobs.enqueue(trade["trade_id"], code, msg.guid)
+        _job_id, created = self._jobs.enqueue(trade["trade_id"], code, msg.guid, msg.chat_guid)
         self._conn.commit()
         if created:
             text = f"🎬 On it — the video for {code} {self._eta}."
         else:
             text = f"🎬 The video for {code} is already in the works."
-        self._delivery.deliver(None, AGENT, text)
+        self._delivery.deliver(None, AGENT, text, reply_to=msg.chat_guid)
 
 
 def video_trigger(requests: VideoRequests, chat_guids: frozenset[str]) -> Trigger:

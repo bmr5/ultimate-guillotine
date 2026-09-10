@@ -263,6 +263,14 @@ def test_deliver_attachment_reconciles_a_crashed_send_by_filename() -> None:
     assert client.sent == []
 
 
+def test_production_sends_a_file_asked_for_in_the_self_test_chat_there() -> None:
+    service, client, _, _ = make(DeliveryMode.PRODUCTION)
+    service.deliver_attachment(None, "trade-video", "clip.mp4", b"mp4", reply_to=TEST_GUID)
+    assert client.sent[-1] == (TEST_GUID, "clip.mp4", b"mp4")
+    service.deliver_attachment(None, "trade-video", "clip2.mp4", b"mp4", reply_to=None)
+    assert client.sent[-1] == (PROD_GUID, "clip2.mp4", b"mp4")
+
+
 def test_production_answers_the_self_test_chat_in_the_self_test_chat() -> None:
     """Ben (2026-09-10): the league chat is live, and the self-test chat keeps
     working for trying the bot out. A message from the self-test chat is answered

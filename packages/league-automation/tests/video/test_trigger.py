@@ -47,8 +47,8 @@ class FakeJobs:
         self.enqueued: list[tuple] = []
         self.existing = existing or set()
 
-    def enqueue(self, trade_id, trade_code, requested_guid):
-        self.enqueued.append((trade_id, trade_code, requested_guid))
+    def enqueue(self, trade_id, trade_code, requested_guid, chat_guid=None):
+        self.enqueued.append((trade_id, trade_code, requested_guid, chat_guid))
         return (7, False) if trade_id in self.existing else (1, True)
 
 
@@ -56,8 +56,9 @@ class FakeDelivery:
     def __init__(self) -> None:
         self.sent: list[tuple[str, str]] = []
 
-    def deliver(self, run_id, agent, content):
+    def deliver(self, run_id, agent, content, reply_to=None):
         self.sent.append((agent, content))
+        self.reply_to = reply_to
 
 
 class FakeConn:
@@ -93,11 +94,13 @@ def test_a_reply_to_the_alert_queues_that_trade_and_says_so() -> None:
     requests(FakeTrades(by_guid={"alert-1": TRADE}), jobs, delivery, conn).handle(
         msg("@bot create trade video", guid="reply-1", thread="alert-1")
     )
-    assert jobs.enqueued == [(5, "T-2026-003", "reply-1")]
+    assert jobs.enqueued == [(5, "T-2026-003", "reply-1", CHAT)]
     assert conn.commits == 1
     assert delivery.sent == [
         (AGENT, "🎬 On it — the video for T-2026-003 usually takes 5 to 10 minutes.")
     ]
+    # Answered in the chat that asked, when the delivery service allows it.
+    assert delivery.reply_to == CHAT
 
 
 def test_a_code_in_the_text_works_without_a_reply() -> None:
@@ -122,7 +125,9 @@ def test_no_trade_found_asks_for_a_reply_or_a_code() -> None:
     jobs, delivery, conn = FakeJobs(), FakeDelivery(), FakeConn()
     requests(FakeTrades(), jobs, delivery, conn).handle(msg("@bot create trade video"))
     assert jobs.enqueued == [] and conn.commits == 0
-    assert delivery.sent == [(AGENT, HELP)]
+    assert (
+        delivery.sent == [(AGENT, HELP)] and delivery.reply_to == CHAT and delivery.reply_to == CHAT
+    )
 
 
 def test_a_rescinded_trade_gets_no_video() -> None:

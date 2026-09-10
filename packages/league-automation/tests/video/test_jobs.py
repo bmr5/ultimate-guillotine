@@ -7,18 +7,19 @@ from ultimate_guillotine.video.jobs import VideoJobRepository
 
 def test_enqueue_claim_finish(conn) -> None:
     repo = VideoJobRepository(conn)
-    job_id, created = repo.enqueue(501, "T-2026-501", "reply-1")
+    job_id, created = repo.enqueue(501, "T-2026-501", "reply-1", "iMessage;+;chat-test")
     assert created
     again, created_again = repo.enqueue(501, "T-2026-501", "reply-2")
     assert (again, created_again) == (job_id, False)
 
     job = repo.claim()
     assert job is not None and job.id == job_id
-    assert (job.status, job.attempts, job.trade_code, job.requested_guid) == (
+    assert (job.status, job.attempts, job.trade_code, job.requested_guid, job.chat_guid) == (
         "running",
         1,
         "T-2026-501",
         "reply-1",
+        "iMessage;+;chat-test",
     )
     assert job.started_at is not None
     assert repo.claim() is None

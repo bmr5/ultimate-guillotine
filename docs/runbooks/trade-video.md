@@ -131,8 +131,9 @@ with **`@bot create trade video`**. The listener answers within a second:
 
 and queues a row in `private.video_jobs`. The `guillotine-video-jobs` cron job (every 2 min)
 runs `ug video jobs run`, which claims the oldest queued job, writes the read, generates the
-voiced clip (as long as the read needs), composites it, and delivers the mp4 through the delivery service — so in test mode
-it lands in the self-test chat, and in the league chat only once the mode is promoted. One
+voiced clip (as long as the read needs), composites it, and delivers the mp4 through the delivery
+service to the chat that asked: a request in the self-test chat is answered there in every mode,
+a request in the league chat is answered in the league chat once the mode is production. One
 open job per trade: asking twice gets "already in the works". A rescinded trade gets no video.
 Failures are recorded on the job and posted to `#guillotine-ops`; nothing retries by itself
 because every attempt costs credits (52 for 8 s).
