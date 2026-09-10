@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { BoardTeam } from "../types";
-import { faabTiers, kMeansThree } from "./tiers";
+import { faabTiers, kMeansThree, richestTeam, tierBlurb } from "./tiers";
 
 const team = (teamId: number, faabRemaining: number | null): BoardTeam =>
   ({
@@ -42,5 +42,26 @@ describe("faabTiers", () => {
     expect(tiers.tiers[2].teams.map((t) => t.teamId)).toEqual([1, 5]);
     expect(tiers.unknown.map((t) => t.teamId)).toEqual([6]);
     expect(tiers.method).toContain("k-means");
+  });
+});
+
+describe("tierBlurb", () => {
+  it("names the richest and the poorest so the bragging rights are explicit", () => {
+    const tiers = faabTiers([
+      team(1, 10),
+      team(2, 900),
+      team(3, 400),
+      team(4, 880),
+      team(5, 0),
+    ]);
+    expect(tierBlurb(tiers.tiers[0])).toContain(
+      "Owner 2 leads the league at $900",
+    );
+    expect(tierBlurb(tiers.tiers[1])).toContain("Owner 3 is one good week");
+    expect(tierBlurb(tiers.tiers[2])).toContain(
+      "Owner 5 brings up the rear at $0",
+    );
+    expect(richestTeam(tiers)?.teamId).toBe(2);
+    expect(tierBlurb(faabTiers([]).tiers[0])).toBe("Nobody here. Yet.");
   });
 });

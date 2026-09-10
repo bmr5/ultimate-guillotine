@@ -1,12 +1,13 @@
 import { Card, CardContent } from "@/components/ui/card";
 
 import { formatFaab } from "../derive/faab";
-import type { FaabTiers } from "../derive/tiers";
+import { richestTeam, tierBlurb, type FaabTiers } from "../derive/tiers";
 import { BOARD_GRID } from "../layout";
 import { FaabCurveChart } from "./FaabCurveChart";
 
 /** Three cards, richest tier first: the owner and the team, nothing else (Ben, 2026-09-10). */
 export function TiersView({ tiers }: { tiers: FaabTiers }) {
+  const richest = richestTeam(tiers);
   return (
     <div className="space-y-3">
       <ul className={BOARD_GRID} aria-label="FAAB tiers">
@@ -22,6 +23,9 @@ export function TiersView({ tiers }: { tiers: FaabTiers }) {
                       ? `${formatFaab(tier.min)} FAAB · ${tier.teams.length} ${tier.teams.length === 1 ? "team" : "teams"}`
                       : `${formatFaab(tier.min)}–${formatFaab(tier.max)} FAAB · ${tier.teams.length} teams`}
                 </p>
+                <p className="text-sm text-muted-foreground italic">
+                  {tierBlurb(tier)}
+                </p>
                 <ul className="space-y-1 text-sm">
                   {tier.teams.map((team) => (
                     <li
@@ -33,6 +37,15 @@ export function TiersView({ tiers }: { tiers: FaabTiers }) {
                         <span className="font-medium text-foreground">
                           {team.ownerName}
                         </span>
+                        {richest !== null && richest.teamId === team.teamId ? (
+                          <span
+                            data-crown
+                            className="ml-1 rounded border border-primary/40 px-1 text-[0.6875rem] font-medium text-primary"
+                            title="Richest team in the league"
+                          >
+                            richest
+                          </span>
+                        ) : null}
                         <span className="text-muted-foreground">{` · ${team.teamName}`}</span>
                       </span>
                       {/* Ben (2026-09-10): "put the teams FAAB $ amount!" */}
