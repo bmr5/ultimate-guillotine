@@ -651,7 +651,7 @@ def test_a_bool_a_word_and_nothing_are_not_ints() -> None:
 
 
 def test_a_millisecond_epoch_becomes_an_aware_utc_datetime() -> None:
-    assert from_millis(1788822090433) == datetime(2026, 9, 7, 4, 21, 30, 433000, tzinfo=UTC)
+    assert from_millis(1788822090433) == datetime(2026, 9, 7, 23, 1, 30, 433000, tzinfo=UTC)
 
 
 def test_a_missing_or_unusable_epoch_is_none() -> None:
@@ -1192,7 +1192,7 @@ def test_a_sync_writes_every_pick_onto_the_team_that_made_it(conn, season_id, te
     first = load_fixture("draft_picks_2026.json")[0]
     assert rows[0][:2] == (team_id(first["roster_id"]), first["player_id"])
     assert rows[0][7] == int(first["metadata"]["amount"])
-    assert rows[0][8] == datetime(2026, 9, 7, 4, 21, 30, 433000, tzinfo=UTC)
+    assert rows[0][8] == datetime(2026, 9, 7, 23, 1, 30, 433000, tzinfo=UTC)
 
 
 def test_a_rerun_rewrites_the_same_rows_and_moves_only_the_stamp(conn, season_id) -> None:
@@ -1344,14 +1344,14 @@ def test_faab_moves_map_roster_ids_onto_team_ids() -> None:
 def test_the_week_is_sleepers_leg_and_the_time_prefers_status_updated() -> None:
     (tx,) = load_transactions([TRADE], TEAMS).transactions
     assert tx.week == 1
-    assert tx.occurred_at == datetime(2026, 9, 7, 19, 21, 40, tzinfo=UTC)
+    assert tx.occurred_at == datetime(2026, 9, 8, 14, 1, 40, tzinfo=UTC)
 
 
 def test_a_claim_keeps_its_bid_and_falls_back_to_created() -> None:
     (tx,) = load_transactions([CLAIM], TEAMS).transactions
     assert tx.kind == "waiver"
     assert tx.waiver_bid == 12
-    assert tx.occurred_at == datetime(2026, 9, 9, 7, 15, 44, 972000, tzinfo=UTC)
+    assert tx.occurred_at == datetime(2026, 9, 10, 1, 55, 44, 972000, tzinfo=UTC)
     assert sorted(tx.moves, key=lambda m: m.action) == [
         Move("pC", 33, "add"),
         Move("pD", 33, "drop"),
