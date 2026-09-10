@@ -111,6 +111,48 @@ PROMPT_RULES_2026_3 = [
         "`you` is never the person on the other side of the same transfer",
     ),
     (
+        "a player is spelled the way the rosters spell him",
+        "Write each player exactly as it is spelled there",
+    ),
+    (
+        "a partial name is resolved on the giving party's roster",
+        (
+            "find that player on the *giving* party's roster and copy his full name from"
+            " `Rosters` into `player_name`"
+        ),
+    ),
+    (
+        "an unknown giver widens the search to every roster",
+        "If the giving party is not known, look across every roster",
+    ),
+    (
+        "a name on nobody's roster is left as written",
+        "A name that matches nobody's roster is left exactly as the announcement wrote it",
+    ),
+    (
+        "an uncoded rescission names its trade from the season's list",
+        "use that list to find the one it means and copy that trade's code",
+    ),
+    (
+        "an ambiguous or absent match leaves the code null",
+        "If two or more fit, or none does, leave `referenced_trade_code` as `null`",
+    ),
+    (
+        "FAAB a team cannot pay is unclear, never quietly corrected",
+        (
+            "if an announcement has a team paying more FAAB than it has left, set `kind` to"
+            " `unclear` and say so in one sentence"
+        ),
+    ),
+    (
+        "the current week is what a relative week means",
+        "`next week` is that number plus one",
+    ),
+    (
+        "the current week still does not state a week",
+        "set `effective_week` only when the announcement gives one",
+    ),
+    (
         "unstated direction is unclear, with a reason",
         "Also `unclear`, with a one-sentence `unclear_reason`:",
     ),
@@ -148,7 +190,8 @@ def test_prompt_keeps_the_not_a_trade_rules_ahead_of_the_unclear_rules() -> None
 def test_prompt_marks_the_user_message_context_lines_as_never_announcement() -> None:
     prompt = load_prompt()
     assert (
-        "The user message's `Season:`, `Week hint:`, `League members`, and `Announcer:` lines are"
+        "The user message's `Season:`, `Week hint:`, `League members`, `Announcer:`,"
+        " `Current NFL week:`,\n`Rosters:`, `FAAB remaining:` and `Trades this season:` lines are"
         in prompt
     )
     assert "context, never announcement content" in prompt
@@ -213,6 +256,29 @@ def test_the_announcer_line_names_the_sender_or_says_unknown() -> None:
     assert "Announcer: Member03" in lines
     members = "League members (Sleeper username: names people use): Member03; Member04"
     assert lines.index("Announcer: Member03") == lines.index(members) + 1
+
+
+def test_the_context_pack_goes_between_the_announcer_and_the_announcement() -> None:
+    """Last thing read is the announcement itself; everything before it is what
+    the prompt calls context, and the pack is more of the same."""
+    ai = FakeAI(ExtractedTrade(kind="not_a_trade"))
+    pack = "Current NFL week: 4\n\nRosters:\nMember03 (no known nicknames): Player Beta RB"
+    extract_trade(
+        ai, "Member03 sends Beta", 2026, None, ["Member03", "Member04"], "Member03", pack
+    )
+    user = ai.calls[0][1]
+    assert pack in user
+    assert user.index("Announcer: Member03") < user.index(pack) < user.index("Announcement:")
+
+
+def test_no_context_pack_writes_no_section_at_all() -> None:
+    """An empty `Rosters:` heading would tell the model every roster is empty,
+    which is a claim; leaving the section out tells it nothing, which is true."""
+    ai = FakeAI(ExtractedTrade(kind="not_a_trade"))
+    extract_trade(ai, "Member03 sends Beta", 2026, None, ["Member03", "Member04"])
+    user = ai.calls[0][1]
+    assert "Rosters:" not in user and "Current NFL week" not in user
+    assert user.splitlines()[-2:] == ["Announcement:", "Member03 sends Beta"]
 
 
 @pytest.mark.skipif(

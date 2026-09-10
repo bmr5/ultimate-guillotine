@@ -10,6 +10,7 @@ contracts spreadsheet, so a prompt change can be measured against real history.
 
 import argparse
 import hashlib
+import sys
 from collections.abc import Callable, Iterable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -17,6 +18,7 @@ from pathlib import Path
 import httpx
 import openpyxl
 
+from ultimate_guillotine.advisor.state import SnapshotRepository
 from ultimate_guillotine.ai.structured import AIInvalidOutput
 from ultimate_guillotine.cli.deps import build_ai, build_delivery, build_deps
 from ultimate_guillotine.config import DeliveryMode, load_settings
@@ -29,6 +31,7 @@ from ultimate_guillotine.data.repositories import (
 from ultimate_guillotine.messages.bluebubbles import InboundMessage
 from ultimate_guillotine.sleeper.client import SleeperClient
 from ultimate_guillotine.sleeper.players import PlayerRepository
+from ultimate_guillotine.trades.context import TRADE_LIMIT, context_from_snapshot
 from ultimate_guillotine.trades.detect import ALERT, is_trade_candidate
 from ultimate_guillotine.trades.extract import PROMPT_VERSION, extract_trade
 from ultimate_guillotine.trades.models import TradeProposal
@@ -133,6 +136,7 @@ def dry_run_pipeline(
     rosters: RosterIndex,
     source_guid: str = "dry-run",
     announcer: MemberRef | None = None,
+    context: str | None = None,
 ) -> TradeProposal | Unresolved:
     """Extract, resolve, and validate one announcement without writing or sending.
 
@@ -146,12 +150,19 @@ def dry_run_pipeline(
     the sender's handle. A replay has no sender at all, so it passes none and
     first-person announcements read there as they read in a chat whose handles
     were never loaded.
+
+    ``context`` is the league as it stands -- the week, the rosters, the FAAB,
+    the season's trades. `ug trades extract` builds it so a dry run sees what the
+    listener would have shown the model. A replay passes none on purpose: its
+    announcements are years old, and today's rosters would be a description of
+    the wrong league presented as fact.
     """
     member_names = [
         f"{m.display_name}: {', '.join(m.aliases) or 'no known nicknames'}" for m in members
     ]
     extracted, usage = extract_trade(
-        ai, text, season, None, member_names, announcer.display_name if announcer else None
+        ai, text, season, None, member_names,
+        announcer.display_name if announcer else None, context,
     )
     if extracted.kind == "not_a_trade":
         return NOT_A_TRADE
@@ -192,6 +203,24 @@ def find_member(members, name: str) -> MemberRef | None:
     return None
 
 
+def league_context(conn, members) -> str | None:
+    """The context pack the listener would have put in front of this alert.
+
+    Built from the Advisor's league snapshot, the same read the registrar makes,
+    so a dry run and the real thing show the model the same league. A data layer
+    that cannot describe the league yet costs the dry run its context and
+    nothing else -- the note goes to stderr so a piped `--text` run still prints
+    only the proposal.
+    """
+    try:
+        snapshot = SnapshotRepository(conn).load()
+        trades = TradeRepository(conn).list_recent(TRADE_LIMIT)
+        return context_from_snapshot(snapshot, members, trades) or None
+    except Exception as exc:  # noqa: BLE001 - any context failure degrades the same way
+        print(f"no context pack: {exc.__class__.__name__}", file=sys.stderr)
+        return None
+
+
 def cmd_extract(args: argparse.Namespace) -> int:
     """Print what the registrar would record, without recording or sending it."""
     deps = build_deps()
@@ -220,6 +249,7 @@ def cmd_extract(args: argparse.Namespace) -> int:
             PlayerRepository(conn).all_active(),
             rosters,
             announcer=announcer,
+            context=league_context(conn, members),
         )
     except AIInvalidOutput as exc:
         # Only the class name: the exception chains a pydantic error whose body

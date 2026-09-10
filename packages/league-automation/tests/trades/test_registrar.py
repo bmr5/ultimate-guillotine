@@ -87,6 +87,9 @@ class FakeTrades:
     def find_by_id(self, trade_id):
         return None
 
+    def list_recent(self, limit=10):
+        return []
+
 
 class FakeNotifier:
     def __init__(self):
@@ -372,7 +375,9 @@ def test_a_sleeper_outage_degrades_to_an_empty_roster_index() -> None:
     reg, runs, notifier = build(FakeAI(good_extraction()), delivery=delivery,
                                 conn=SeasonConn([], (2026,)), sleeper=ExplodingSleeper())
     assert reg.handle(msg("🚨 Member01 sends Player Alpha to Member02 for 450 FAAB")) == "created"
-    assert notifier.ops_sent == ["Trade Registrar could not load rosters: TimeoutError"]
+    # The fake connection cannot answer the data layer either, so the context
+    # pack degrades alongside the rosters -- two independent notes, one outage.
+    assert "Trade Registrar could not load rosters: TimeoutError" in notifier.ops_sent
     assert runs.finished[0][1] == "succeeded"
 
 

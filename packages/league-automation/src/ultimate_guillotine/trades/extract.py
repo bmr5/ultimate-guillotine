@@ -21,6 +21,7 @@ def extract_trade(
     week_hint: int | None,
     member_names: list[str],
     announcer: str | None = None,
+    context: str | None = None,
 ) -> tuple[ExtractedTrade, AIUsage]:
     """Put one announcement to the model, with the context lines the prompt reads.
 
@@ -30,11 +31,24 @@ def extract_trade(
     when nobody could be placed: the prompt has a rule for an unknown announcer
     (first person then names nobody), and a line that is sometimes missing would
     leave the model to guess which case it is in.
+
+    ``context`` is the context pack from
+    :func:`~ultimate_guillotine.trades.context.build_registrar_context` -- the
+    current week, the rosters, the FAAB and the season's trades -- and is the
+    opposite case: it is *omitted* when there is none, because every one of its
+    sections is a list of facts and an empty list of facts is a claim. `Rosters:`
+    over nothing says every roster is empty, which is worse than saying nothing
+    at all. A missing announcer, by contrast, is itself a fact the prompt has a
+    rule for.
+
+    The pack goes after the announcer and before the announcement, so the
+    announcement is the last thing the model reads.
     """
     user = (
         f"Season: {season}\nWeek hint: {week_hint if week_hint is not None else 'unknown'}\n"
         f"League members (Sleeper username: names people use): {'; '.join(member_names)}\n"
         f"Announcer: {announcer or 'unknown'}\n\n"
-        f"Announcement:\n{text}"
+        + (f"{context}\n\n" if context else "")
+        + f"Announcement:\n{text}"
     )
     return client.parse(load_prompt(), user, ExtractedTrade, "extracted_trade")

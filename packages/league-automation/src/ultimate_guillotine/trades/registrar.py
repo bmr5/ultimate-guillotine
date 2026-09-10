@@ -23,6 +23,7 @@ import re
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 
+from ultimate_guillotine.advisor.state import SnapshotRepository
 from ultimate_guillotine.config import Settings
 from ultimate_guillotine.core.signature import is_signed
 from ultimate_guillotine.data.repositories import (
@@ -32,6 +33,7 @@ from ultimate_guillotine.data.repositories import (
 )
 from ultimate_guillotine.listener.processing import Trigger
 from ultimate_guillotine.messages.bluebubbles import InboundMessage
+from ultimate_guillotine.trades.context import TRADE_LIMIT, context_from_snapshot
 from ultimate_guillotine.trades.detect import is_rescission_candidate, is_trade_candidate
 from ultimate_guillotine.trades.extract import PROMPT_VERSION, extract_trade
 from ultimate_guillotine.trades.fingerprint import message_fingerprint, trade_context_key
@@ -206,6 +208,7 @@ class TradeRegistrar:
             None,
             [_member_line(m) for m in members],
             announcer.display_name if announcer else None,
+            self._context(members),
         )
         input_version = f"{PROMPT_VERSION}:{usage.model}"
 
@@ -270,6 +273,43 @@ class TradeRegistrar:
         if self._contacts is None or not msg.sender_address:
             return None
         return self._contacts.member_for_handle_hash(handle_hash(msg.sender_address))
+
+    def _context(self, members) -> str | None:
+        """The rosters, the FAAB, the week and the season's trades, or nothing.
+
+        People announce trades by first name -- `a 1 week Rhamondre rental` --
+        and a model with no rosters in front of it can only copy the fragment
+        through. So the extraction is given the league as it stands, built from
+        the Advisor's one snapshot read rather than from a second set of queries
+        against the same tables.
+
+        Nothing here is load-bearing. A data layer that cannot describe the
+        league yet -- a fresh season, a stalled sync, a missing ``nfl_state`` row
+        -- costs the extraction its context and no more: resolution still runs,
+        and a partial name still has the roster step in ``resolve_extracted``
+        behind it. So every failure degrades to ``None`` with an ops note naming
+        the exception class, the way a Sleeper outage degrades the roster index.
+        The rollback is what makes that true on a *query* failure: psycopg leaves
+        the transaction aborted, and the `accept` further down would then fail
+        for a reason that has nothing to do with the trade.
+
+        The pack carries recorded terms only, never an ``evidence_excerpt`` --
+        see ``trades.context``. Nothing here is logged.
+        """
+        if self._conn is None:
+            return None
+        try:
+            snapshot = SnapshotRepository(self._conn).load()
+            return context_from_snapshot(
+                snapshot, members, self._trades.list_recent(TRADE_LIMIT)
+            ) or None
+        except Exception as exc:  # noqa: BLE001 - any context failure degrades the same way
+            with contextlib.suppress(Exception):
+                self._conn.rollback()
+            self._notifier.ops(
+                f"Trade Registrar could not build the context pack: {exc.__class__.__name__}"
+            )
+            return None
 
     def _rescind_by_code(self, run_id: int, msg: InboundMessage) -> str | None:
         """Handle a rescission that names its trade code, before any model call.
