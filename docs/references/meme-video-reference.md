@@ -12,10 +12,23 @@ wants to generate videos for the Sovereign Guillotine League based on its format
 | Caption | got the whole league shaking… \|\| #fantasyfootball #nfl #fyp #nfltiktok #football |
 | Video id | 7678787561464073502 |
 
-## Status
+## What the video is made of (worked out 2026-09-10)
 
-Link only. The video has not been archived locally yet, and no format breakdown exists.
-If the link ever dies, the video id and creator handle above identify it.
+- **Footage:** ESPN's Adam Schefter breaking the Micah Parsons trade (home office, bookshelves,
+  "BREAKING NEWS · SOURCES: PARSONS TRADED FROM COWBOYS" lower third). Denzo cropped it square
+  and muted it. The clean 127 s ESPN upload is saved as
+  `data/media/reference/source/espn-tMgvUrwtaiw-schefter-parsons-breaking-news.mp4`; Denzo's
+  24 s start about 2.5 s in.
+- **Caption:** centred white bold text with a black outline, added in CapCut:
+  "pov: you and that one friend who made the first big trade in your fantasy league".
+- **Sound:** "DIEAGAIN (SLOWED + Reverb)" from the top of the track, nothing else. Saved as
+  `data/media/reference/youtube-8_wnIISchzQ-dieagain-slowed-reverb.m4a`.
+- Ben also asked to keep "original sound - The Neighborhood Podcast" (an NFL commentator
+  compilation, unrelated to this video); it and its source video are in the same folder.
+
+Everything is archived under `data/media/reference/` (see its README for provenance and
+re-download commands). The build plan is
+`docs/superpowers/plans/2026-09-10-trade-announcement-video-pipeline.md`.
 
 ## Prior art on Ben's Mac (outside this repo)
 
@@ -27,7 +40,12 @@ If the link ever dies, the video id and creator handle above identify it.
 - `~/Documents/ContentFarm`: TikTok and YouTube harvest plus clip production.
 - Linear ENG-574 "Remix Studio": viral video, breakdown, close-paraphrase script, teleprompter.
 
-## Next steps (not started)
+## What Ben wants built
 
-1. Archive the video locally with keyframes and a transcript so the format can be broken down.
-2. Brainstorm and spec the league pipeline under `docs/superpowers/specs`, reusing the Monke playbook.
+1. Keep the TikTok's music (done) and the podcast sound he liked (done).
+2. Find the footage without the caption (done: the ESPN upload above).
+3. A pipeline that takes one of our logged trades and renders the same kind of video, on demand,
+   either over the ESPN footage or over footage Higgsfield's Seedance 2.5 generates from the
+   reference (`ug video render --trade T-2026-003 --base source|generated`).
+4. The trade written on the video (a centred caption plus an ESPN-style lower third).
+5. The DIEAGAIN track under it so it sounds dramatic.

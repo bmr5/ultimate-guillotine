@@ -35,6 +35,11 @@ data/private/*
 !data/private/README.md
 !data/private/league-members.example.json
 
+# Trade video pipeline output (the reference set in data/media/reference is tracked)
+data/media/renders/
+data/media/generated/
+data/media/work/
+
 # Claude Code scratch
 .superpowers/
 .claude/worktrees/
