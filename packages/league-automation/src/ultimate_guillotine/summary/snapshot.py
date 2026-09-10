@@ -23,7 +23,7 @@ a guess.
 
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime, time
+from datetime import UTC, datetime, time, timedelta
 from decimal import Decimal
 
 import psycopg
@@ -82,12 +82,31 @@ class EodInputs:
     #: ``None`` when the schedule could not be read; see the module docstring.
     week_games: Mapping[str, Game] | None
     starter_slots: int
+    #: When the moves window opened; see :func:`moves_window_start`.
+    moves_since: datetime | None = None
 
 
 def local_midnight(now: datetime) -> datetime:
     """The UTC instant the league's current day began."""
     local = now.astimezone(LOCAL_TZ)
     return datetime.combine(local.date(), time.min, tzinfo=LOCAL_TZ).astimezone(UTC)
+
+
+#: With no previous post on file the moves window is one day; after an outage it
+#: is never more than this, so a week of claims is not replayed into one post.
+MOVES_WINDOW_DEFAULT = timedelta(hours=24)
+MOVES_WINDOW_MAX = timedelta(days=4)
+
+
+def moves_window_start(now: datetime, previous_post_at: datetime | None) -> datetime:
+    """When the moves section starts: the previous post, or a day back, capped.
+
+    Ben's cadence skips Tuesdays and Saturdays, so "today" is the wrong window --
+    the league wants everything that happened since it last heard from the bot.
+    """
+    if previous_post_at is None:
+        return now - MOVES_WINDOW_DEFAULT
+    return max(previous_post_at, now - MOVES_WINDOW_MAX)
 
 
 def _moves(
@@ -177,6 +196,7 @@ def assemble(inputs: EodInputs) -> EodSnapshot:
         data_synced_at=league.synced_at,
         scores_synced_at=max(stamps) if stamps else None,
         starter_slots=inputs.starter_slots,
+        moves_since=inputs.moves_since,
     )
 
 
@@ -256,10 +276,23 @@ class EodRepository:
     def starter_slots(self, season_id: int) -> int:
         return TeamWeekRepository(self._conn).starter_slots(season_id)
 
+    def previous_post_at(self, season_id: int) -> datetime | None:
+        """When the league last got a post: the newest sent summary recap."""
+        with self._conn.cursor() as cur:
+            cur.execute(
+                "select max(created_at) from public.recaps"
+                " where season_id = %s and recap_kind like 'eod:%%'"
+                " and publication_state = 'sent'",
+                (season_id,),
+            )
+            row = cur.fetchone()
+            return row[0] if row else None
+
     def load_inputs(self, league: LeagueSnapshot, client, now: datetime) -> EodInputs:
         """Every read but the league itself, plus the one network call."""
         rostered = sorted({h.sleeper_player_id for t in league.teams for h in t.holdings})
-        moves = self.moves_since(league.season_id, local_midnight(now))
+        since = moves_window_start(now, self.previous_post_at(league.season_id))
+        moves = self.moves_since(league.season_id, since)
         moved = sorted({m.sleeper_player_id for m in moves} - set(rostered))
         return EodInputs(
             league=league,
@@ -271,6 +304,7 @@ class EodRepository:
             moves=moves,
             week_games=fetch_week_games(client, league.season, league.week),
             starter_slots=self.starter_slots(league.season_id),
+            moves_since=since,
         )
 
 

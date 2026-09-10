@@ -25,7 +25,9 @@ from ultimate_guillotine.summary.render import (
     build_sections,
     colour_text,
     move_suffix,
+    moves_heading,
     plural,
+    window_stamp,
 )
 
 #: The League Agent spec's cap on a rendered artifact.
@@ -76,7 +78,7 @@ footer{margin-top:18px;color:#a3a9bd;font-size:13px;text-align:center}
 
 
 def artifact_filename(week: int, now: datetime) -> str:
-    return f"guillotine-eod-week-{week}-{now.astimezone(LOCAL_TZ):%Y-%m-%d}.html"
+    return f"guillotine-daily-week-{week}-{now.astimezone(LOCAL_TZ):%Y-%m-%d}.html"
 
 
 def _pct_class(view: View, team: TeamLine) -> str:
@@ -114,7 +116,7 @@ def _pair_row(view: View, team: TeamLine, *, to_lose: bool) -> str:
 
 def _hero(view: View, now: datetime) -> str:
     return (
-        '<header class="hero"><div class="kicker">🗡️ Guillotine EOD</div>'
+        '<header class="hero"><div class="kicker">🗡️ Guillotine Daily</div>'
         f"<h1>{escape(view.title(now))}</h1>"
         f'<p class="sub">{escape(view.header_line())}</p></header>'
     )
@@ -220,7 +222,8 @@ def _moves_card(view: View) -> str | None:
             f"<li><b>{escape(move.team_label)}:</b> "
             f"{escape(' '.join(legs))}{escape(move_suffix(move.kind, move.waiver_bid))}</li>"
         )
-    return f'<section class="card"><h2>🔁 Moves today</h2><ul>{"".join(items)}</ul></section>'
+    heading = escape(moves_heading(view.snap, title_case=True))
+    return f'<section class="card"><h2>🔁 {heading}</h2><ul>{"".join(items)}</ul></section>'
 
 
 def render_html(packet: EodPacket, color: EodColor | None, now: datetime) -> str:
@@ -232,7 +235,7 @@ def render_html(packet: EodPacket, color: EodColor | None, now: datetime) -> str
     cards.extend(c for c in (_gulag_card(view), _block_card(view), _board_card(view),
                              _watch_card(view), _moves_card(view)) if c)
     cards.append(f"<footer>{escape(' · '.join(view.footer_parts()))}</footer>")
-    title = escape(f"Guillotine EOD · Week {view.snap.week}")
+    title = escape(f"Guillotine Daily · Week {view.snap.week}")
     return (
         "<!doctype html>\n"
         '<html lang="en"><head><meta charset="utf-8">'
@@ -255,10 +258,16 @@ def short_text(packet: EodPacket, color: EodColor | None, now: datetime) -> str:
     if sections.gulag:
         parts.append(sections.gulag)
     parts.append(sections.block)
-    teams = len(packet.snapshot.live_teams())
+    snap = packet.snapshot
+    teams = len(snap.live_teams())
+    window = (
+        f"moves since {window_stamp(snap.moves_since).title()}"
+        if snap.moves_since is not None
+        else "recent moves"
+    )
     parts.append(
         f"Full board attached: all {teams} {plural(teams, 'team', 'teams')}, "
-        "roster watch and today's moves."
+        f"roster watch and {window}."
     )
     parts.append(sections.footer)
     return "\n\n".join(parts)

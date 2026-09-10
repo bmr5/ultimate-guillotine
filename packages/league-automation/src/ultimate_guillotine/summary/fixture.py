@@ -205,5 +205,6 @@ def fixture_eod(
             moves=_moves(league),
             week_games=games if schedule_available else None,
             starter_slots=8,
+            moves_since=FIXTURE_NOW - timedelta(hours=24),
         )
     )

@@ -20,6 +20,7 @@ from ultimate_guillotine.summary.snapshot import (
     assemble,
     load_snapshot,
     local_midnight,
+    moves_window_start,
 )
 
 WEEK = 6
@@ -68,6 +69,7 @@ def _inputs(*, games=GAMES, scores=None, events=(), moves=(), players=None) -> E
         moves=list(moves),
         week_games=games,
         starter_slots=8,
+        moves_since=NOW - timedelta(hours=24),
     )
 
 
@@ -236,3 +238,37 @@ def test_a_schedule_outage_still_yields_a_snapshot(conn) -> None:
     snap = load_snapshot(conn, _ScheduleClient(RuntimeError("down")), db_seed.NOW)
     assert not snap.schedule_available
     assert snap.day_state == "unknown"
+
+
+
+def test_the_moves_window_starts_at_the_previous_post_or_a_day_back() -> None:
+    """Ben's cadence skips Tuesdays and Saturdays, so "today" is the wrong window: the
+    league wants everything since it last heard from the bot, capped so an outage does
+    not replay a week of claims."""
+    assert moves_window_start(NOW, None) == NOW - timedelta(hours=24)
+    assert moves_window_start(NOW, NOW - timedelta(hours=30)) == NOW - timedelta(hours=30)
+    assert moves_window_start(NOW, NOW - timedelta(days=10)) == NOW - timedelta(days=4)
+
+
+def test_the_snapshot_carries_its_moves_window() -> None:
+    snap = assemble(_inputs())
+    assert snap.moves_since == NOW - timedelta(hours=24)
+
+
+def test_the_repository_reads_the_previous_post_and_widens_the_window_to_it(conn) -> None:
+    from ultimate_guillotine.summary.store import SummaryRepository
+
+    season_id, _teams = db_seed.seed_league(conn)
+    repo = EodRepository(conn)
+    assert repo.previous_post_at(season_id) is None
+    # A post sent 60 hours ago: the 50-hour-old claim is now inside the window.
+    recap_id = SummaryRepository(conn).record_recap(season_id, db_seed.WEEK, "eod:2098-09-24",
+                                                    "2026.1", "hash", "body")
+    SummaryRepository(conn).mark_sent(recap_id)
+    with conn.cursor() as cur:
+        cur.execute("update public.recaps set created_at = %s where id = %s",
+                    (db_seed.NOW - timedelta(hours=60), recap_id))
+    assert repo.previous_post_at(season_id) == db_seed.NOW - timedelta(hours=60)
+    snap = load_snapshot(conn, _ScheduleClient(_schedule()), db_seed.NOW)
+    assert snap.moves_since == db_seed.NOW - timedelta(hours=60)
+    assert len(snap.moves) == 2

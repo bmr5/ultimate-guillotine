@@ -137,13 +137,14 @@ def test_the_player_card_jobs_are_pinned() -> None:
     assert int(transactions["max_gap_minutes"]) >= 30
 
 
-def test_the_eod_summary_posts_once_a_night_after_the_late_games() -> None:
-    """Ben's ask was end-of-day summaries. 11:50 PM Central clears the Thursday and
-    Sunday night games and most Monday nights; a game still on the field is reported
-    as such. The gap budget is the daily run-audit's, and the job speaks in the ops
-    channel because it fires once a day, so a failure is one line, not a flood."""
+def test_the_summary_posts_on_the_mornings_ben_named() -> None:
+    """Ben (2026-09-10): a break on Tuesdays; Wednesday before waivers close; Thursday
+    after they clear; Friday after the Thursday game; Sunday and Monday mornings after
+    Saturday's free agency and Sunday's games. 8:15 AM Central, after the 8 AM players
+    sync. The gap budget clears the Monday-to-Wednesday gap; once a day, so it speaks
+    in the ops channel."""
     job = next(j for j in JOBS if j["name"] == "guillotine-eod-summary")
     assert (job["agent"], job["schedule"], job["deliver"]) == (
-        "eod-summary", "50 23 * * *", "discord:#guillotine-ops",
+        "eod-summary", "15 8 * * 0,1,3,4,5", "discord:#guillotine-ops",
     )
-    assert int(job["max_gap_minutes"]) > 24 * 60
+    assert int(job["max_gap_minutes"]) > 48 * 60

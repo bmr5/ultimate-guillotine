@@ -91,6 +91,7 @@ def snapshot(
     schedule_available: bool = True,
     moves: tuple[Move, ...] = (),
     starter_slots: int | None = None,
+    moves_since: datetime | None = None,
 ) -> EodSnapshot:
     return EodSnapshot(
         season=2026,
@@ -107,4 +108,5 @@ def snapshot(
         scores_synced_at=NOW,
         starter_slots=starter_slots if starter_slots is not None
         else max((len(t.starters) for t in teams), default=0),
+        moves_since=moves_since,
     )

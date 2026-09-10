@@ -56,7 +56,7 @@ def test_the_page_carries_every_section_and_every_live_team() -> None:
     html = render_html(packet, None, FIXTURE_NOW)
     for live in packet.snapshot.live_teams():
         assert live.label in html
-    for heading in ("The gulag", "On the block", "The board", "Roster watch", "Moves today"):
+    for heading in ("The gulag", "On the block", "The board", "Roster watch", "Moves since"):
         assert heading in html
     assert "Week 6" in html
     assert "Member17" in html and "wk 5" in html
@@ -119,7 +119,7 @@ def test_the_short_text_is_the_header_the_colour_the_block_and_the_footer() -> N
     color = EodColor(headline="Knives out", blurb="Member18 is in trouble.")
     text = short_text(packet, color, FIXTURE_NOW)
     lines = text.splitlines()
-    assert lines[0] == "🗡️ GUILLOTINE EOD · Week 6 · Sunday"
+    assert lines[0] == "🗡️ GUILLOTINE DAILY · Week 6 · Sunday"
     assert "🔥 Knives out" in text
     assert "⚔️ THE GULAG" in text
     assert "⚰️ ON THE BLOCK" in text
@@ -138,5 +138,5 @@ def test_the_short_text_without_colour_has_no_gap() -> None:
 
 def test_the_filename_names_the_week_and_the_local_date() -> None:
     assert artifact_filename(1, datetime(2026, 9, 14, 4, 50, tzinfo=UTC)) == (
-        "guillotine-eod-week-1-2026-09-13.html"
+        "guillotine-daily-week-1-2026-09-13.html"
     )

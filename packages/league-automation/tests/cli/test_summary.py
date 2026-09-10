@@ -76,18 +76,18 @@ def test_a_fixture_run_prints_the_chat_text_writes_the_artifact_and_touches_noth
 
     assert result.returncode == 0, result.stderr
     lines = result.stdout.splitlines()
-    assert lines[0] == "🗡️ GUILLOTINE EOD · Week 6 · Sunday"
+    assert lines[0] == "🗡️ GUILLOTINE DAILY · Week 6 · Sunday"
     assert "model:" not in result.stdout
     assert "⚔️ THE GULAG · loser is out" in result.stdout
     assert "⚰️ ON THE BLOCK · bottom 2 enter the Week 7 gulag" in result.stdout
     assert "Full board attached" in result.stdout
     assert "📊 THE BOARD" not in result.stdout
     assert "estimates, not rulings" in result.stdout
-    artifact = tmp_path / "guillotine-eod-week-6-2026-10-11.html"
+    artifact = tmp_path / "guillotine-daily-week-6-2026-10-11.html"
     assert lines[-1] == f"artifact: {artifact}"
     html = artifact.read_text()
     assert html.startswith("<!doctype html>")
-    for expected in ("The board", "Member01", "Member17", "wk 5", "Roster watch", "Moves today"):
+    for expected in ("The board", "Member01", "Member17", "wk 5", "Roster watch", "Moves since"):
         assert expected in html
 
 
@@ -100,7 +100,7 @@ def test_a_fixture_run_without_hermes_still_prints_when_the_colour_was_asked_for
                  env=no_hermes(tmp_path))
     assert result.returncode == 0, result.stderr
     assert "EOD summary colour unavailable" in result.stderr
-    assert "🗡️ GUILLOTINE EOD" in result.stdout
+    assert "🗡️ GUILLOTINE DAILY" in result.stdout
 
 
 def test_a_fixture_json_run_prints_the_packet_and_makes_no_model_call(tmp_path) -> None:
@@ -294,6 +294,6 @@ def test_a_dry_run_against_the_league_composes_and_records_no_run(
     ) == 0
     assert agents == []
     out = capsys.readouterr().out
-    assert out.startswith("🗡️ GUILLOTINE EOD")
+    assert out.startswith("🗡️ GUILLOTINE DAILY")
     # A real-league dry run is stamped with tonight's date, whatever the fixture's.
-    assert list(tmp_path.glob("guillotine-eod-week-6-*.html"))
+    assert list(tmp_path.glob("guillotine-daily-week-6-*.html"))

@@ -174,13 +174,13 @@ def test_compose_without_a_model_is_the_deterministic_message() -> None:
 def test_compose_also_yields_the_short_text_and_the_artifact() -> None:
     """The chat gets the short text and the file; the full text is the record."""
     composed = _agent(ai=FakeAI()).compose(_league(), NOW, simulations=50)
-    assert composed.short.startswith("🗡️ GUILLOTINE EOD · Week 1 · Sunday")
+    assert composed.short.startswith("🗡️ GUILLOTINE DAILY · Week 1 · Sunday")
     assert "🔥 Knives out" in composed.short
     assert "Full board attached" in composed.short
     assert "📊 THE BOARD" not in composed.short
     assert composed.html.startswith("<!doctype html>")
     assert "Knives out" in composed.html and "The board" in composed.html
-    assert composed.filename == "guillotine-eod-week-1-2026-09-13.html"
+    assert composed.filename == "guillotine-daily-week-1-2026-09-13.html"
 
 
 def test_compose_with_a_faithful_model_adds_the_colour_and_records_the_model() -> None:
@@ -236,11 +236,11 @@ def test_a_test_mode_run_stores_previews_delivers_and_records() -> None:
     assert repo.sent == [1]
     assert repo.versions == [(7, f"{MODEL_VERSION}:{PROMPT_VERSION}:fake-model")]
     # The short text goes first, then the file, under the same run.
-    assert outcome.text.startswith("🗡️ GUILLOTINE EOD") and "Full board attached" in outcome.text
+    assert outcome.text.startswith("🗡️ GUILLOTINE DAILY") and "Full board attached" in outcome.text
     assert delivery.calls == [(7, AGENT, outcome.text)]
     assert len(delivery.attachments) == 1
     run_id, agent, filename, size = delivery.attachments[0]
-    assert (run_id, agent, filename) == (7, AGENT, "guillotine-eod-week-1-2026-09-13.html")
+    assert (run_id, agent, filename) == (7, AGENT, "guillotine-daily-week-1-2026-09-13.html")
     assert size > 1000
     assert notifier.drafts_notes[0].startswith(f"[{AGENT}] [test] preview · {filename}\n")
     assert outcome.text in notifier.drafts_notes[0]

@@ -181,6 +181,9 @@ class EodSnapshot:
     #: The newest ``team_week_scores.synced_at`` for the week, or ``None`` with no rows.
     scores_synced_at: datetime | None
     starter_slots: int
+    #: When the moves window opened: the previous post, or a day back. ``None`` when
+    #: nobody said, in which case the section is headed "recent moves".
+    moves_since: datetime | None = None
 
     def live_teams(self) -> tuple[TeamLine, ...]:
         return tuple(t for t in self.teams if not t.is_eliminated)

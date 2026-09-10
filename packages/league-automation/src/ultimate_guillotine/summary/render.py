@@ -65,6 +65,20 @@ def clock(stamp: datetime) -> str:
     return stamp.astimezone(LOCAL_TZ).strftime("%-I:%M %p") + " CT"
 
 
+def window_stamp(stamp: datetime) -> str:
+    """``FRI 11:50 PM``: the weekday and the clock, in the league's time."""
+    local = stamp.astimezone(LOCAL_TZ)
+    return f"{local:%a} {local.strftime('%-I:%M %p')}".upper()
+
+
+def moves_heading(snap, *, title_case: bool = False) -> str:
+    """``MOVES SINCE FRI 11:50 PM``, or ``RECENT MOVES`` when no window was recorded."""
+    if snap.moves_since is None:
+        return "Recent moves" if title_case else "RECENT MOVES"
+    stamp = window_stamp(snap.moves_since)
+    return f"Moves since {stamp.title()}" if title_case else f"MOVES SINCE {stamp}"
+
+
 def move_suffix(kind: str, bid: int | None) -> str:
     if kind == "waiver":
         return f" (waiver ${bid})" if bid is not None else " (waiver)"
@@ -286,7 +300,7 @@ class Sections:
 
 
 def _header(view: View, now: datetime) -> str:
-    return f"🗡️ GUILLOTINE EOD · {view.title(now)}\n{view.header_line()}"
+    return f"🗡️ GUILLOTINE DAILY · {view.title(now)}\n{view.header_line()}"
 
 
 def _gulag_section(view: View) -> str | None:
@@ -355,7 +369,7 @@ def _moves_section(view: View) -> str | None:
     moves = view.snap.moves
     if not moves:
         return None
-    lines = ["🔁 MOVES TODAY"]
+    lines = [f"🔁 {moves_heading(view.snap)}"]
     for move in moves[:MOVES_LINES]:
         legs = [f"+{name}" for name in move.adds] + [f"−{name}" for name in move.drops]
         lines.append(f"{move.team_label}: {' '.join(legs)}{move_suffix(move.kind, move.waiver_bid)}")

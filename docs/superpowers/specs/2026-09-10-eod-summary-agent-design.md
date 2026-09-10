@@ -23,14 +23,22 @@ game-window Game Pulse post is a second schedule of the same command, not a seco
 
 ## Trigger and Cadence
 
-One script-only Hermes cron job, `guillotine-eod-summary`, at `50 23 * * *` in the Mac mini's
-local time (Central). That is after Thursday and Sunday night games end and after most Monday
-night games; a game still on the field at that hour is reported as still on the field, and the
-odds say so.
+One script-only Hermes cron job, `guillotine-eod-summary`, at `15 8 * * 0,1,3,4,5` in the Mac
+mini's local time (Central): 8:15 AM on Wednesday, Thursday, Friday, Sunday and Monday. Ben's
+cadence (2026-09-10, after the first dry run): "I would take a break on this on Tuesdays. Wed
+it could be useful before auctions close. Thursday auctions clear it could be useful after
+that, Thursday games happen so it's definitely useful Friday morning. Then a lot of FA happens
+Saturday, it could be most useful Sunday morning and Monday morning." The first waiver round
+closes Thursday 2 AM and the second Saturday 11 AM, so Wednesday's post is the outlook before
+the bids, Thursday's shows the claims that cleared, Friday's follows the Thursday game,
+Sunday's follows Saturday's free agency, and Monday's shows the block heading into Monday night.
+8:15 AM is after the 8 AM players sync; the time is one line in the manifest.
 
-It runs every day, not just game days, because a roster's state changes on quiet days too — a
-waiver claim lands, a starter is ruled out, a slot is left empty. The message shape follows the
-week:
+The league sees it as **the Guillotine Daily** -- the header and the file are named so. The
+agent, the command and the cron job keep the `eod` codename they were born with, because the
+job is registered on the mini by name and a rename would leave the old one firing.
+
+The message shape follows the week:
 
 | Day state | What the message is |
 | --- | --- |
@@ -52,7 +60,8 @@ lineup slots, this week's projections, coverage, FAAB, elimination), joined with
 - `public.players` for each rostered player's NFL team and injury status;
 - `public.league_events` rows of type `gulag_entry` for this week, when an Adjudicator has
   written them;
-- `public.transactions` and `public.transaction_moves` since local midnight, for the moves line;
+- `public.transactions` and `public.transaction_moves` since the previous post, for the moves
+  line;
 - `public.seasons.roster_positions`, for the starter-slot count.
 
 One network read, outside the data layer: Sleeper's public schedule,
@@ -157,7 +166,9 @@ written over and checked against, and what the recap's facts hash covers. In ord
    teams follow on one line: `Out: A (wk 3), B (wk 4)`.
 5. **Roster watch** — only teams with something to fix: empty slots, out starters still in the
    lineup, remaining starters with no projection. At most eight lines; the rest as a count.
-6. **Moves today** — adds, drops and trades executed since local midnight, at most six lines.
+6. **Moves since the last post** — adds, drops and trades executed since the previous post
+   went out (a day back when there is none; never more than four days), at most six lines in
+   the text, all of them in the file. The heading names the window: `MOVES SINCE FRI 8:15 AM`.
 7. **Footer** — `Odds from 10,000 sims on Sleeper projections · scores as of 11:50 PM CT ·
    estimates, not rulings`, or in factual mode the reason no odds were posted.
 
@@ -315,7 +326,7 @@ over the local Supabase for the two repositories. The cron manifest test learns 
 
 | Question | Decision | Where to change it |
 | --- | --- | --- |
-| Post time | 11:50 PM Central, daily | `hermes/guillotine/cron.yaml` |
+| Post time | 8:15 AM Central on Ben's five mornings (his ruling); the hour is mine | `hermes/guillotine/cron.yaml` |
 | Model in the loop? | Yes, for a headline and blurb only, verified, with the deterministic message as the fallback | `--no-ai`, `agents/eod-summary/prompt.md` |
 | Variance model | Position CVs with a 2-point floor, 10,000 sims | `summary/survival.py` constants |
 | Gulag pairing before an Adjudicator exists | Replay from stored scores, labelled provisional | `summary/phase.py` |

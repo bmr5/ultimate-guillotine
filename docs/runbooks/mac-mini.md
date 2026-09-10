@@ -862,12 +862,16 @@ scripts/mac-mini/install_listener.sh
 Registrar and the ping — is left unregistered and the listener still
 ingests messages without answering any of them.
 
-## 11. EOD Summary rollout
+## 11. The Guillotine Daily (EOD Summary) rollout
 
-The EOD Summary posts one signed message a night, at 11:50 PM Mac mini time: every
-live team's score and projected finish, the gulag pair and the two teams on the
-block with their odds, the roster problems worth fixing before the next kickoff,
-and the day's moves. Spec:
+The Daily posts on five mornings a week, at 8:15 AM Mac mini time -- Wednesday,
+Thursday, Friday, Sunday and Monday, Ben's cadence: a break on Tuesdays, Wednesday
+before waivers close, Thursday after they clear, Friday after the Thursday game,
+Sunday and Monday after Saturday's free agency and Sunday's games. Each post is a
+short signed text and an HTML file: every live team's score and projected finish,
+the gulag pair and the two teams on the block with their odds, the roster problems
+worth fixing before the next kickoff, and the moves since the previous post. The
+agent's codename is `eod-summary` and the command is `ug summary eod`. Spec:
 `docs/superpowers/specs/2026-09-10-eod-summary-agent-design.md`. The odds are
 Monte Carlo estimates over Sleeper's projections and the footer says so on every
 post; nothing here is a ruling.
@@ -887,13 +891,13 @@ hermes/guillotine/install.sh
 ```
 
 Confirm with `HERMES_HOME=~/.hermes/profiles/guillotine hermes cron list` — the
-job is listed at `50 23 * * *` — and `ug ops health` prints nothing new: a job
-registered more recently than its own gap budget (25 hours here) is not reported
-as never run until that budget passes, so the health check simply waits for the
-first fire at 11:50 PM.
+job is listed at `15 8 * * 0,1,3,4,5` — and `ug ops health` prints nothing new: a
+job registered more recently than its own gap budget (50 hours here) is not
+reported as never run until that budget passes, so the health check simply waits
+for the first fire.
 
-Done on the mini on 2026-09-10 (job `ee83fce80c46`, first fire that night); the
-same install also registered `guillotine-sleeper-draft` and
+Done on the mini on 2026-09-10 (job `ee83fce80c46`, first fire Friday 2026-09-11
+at 8:15 AM); the same install also registered `guillotine-sleeper-draft` and
 `guillotine-sleeper-transactions`, which were in the manifest but not yet in the
 profile.
 
@@ -935,6 +939,10 @@ put in the wrong state is the likeliest way an odds number is wrong.
    and marks the recap `sent`. A file that fails after the text went out is one
    ops line, not a failed night.
 
+Moves are everything executed since the previous post went out (a day back when
+there is none), so Thursday's post carries the claims that cleared at 2 AM and
+Sunday's carries Saturday's free agency.
+
 The stdout Hermes delivers to `#guillotine-ops` is one line:
 `eod: sent, week N, odds yes, model <model>`. Under `--quiet` (the cron job)
 nothing on success.
@@ -965,11 +973,11 @@ message text here.
 - [ ] 2. `ug summary eod --json` shows every starter in the right state for the
   night (Thursday: one game `done`; Sunday: Monday's players `remaining`).
   _date:_ · _outcome:_
-- [ ] 3. The 11:50 PM run lands in `#guillotine-drafts` and the self-test chat
+- [ ] 3. The 8:15 AM run lands in `#guillotine-drafts` and the self-test chat
   as a signed text followed by the HTML file; `#guillotine-feed` shows both. Tap
   the file on an iPhone: Quick Look opens the board.
   _date:_ · _outcome:_
-- [ ] 4. `ug summary eod` run again the same night prints `eod: already_sent`
+- [ ] 4. `ug summary eod` run again the same day prints `eod: already_sent`
   and sends nothing; `ug summary eod --force` sends again.
   _date:_ · _outcome:_
 - [ ] 5. Read the post back: no phone number, handle, chat identifier or dues

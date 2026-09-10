@@ -4,7 +4,7 @@ Small leagues built from the helpers pin each section's wording; the closed-form
 fixture pins the whole thing's size and that no team is left out.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 from tests.summary.helpers import NOW, done_team, phase, snapshot, starter, team
@@ -36,7 +36,7 @@ def test_the_header_names_the_week_the_day_and_the_games() -> None:
                     week=3, phase_=phase(3, "gulag", gulag=(1, 2), source="events"))
     text = render(_packet(snap), None, NOW)
     lines = text.splitlines()
-    assert lines[0] == "🗡️ GUILLOTINE EOD · Week 3 · Sunday"
+    assert lines[0] == "🗡️ GUILLOTINE DAILY · Week 3 · Sunday"
     assert lines[1] == "13 of 16 games final · 1 team still has players to go"
 
 
@@ -253,9 +253,11 @@ def test_the_moves_line_says_who_added_and_dropped_whom() -> None:
         Move("trade", NOW, "Member08", ("Star",), (), None),
         Move("free_agent", NOW, "Member09", ("Pickup",), (), None),
     )
-    text = render(_packet(snapshot((done_team(1, "1"), done_team(2, "2"), done_team(3, "3")),
-                                   moves=moves)), None, NOW)
-    lines = text.split("🔁 MOVES TODAY\n", 1)[1].split("\n\n", 1)[0].splitlines()
+    snap = snapshot((done_team(1, "1"), done_team(2, "2"), done_team(3, "3")), moves=moves,
+                    moves_since=NOW - timedelta(hours=48))
+    text = render(_packet(snap), None, NOW)
+    # Friday 11:50 PM Central, two days before the Sunday-night `NOW`.
+    lines = text.split("🔁 MOVES SINCE FRI 11:50 PM\n", 1)[1].split("\n\n", 1)[0].splitlines()
     assert lines == [
         "Member03: +New Guy −Old Guy (waiver $12)",
         "Member08: +Star (trade)",
@@ -265,6 +267,13 @@ def test_the_moves_line_says_who_added_and_dropped_whom() -> None:
 
 def test_no_moves_means_no_section() -> None:
     assert "🔁" not in render(_packet(_entry_week()), None, NOW)
+
+
+def test_a_moves_window_nobody_recorded_is_called_recent() -> None:
+    moves = (Move("waiver", NOW, "Member03", ("New Guy",), (), None),)
+    text = render(_packet(snapshot((done_team(1, "1"), done_team(2, "2"), done_team(3, "3")),
+                                   moves=moves)), None, NOW)
+    assert "🔁 RECENT MOVES\n" in text
 
 
 # -- footer and factual mode ---------------------------------------------
@@ -314,7 +323,7 @@ def test_the_facts_text_is_the_middle_sections_only() -> None:
     packet = _packet(_entry_week())
     facts = facts_text(packet)
     assert facts.startswith("⚰️ ON THE BLOCK")
-    assert "GUILLOTINE EOD" not in facts
+    assert "GUILLOTINE DAILY" not in facts
     assert "estimates, not rulings" not in facts
     assert "📊 THE BOARD" in facts
 
