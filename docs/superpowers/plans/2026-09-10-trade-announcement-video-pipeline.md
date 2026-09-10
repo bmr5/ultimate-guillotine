@@ -1738,3 +1738,16 @@ on Hermes with a one-shot retry when the read runs over the 2.6 words/second bud
 (Seedance `generate_audio`, the generated voice kept under the music via `keep_voice`, which now
 depends on `Probe.has_audio`), and `ug video script` / `render --voiced` / `cost --voiced`.
 Commit 9bf15e3, 66 video tests.
+
+### Task 9 done differently (2026-09-10, later that morning)
+
+Ben's trigger is a reply in the chat, not a Discord command: "@bot create trade video" on a
+trade alert. Built as `video/trigger.py` (`is_video_request`, `VideoRequests.resolve` reads the
+trade off the reply thread via `TradeRepository.find_by_source_guid`, a code in the text, or
+the bot's own confirmation via `OutboundRepository.content_for_guid`; `video_trigger` registered
+in `listener/run.py` on the alert chats), `video/jobs.py` (`private.video_jobs`, migration
+20260910210000, one open job per trade, `claim` with skip-locked, stale-running cleanup),
+`video/worker.py` (`Worker.run_once`: read → voiced generation → composite →
+`deliver_attachment`, run records, failure to `#guillotine-ops`), `ug video jobs
+list|run|watch|add`, and the `guillotine-video-jobs` cron job every 2 min. The voice stays
+Seedance's own (Ben: the Schefter sound is the point); a TTS path was tried and dropped.

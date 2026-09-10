@@ -40,6 +40,11 @@ def test_parse_job_reads_the_document_or_the_first_of_a_list() -> None:
     )
 
 
+def test_parse_job_tolerates_control_characters_in_the_quoted_prompt() -> None:
+    raw = '{"id": "j4", "status": "in_progress", "params": {"prompt": "line one\x01\ttab"}}'
+    assert hf.parse_job(raw) == hf.Job("j4", "in_progress", None)
+
+
 def test_parse_job_falls_back_to_an_mp4_url_and_rejects_junk() -> None:
     assert hf.parse_job('{"id": "j3", "status": "done", "note": "https://cdn/y.mp4"}') == (
         hf.Job("j3", "done", "https://cdn/y.mp4")
