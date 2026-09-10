@@ -3,12 +3,13 @@
 import argparse
 from datetime import UTC, datetime, timedelta
 
+from ultimate_guillotine.agent.worker import AgentWorker
 from ultimate_guillotine.cli.deps import build_delivery, build_deps, run_scheduled
 from ultimate_guillotine.data.repositories import (
     SourceMessageRepository,
     chat_guid_hash,
 )
-from ultimate_guillotine.listener.run import build_processor
+from ultimate_guillotine.listener.run import build_agent_worker, build_processor
 
 DEFAULT_SINCE_MINUTES = 60
 GAP_FILL_PAGE_SIZE = 100
@@ -43,34 +44,51 @@ def cmd_gap_fill(args: argparse.Namespace) -> int:
 
     def action(run_id: int) -> int:
         delivery = build_delivery(deps)
-        processor, allowed = build_processor(settings, conn, deps.client, delivery, deps.notifier)
-        sources = SourceMessageRepository(conn)
-        total = handled = 0
-        for guid in allowed:
-            # `latest_sent_at` only sees messages that already qualified for a trigger,
-            # so it can sit days in the past. Floor the window at --since-minutes so a
-            # replay stays bounded instead of walking the whole chat history.
-            latest = sources.latest_sent_at(chat_guid_hash(guid)) or EPOCH
-            cursor = max(latest, now - timedelta(minutes=args.since_minutes))
-            for _page in range(MAX_GAP_FILL_PAGES):
-                batch = deps.client.messages_after(guid, cursor, limit=GAP_FILL_PAGE_SIZE)
-                for msg in batch:
-                    # A receipt from before a chat was registered masks the message from
-                    # a plain replay; --reprocess gives it a fresh id (source_messages still
-                    # dedupes the trigger, so nothing logs twice).
-                    event_id = (
-                        f"reprocess:{now.isoformat()}:{msg.guid}"
-                        if getattr(args, "reprocess", False)
-                        else msg.guid
-                    )
-                    outcome = processor.process(msg, event_id)
-                    total += 1
-                    if outcome.startswith("handled"):
-                        handled += 1
-                # A short page is the end of the chat; a full one may not be.
-                if len(batch) < GAP_FILL_PAGE_SIZE:
-                    break
-                cursor = batch[-1].sent_at + timedelta(milliseconds=1)
+        workers: list[AgentWorker] = []
+
+        def worker_factory(chat_guid: str) -> AgentWorker:
+            worker = build_agent_worker(
+                settings, deps.client, deps.notifier, chat_guid, reconcile=False,
+            )
+            workers.append(worker)
+            return worker
+
+        try:
+            processor, allowed = build_processor(
+                settings, conn, deps.client, delivery, deps.notifier,
+                agent_worker_factory=worker_factory,
+            )
+            sources = SourceMessageRepository(conn)
+            total = handled = 0
+            for guid in allowed:
+                # `latest_sent_at` only sees messages that already qualified for a trigger,
+                # so it can sit days in the past. Floor the window at --since-minutes so a
+                # replay stays bounded instead of walking the whole chat history.
+                latest = sources.latest_sent_at(chat_guid_hash(guid)) or EPOCH
+                cursor = max(latest, now - timedelta(minutes=args.since_minutes))
+                for _page in range(MAX_GAP_FILL_PAGES):
+                    batch = deps.client.messages_after(guid, cursor, limit=GAP_FILL_PAGE_SIZE)
+                    for msg in batch:
+                        # A receipt from before a chat was registered masks the message from
+                        # a plain replay; --reprocess gives it a fresh id (source_messages still
+                        # dedupes the trigger, so nothing logs twice).
+                        event_id = (
+                            f"reprocess:{now.isoformat()}:{msg.guid}"
+                            if getattr(args, "reprocess", False)
+                            else msg.guid
+                        )
+                        outcome = processor.process(msg, event_id)
+                        total += 1
+                        if outcome.startswith("handled"):
+                            handled += 1
+                    # A short page is the end of the chat; a full one may not be.
+                    if len(batch) < GAP_FILL_PAGE_SIZE:
+                        break
+                    cursor = batch[-1].sent_at + timedelta(milliseconds=1)
+        finally:
+            # Reservations are committed before submission. Do not exit with answers pending.
+            for worker in workers:
+                worker.wait_until_idle()
         print(f"gap-fill: {total} messages, {handled} handled")
         return 0
 

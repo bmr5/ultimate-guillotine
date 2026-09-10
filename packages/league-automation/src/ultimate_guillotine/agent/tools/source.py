@@ -1,7 +1,7 @@
 """Where the tools read the league from: the database, or the fixture league.
 
-One protocol, two sources. ``DatabaseSource`` is the six-query snapshot the
-Advisor built plus the handful of reads the other tools need; ``FixtureSource``
+One protocol, two sources. ``DatabaseSource`` combines the shared league
+snapshot with the reads the other tools need; ``FixtureSource``
 answers every one of them from the closed-form league, so the whole agent --
 Hermes session and all -- can be rehearsed against nothing real.
 """
@@ -12,10 +12,10 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any, Protocol
 
-from ultimate_guillotine.advisor.fixture import fixture_snapshot
-from ultimate_guillotine.advisor.pricing import PriceRepository
-from ultimate_guillotine.advisor.state import LeagueSnapshot, SnapshotRepository
+from ultimate_guillotine.agent.tools.fixture import fixture_snapshot
 from ultimate_guillotine.agent.tools.names import PlayerInfo
+from ultimate_guillotine.agent.tools.pricing import PriceRepository
+from ultimate_guillotine.agent.tools.snapshot import LeagueSnapshot, SnapshotRepository
 from ultimate_guillotine.data.repositories import MemberAliasRepository
 from ultimate_guillotine.sleeper.players import PlayerRepository
 from ultimate_guillotine.trades.context import league_rules
@@ -40,6 +40,15 @@ class WeekScore:
     team_name: str
     week: int
     points: Decimal
+    is_final: bool = False
+    state_version: int = 1
+
+
+@dataclass(frozen=True)
+class GulagEntry:
+    member_label: str
+    week: int
+    occurred_at: datetime
 
 
 class LeagueSource(Protocol):
@@ -50,6 +59,8 @@ class LeagueSource(Protocol):
     def catalog(self, season: int) -> list[dict]: ...
     def season_results(self) -> list[SeasonResult]: ...
     def week_scores(self, week: int) -> list[WeekScore]: ...
+    def gulag_entries(self, week: int) -> list[GulagEntry]: ...
+    def survival_summary(self) -> dict | None: ...
     def transactions(self, week: int) -> list[dict]: ...
     def rules(self) -> str: ...
 
@@ -139,16 +150,75 @@ class DatabaseSource:
         with self._conn.cursor() as cur:
             cur.execute(
                 f"""
-                select {_LABEL}, t.team_name, s.week, s.points
-                from public.team_week_scores s
+                select {_LABEL}, t.team_name, s.week, s.points, s.is_final, s.state_version
+                from (
+                    select distinct on (team_id) * from public.weekly_results
+                    where season_id = %s and week = %s
+                    order by team_id, state_version desc
+                ) s
                 join public.teams t on t.id = s.team_id
                 join public.members m on m.id = t.member_id
-                where s.season_id = %s and s.week = %s
                 order by s.points asc
                 """,
                 (snapshot.season_id, week),
             )
             return [WeekScore(*row) for row in cur.fetchall()]
+
+    def gulag_entries(self, week: int) -> list[GulagEntry]:
+        season_id = self.snapshot().season_id
+        with self._conn.cursor() as cur:
+            cur.execute(
+                f"""
+                select {_LABEL}, e.week, e.occurred_at
+                from public.league_events e
+                join public.teams t on t.id::text = e.payload->>'team_id'
+                    and t.season_id = e.season_id
+                join public.members m on m.id = t.member_id
+                where e.season_id = %s and e.week = %s and e.event_type = 'gulag_entry'
+                order by e.occurred_at, e.id
+                """, (season_id, week),
+            )
+            return [GulagEntry(*row) for row in cur.fetchall()]
+
+    def survival_summary(self) -> dict | None:
+        """Latest stored estimate, with its own week and public labels resolved afresh."""
+        season_id = self.snapshot().season_id
+        with self._conn.cursor() as cur:
+            cur.execute(
+                """
+                select week, snapshot_at, game_window, projection_source, model_version,
+                       simulations, results
+                from public.survival_snapshots where season_id = %s
+                order by snapshot_at desc, id desc limit 1
+                """, (season_id,),
+            )
+            row = cur.fetchone()
+            if row is None:
+                return None
+            cur.execute(
+                f"select t.id, {_LABEL} from public.teams t "
+                "join public.members m on m.id = t.member_id where t.season_id = %s",
+                (season_id,),
+            )
+            labels = dict(cur.fetchall())
+        teams = []
+        for entry in row[6] if isinstance(row[6], list) else []:
+            if not isinstance(entry, dict):
+                continue
+            teams.append({
+                "member": labels.get(entry.get("team_id"), "former member"),
+                "points": entry.get("points"),
+                "projected_final": entry.get("projected_final"),
+                "pending": entry.get("pending"),
+                "adverse_event": entry.get("adverse_event"),
+                "probability": entry.get("probability"),
+                "is_estimated": entry.get("is_estimated"),
+            })
+        return {
+            "week": row[0], "as_of": row[1].astimezone(UTC).isoformat(),
+            "game_window": row[2], "projection_source": row[3], "model_version": row[4],
+            "simulations": row[5], "teams": teams, "source": "public.survival_snapshots",
+        }
 
     def transactions(self, week: int) -> list[dict]:
         return self._sleeper.get_transactions(self._league_id, week)
@@ -205,9 +275,16 @@ class FixtureSource:
         scores = [
             WeekScore(t.member_label, t.team_name, week,
                       (t.projected_now or Decimal(0)) - Decimal(1))
-            for t in snapshot.teams if not t.is_eliminated
+            for t in snapshot.teams
+            if not t.is_eliminated or (t.eliminated_week is not None and t.eliminated_week >= week)
         ]
         return sorted(scores, key=lambda s: s.points)
+
+    def gulag_entries(self, week: int) -> list[GulagEntry]:
+        return []
+
+    def survival_summary(self) -> dict | None:
+        return None
 
     def transactions(self, week: int) -> list[dict]:
         return [{

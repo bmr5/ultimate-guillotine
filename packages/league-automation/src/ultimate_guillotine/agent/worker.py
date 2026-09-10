@@ -27,8 +27,7 @@ from datetime import UTC, datetime
 from typing import Protocol
 from zoneinfo import ZoneInfo
 
-from ultimate_guillotine.advisor.state import LeagueSnapshot, SnapshotUnavailable
-from ultimate_guillotine.agent.answer import LeagueAnswer, extract_answer
+from ultimate_guillotine.agent.answer import CHAT_TEXT_LIMIT, LeagueAnswer, extract_answer
 from ultimate_guillotine.agent.artifact import artifact_filename, render_artifact, text_content
 from ultimate_guillotine.agent.envelope import (
     PROMPT_VERSION,
@@ -37,11 +36,12 @@ from ultimate_guillotine.agent.envelope import (
     retry_envelope,
 )
 from ultimate_guillotine.agent.records import AnswerRecord, Session
-from ultimate_guillotine.agent.session import AgentReply
+from ultimate_guillotine.agent.session import AgentReply, SessionNotFound
 from ultimate_guillotine.agent.tools.names import PlayerInfo
+from ultimate_guillotine.agent.tools.snapshot import LeagueSnapshot, SnapshotUnavailable
 from ultimate_guillotine.agent.tools.source import LeagueSource
 from ultimate_guillotine.agent.verify import verify
-from ultimate_guillotine.ai.structured import AIInvalidOutput, AIUnavailable
+from ultimate_guillotine.ai.structured import AIInvalidOutput
 from ultimate_guillotine.data.repositories import chat_guid_hash
 from ultimate_guillotine.messages.bluebubbles import InboundMessage
 from ultimate_guillotine.trades.models import MemberRef
@@ -84,6 +84,7 @@ class Job:
     asker: MemberRef | None
     #: The session a reply to the bot continues, or ``None`` for a fresh question.
     session: Session | None
+    parent_run_id: int | None = None
 
 
 @dataclass
@@ -201,6 +202,10 @@ class AgentWorker:
         thread.start()
         return thread
 
+    def wait_until_idle(self) -> None:
+        """Wait for submitted jobs to finish. The caller must stop submitting first."""
+        self._queue.join()
+
     def run_job(self, job: Job) -> str:
         """Answer one question end to end. Returns the answer's kind, or the failure."""
         self._busy.set()
@@ -220,17 +225,13 @@ class AgentWorker:
             self._busy.clear()
 
     def reconcile_startup(self) -> list[int]:
-        """Settle every run a restart orphaned: failed, and one apology in the chat.
-
-        A run does not record which chat asked, so the apology has no chat to
-        reply to and goes where the delivery mode sends it.
-        """
+        """Fail orphaned runs and notify ops; their originating chats are unknown."""
         with self._lock:
             orphaned = self._runs.running_ids(AGENT)
             for run_id in orphaned:
                 self._runs.finish(run_id, "failed", error="listener restarted")
             if orphaned:
-                self._post(orphaned[-1], None, COULD_NOT_FINISH)
+                self._notify(self._notifier.ops, "League Agent orphaned runs marked failed.")
         return orphaned
 
     # -- internals ------------------------------------------------------
@@ -242,6 +243,8 @@ class AgentWorker:
                 self.run_job(job)
             except Exception as exc:  # noqa: BLE001 - the loop must survive anything
                 log.error("league agent run %s crashed: %s", job.run_id, exc.__class__.__name__)
+            finally:
+                self._queue.task_done()
 
     def _drop_queued_line(self, job: Job) -> None:
         """The job is starting, so "yours is next" is no longer true: never say it."""
@@ -314,11 +317,20 @@ class AgentWorker:
         members: Sequence[MemberRef],
         players: Mapping[str, PlayerInfo],
         turn: Turn,
+        lost: bool = False,
     ) -> _Checked:
         try:
             answer = extract_answer(reply.text)
         except AIInvalidOutput:
             return _Checked(None, [NOT_AN_ANSWER], None)
+        if lost:
+            text = LOST_THREAD + answer.chat_text
+            if len(text) > CHAT_TEXT_LIMIT:
+                return _Checked(None, [
+                    (f"chat text including the lost-thread notice must fit {CHAT_TEXT_LIMIT}"
+                     f" characters; leave {len(LOST_THREAD)} characters for the notice")
+                ], None)
+            answer = answer.model_copy(update={"chat_text": text})
         html = None
         if answer.report is not None:
             html = render_artifact(
@@ -335,19 +347,27 @@ class AgentWorker:
 
     def _answer(self, job: Job, pacer: _Pacer) -> str:
         with self._lock:
+            if job.parent_run_id is not None:
+                # Resolve on the worker connection after the serial parent job finishes.
+                # A failed parent can still have a usable persisted session. Without
+                # one, start fresh with the same lost-thread notice as a missing file.
+                session_id = self._runs.session_id_for(job.parent_run_id)
+                job = replace(job, session=self._sessions.get(session_id) if session_id else None)
+            # Check both resolved parents and directly supplied sessions before
+            # any model call. A thread reference cannot transfer chat context.
+            if job.session and job.session.chat_guid_hash != chat_guid_hash(job.message.chat_guid):
+                job = replace(job, session=None)
             try:
                 snapshot = self._source.snapshot()
             except SnapshotUnavailable as exc:
                 self._fail(job, pacer, f"SnapshotUnavailable: {exc.reason}")
                 return "failed"
-            members = self._source.members()
-            players = self._source.players()
         turn = self._turn(snapshot, job)
-        lost = False
+        lost = job.parent_run_id is not None and job.session is None
         resume = job.session.hermes_session_id if job.session else None
         try:
             reply = self._client.run(build_envelope(turn), resume=resume)
-        except AIUnavailable:
+        except SessionNotFound:
             if resume is None:
                 raise
             # The session is gone; the question is not. Start over, and say so.
@@ -355,7 +375,15 @@ class AgentWorker:
             turn = replace(turn, is_follow_up=False)
             reply = self._client.run(build_envelope(turn), resume=None)
 
-        checked = self._checked(reply, snapshot, members, players, turn)
+        def check(reply: AgentReply) -> _Checked:
+            nonlocal snapshot
+            with self._lock:
+                snapshot = self._source.snapshot()
+                members = self._source.members()
+                players = self._source.players()
+                return self._checked(reply, snapshot, members, players, turn, lost)
+
+        checked = check(reply)
         if checked.problems:
             self._notify(
                 self._notifier.ops,
@@ -368,7 +396,7 @@ class AgentWorker:
                 # question would be lost.
                 query = build_envelope(turn) + "\n\n" + query
             reply = self._client.run(query, resume=reply.session_id or None)
-            checked = self._checked(reply, snapshot, members, players, turn)
+            checked = check(reply)
             if checked.problems:
                 self._notify(
                     self._notifier.ops,
@@ -378,7 +406,7 @@ class AgentWorker:
                 return "rejected"
         answer = checked.answer
         assert answer is not None  # a checked answer with no problems has an answer
-        self._deliver(job, pacer, answer, checked.html, reply, lost=lost, week=snapshot.week)
+        self._deliver(job, pacer, answer, checked.html, reply, week=snapshot.week)
         return answer.kind
 
     def _deliver(
@@ -389,11 +417,10 @@ class AgentWorker:
         html: str | None,
         reply: AgentReply,
         *,
-        lost: bool,
         week: int,
     ) -> None:
         """Record, send, attach, finish: one locked stretch, with the pacer stopped first."""
-        chat_text = (LOST_THREAD if lost else "") + answer.chat_text
+        chat_text = answer.chat_text
         report = answer.report
         chat_hash = chat_guid_hash(job.message.chat_guid)
         reply_to = job.message.chat_guid

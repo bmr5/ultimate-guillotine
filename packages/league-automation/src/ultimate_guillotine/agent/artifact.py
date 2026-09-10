@@ -14,6 +14,7 @@ from datetime import datetime
 from functools import lru_cache
 from html.parser import HTMLParser
 from pathlib import Path
+from urllib.parse import unquote
 
 import nh3
 
@@ -96,34 +97,56 @@ class _TextCollector(HTMLParser):
 
     #: ``<style>`` must not put the parser into CDATA mode: unclosed, it would eat the rest.
     CDATA_CONTENT_ELEMENTS: tuple[str, ...] = ()
+    BLOCKS = frozenset({
+        "h1", "h2", "h3", "h4", "p", "ul", "ol", "li", "table", "thead", "tbody",
+        "tr", "th", "td", "br", "hr", "blockquote", "details", "summary", "div", "pre",
+    })
 
     def __init__(self) -> None:
         super().__init__()
         self.parts: list[str] = []
         self._skip = 0
         self._swallowed: list[str] = []
+        self.urls: list[str] = []
 
     def handle_startendtag(self, tag: str, attrs) -> None:
         """``<embed/>`` has no content to skip and no end tag to balance: ignore it."""
+        if tag not in DROPPED_WITH_CONTENT:
+            self.handle_starttag(tag, attrs)
+            self.handle_endtag(tag)
 
     def handle_starttag(self, tag: str, attrs) -> None:
         if tag in DROPPED_WITH_CONTENT and tag not in VOID_DROPPED:
             self._skip += 1
+        if not self._skip:
+            if tag in self.BLOCKS:
+                self.parts.append("\n")
+            for key, value in attrs:
+                if key == "href" and value:
+                    # Query values sometimes contain a percent-encoded URL. Scan every
+                    # decoding layer too; each changing pass consumes an escape.
+                    while True:
+                        self.urls.append(value)
+                        decoded = unquote(value)
+                        if decoded == value:
+                            break
+                        value = decoded
 
     def handle_endtag(self, tag: str) -> None:
         if tag in DROPPED_WITH_CONTENT and self._skip:
             self._skip -= 1
             if not self._skip:
                 self._swallowed.clear()
+        if not self._skip and tag in self.BLOCKS:
+            self.parts.append("\n")
 
     def handle_data(self, data: str) -> None:
-        text = data.strip()
-        if text:
-            (self._swallowed if self._skip else self.parts).append(text)
+        (self._swallowed if self._skip else self.parts).append(data)
 
     def text(self) -> str:
         # Anything still swallowed belongs to a dropped tag that never closed.
-        return " ".join(self.parts + self._swallowed)
+        rendered = "".join(self.parts + self._swallowed)
+        return " ".join((rendered + "\n" + "\n".join(self.urls)).split())
 
 
 def text_content(markup: str) -> str:

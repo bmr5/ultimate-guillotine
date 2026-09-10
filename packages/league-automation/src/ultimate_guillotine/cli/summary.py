@@ -23,7 +23,7 @@ from pathlib import Path
 
 import httpx
 
-from ultimate_guillotine.advisor.state import SnapshotUnavailable
+from ultimate_guillotine.agent.tools.snapshot import SnapshotUnavailable
 from ultimate_guillotine.ai.structured import AIUnavailable
 from ultimate_guillotine.cli.deps import (
     build_delivery,

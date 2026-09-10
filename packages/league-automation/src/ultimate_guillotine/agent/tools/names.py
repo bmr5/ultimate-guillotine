@@ -20,7 +20,7 @@ holder or "free agent", up to :data:`MAX_CANDIDATES` and a count of the rest.
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
-from ultimate_guillotine.advisor.state import AdvisorTeamState, LeagueSnapshot
+from ultimate_guillotine.agent.tools.snapshot import LeagueSnapshot, LeagueTeamState
 from ultimate_guillotine.trades.models import MemberRef
 from ultimate_guillotine.trades.names import normalize_name
 
@@ -54,7 +54,7 @@ class Ambiguous(LookupError):
         super().__init__(f"'{token}' could mean any of: {listed}. Ask which one.")
 
 
-def member_keys(team: AdvisorTeamState, ref: MemberRef | None) -> set[str]:
+def member_keys(team: LeagueTeamState, ref: MemberRef | None) -> set[str]:
     keys = {team.member_label, team.display_name, team.team_name}
     if ref is not None:
         keys |= set(ref.aliases)
@@ -64,7 +64,7 @@ def member_keys(team: AdvisorTeamState, ref: MemberRef | None) -> set[str]:
 
 def resolve_member(
     token: str, snapshot: LeagueSnapshot, members: Sequence[MemberRef]
-) -> AdvisorTeamState:
+) -> LeagueTeamState:
     wanted = normalize_name(token)
     labels = sorted(team.member_label for team in snapshot.teams)
     if not wanted:

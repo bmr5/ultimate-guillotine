@@ -1,0 +1,8 @@
+#!/bin/bash
+# Hermes launches the read-only league MCP. UG_AGENT_FIXTURE=1 selects fixture data.
+set -euo pipefail
+# Hermes retains placeholders for absent caller variables. Restore normal live/cache defaults.
+if [[ "${UG_AGENT_FIXTURE-}" == '${UG_AGENT_FIXTURE}' ]]; then unset UG_AGENT_FIXTURE; fi
+if [[ "${UV_CACHE_DIR-}" == '${UV_CACHE_DIR}' ]]; then unset UV_CACHE_DIR; fi
+cd __REPO_SHELL__
+exec uv run --project packages/league-automation ug agent mcp

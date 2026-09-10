@@ -1,6 +1,6 @@
-"""One read of the league data layer, cached for the length of one advice run.
+"""The League Agent's shared snapshot of the league data layer.
 
-The Advisor reads rosters, projections, FAAB and elimination once per run and
+The agent reads rosters, projections, FAAB and elimination once per run and
 reuses that snapshot for every candidate: a run that re-queried per candidate
 would be both slow and internally inconsistent, proposing a trade against two
 different versions of the same roster.
@@ -14,7 +14,8 @@ what the data layer requires of every consumer. Points and coverage stay
 column, and casting to ``float`` here would round the league's arithmetic on the
 way in and never round it back. FAAB is an ``int`` because the column is one.
 
-The dataclasses are named ``Advisor*`` on purpose. ``sleeper.roster_state``
+The dataclasses are named ``LeagueHolding`` and ``LeagueTeamState``.
+``sleeper.roster_state``
 already owns a ``Holding`` and a ``TeamState``, and those are *write* shapes --
 what one Sleeper payload classified into. These are *read* shapes: a holding
 here carries the player's name and his projected points, which the sync's
@@ -63,7 +64,7 @@ import psycopg
 from ultimate_guillotine.sleeper.state import NflStateRepository
 from ultimate_guillotine.sleeper.team_projections import COVERAGE_GATE
 
-#: The data layer's staleness window: past this the Advisor reports the age of
+#: The data layer's staleness window: past this the agent reports the age of
 #: what it has instead of advising from it.
 STALE_AFTER = timedelta(minutes=30)
 
@@ -80,9 +81,9 @@ __all__ = [
     "COVERAGE_GATE",
     "LAST_REGULAR_WEEK",
     "STALE_AFTER",
-    "AdvisorHolding",
-    "AdvisorTeamState",
+    "LeagueHolding",
     "LeagueSnapshot",
+    "LeagueTeamState",
     "SnapshotRepository",
     "SnapshotUnavailable",
 ]
@@ -97,8 +98,8 @@ class SnapshotUnavailable(Exception):
 
 
 @dataclass(frozen=True)
-class AdvisorHolding:
-    """One rostered player, with the name and the numbers the Advisor renders.
+class LeagueHolding:
+    """One rostered player, with the name and the numbers the agent renders.
 
     ``projected_points`` is keyed by NFL week over the snapshot's horizon. A week
     the feed has no number for is *absent* from the mapping, never present as a
@@ -126,7 +127,7 @@ class AdvisorHolding:
 
 
 @dataclass(frozen=True)
-class AdvisorTeamState:
+class LeagueTeamState:
     """One team's roster, FAAB, elimination and week projections.
 
     ``display_name`` is ``public.members.display_name`` -- the join key the rest
@@ -153,7 +154,7 @@ class AdvisorTeamState:
     projected_points: Mapping[int, Decimal]
     coverage_pct: Decimal
     is_provisional: bool
-    holdings: tuple[AdvisorHolding, ...]
+    holdings: tuple[LeagueHolding, ...]
     #: The week the team went out, when the league recorded one. A
     #: provisional elimination inferred from Sleeper may not carry a week,
     #: so ``None`` on an eliminated team means the week is unrecorded rather
@@ -168,10 +169,10 @@ class AdvisorTeamState:
     def projected_for(self, week: int) -> Decimal | None:
         return self.projected_points.get(week)
 
-    def starters(self) -> tuple[AdvisorHolding, ...]:
+    def starters(self) -> tuple[LeagueHolding, ...]:
         return tuple(h for h in self.holdings if h.slot == "starter")
 
-    def bench(self) -> tuple[AdvisorHolding, ...]:
+    def bench(self) -> tuple[LeagueHolding, ...]:
         # `ir` and `taxi` holdings are deliberately not surplus: a team cannot
         # trade away what it is not allowed to start.
         return tuple(h for h in self.holdings if h.slot == "bench")
@@ -188,12 +189,12 @@ class LeagueSnapshot:
     synced_at: datetime
     #: The oldest component stamp -- what staleness is judged on.
     oldest_synced_at: datetime
-    teams: tuple[AdvisorTeamState, ...]
+    teams: tuple[LeagueTeamState, ...]
 
-    def team_for_member(self, member_id: int) -> AdvisorTeamState | None:
+    def team_for_member(self, member_id: int) -> LeagueTeamState | None:
         return next((t for t in self.teams if t.member_id == member_id), None)
 
-    def team_by_name(self, name: str) -> AdvisorTeamState | None:
+    def team_by_name(self, name: str) -> LeagueTeamState | None:
         """Match a member by either the label the league renders or the join key.
 
         Case-insensitive, because the name arrives out of a text message and
@@ -382,10 +383,10 @@ class SnapshotRepository:
         for player_id, projection_week, league_points in projection_rows:
             points_by_player.setdefault(player_id, {})[projection_week] = league_points
 
-        holdings_by_team: dict[int, list[AdvisorHolding]] = {}
+        holdings_by_team: dict[int, list[LeagueHolding]] = {}
         for row in holding_rows:
             holdings_by_team.setdefault(row[0], []).append(
-                AdvisorHolding(
+                LeagueHolding(
                     sleeper_player_id=row[1],
                     player_name=row[2],
                     position=row[3],
@@ -407,7 +408,7 @@ class SnapshotRepository:
                 computed_at,
             )
 
-        teams: list[AdvisorTeamState] = []
+        teams: list[LeagueTeamState] = []
         for row in team_rows:
             team_id = row[0]
             if row[9] is None:
@@ -430,7 +431,7 @@ class SnapshotRepository:
                 if not provisional and points is not None
             }
             teams.append(
-                AdvisorTeamState(
+                LeagueTeamState(
                     team_id=team_id,
                     member_id=row[1],
                     display_name=row[2],

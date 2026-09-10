@@ -23,7 +23,7 @@ import re
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 
-from ultimate_guillotine.advisor.state import SnapshotRepository
+from ultimate_guillotine.agent.tools.snapshot import SnapshotRepository
 from ultimate_guillotine.config import Settings
 from ultimate_guillotine.core.signature import is_signed
 from ultimate_guillotine.data.repositories import (
@@ -307,7 +307,7 @@ class TradeRegistrar:
         """Which member posted this alert, when that can be answered.
 
         League members announce their own trades in the first person, so the
-        extraction needs a name for `I`. The sender is placed the way the Advisor
+        extraction needs a name for `I`. The sender is placed the way the agent
         places its asker -- the hashed handle, never the handle -- and an empty
         sender is nobody rather than a lookup of the empty string's digest, which
         no handle can ever have produced.
@@ -341,7 +341,7 @@ class TradeRegistrar:
         People announce trades by first name -- `a 1 week Rhamondre rental` --
         and a model with no rosters in front of it can only copy the fragment
         through. So the extraction is given the league as it stands, built from
-        the Advisor's one snapshot read rather than from a second set of queries
+        the agent's one snapshot read rather than from a second set of queries
         against the same tables.
 
         Nothing here is load-bearing. A data layer that cannot describe the

@@ -1,6 +1,6 @@
 """Building one EOD snapshot: the pure assembly, and the reads that feed it.
 
-The assembly cases run over the Advisor's closed-form league with fabricated
+The assembly cases run over the agent's closed-form league with fabricated
 scores, a half-played schedule and a few injuries; the repository cases run the
 same reads against the local database over ``db_seed``.
 """
@@ -8,7 +8,7 @@ same reads against the local database over ``db_seed``.
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
-from tests.advisor.fixture import fixture_snapshot
+from tests.agent.fixture import fixture_snapshot
 from tests.summary import db_seed
 from ultimate_guillotine.summary.models import PlayerInfo
 from ultimate_guillotine.summary.schedule import Game

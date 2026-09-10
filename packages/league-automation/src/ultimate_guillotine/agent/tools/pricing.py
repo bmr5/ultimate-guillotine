@@ -1,6 +1,6 @@
-"""What the league has actually paid, read off the trades it registered.
+"""The League Agent's price history, read from registered league trades.
 
-The Advisor's whole claim to being defensible is that it quotes prices the
+The agent's whole claim to being defensible is that it quotes prices the
 league set itself rather than a ranking from somewhere on the internet. Those
 prices live in ``public.trade_revisions.terms``, which is a dumped
 ``TradeProposal``: a list of assets with a kind, a direction, a player id, and
@@ -11,7 +11,7 @@ FAAB is the only currency a proposal may use, so only FAAB price points become
 comparables. A trade paid in dollars or draft dollars is still recorded -- it
 is a real thing the league did -- but it never prices a suggestion, and a
 payment that mixed dollars in alongside FAAB is quoted on its FAAB leg alone so
-the currency the Advisor may actually propose is never inflated by one it
+the currency the agent may actually propose is never inflated by one it
 may not. Such a payment is recorded *unit-only*: the ``unit`` survives on the
 price point but the amount does not, because :attr:`PricePoint.faab` is the
 only field a number can live in and putting dollars there would make them
@@ -33,7 +33,7 @@ prices the same position identically for all eighteen teams.
 
 A season the league never traded in is not an error. It yields no price points,
 the comparables come back empty, and the median comes back ``None`` -- which is
-what lets the Advisor say it has no precedent instead of inventing one.
+what lets the agent say it has no precedent instead of inventing one.
 """
 
 from collections.abc import Iterable, Mapping, Sequence

@@ -1,5 +1,10 @@
 # League Agent Implementation Plan
 
+> **Continuation, 2026-09-10:** Use
+> `docs/superpowers/plans/2026-09-10-league-agent-codex-continuation.md`
+> for execution from the Task 14 review. Ben requires GPT-6 Astra for every task and review.
+> The original task bodies remain reference requirements, subject to the spec and ledger rulings.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** One `@bot` in the league chat backed by a Hermes agent session with read-only league tools and cited web research, answering anything from a FAAB lookup to a multi-team trade idea with a chat summary plus an attached HTML write-up, resuming the session when a member replies to the bot, and recording every answer privately.

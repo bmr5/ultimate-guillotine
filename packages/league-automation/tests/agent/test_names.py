@@ -2,7 +2,7 @@
 
 import pytest
 
-from ultimate_guillotine.advisor.fixture import fixture_snapshot
+from ultimate_guillotine.agent.tools.fixture import fixture_snapshot
 from ultimate_guillotine.agent.tools.names import (
     Ambiguous,
     PlayerInfo,

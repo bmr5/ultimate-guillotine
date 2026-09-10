@@ -9,6 +9,7 @@ from ultimate_guillotine.agent.session import (
     FLAGS,
     HANG_GUARD_SECONDS,
     HermesAgentClient,
+    SessionNotFound,
 )
 from ultimate_guillotine.ai.structured import AIInvalidOutput, AIUnavailable
 
@@ -71,3 +72,24 @@ def test_failures_are_named_by_class_only() -> None:
         _client(Runner(error=subprocess.TimeoutExpired("hermes", 1))).run("x")
     with pytest.raises(AIInvalidOutput):
         _client(Runner(stdout="   ")).run("x")
+
+
+@pytest.mark.parametrize("code", [0, 1])
+def test_only_the_installed_missing_session_diagnostic_is_classified(code):
+    runner = Runner(stderr="Session not found: secret-session\n", returncode=code)
+    with pytest.raises(SessionNotFound) as caught:
+        _client(runner).run("again", resume="secret-session")
+    assert str(caught.value) == "hermes session not found"
+    assert len(runner.calls) == 1
+
+
+@pytest.mark.parametrize("stderr,error", [
+    ("Authentication failed: private details", None),
+    ("Process failed: private details", None),
+    ("", subprocess.TimeoutExpired("private command", 3600)),
+])
+def test_other_failures_remain_unavailable_without_raw_diagnostics(stderr, error):
+    with pytest.raises(AIUnavailable) as caught:
+        _client(Runner(stderr=stderr, returncode=1, error=error)).run("again", resume="old")
+    assert type(caught.value) is AIUnavailable
+    assert "private" not in str(caught.value)

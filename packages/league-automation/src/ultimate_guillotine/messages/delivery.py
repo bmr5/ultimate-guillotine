@@ -78,12 +78,14 @@ class DeliveryService:
         if (
             reply_to is not None
             and mode is DeliveryMode.PRODUCTION
-            and self._settings.test_chat_guid
-            and reply_to == self._settings.test_chat_guid
         ):
             test_target = self._targets.get(DeliveryMode.TEST)
             if test_target is not None and test_target.chat_guid == reply_to:
+                if reply_to != self._settings.test_chat_guid:
+                    raise TargetMismatch("stored test target does not match configured chat")
                 return test_target
+            if reply_to == self._settings.test_chat_guid:
+                raise TargetMismatch("no matching registered test target for reply")
         target = self._targets.get(mode)
         if target is None:
             raise TargetMismatch(f"no delivery target configured for {mode}")
@@ -131,8 +133,13 @@ class DeliveryService:
                         f"[{agent}] [{self._settings.delivery_mode}] "
                         f"outbound #{pending.id} (reconciled after crash)\n{signed}"
                     )
-                    return DeliveryResult("reconciled", pending.id, msg.guid)
-            self._outbound.set_state(pending.id, "failed", error="unreconciled send; retrying")
+                    if pending.run_id == run_id:
+                        return DeliveryResult("reconciled", pending.id, msg.guid)
+                    # Recover the earlier run, then give this run its own outbound
+                    # and reply GUID even when both messages have identical text.
+                    break
+            else:
+                self._outbound.set_state(pending.id, "failed", error="unreconciled send; retrying")
         outbound_id = self._outbound.reserve(run_id, target.id, signed, digest)
         self._persist()
         self._outbound.set_state(outbound_id, "sending")

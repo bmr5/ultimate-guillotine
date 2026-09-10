@@ -1,8 +1,7 @@
 """Lineup arithmetic: what a set of players is worth as a starting lineup.
 
-Lifted from the Trade Advisor's candidate generator, where it was the one part
-worth keeping: a model with rosters in front of it will happily add gross
-projections together, and gross projections make every trade zero-sum. What a
+A model with rosters in front of it may add gross projections together,
+and gross projections make every trade zero-sum. What a
 player is *worth to a roster* is the margin over whoever he displaces from the
 best legal lineup, and that is what :func:`lineup_delta` computes, for each
 side against its own roster.
@@ -16,10 +15,10 @@ never zero -- because a lineup a man short is not a cheaper lineup.
 from collections.abc import Mapping, Sequence
 from decimal import Decimal
 
-from ultimate_guillotine.advisor.state import (
-    AdvisorHolding,
-    AdvisorTeamState,
+from ultimate_guillotine.agent.tools.snapshot import (
+    LeagueHolding,
     LeagueSnapshot,
+    LeagueTeamState,
 )
 
 POSITIONS = ("QB", "RB", "WR", "TE")
@@ -76,12 +75,12 @@ def replacement_levels(snapshot: LeagueSnapshot) -> dict[str, Decimal]:
     return levels
 
 
-def startable(team: AdvisorTeamState) -> tuple[AdvisorHolding, ...]:
+def startable(team: LeagueTeamState) -> tuple[LeagueHolding, ...]:
     """The players a team may actually field: starters and bench, never IR or taxi."""
     return team.starters() + team.bench()
 
 
-def lineup_points(holdings: Sequence[AdvisorHolding], week: int) -> Decimal:
+def lineup_points(holdings: Sequence[LeagueHolding], week: int) -> Decimal:
     """The best legal base lineup these players can field in one week."""
     total = NO_POINTS
     for position in POSITIONS:
@@ -100,8 +99,8 @@ def lineup_points(holdings: Sequence[AdvisorHolding], week: int) -> Decimal:
 
 
 def _contenders(
-    roster: Sequence[AdvisorHolding], moving: Sequence[AdvisorHolding]
-) -> list[AdvisorHolding]:
+    roster: Sequence[LeagueHolding], moving: Sequence[LeagueHolding]
+) -> list[LeagueHolding]:
     """Everybody whose projection the diff depends on: the movers and every
     incumbent at a position the trade touches."""
     affected = {
@@ -111,24 +110,23 @@ def _contenders(
 
 
 def lineup_delta(
-    roster: Sequence[AdvisorHolding],
-    incoming: Sequence[AdvisorHolding],
-    outgoing: Sequence[AdvisorHolding],
+    roster: Sequence[LeagueHolding],
+    incoming: Sequence[LeagueHolding],
+    outgoing: Sequence[LeagueHolding],
     weeks: Sequence[int],
 ) -> Decimal | None:
     """What these legs do to one side's best lineup, summed over ``weeks``.
 
     **The coverage gate is the caller's job, not this function's.** The
-    Advisor's ``_lineup_delta`` took a ``known`` flag and returned ``None``
-    below the gate; this one takes no such flag and computes from whatever
+    function takes no ``known`` flag and computes from whatever
     per-player projections it is handed -- below the gate included, where the
     team totals go provisional while the per-player rows keep their numbers.
-    That is deliberate, not an oversight of the lift: per-player projections
-    are public on the league board even when a team total is withheld, so a
+    Per-player projections are public on the league board even when a team
+    total is withheld, so a
     delta computed from them discloses nothing the board does not already show.
     The gate belongs at the tool boundary instead, where a team total would be
     quoted, so a caller that means to respect it must check
-    :meth:`~ultimate_guillotine.advisor.state.LeagueSnapshot.coverage_ok`
+    :meth:`~ultimate_guillotine.agent.tools.snapshot.LeagueSnapshot.coverage_ok`
     itself, first. ``test_below_the_gate_with_points_intact_the_delta_is_a_number``
     pins this.
 
@@ -150,6 +148,6 @@ def lineup_delta(
 
 def holdings_by_id(
     snapshot: LeagueSnapshot,
-) -> Mapping[str, tuple[AdvisorTeamState, AdvisorHolding]]:
+) -> Mapping[str, tuple[LeagueTeamState, LeagueHolding]]:
     """Every rostered player, keyed by Sleeper id, with the team holding him."""
     return {h.sleeper_player_id: (team, h) for team in snapshot.teams for h in team.holdings}

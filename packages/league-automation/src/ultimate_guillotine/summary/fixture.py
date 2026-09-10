@@ -1,6 +1,6 @@
 """The closed-form league on a Sunday night: what ``ug summary eod --fixture`` renders.
 
-The Advisor's fixture league (:mod:`ultimate_guillotine.advisor.fixture`) supplies
+The agent's fixture league (:mod:`ultimate_guillotine.agent.tools.fixture`) supplies
 the rosters, the projections and the eliminated team; this module adds the rest
 of a week in progress, all closed-form so a reviewer can compute any line by
 hand: an NFL team for every player, sixteen games of which thirteen are final,
@@ -19,8 +19,8 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from types import MappingProxyType
 
-from ultimate_guillotine.advisor.fixture import fixture_snapshot
-from ultimate_guillotine.advisor.state import AdvisorHolding, AdvisorTeamState, LeagueSnapshot
+from ultimate_guillotine.agent.tools.fixture import fixture_snapshot
+from ultimate_guillotine.agent.tools.snapshot import LeagueHolding, LeagueSnapshot, LeagueTeamState
 from ultimate_guillotine.summary.models import DayState, EodSnapshot, PlayerInfo
 from ultimate_guillotine.summary.schedule import Game
 from ultimate_guillotine.summary.snapshot import EodInputs, MoveRow, ScoreRow, assemble
@@ -109,16 +109,16 @@ def _games(day_state: DayState) -> list[Game]:
     return games
 
 
-def _no_projection(holding: AdvisorHolding) -> AdvisorHolding:
+def _no_projection(holding: LeagueHolding) -> LeagueHolding:
     return replace(holding, projected_points=MappingProxyType({}))
 
 
 def _tweaked(league: LeagueSnapshot) -> LeagueSnapshot:
     """The fixture league with the three lineup cases written into it."""
-    teams: list[AdvisorTeamState] = []
+    teams: list[LeagueTeamState] = []
     for team in league.teams:
         number = team.member_id
-        holdings: list[AdvisorHolding] = []
+        holdings: list[LeagueHolding] = []
         for holding in team.holdings:
             if holding.slot != "starter":
                 holdings.append(holding)

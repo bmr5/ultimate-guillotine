@@ -1,12 +1,15 @@
 """One job through the worker: envelope, session, verification, artifact, delivery, record."""
 
 import json
+import threading
 from datetime import UTC, datetime
+
+import pytest
 
 from ultimate_guillotine.agent.artifact import external_references
 from ultimate_guillotine.agent.envelope import PROMPT_VERSION
 from ultimate_guillotine.agent.records import Session
-from ultimate_guillotine.agent.session import AgentReply
+from ultimate_guillotine.agent.session import AgentReply, SessionNotFound
 from ultimate_guillotine.agent.tools.source import FixtureSource
 from ultimate_guillotine.agent.worker import (
     AGENT,
@@ -23,6 +26,7 @@ from ultimate_guillotine.agent.worker import (
     Job,
 )
 from ultimate_guillotine.ai.structured import AIUnavailable
+from ultimate_guillotine.data.repositories import chat_guid_hash
 from ultimate_guillotine.messages.bluebubbles import InboundMessage
 from ultimate_guillotine.trades.models import MemberRef
 
@@ -115,6 +119,9 @@ class FakeRuns:
     def set_session(self, run_id, session_id):
         self.sessions[run_id] = session_id
 
+    def session_id_for(self, run_id):
+        return self.sessions.get(run_id)
+
     def running_ids(self, agent):
         return list(self._running)
 
@@ -126,6 +133,10 @@ class FakeSessions:
     def create(self, hermes_session_id, chat_guid_hash):
         self.created.append((hermes_session_id, chat_guid_hash))
         return len(self.created)
+
+    def get(self, session_id):
+        hermes, chat = self.created[session_id - 1]
+        return Session(session_id, hermes, chat, 1)
 
 
 class FakeAnswers:
@@ -260,16 +271,33 @@ def test_a_hermes_failure_is_the_fixed_line_and_an_alert() -> None:
 
 
 def test_a_follow_up_resumes_and_a_lost_thread_starts_fresh() -> None:
-    session = Session(3, "sess-old", "hash", 2)
+    session = Session(3, "sess-old", chat_guid_hash(CHAT), 2)
     worker, parts = _worker(_reply(LOOKUP, "sess-old"))
     worker.run_job(Job(8, _msg("what about Joel", thread="p:0/BOT-1"), ASKER, session))
     query, resume = parts["client"].calls[0]
     assert resume == "sess-old" and "follow-up" in query
 
-    worker, parts = _worker(AIUnavailable("gone"), _reply(LOOKUP, "sess-new"))
+    worker, parts = _worker(SessionNotFound("gone"), _reply(LOOKUP, "sess-new"))
     worker.run_job(Job(9, _msg("what about Joel", thread="p:0/BOT-1"), ASKER, session))
     assert [c[1] for c in parts["client"].calls] == ["sess-old", None]
     assert parts["delivery"].texts == [LOST_THREAD + LOOKUP["chat_text"]]
+
+
+@pytest.mark.parametrize("origin,foreign", [(CHAT, "league"), ("league", CHAT)])
+@pytest.mark.parametrize("parent_lookup", [False, True])
+def test_foreign_session_never_reaches_the_model_even_if_parent_lookup_is_supplied(
+    origin, foreign, parent_lookup,
+):
+    worker, parts = _worker(_reply(LOOKUP, "fresh-session"))
+    session_id = parts["sessions"].create("foreign-session", chat_guid_hash(origin))
+    parts["runs"].sessions[41] = session_id
+    session = None if parent_lookup else parts["sessions"].get(session_id)
+    question = _msg("@daddy follow up").model_copy(update={"chat_guid": foreign})
+    job = Job(8, question, ASKER, session, parent_run_id=41 if parent_lookup else None)
+    assert worker.run_job(job) == "answer"
+    assert [resume for _, resume in parts["client"].calls] == [None]
+    assert parts["delivery"].reply_tos == [foreign]
+    assert not parts["answers"].recorded[0].is_follow_up
 
 
 def test_pacing_lines_post_only_while_the_job_runs() -> None:
@@ -348,7 +376,8 @@ def test_startup_settles_runs_the_restart_orphaned() -> None:
     worker, parts = _worker(runs=FakeRuns(running=(4, 5)))
     assert worker.reconcile_startup() == [4, 5]
     assert [f["status"] for f in parts["runs"].finished] == ["failed", "failed"]
-    assert parts["delivery"].texts == [COULD_NOT_FINISH]
+    assert parts["delivery"].texts == []
+    assert parts["notifier"].ops_sent == ["League Agent orphaned runs marked failed."]
 
 
 def test_a_queued_question_is_told_it_is_next_after_twenty_seconds() -> None:
@@ -371,3 +400,56 @@ def test_the_queued_line_is_dropped_once_the_job_starts() -> None:
     assert queued.cancelled
     queued.fire()
     assert parts["delivery"].texts == [LOOKUP["chat_text"]]
+
+
+def test_wait_until_idle_finishes_running_and_queued_answers() -> None:
+    started, release, idle = threading.Event(), threading.Event(), threading.Event()
+
+    def block():
+        started.set()
+        assert release.wait(5)
+
+    worker, parts = _worker(_reply(LOOKUP), _reply(LOOKUP), on_run=block)
+    wait = worker.wait_until_idle
+    worker.submit(Job(7, _msg("@bot hi"), ASKER, None))
+    worker.submit(Job(8, _msg("@bot again", guid="g2"), ASKER, None))
+    worker.start()
+
+    def drain():
+        wait()
+        idle.set()
+
+    waiter = threading.Thread(target=drain, daemon=True)
+    waiter.start()
+    try:
+        assert started.wait(2)
+        assert not idle.wait(0.1)
+    finally:
+        release.set()
+        waiter.join(2)
+    assert idle.is_set()
+    assert [run["run_id"] for run in parts["runs"].finished] == [7, 8]
+    assert parts["delivery"].texts == [LOOKUP["chat_text"]] * 2
+
+
+def test_unexpected_run_job_error_does_not_hang_drain_or_stop_next_job(monkeypatch, caplog):
+    worker, _parts = _worker()
+    wait = worker.wait_until_idle
+    attempted = []
+
+    def run_job(job):
+        attempted.append(job.run_id)
+        if job.run_id == 7:
+            raise RuntimeError("private question must not be logged")
+
+    monkeypatch.setattr(worker, "run_job", run_job)
+    worker.submit(Job(7, _msg("@bot hi"), ASKER, None))
+    worker.submit(Job(8, _msg("@bot again", guid="g2"), ASKER, None))
+    worker.start()
+    waiter = threading.Thread(target=wait, daemon=True)
+    waiter.start()
+    waiter.join(2)
+    assert not waiter.is_alive()
+    assert attempted == [7, 8]
+    assert "RuntimeError" in caplog.text
+    assert "private question" not in caplog.text

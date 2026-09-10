@@ -18,7 +18,7 @@ from pathlib import Path
 import httpx
 import openpyxl
 
-from ultimate_guillotine.advisor.state import SnapshotRepository
+from ultimate_guillotine.agent.tools.snapshot import SnapshotRepository
 from ultimate_guillotine.ai.structured import AIInvalidOutput
 from ultimate_guillotine.cli.deps import build_ai, build_delivery, build_deps
 from ultimate_guillotine.config import DeliveryMode, load_settings
@@ -204,7 +204,7 @@ def dry_run_pipeline(
 def league_context(conn, members) -> str | None:
     """The context pack the listener would have put in front of this alert.
 
-    Built from the Advisor's league snapshot, the same read the registrar makes,
+    Built from the agent's league snapshot, the same read the registrar makes,
     so a dry run and the real thing show the model the same league. A data layer
     that cannot describe the league yet costs the dry run its context and
     nothing else -- the note goes to stderr so a piped `--text` run still prints

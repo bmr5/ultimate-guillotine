@@ -3,7 +3,7 @@
 from dataclasses import replace
 from datetime import timedelta, timezone
 
-from ultimate_guillotine.advisor.fixture import ELIMINATED_MEMBER_ID, FIXTURE_SYNCED_AT
+from ultimate_guillotine.agent.tools.fixture import ELIMINATED_MEMBER_ID, FIXTURE_SYNCED_AT
 from ultimate_guillotine.agent.tools.league import (
     history,
     league_overview,
@@ -113,7 +113,7 @@ def test_trades_render_terms_by_label_and_never_the_excerpt() -> None:
 
 
 def test_price_history_quotes_what_the_league_paid() -> None:
-    from tests.advisor.fixture import PERMANENT_ROW, RENTAL_ROW
+    from tests.agent.fixture import PERMANENT_ROW, RENTAL_ROW
 
     class Priced(FixtureSource):
         def trades(self, seasons):
@@ -202,7 +202,8 @@ def test_history_lists_placings_and_survival_lists_the_week() -> None:
     assert one["source"] == "season_results"
     week = survival(SOURCE, now=NOW)
     assert week["week"] == 6 and week["scores"][0]["member"] == "Member18"
-    assert week["eliminated"] == [{"member": "Member17", "week": 5, "source": "adjudicator"}]
+    assert week["eliminated"] == []
+    assert week["current_state"]["eliminated"] == [{"member": "Member17", "week": 5}]
 
 
 def test_transactions_name_the_teams_and_players() -> None:

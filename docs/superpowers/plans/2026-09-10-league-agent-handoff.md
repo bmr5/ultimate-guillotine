@@ -1,5 +1,14 @@
 # League Agent build — handoff
 
+> Current status, 2026-09-10: Tasks 14 through 18 are complete. Task 19 live acceptance is partial.
+> The consolidated final fixes passed the scoped GPT-6 Astra review. Offline work is complete.
+> Final offline tests: 1,385 passed, 180 skipped, one known warning. Authentication now works.
+> Five real Astra answers plus a follow-up succeeded. Transaction-history verification, actual iPhone
+> rendering and rollout gates remain open. See the acceptance record for exact replies and timings.
+> Resume from the [canonical ledger](../../../.superpowers/sdd/2026-09-10-league-agent/progress.md)
+> and [acceptance record](../acceptance/2026-09-10-league-agent.md), not the historical Task 14
+> instructions below. Changes remain uncommitted in the existing worktree.
+
 ## What this is
 Replacing the deterministic Trade Advisor with the **League Agent**: one `@bot` in the league iMessage
 chat → a Hermes agent session (profile `guillotine-league`) with read-only league tools over MCP plus

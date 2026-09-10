@@ -1,23 +1,27 @@
 """The listener's half of the League Agent: gates, then a hand-off.
 
-Everything here runs under the listener's one lock and takes milliseconds:
+Everything here runs under the listener's one lock:
 is this the chat, is the bot addressed (by tag or by inline reply), is this an
 attempt to overrule it, and who sent it. Then the run is reserved -- the
-idempotency guard against a redelivered webhook -- and the job is queued for
-the worker. No league data is read and no model is called on this thread.
+idempotency guard against a redelivered webhook -- and a receipt is delivered
+before the job is queued for the worker. No league data is read and no model
+is called on this thread.
 """
 
 import hashlib
+import logging
 import re
 
 from ultimate_guillotine.agent.records import Session
 from ultimate_guillotine.agent.worker import AGENT, Job
 from ultimate_guillotine.core.signature import is_signed
-from ultimate_guillotine.data.repositories import handle_hash
+from ultimate_guillotine.data.repositories import chat_guid_hash, handle_hash
 from ultimate_guillotine.listener.processing import Trigger
 from ultimate_guillotine.messages.bluebubbles import InboundMessage
 
-BOT_TAG = re.compile(r"@\s*(?:bot|guillotinebot)\b", re.IGNORECASE)
+BOT_TAG = re.compile(r"@\s*(?:bot|guillotinebot|daddy)\b", re.IGNORECASE)
+RECEIPT = "Got it, kitten. Daddy's on it."
+log = logging.getLogger(__name__)
 #: An explicit attempt to overwrite the agent's own instructions. Narrow on
 #: purpose: "register this trade" is a question the agent answers with the 🚨
 #: path, not an attack.
@@ -30,7 +34,7 @@ OVERRIDE = re.compile(
 )
 REFUSAL = (
     "I only answer from league data and my own rules — I can't change them, play "
-    "favorites, or make a trade. Announce a deal with a 🚨 alert and I'll log it."
+    "favorites, or make a trade. Members announce deals with a 🚨 alert for commissioner approval."
 )
 
 
@@ -50,25 +54,34 @@ class FollowUpResolver:
         self._runs = runs
         self._sessions = sessions
 
-    def resolve(self, thread_guid: str | None) -> Session | None:
-        if not thread_guid:
-            return None
-        run_id = self._outbound.run_id_for_guid(thread_guid)
+    def resolve(self, thread_guid: str | None, chat_guid: str) -> Session | None:
+        run_id = self.parent_run_id(thread_guid, chat_guid)
         if run_id is None:
             return None
         session_id = self._runs.session_id_for(run_id)
-        if session_id is None:
+        session = self._sessions.get(session_id) if session_id else None
+        return session if session and session.chat_guid_hash == chat_guid_hash(chat_guid) else None
+
+    def parent_run_id(self, thread_guid: str | None, chat_guid: str) -> int | None:
+        """Recognize an agent outbound even while its session is still being created."""
+        if not thread_guid:
             return None
-        return self._sessions.get(session_id)
+        run_id = self._outbound.run_id_for_guid(thread_guid, chat_guid)
+        if run_id is None or not self._runs.is_agent_run(run_id, AGENT):
+            return None
+        return run_id
 
 
 def league_agent_trigger(
-    *, worker, contacts, resolver: FollowUpResolver, runs, delivery, chat_guid: str
+    *, worker, contacts, resolver: FollowUpResolver, runs, delivery, chat_guid: str,
+    commissioner_username: str | None = None, members=lambda: (),
 ) -> Trigger:
     def matches(msg: InboundMessage) -> bool:
         if msg.chat_guid != chat_guid or is_signed(msg.text):
             return False
-        return has_bot_tag(msg.text) or resolver.resolve(msg.thread_originator_guid) is not None
+        return has_bot_tag(msg.text) or resolver.parent_run_id(
+            msg.thread_originator_guid, msg.chat_guid
+        ) is not None
 
     def handle(msg: InboundMessage) -> None:
         run_id = runs.reserve(AGENT, "webhook", f"agent:{msg.guid}")
@@ -86,6 +99,16 @@ def league_agent_trigger(
             if msg.sender_address
             else None
         )
-        worker.submit(Job(run_id, msg, asker, resolver.resolve(msg.thread_originator_guid)))
+        if msg.is_from_me and not msg.sender_address:
+            wanted = (commissioner_username or "").strip().lower()
+            if wanted:
+                asker = next((m for m in members() if m.display_name.lower() == wanted), None)
+        job = Job(run_id, msg, asker, None,
+                  parent_run_id=resolver.parent_run_id(msg.thread_originator_guid, msg.chat_guid))
+        try:
+            delivery.deliver(run_id, AGENT, RECEIPT, reply_to=msg.chat_guid)
+        except Exception as exc:  # noqa: BLE001 - queue the question even if receipt fails
+            log.warning("league agent could not acknowledge receipt: %s", exc.__class__.__name__)
+        worker.submit(job)
 
     return Trigger(AGENT, matches, handle)

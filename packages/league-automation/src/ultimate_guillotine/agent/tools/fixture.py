@@ -1,10 +1,10 @@
-"""A deterministic 18-team league: the one the Advisor is rehearsed against.
+"""The League Agent's deterministic 18-team fixture league.
 
 It ships with the package rather than living beside the tests because two
-callers outside the test suite need it. ``ug advisor ask --fixture`` runs the
+callers outside the test suite need it. ``ug agent ask --fixture`` runs the
 whole pipeline against this league so a prompt or scoring change can be tried
 on a machine with no database and no league data at all, and the golden
-request set in :mod:`tests.advisor.test_golden` asks its live model questions
+request set in :mod:`tests.agent.test_golden` asks its live model questions
 here rather than about real managers -- every name in it is ``Member07`` and
 ``Starter 07-3``, so a live transcript carries nothing about the league.
 
@@ -49,12 +49,12 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from types import MappingProxyType
 
-from ultimate_guillotine.advisor.state import (
+from ultimate_guillotine.agent.tools.snapshot import (
     COVERAGE_GATE,
     LAST_REGULAR_WEEK,
-    AdvisorHolding,
-    AdvisorTeamState,
+    LeagueHolding,
     LeagueSnapshot,
+    LeagueTeamState,
 )
 
 FIXTURE_SYNCED_AT = datetime(2026, 10, 8, 15, 0, tzinfo=UTC)
@@ -141,18 +141,18 @@ def _team(
     coverage_pct: Decimal,
     weeks: tuple[int, ...],
     keep_player_points: bool,
-) -> AdvisorTeamState:
+) -> LeagueTeamState:
     provisional = coverage_pct < COVERAGE_GATE
     #: A withheld team total does not withhold the players under it unless this
     #: fixture is asked to -- see the module docstring.
     dark = provisional and not keep_player_points
-    holdings: list[AdvisorHolding] = []
+    holdings: list[LeagueHolding] = []
     total = Decimal(0)
     for slot_index, lineup_position in enumerate(LINEUP):
         points = _starter_points(team, slot_index)
         total += points
         holdings.append(
-            AdvisorHolding(
+            LeagueHolding(
                 sleeper_player_id=f"p{team:02d}s{slot_index}",
                 player_name=f"Starter {team:02d}-{slot_index}",
                 position=_slot_position(team, slot_index),
@@ -165,7 +165,7 @@ def _team(
         )
     for bench_index in range(len(BENCH)):
         holdings.append(
-            AdvisorHolding(
+            LeagueHolding(
                 sleeper_player_id=f"p{team:02d}b{bench_index}",
                 player_name=f"Bench {team:02d}-{bench_index}",
                 position=_bench_position(team, bench_index),
@@ -179,7 +179,7 @@ def _team(
             )
         )
     label = f"Member{team:02d}"
-    return AdvisorTeamState(
+    return LeagueTeamState(
         team_id=100 + team,
         member_id=team,
         display_name=label,

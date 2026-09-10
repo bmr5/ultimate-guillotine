@@ -37,7 +37,7 @@ def _fingerprint(text: str) -> str:
 
 def _sender_hash(address: str | None) -> str | None:
     # One implementation, shared with MemberContactRepository: a sender the
-    # Advisor cannot match is a sender it must not guess at.
+    # agent cannot match is a sender it must not guess at.
     return handle_hash(address) if address else None
 
 

@@ -19,18 +19,6 @@ from decimal import Decimal
 from functools import wraps
 from typing import Any
 
-from ultimate_guillotine.advisor.pricing import (
-    COMPARABLE_KINDS,
-    comparables_for,
-    median_faab,
-    price_points,
-)
-from ultimate_guillotine.advisor.state import (
-    AdvisorHolding,
-    AdvisorTeamState,
-    LeagueSnapshot,
-    SnapshotUnavailable,
-)
 from ultimate_guillotine.agent.tools.math import (
     holdings_by_id,
     lineup_delta,
@@ -44,6 +32,18 @@ from ultimate_guillotine.agent.tools.names import (
     player_pool,
     resolve_member,
     resolve_player,
+)
+from ultimate_guillotine.agent.tools.pricing import (
+    COMPARABLE_KINDS,
+    comparables_for,
+    median_faab,
+    price_points,
+)
+from ultimate_guillotine.agent.tools.snapshot import (
+    LeagueHolding,
+    LeagueSnapshot,
+    LeagueTeamState,
+    SnapshotUnavailable,
 )
 from ultimate_guillotine.agent.tools.source import LeagueSource
 
@@ -92,7 +92,7 @@ def _board(snapshot: LeagueSnapshot) -> dict[int, int]:
     return {team.member_id: index + 1 for index, team in enumerate(ordered)}
 
 
-def _out_starters(team: AdvisorTeamState, players: dict[str, PlayerInfo]) -> list[str]:
+def _out_starters(team: LeagueTeamState, players: dict[str, PlayerInfo]) -> list[str]:
     return [
         h.player_name for h in team.starters()
         if (p := players.get(h.sleeper_player_id)) and p.injury_status in OUT_STATUSES
@@ -100,7 +100,7 @@ def _out_starters(team: AdvisorTeamState, players: dict[str, PlayerInfo]) -> lis
 
 
 def _holding(
-    holding: AdvisorHolding, players: dict[str, PlayerInfo], weeks: Sequence[int]
+    holding: LeagueHolding, players: dict[str, PlayerInfo], weeks: Sequence[int]
 ) -> dict[str, Any]:
     info = players.get(holding.sleeper_player_id)
     return {
@@ -222,7 +222,7 @@ def projections(
             key=lambda t: (t.projected_now is None, -(t.projected_now or Decimal(0))),
         )
 
-    def projected(team: AdvisorTeamState) -> float | None:
+    def projected(team: LeagueTeamState) -> float | None:
         if scope == "roster":
             points = [h.projected_now for h in team.holdings if h.projected_now is not None]
             return _points(sum(points, Decimal(0))) if points else None
@@ -357,7 +357,7 @@ def trade_math(
     flags: list[str] = []
     sides: dict[int, dict[str, Any]] = {}
 
-    def side(team: AdvisorTeamState) -> dict[str, Any]:
+    def side(team: LeagueTeamState) -> dict[str, Any]:
         if team.member_id not in sides:
             if team.is_eliminated:
                 flags.append(f"{team.member_label} is eliminated and cannot trade")
@@ -426,7 +426,8 @@ def trade_math(
         },
         "points_over_replacement": margins,
         "note": (
-            "lineup_delta is the change to that side's best legal lineup, summed over weeks;"
+            "lineup_delta is the change to the inherited base lineup, excluding FLEX, K and DEF,"
+            " summed over weeks;"
             " null means a projection was missing. When projections_complete is false the"
             " league's totals are below the coverage gate and the delta is provisional."
         ),
@@ -476,17 +477,38 @@ def survival(
 ) -> dict:
     snapshot = source.snapshot()
     wanted = week or snapshot.week
+    scores = source.week_scores(wanted)
+    entries = source.gulag_entries(wanted)
+    summary = source.survival_summary()
     return {
         "week": wanted,
         "scores": [
-            {"member": s.member_label, "team_name": s.team_name, "points": _points(s.points)}
-            for s in source.week_scores(wanted)
+            {"member": s.member_label, "team_name": s.team_name, "points": _points(s.points),
+             "is_final": s.is_final, "state_version": s.state_version}
+            for s in scores
         ],
+        "scores_source": "public.weekly_results",
+        "scores_status": "recorded" if scores else "not recorded",
+        "gulag_entries": [{"member": e.member_label, "week": e.week,
+                           "occurred_at": e.occurred_at.astimezone(UTC).isoformat()}
+                          for e in entries],
+        "gulag_entries_status": "recorded" if entries else "not recorded",
+        "gulag_entries_source": "public.league_events",
         "eliminated": [
             {"member": t.member_label, "week": t.eliminated_week, "source": t.elimination_source}
-            for t in snapshot.teams if t.is_eliminated
+            for t in snapshot.teams if t.is_eliminated and t.eliminated_week == wanted
         ],
-        "alive": sum(1 for t in snapshot.teams if not t.is_eliminated),
+        "eliminated_scope": "recorded cuts in the requested week; an empty list is not proof"
+                            " that adjudication is complete",
+        "current_state": {
+            "week": snapshot.week,
+            "alive": sum(1 for t in snapshot.teams if not t.is_eliminated),
+            "eliminated": [{"member": t.member_label, "week": t.eliminated_week}
+                           for t in snapshot.teams if t.is_eliminated],
+        },
+        "latest_summary": summary,
+        "summary_status": "recorded" if summary is not None else "not recorded",
+        "summary_scope": "latest stored summary for this season, dated by its own week and as_of",
         **_stamp(snapshot, now),
     }
 

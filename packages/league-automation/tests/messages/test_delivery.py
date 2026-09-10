@@ -132,10 +132,11 @@ def test_production_rejects_participant_change() -> None:
     assert outbound.records == {}
 
 
-def test_crash_after_send_then_retry_reconciles() -> None:
+@pytest.mark.parametrize("run_id", [None, 41])
+def test_crash_after_send_then_retry_reconciles(run_id) -> None:
     service, client, outbound, _ = make(DeliveryMode.TEST, crash_after_send=True)
     with pytest.raises(RuntimeError):
-        service.deliver(None, "self-test", "hello")
+        service.deliver(run_id, "self-test", "hello")
     assert outbound.records[1]["state"] == "sending"
     outbound.pending = OutboundRecord(
         1,
@@ -143,6 +144,7 @@ def test_crash_after_send_then_retry_reconciles() -> None:
         datetime.now(UTC),
         content_hash("hello"),
         None,
+        run_id=run_id,
     )
     client.history = [
         InboundMessage(
@@ -156,7 +158,7 @@ def test_crash_after_send_then_retry_reconciles() -> None:
         )
     ]
     retry, _, _, retry_notifier = make(DeliveryMode.TEST, client=client, outbound=outbound)
-    result = retry.deliver(None, "self-test", "hello")
+    result = retry.deliver(run_id, "self-test", "hello")
     assert result.status == "reconciled"
     assert len(client.sent) == 1
     assert outbound.records[1]["state"] == "reconciled"
@@ -282,3 +284,20 @@ def test_production_answers_the_self_test_chat_in_the_self_test_chat() -> None:
     assert client.sent[-1] == (PROD_GUID, sign("league"))
     service.deliver(None, "trade-registrar", "elsewhere", reply_to="iMessage;+;chat-unknown")
     assert client.sent[-1] == (PROD_GUID, sign("elsewhere"))
+
+
+@pytest.mark.parametrize("change", ["missing-config", "wrong-config", "missing-target"])
+@pytest.mark.parametrize("attachment", [False, True])
+def test_test_chat_reply_never_falls_back_to_production(change, attachment) -> None:
+    service, client, outbound, _ = make(DeliveryMode.PRODUCTION)
+    if change == "missing-target":
+        service._targets.rows.pop(DeliveryMode.TEST)
+    else:
+        service._settings.test_chat_guid = None if change == "missing-config" else "other"
+    with pytest.raises(TargetMismatch):
+        if attachment:
+            service.deliver_attachment(7, "league-agent", "answer.html", b"x", reply_to=TEST_GUID)
+        else:
+            service.deliver(7, "league-agent", "answer", reply_to=TEST_GUID)
+    assert client.sent == []
+    assert outbound.records == {}

@@ -484,12 +484,19 @@ def test_build_processor_skips_the_registrar_when_no_chat_is_configured(
     assert notifier.ops_sent == ["Trade Registrar disabled: no target chat for disabled"]
 
 
-def test_the_agent_answers_in_the_registered_self_test_chat_and_only_there() -> None:
-    assert run_module.agent_chat_guid(_settings(), _target()) == TEST_CHAT
-    assert run_module.agent_chat_guid(_settings(), None) is None
+def test_the_agent_uses_only_registered_targets_for_its_delivery_mode() -> None:
+    production = _target("production", LEAGUE_CHAT)
+    assert run_module.agent_chat_guids(_settings(), _target(), production) == (TEST_CHAT,)
+    assert run_module.agent_chat_guids(_settings(), None, production) == ()
     settings = _settings(delivery_mode="production", production_chat_guid="iMessage;+;prod",
                          production_participant_fingerprint="fp")
-    assert run_module.agent_chat_guid(settings, _target()) is None
+    assert run_module.agent_chat_guids(settings, _target(), production) == (TEST_CHAT, LEAGUE_CHAT)
+    assert run_module.agent_chat_guids(settings, None, production) == (LEAGUE_CHAT,)
+    assert run_module.agent_chat_guids(settings, _target(), None) == (TEST_CHAT,)
+    assert run_module.agent_chat_guids(settings, None, None) == ()
+    assert run_module.agent_chat_guids(
+        _settings(delivery_mode="disabled"), _target(), production
+    ) == ()
 
 
 def test_the_agent_does_not_register_without_a_registered_test_target(

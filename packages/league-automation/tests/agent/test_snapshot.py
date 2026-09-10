@@ -6,13 +6,13 @@ from itertools import pairwise
 import pytest
 from psycopg.types.json import Jsonb
 
-from tests.advisor.fixture import (
+from tests.agent.fixture import (
     ASKER_MEMBER_ID,
     ELIMINATED_MEMBER_ID,
     FIXTURE_SYNCED_AT,
     fixture_snapshot,
 )
-from ultimate_guillotine.advisor.state import (
+from ultimate_guillotine.agent.tools.snapshot import (
     COVERAGE_GATE,
     LAST_REGULAR_WEEK,
     LeagueSnapshot,
@@ -318,7 +318,7 @@ def test_an_eliminated_team_reads_its_frozen_roster(conn) -> None:
     team = _seeded_team(snapshot, team_id)
     assert team.is_eliminated and team.elimination_source == "adjudicator"
     # px2 is still a live holding, but it is not the roster this team went out
-    # with, so the Advisor never sees it.
+    # with, so the agent never sees it.
     assert [h.sleeper_player_id for h in team.holdings] == ["px1"]
     # The frozen roster is the oldest component, and it is what age is judged on.
     assert snapshot.oldest_synced_at == frozen

@@ -1,5 +1,7 @@
 """Sessions, answers, and the two lookups a follow-up needs, against the real schema."""
 
+import pytest
+
 from ultimate_guillotine.agent.records import (
     AgentAnswerRepository,
     AgentSessionRepository,
@@ -12,10 +14,6 @@ from ultimate_guillotine.data.repositories import (
 )
 
 CHAT_HASH = "c" * 64
-
-
-def _target_id(conn) -> int:
-    return TargetRepository(conn).upsert_listen("iMessage;+;chat-records", "records")
 
 
 def test_a_session_is_created_touched_and_read_back(conn) -> None:
@@ -40,14 +38,19 @@ def test_a_run_remembers_its_session_and_running_runs_are_listed(conn) -> None:
     assert runs.running_ids("league-agent") == []
 
 
-def test_an_outbound_message_guid_resolves_to_its_run(conn) -> None:
+@pytest.mark.parametrize("state", ["sending", "sent"])
+@pytest.mark.parametrize("origin,foreign", [("test", "league"), ("league", "test")])
+def test_an_outbound_message_guid_resolves_only_in_its_chat(conn, state, origin, foreign) -> None:
     runs = RunRepository(conn)
     run_id = runs.reserve("league-agent", "webhook", "agent:records-2")
     outbound = OutboundRepository(conn)
-    outbound_id = outbound.reserve(run_id, _target_id(conn), "hello", "h" * 64)
-    outbound.set_state(outbound_id, "sent", bluebubbles_guid="p:0/BOT-9")
-    assert outbound.run_id_for_guid("p:0/BOT-9") == run_id
-    assert outbound.run_id_for_guid("p:0/NOBODY") is None
+    target = TargetRepository(conn).upsert_listen(origin, "records")
+    outbound_id = outbound.reserve(run_id, target, "hello", "h" * 64)
+    outbound.set_state(outbound_id, state, bluebubbles_guid="p:0/BOT-9")
+    assert runs.session_id_for(run_id) is None  # Pending receipts need no session.
+    assert outbound.run_id_for_guid("p:0/BOT-9", origin) == run_id
+    assert outbound.run_id_for_guid("p:0/BOT-9", foreign) is None
+    assert outbound.run_id_for_guid("p:0/NOBODY", origin) is None
 
 
 def test_an_answer_is_recorded_and_listed_newest_first(conn) -> None:

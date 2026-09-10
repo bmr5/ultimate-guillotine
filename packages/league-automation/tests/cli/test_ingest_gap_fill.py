@@ -6,10 +6,12 @@ Two ways it could: an unbounded `since` taken from the last *qualifying* message
 page of 100 messages, which silently drops everything past the hundredth.
 """
 
+import threading
 from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from ultimate_guillotine.agent.worker import AgentWorker, Job
 from ultimate_guillotine.cli import ingest as ingest_module
 
 NOW = datetime(2026, 9, 8, 23, 47, tzinfo=UTC)
@@ -85,7 +87,7 @@ def harness(monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(
             ingest_module,
             "build_processor",
-            lambda settings, conn, c, delivery, notifier: (processor, {GUID}),
+            lambda settings, conn, c, delivery, notifier, **kw: (processor, {GUID}),
         )
         monkeypatch.setattr(
             ingest_module, "SourceMessageRepository", lambda conn: FakeSources(state["latest"])
@@ -147,3 +149,79 @@ def test_gap_fill_stops_at_the_page_cap(harness) -> None:
 
     assert ingest_module.cmd_gap_fill(_args()) == 0
     assert len(client.calls) == ingest_module.MAX_GAP_FILL_PAGES
+
+
+@pytest.mark.parametrize("replay_fails", [False, True])
+def test_gap_fill_waits_for_accepted_jobs_even_when_replay_fails(
+    harness, monkeypatch, replay_fails,
+) -> None:
+    install, _processor, _state = harness
+    install(FakeClient([3]))
+    started, release = threading.Event(), threading.Event()
+    replay_finished, returned = threading.Event(), threading.Event()
+    completed, results, errors, reconciliations = [], [], [], []
+    worker = AgentWorker(
+        client=None, source=None, delivery=None, notifier=None,
+        runs=None, sessions=None, answers=None,
+    )
+
+    def run_job(job):
+        started.set()
+        assert release.wait(5)
+        completed.append(job.run_id)
+
+    monkeypatch.setattr(worker, "run_job", run_job)
+
+    def build_worker(settings, client, notifier, chat_guid, *, reconcile):
+        assert chat_guid == GUID
+        reconciliations.append(reconcile)
+        worker.start()
+        return worker
+
+    monkeypatch.setattr(ingest_module, "build_agent_worker", build_worker, raising=False)
+
+    def build_processor(settings, conn, client, delivery, notifier, *, agent_worker_factory=None):
+        active = (
+            agent_worker_factory(GUID) if agent_worker_factory else
+            build_worker(settings, client, notifier, GUID, reconcile=False)
+        )
+
+        class Processor:
+            def process(self, msg, event_id):
+                if msg.guid == "msg-2":
+                    replay_finished.set()
+                    if replay_fails:
+                        raise ValueError("replay failed")
+                    return "no_trigger"
+                active.submit(Job(int(msg.guid[-1]), msg, None, None))
+                return "handled:league-agent"
+
+        return Processor(), {GUID}
+
+    monkeypatch.setattr(ingest_module, "build_processor", build_processor)
+
+    def run_gap_fill():
+        try:
+            results.append(ingest_module.cmd_gap_fill(_args()))
+        except Exception as exc:  # noqa: BLE001 - surface thread failures in the test
+            errors.append(exc)
+        finally:
+            returned.set()
+
+    command = threading.Thread(target=run_gap_fill, daemon=True)
+    command.start()
+    try:
+        assert started.wait(2)
+        assert replay_finished.wait(2)
+        assert not returned.wait(0.1), "gap-fill returned with accepted jobs unfinished"
+    finally:
+        release.set()
+        command.join(2)
+    assert returned.is_set()
+    assert completed == [0, 1]
+    assert reconciliations == [False]
+    if replay_fails:
+        assert results == []
+        assert len(errors) == 1 and isinstance(errors[0], ValueError)
+    else:
+        assert results == [0] and errors == []

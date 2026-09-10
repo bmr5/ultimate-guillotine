@@ -153,17 +153,18 @@ def trade_chat_guids(
     return frozenset({delivery, *listen_guids})
 
 
-def agent_chat_guid(settings: Settings, test_target) -> str | None:
-    """The one chat the League Agent answers in: the self-test chat, and only that.
+def agent_chat_guids(settings: Settings, test_target, production_target) -> tuple[str, ...]:
+    """Registered delivery chats only, in deterministic factory order.
 
-    Read off the **registered** test delivery target, not `settings.test_chat_guid`,
-    so the agent answers in exactly the chat the listener already trusts. Promotion
-    to the league chat is this function returning the production target's chat --
-    a reviewed code change, never a row somebody adds.
+    Production keeps the test chat available. Test mode excludes the league chat;
+    disabled mode excludes both. Environment GUIDs and listen rows grant no access.
     """
-    if settings.delivery_mode is DeliveryMode.TEST and test_target is not None:
-        return test_target.chat_guid
-    return None
+    if settings.delivery_mode is DeliveryMode.DISABLED:
+        return ()
+    targets = (test_target, production_target) if (
+        settings.delivery_mode is DeliveryMode.PRODUCTION
+    ) else (test_target,)
+    return tuple(dict.fromkeys(target.chat_guid for target in targets if target is not None))
 
 
 def build_agent_worker(
@@ -181,7 +182,7 @@ def build_agent_worker(
     connection is never handed to it, so a timer-thread post and a webhook can
     never share a transaction.
 
-    ``chat_guid`` is the factory's contract -- the chat the trigger answers in --
+    ``chat_guid`` is the factory's legacy contract, the first authorized chat,
     and nothing the worker needs: it replies to whatever chat each question came
     from. ``reconcile`` settles the runs a restart orphaned, and only the live
     listener may ask for it: `ug ingest gap-fill` builds this same processor
@@ -223,15 +224,13 @@ def _register_league_agent(
     delivery,
     notifier,
     registry,
-    chat_guid: str | None,
+    chat_guids: tuple[str, ...],
     worker_factory: Callable[[str], AgentWorker] | None = None,
     reconcile: bool = False,
 ) -> None:
     """Register the League Agent, or say once why it is not running.
 
-    Not being cleared for this delivery mode -- or having no registered
-    self-test target to answer in -- is the expected state of every production
-    start rather than a fault, so it is one log line and not an ops note. A
+    Disabled delivery or no registered target produces one log line. A
     missing Hermes CLI *is* a fault somebody has to fix, so it is announced once
     here rather than by failing each question in turn.
 
@@ -242,9 +241,9 @@ def _register_league_agent(
     connection of its own -- and a test hands in a stand-in so nothing here
     connects or starts a thread.
     """
-    if chat_guid is None:
+    if not chat_guids:
         log.info(
-            "league agent disabled: registered self-test chat only, mode is %s",
+            "league agent disabled: no authorized delivery chat, mode is %s",
             settings.delivery_mode,
         )
         return
@@ -255,20 +254,24 @@ def _register_league_agent(
     factory = worker_factory or (
         lambda guid: build_agent_worker(settings, client, notifier, guid, reconcile=reconcile)
     )
-    worker = factory(chat_guid)
+    # One queue, connection, startup and reconciliation for all authorized chats.
+    worker = factory(chat_guids[0])
     resolver = FollowUpResolver(
         OutboundRepository(conn), RunRepository(conn), AgentSessionRepository(conn)
     )
-    registry.register(
-        league_agent_trigger(
-            worker=worker,
-            contacts=MemberContactRepository(conn),
-            resolver=resolver,
-            runs=CommittingRepo(RunRepository(conn), conn),
-            delivery=delivery,
-            chat_guid=chat_guid,
+    for chat_guid in chat_guids:
+        registry.register(
+            league_agent_trigger(
+                worker=worker,
+                contacts=MemberContactRepository(conn),
+                commissioner_username=settings.commissioner_sleeper_username,
+                members=MemberAliasRepository(conn).all_members,
+                resolver=resolver,
+                runs=CommittingRepo(RunRepository(conn), conn),
+                delivery=delivery,
+                chat_guid=chat_guid,
+            )
         )
-    )
 
 
 def _register_trade_registrar(
@@ -377,8 +380,8 @@ def build_processor(
     Receipts and source messages are recorded through a `CommittingRepo`, so each
     processed message commits on its own.
 
-    ``agent_worker_factory`` builds the League Agent's worker from the chat it
-    answers in; the default opens a connection and starts a thread, and a test
+    ``agent_worker_factory`` builds one shared worker from the first authorized
+    chat; the default opens a connection and starts a thread, and a test
     passes a stand-in. ``reconcile_agent_runs`` is `main()`'s alone: the live
     listener settles the runs its last restart orphaned, and a gap-fill, which
     runs beside the live listener, must never fail that listener's in-flight run.
@@ -408,7 +411,7 @@ def build_processor(
         delivery,
         notifier,
         registry,
-        agent_chat_guid(settings, test_target),
+        agent_chat_guids(settings, test_target, production_target),
         agent_worker_factory,
         reconcile_agent_runs,
     )

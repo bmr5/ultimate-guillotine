@@ -9,7 +9,7 @@ without a database in the way. Only the repository test needs one.
 
 import json
 
-from ultimate_guillotine.advisor.pricing import (
+from ultimate_guillotine.agent.tools.pricing import (
     PriceRepository,
     comparables_for,
     median_faab,

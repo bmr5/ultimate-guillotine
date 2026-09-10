@@ -1,15 +1,9 @@
-"""The lineup arithmetic every trade tool prices with, lifted from the Advisor.
-
-These tests check the arithmetic itself, against values worked out by hand on
-the fixture league. That it computes the *same* numbers the Advisor's candidate
-generator did is a separate claim, and it is checked separately, in
-``test_math_matches_advisor.py``, against the Advisor's own functions.
-"""
+"""League Agent lineup arithmetic checked against hand-calculated fixture values."""
 
 from decimal import Decimal
 
-from ultimate_guillotine.advisor.fixture import fixture_snapshot
 from ultimate_guillotine.agent.tools import math as lineup_math
+from ultimate_guillotine.agent.tools.fixture import fixture_snapshot
 from ultimate_guillotine.agent.tools.math import (
     POSITIONS,
     STARTER_SLOTS,

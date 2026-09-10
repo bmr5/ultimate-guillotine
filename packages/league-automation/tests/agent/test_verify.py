@@ -2,9 +2,9 @@
 
 from dataclasses import replace
 
-from ultimate_guillotine.advisor.fixture import fixture_snapshot
 from ultimate_guillotine.agent.answer import LeagueAnswer
 from ultimate_guillotine.agent.artifact import ARTIFACT_MAX_BYTES
+from ultimate_guillotine.agent.tools.fixture import fixture_snapshot
 from ultimate_guillotine.agent.tools.source import FixtureSource
 from ultimate_guillotine.agent.verify import privacy_problems, verify
 from ultimate_guillotine.trades.models import MemberRef
@@ -48,6 +48,50 @@ def _check(answer: LeagueAnswer, **kw) -> list[str]:
 
 def test_a_true_answer_passes() -> None:
     assert _check(_answer()) == []
+
+
+def _money(amount, sender="Member05", recipient="Member02", kind="faab"):
+    return {"kind": kind, "amount": amount, "from_member": sender, "to_member": recipient}
+
+
+def _proposal(legs):
+    return {"title": "Alternative", "counterparties": ["Member02"], "legs": legs}
+
+
+def test_proposal_net_budget_sums_legs_but_not_alternatives():
+    split = _proposal([_money(500), _money(500, recipient="Member03")])
+    assert _check(_answer(facts={"proposals": [split]}))
+    draft = _proposal([_money(100, kind="draft_dollars"), _money(301)])
+    assert _check(_answer(facts={"proposals": [draft]}))
+    credited = _proposal([_money(900), _money(200, sender="Member02", recipient="Member05")])
+    assert _check(_answer(facts={"proposals": [credited]})) == []
+    assert _check(_answer(facts={"proposals": [_proposal([_money(500)])] * 2})) == []
+
+
+def test_player_id_and_name_must_agree_in_facts_and_legs():
+    assert _check(_answer(facts={"players": [{
+        "player_id": "p05b0", "name": "Starter 02-0", "holder": "Member05",
+    }]}))
+    leg = {"kind": "player", "player_id": "p05b0", "player_name": "Starter 02-0",
+           "from_member": "Member05", "to_member": "Member02"}
+    assert _check(_answer(facts={"proposals": [_proposal([leg])]}))
+    leg["player_name"] = "bench 05-0"
+    leg["from_member"] = "Fifth team"
+    aliases = [replace(m, aliases=("Fifth team",)) if m.member_id == 5 else m for m in MEMBERS]
+    assert verify(_answer(facts={"proposals": [_proposal([leg])]}),
+                  SNAPSHOT, aliases, PLAYERS) == []
+
+
+def test_every_leg_resolves_both_participants_even_when_not_listed():
+    for recipient in ("Member17", "Nobody"):
+        for leg in (
+            _money(40, recipient=recipient),
+            {"kind": "term", "text": "an option", "from_member": "Member05",
+             "to_member": recipient},
+            {"kind": "player", "player_id": "p05b0", "from_member": "Member05",
+             "to_member": recipient},
+        ):
+            assert _check(_answer(facts={"proposals": [_proposal([leg])]}))
 
 
 def test_a_player_on_the_wrong_roster_is_named() -> None:
@@ -164,14 +208,6 @@ def test_every_member_slot_gets_the_same_token_free_shapes() -> None:
                           "from_member": "Nobody", "to_member": "Member02"}]}
     assert _check(_answer(facts={"proposals": [proposal]})) == [
         'a counterparty in proposal "x" matches no member; name members by their league label',
-        (
-            'the member giving Bench 05-0 in proposal "x" matches no member; '
-            "name members by their league label"
-        ),
-        (
-            'the member giving 40 FAAB in proposal "x" matches no member; '
-            "name members by their league label"
-        ),
     ]
     twins = {**proposal, "counterparties": ["Twin"],
              "legs": [{"kind": "term", "text": "t", "from_member": "Twin",
@@ -192,7 +228,7 @@ def test_an_unresolved_player_is_not_echoed_either() -> None:
            "from_member": "Member05", "to_member": "Member02"}
     proposal = {"title": "x", "counterparties": ["Member02"], "legs": [leg]}
     assert _check(_answer(facts={"proposals": [proposal]})) == [
-        'a player in proposal "x" matches no known player; name players by their full name'
+        'a player in the proposal matches no known player; name players by their full name'
     ]
 
 
@@ -200,7 +236,9 @@ def test_an_id_the_directory_lacks_is_still_found_on_a_roster() -> None:
     thin = {k: v for k, v in PLAYERS.items() if k != "p05b0"}
     assert verify(_answer(), SNAPSHOT, MEMBERS, thin) == []
     renamed = {"player_id": "not-an-id", "name": "Bench 05-0", "holder": "Member05"}
-    assert _check(_answer(facts={"players": [renamed]})) == []
+    assert _check(_answer(facts={"players": [renamed]})) == [
+        "a player in the facts has an unknown player id"
+    ]
 
 
 def test_a_sentence_that_would_repeat_an_unpublished_token_is_replaced() -> None:

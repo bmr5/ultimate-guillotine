@@ -8,6 +8,7 @@ stuck network call cannot hold the queue all night.
 """
 
 import os
+import re
 import subprocess
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -27,6 +28,10 @@ class AgentReply:
     text: str
     session_id: str
     model: str
+
+
+class SessionNotFound(AIUnavailable):
+    """Hermes explicitly reported that the requested transcript is absent."""
 
 
 class HermesAgentClient:
@@ -72,6 +77,8 @@ class HermesAgentClient:
                 raise AIUnavailable(f"hermes call raised {exc.__class__.__name__}") from exc
         finally:
             Path(path).unlink(missing_ok=True)
+        if resume and re.search(r"(?m)^\s*Session not found:", result.stderr or ""):
+            raise SessionNotFound("hermes session not found")
         if result.returncode != 0:
             raise AIUnavailable(f"hermes exited with code {result.returncode}")
         text = (result.stdout or "").strip()
