@@ -194,6 +194,28 @@ def test_a_workbook_with_no_winners_yields_no_rows(tmp_path: Path) -> None:
     assert unresolved == 0
 
 
+def test_a_workbook_with_no_winners_sheet_is_empty_not_an_error(tmp_path: Path) -> None:
+    """The wrong file is an empty load and exit 1, not an openpyxl KeyError.
+
+    Ben types a path on the Mac mini. A traceback out of the loader teaches nothing about
+    which file he meant; `0 seasons` and exit 1 say exactly what happened.
+    """
+    book = Workbook()
+    book.active.title = "Sheet1"
+    path = tmp_path / "not-the-records.xlsx"
+    book.save(path)
+
+    opened = load_workbook(path, data_only=True)
+    try:
+        assert read_winners(opened) == []
+    finally:
+        opened.close()
+
+    rows, unresolved, silent = season_result_rows(path, index={}, notes={}, loaded_at=LOADED_AT)
+
+    assert (rows, unresolved, silent) == ([], 0, 0)
+
+
 def _uncached_2024(path: Path) -> None:
     """A 2024 sheet whose middle week is formulas, saved without a calculation pass.
 

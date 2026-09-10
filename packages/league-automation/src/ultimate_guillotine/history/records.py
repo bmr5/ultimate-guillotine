@@ -148,11 +148,18 @@ def _entry(week: int, order: int, gulag_out: int | None, pool_out: int | None) -
 
 
 def read_winners(workbook) -> list[WinnerRow]:
-    """Every row of the `Winners` sheet, oldest first.
+    """Every row of the `Winners` sheet, oldest first, or nothing if the file has no such sheet.
 
     A row without both a year and a champion is not a season -- it is the header, or a
     blank the sheet keeps for next year -- and is skipped.
+
+    A workbook with no `Winners` sheet is somebody else's spreadsheet, and it reads as no
+    seasons: the command then takes its own "nothing landed" path and exits 1, which says
+    more to whoever typed the path than an openpyxl `KeyError` would -- and says it
+    without naming a sheet of the file it was handed.
     """
+    if "Winners" not in workbook.sheetnames:
+        return []
     sheet = public_sheet(workbook, "Winners")
     winners: list[WinnerRow] = []
     for row in range(WINNERS_FIRST_ROW, sheet.max_row + 1):
