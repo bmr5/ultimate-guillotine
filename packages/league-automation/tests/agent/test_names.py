@@ -63,3 +63,26 @@ def test_a_shared_player_name_is_ambiguous_unless_one_is_rostered() -> None:
 def test_an_unknown_player_says_so() -> None:
     with pytest.raises(Unknown):
         resolve_player("Nobody Nowhere", SNAPSHOT, PLAYERS)
+
+
+def test_a_surname_shared_by_two_players_is_ambiguous_and_marks_the_rostered_one() -> None:
+    allens = {
+        "p01s0": PlayerInfo("p01s0", "Josh Allen", "QB", "BUF", None),
+        "ka": PlayerInfo("ka", "Keenan Allen", "WR", "CHI", None),
+    }
+    with pytest.raises(Ambiguous) as caught:
+        resolve_player("Allen", SNAPSHOT, allens)
+    assert caught.value.candidates == [
+        "Josh Allen (QB, BUF, on Member01's roster)",
+        "Keenan Allen (WR, CHI, free agent)",
+    ]
+
+
+def test_a_surname_with_many_matches_lists_eight_and_counts_the_rest() -> None:
+    allens = {
+        f"a{n}": PlayerInfo(f"a{n}", f"Player{n} Allen", "WR", "FIX", None) for n in range(9)
+    }
+    with pytest.raises(Ambiguous) as caught:
+        resolve_player("allen", SNAPSHOT, allens)
+    assert len(caught.value.candidates) == 8
+    assert "and 1 more" in str(caught.value)

@@ -2,8 +2,8 @@
 
 Every function takes a :class:`~ultimate_guillotine.agent.tools.source.LeagueSource`
 and returns a JSON-able dict. Numbers are floats (two decimals in, two out),
-names are public labels, and every result carries ``as_of`` and
-``age_minutes`` so the agent can say how fresh its answer is. A name that does
+names are public labels, and every result carries ``as_of``, ``newest_sync``
+and ``age_minutes`` so the agent can say how fresh its answer is. A name that does
 not resolve, or a league that cannot be read, is an ``error`` key rather than
 an exception: the model reads the reason and asks, rather than the tool call
 failing with nothing to relay.
@@ -54,9 +54,17 @@ def _points(value: Decimal | None) -> float | None:
 
 
 def _stamp(snapshot: LeagueSnapshot, now: datetime | None) -> dict[str, Any]:
+    """How fresh a result is, dated from the stamp its age is measured on.
+
+    A snapshot is stitched from several syncs. ``as_of`` is the *oldest* of
+    their stamps -- the one :meth:`LeagueSnapshot.age` counts from, so the date
+    and ``age_minutes`` agree -- and ``newest_sync`` the newest, so the agent
+    can see the spread between them. Both are rendered in UTC.
+    """
     moment = now or datetime.now(UTC)
     return {
-        "as_of": snapshot.synced_at.isoformat(),
+        "as_of": snapshot.oldest_synced_at.astimezone(UTC).isoformat(),
+        "newest_sync": snapshot.synced_at.astimezone(UTC).isoformat(),
         "age_minutes": max(0, int(snapshot.age(moment).total_seconds() // 60)),
     }
 

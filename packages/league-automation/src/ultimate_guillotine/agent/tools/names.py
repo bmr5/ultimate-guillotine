@@ -6,6 +6,15 @@ two or more raises :class:`Ambiguous` listing the candidates, so the agent asks
 rather than picks. Every string a member is matched by is normalized with the
 same :func:`~ultimate_guillotine.trades.names.normalize_name` the Registrar
 uses; every string handed back is a public label.
+
+A player is matched in two tiers. The *exact* tier compares the whole name,
+and there a name shared by a rostered player and a free agent resolves to the
+rostered one: he is the one the league can act on, and Sleeper's directory
+carries namesakes nobody in the league holds. The *partial* tier matches one
+whole word of the name -- a surname -- and there more than one candidate is
+always ambiguous: "Allen" with Josh Allen rostered and Keenan Allen free is a
+question, not a guess. The candidates are listed rostered-first, each with his
+holder or "free agent", up to :data:`MAX_CANDIDATES` and a count of the rest.
 """
 
 from collections.abc import Mapping, Sequence
@@ -32,12 +41,17 @@ class Unknown(LookupError):
         super().__init__(f"No match for '{token}'.{tail}")
 
 
+#: How many candidates an :class:`Ambiguous` lists before counting the rest.
+MAX_CANDIDATES = 8
+
+
 class Ambiguous(LookupError):
-    def __init__(self, token: str, candidates: Sequence[str]) -> None:
-        self.token, self.candidates = token, list(candidates)
-        super().__init__(
-            f"'{token}' could mean any of: {', '.join(self.candidates)}. Ask which one."
-        )
+    def __init__(self, token: str, candidates: Sequence[str], omitted: int = 0) -> None:
+        self.token, self.candidates, self.omitted = token, list(candidates), omitted
+        listed = ", ".join(self.candidates)
+        if omitted:
+            listed += f", and {omitted} more"
+        super().__init__(f"'{token}' could mean any of: {listed}. Ask which one.")
 
 
 def member_keys(team: AdvisorTeamState, ref: MemberRef | None) -> set[str]:
@@ -79,8 +93,24 @@ def player_pool(
     return pool
 
 
-def _describe(player: PlayerInfo) -> str:
-    return f"{player.full_name} ({player.position or '?'}, {player.team or 'no team'})"
+def _describe(player: PlayerInfo, holder: str | None) -> str:
+    where = f"on {holder}'s roster" if holder else "free agent"
+    return f"{player.full_name} ({player.position or '?'}, {player.team or 'no team'}, {where})"
+
+
+def _ambiguous(token: str, found: list[PlayerInfo], holders: Mapping[str, str]) -> Ambiguous:
+    """The candidates rostered-first, so a truncated list still shows the likely ones."""
+
+    def rank(player: PlayerInfo) -> tuple[bool, str, str]:
+        return (
+            player.sleeper_player_id not in holders,
+            normalize_name(player.full_name),
+            player.sleeper_player_id,
+        )
+
+    ordered = sorted(found, key=rank)
+    shown = [_describe(p, holders.get(p.sleeper_player_id)) for p in ordered[:MAX_CANDIDATES]]
+    return Ambiguous(token, shown, omitted=len(ordered) - len(shown))
 
 
 def resolve_player(
@@ -90,23 +120,19 @@ def resolve_player(
     if not wanted:
         raise Unknown(token)
     pool = player_pool(snapshot, players)
-    rostered = {h.sleeper_player_id for t in snapshot.teams for h in t.holdings}
+    holders = {h.sleeper_player_id: t.member_label for t in snapshot.teams for h in t.holdings}
 
-    def prefer_rostered(found: list[PlayerInfo]) -> list[PlayerInfo]:
-        on_rosters = [p for p in found if p.sleeper_player_id in rostered]
-        return on_rosters if len(found) > 1 and on_rosters else found
-
-    exact = prefer_rostered([p for p in pool.values() if normalize_name(p.full_name) == wanted])
+    exact = [p for p in pool.values() if normalize_name(p.full_name) == wanted]
+    if len(exact) > 1:
+        # A shared exact name: the rostered namesake is the one the league can act on.
+        exact = [p for p in exact if p.sleeper_player_id in holders] or exact
     if len(exact) == 1:
         return exact[0]
     if exact:
-        raise Ambiguous(token, [_describe(p) for p in exact])
-    partial = prefer_rostered([
-        p for p in pool.values()
-        if f" {wanted} " in f" {normalize_name(p.full_name)} "
-    ])
+        raise _ambiguous(token, exact, holders)
+    partial = [p for p in pool.values() if f" {wanted} " in f" {normalize_name(p.full_name)} "]
     if len(partial) == 1:
         return partial[0]
     if not partial:
         raise Unknown(token)
-    raise Ambiguous(token, [_describe(p) for p in partial[:8]])
+    raise _ambiguous(token, partial, holders)

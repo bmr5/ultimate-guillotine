@@ -1,6 +1,6 @@
 """The first four tools, over the fixture league. Every result carries its age."""
 
-from datetime import timedelta
+from datetime import timedelta, timezone
 
 from ultimate_guillotine.advisor.fixture import ELIMINATED_MEMBER_ID, FIXTURE_SYNCED_AT
 from ultimate_guillotine.agent.tools.league import (
@@ -32,6 +32,15 @@ def test_the_overview_ranks_the_board_and_stamps_its_age() -> None:
     assert eliminated["eliminated"] and eliminated["board_rank"] is None
     assert teams[0]["faab_remaining"] == 960
     _no_private_keys(result)
+
+
+def test_the_stamp_dates_the_oldest_sync_in_utc_and_shows_the_newest() -> None:
+    eastern = timezone(timedelta(hours=-4))
+    older = (FIXTURE_SYNCED_AT - timedelta(minutes=30)).astimezone(eastern)
+    result = league_overview(FixtureSource(oldest_synced_at=older), now=NOW)
+    assert result["as_of"] == "2026-10-08T14:30:00+00:00"
+    assert result["newest_sync"] == "2026-10-08T15:00:00+00:00"
+    assert result["age_minutes"] == 37
 
 
 def test_a_roster_lists_holdings_with_injury_and_projections() -> None:
