@@ -530,7 +530,6 @@ null. Rerunning the same name updates that one row. `ug members former list` cou
 | `guillotine-sleeper-scores-thursday` | `* 19-23 * * 4` | local only |
 | `guillotine-sleeper-scores-sunday` | `* 12-23 * * 0` | local only |
 | `guillotine-sleeper-scores-monday` | `* 19-23 * * 1` | local only |
-| `guillotine-sleeper-draft` | `0 6 * * *` | `#guillotine-ops` |
 | `guillotine-sleeper-transactions` | every 10m | `#guillotine-ops` |
 
 `guillotine-players-sync` runs every four hours rather than nightly because
@@ -561,12 +560,15 @@ reads as "they have scored nothing", not as "the feed is down". Outside the regu
 season it prints `scores: skipped, season_type=pre` and exits 0, exactly like the
 projections job.
 
-`guillotine-sleeper-draft` writes `public.draft_picks` from the league's canonical draft
-(`league.draft_id`, never the drafts list — the 2025 league also carries an abandoned
-one-pick draft). Before the auction is complete it prints `draft: skipped, status=…` and
-exits 0; afterwards it upserts the 162 picks daily whether or not they changed. It refuses,
-with the last good rows untouched, an empty payload, fewer picks than teams × rounds, any
-pick with no auction amount, and any roster with no team row. `guillotine-sleeper-transactions`
+The auction has no job. `ug sleeper draft` is run by hand once a year, after the auction
+(Ben, 2026-09-10: "drop the cron it's a waste. have this as a script that we just run once a
+year"). It writes `public.draft_picks` from the league's canonical draft (`league.draft_id`,
+never the drafts list — the 2025 league also carries an abandoned one-pick draft). Before the
+auction is complete it prints `draft: skipped, status=…` and exits 0; afterwards it upserts
+the 162 picks, and a rerun rewrites the same rows. It refuses, with the last good rows
+untouched, an empty payload, fewer picks than teams × rounds, any pick with no auction
+amount, and any roster with no team row — so run `ug sleeper sync` first. It records a
+`draft-sync` run like any job. `guillotine-sleeper-transactions`
 writes `public.transactions` and `public.transaction_moves` from Sleeper's executed log for
 the current and previous week; `ug sleeper transactions --all` backfills a season and
 `--week N` does one week. Only completed records are kept. A record of an unknown kind or
@@ -582,7 +584,7 @@ uv run --project packages/league-automation ug sleeper state
 uv run --project packages/league-automation ug sleeper sync
 uv run --project packages/league-automation ug sleeper projections
 uv run --project packages/league-automation ug sleeper scores
-uv run --project packages/league-automation ug sleeper draft
+uv run --project packages/league-automation ug sleeper draft   # once a year, after the auction
 uv run --project packages/league-automation ug sleeper transactions --all
 uv run --project packages/league-automation ug members aliases load data/private/member-aliases.json
 ```
@@ -895,7 +897,8 @@ first fire at 11:50 PM.
 Done on the mini on 2026-09-10 (job `ee83fce80c46`, first fire that night); the
 same install also registered `guillotine-sleeper-draft` and
 `guillotine-sleeper-transactions`, which were in the manifest but not yet in the
-profile.
+profile. The draft job was removed again later that day (`hermes cron` delete of
+`6f210b46919c`) on Ben's ruling that the auction is synced by hand once a year.
 
 ### The safe dry runs
 

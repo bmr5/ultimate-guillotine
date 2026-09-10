@@ -108,7 +108,12 @@ and state got their own jobs. Both read through the existing read-only `SleeperC
 gains `get_draft(draft_id)`, `get_draft_picks(draft_id)`, and `get_transactions(league_id,
 week)`; `SleeperLeague` gains `draft_id`.
 
-### `ug sleeper draft` — `guillotine-sleeper-draft`, agent `draft-sync`, daily at `0 6 * * *`
+### `ug sleeper draft` — agent `draft-sync`, run by hand once a year (no cron)
+
+Ben (2026-09-10, after the first day live): "drop the cron it's a waste. have this as a script
+that we just run once a year." The daily job described below was removed the same day; the
+command and its guards are unchanged, and it is run after the auction, following `ug sleeper
+sync`.
 
 Fetches the league, then the draft named by `league.draft_id`, then its picks, all before opening
 a transaction. If the draft's `status` is not `complete` the run is a no-op that reports
@@ -120,8 +125,7 @@ malformed payload, not a free player. A `roster_id` with no `teams` row for the 
 run too: the draft is a fixed fact about eighteen rosters, and a missing one means the roster
 sync has not run yet. Rows upsert on `(season_id, sleeper_player_id)` in one transaction. One
 Sleeper call for the picks, 162 rows, byte-identical on a rerun. Ben runs it once by hand for
-2026 as part of rollout; the daily fire exists so a corrected pick on Sleeper's side reaches the
-board without anyone remembering.
+2026 as part of rollout, and once a year after that.
 
 ### `ug sleeper transactions [--week N] [--all]` — `guillotine-sleeper-transactions`, agent `transactions-sync`, `every 10m`
 
@@ -315,6 +319,9 @@ Each is a clean follow-up because every table is season-keyed:
    no stats sync now.
 6. **A draft tab shows the whole auction.** "make a draft tab on the site just to show the full
    draft." Sortable by pick, price, or team; names link into the card.
+7. **No draft cron.** "drop the cron it's a waste. have this as a script that we just run once a
+   year." `ug sleeper draft` stays as a hand-run command; the transactions job keeps its
+   ten-minute cadence.
 
 ## Implementation notes (2026-09-10)
 

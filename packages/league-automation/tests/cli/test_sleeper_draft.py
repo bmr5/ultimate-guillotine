@@ -68,9 +68,11 @@ def test_the_season_is_the_leagues_own_year(monkeypatch: pytest.MonkeyPatch) -> 
     assert conn.queries[0][1] == (sleeper_cli.SYNC_YEAR,)
 
 
-def test_the_run_is_recorded_under_the_agent_the_cron_manifest_names(
+def test_the_run_is_recorded_under_draft_sync(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Hand-run once a year, but still a recorded run: `ug ops health` and the run audit
+    read the same table, and a failure posts its one note like any other job's."""
     agents: list[str] = []
     _wire(
         monkeypatch,

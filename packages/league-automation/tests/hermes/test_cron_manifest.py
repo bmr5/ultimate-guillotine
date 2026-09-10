@@ -59,7 +59,7 @@ def test_only_the_projections_baseline_delivers_to_the_ops_channel() -> None:
 def test_the_scheduled_agents_are_the_ones_the_cli_records() -> None:
     assert {job["agent"] for job in JOBS} == {
         "health", "gap-fill", "sleeper-sync", "run-audit", "players-sync",
-        "nfl-state", "projections-sync", "scores-sync", "draft-sync", "transactions-sync",
+        "nfl-state", "projections-sync", "scores-sync", "transactions-sync",
         "eod-summary",
     }
 
@@ -121,15 +121,12 @@ def test_the_players_sync_runs_often_enough_to_track_injuries() -> None:
     assert int(job["max_gap_minutes"]) > 4 * 60
 
 
-def test_the_player_card_jobs_are_pinned() -> None:
-    """The auction is a fact that changes once a year, so once a day is plenty and the
-    gap budget is the daily run-audit's. The transaction log moves any time a manager
-    does, so it runs with the roster sync's cadence and speaks in the channel like it."""
-    draft = next(j for j in JOBS if j["name"] == "guillotine-sleeper-draft")
-    assert (draft["agent"], draft["schedule"], draft["deliver"]) == (
-        "draft-sync", "0 6 * * *", "discord:#guillotine-ops",
-    )
-    assert int(draft["max_gap_minutes"]) > 24 * 60
+def test_the_transactions_job_is_pinned_and_the_draft_has_none() -> None:
+    """The transaction log moves any time a manager does, so it runs with the roster sync's
+    cadence and speaks in the channel like it. The auction is a fact that changes once a
+    year and is synced by hand -- Ben (2026-09-10): "drop the cron it's a waste" -- so no
+    job may name `draft-sync`."""
+    assert not any(j["agent"] == "draft-sync" for j in JOBS)
     transactions = next(j for j in JOBS if j["name"] == "guillotine-sleeper-transactions")
     assert (transactions["agent"], transactions["schedule"], transactions["deliver"]) == (
         "transactions-sync", "every 10m", "discord:#guillotine-ops",
