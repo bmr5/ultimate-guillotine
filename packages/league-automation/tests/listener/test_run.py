@@ -274,9 +274,14 @@ class TargetCursor(EmptyCursor):
     listen-only rows -- the chats the listener reads and never posts to.
     """
 
-    def __init__(self, mode: str, chat_guid: str, listen: tuple[str, ...] = ()) -> None:
-        self._mode = mode
-        self._chat_guid = chat_guid
+    def __init__(
+        self,
+        mode: str,
+        chat_guid: str,
+        listen: tuple[str, ...] = (),
+        extra: dict[str, str] | None = None,
+    ) -> None:
+        self._targets = {mode: chat_guid, **(extra or {})}
         self._listen = listen
         self._row: tuple | None = None
         self._rows: list[tuple] = []
@@ -284,11 +289,8 @@ class TargetCursor(EmptyCursor):
     def execute(self, sql, params=None) -> None:
         wanted = params[0] if params else None
         self._rows = [(guid,) for guid in self._listen] if "role = 'listen'" in sql else []
-        self._row = (
-            (1, self._mode, self._chat_guid, "fingerprint", "label")
-            if "delivery_targets" in sql and wanted == self._mode
-            else None
-        )
+        chat = self._targets.get(wanted) if "delivery_targets" in sql else None
+        self._row = (1, wanted, chat, "fingerprint", "label") if chat else None
 
     def fetchone(self):
         return self._row
@@ -298,20 +300,23 @@ class TargetCursor(EmptyCursor):
 
 
 class ConfiguredConnection(EmptyConnection):
-    """A connection with one registered delivery target and any listen-only chats."""
+    """A connection with one registered delivery target (``extra`` adds others by
+    mode) and any listen-only chats."""
 
     def __init__(
         self,
         mode: str = "test",
         chat_guid: str = TEST_CHAT,
         listen: tuple[str, ...] = (),
+        extra: dict[str, str] | None = None,
     ) -> None:
         self._mode = mode
         self._chat_guid = chat_guid
         self._listen = listen
+        self._extra = extra
 
     def cursor(self) -> TargetCursor:
-        return TargetCursor(self._mode, self._chat_guid, self._listen)
+        return TargetCursor(self._mode, self._chat_guid, self._listen, self._extra)
 
 
 class RecordingNotifier:
@@ -342,6 +347,12 @@ def _trigger_named(processor, name: str):
     which trigger it means rather than repeating the walk over a private list.
     """
     return next((t for t in processor._registry._triggers if t.name == name), None)
+
+
+def _triggers_named(processor, name: str) -> list:
+    """Every registered trigger by that name; production registers the registrar
+    twice, once per room."""
+    return [t for t in processor._registry._triggers if t.name == name]
 
 
 def _target(mode: str = "test", chat_guid: str = TEST_CHAT) -> DeliveryTarget:
@@ -439,6 +450,35 @@ def test_a_listen_only_chat_is_heard_but_never_delivered_to(hermes_installed: No
     assert trigger.matches(_alert(TEST_CHAT))
     assert not trigger.matches(_alert("iMessage;+;chat-elsewhere"))
     # The webhook has to be accepted at all before any trigger sees it.
+    assert allowed == {TEST_CHAT, LEAGUE_CHAT}
+
+
+def test_production_keeps_the_self_test_chat_as_a_rehearsal_room(hermes_installed: None) -> None:
+    """With the league chat live, an alert posted in the self-test chat is still
+    heard and logged -- by a second registrar that writes TEST- codes and answers
+    there -- and never taken by the league's registrar. Ben (2026-09-10): log a
+    trade in the test chat, then ask for its video."""
+    processor, allowed = run_module.build_processor(
+        _settings(
+            delivery_mode="production",
+            production_chat_guid=LEAGUE_CHAT,
+            production_participant_fingerprint="fingerprint",
+        ),
+        ConfiguredConnection(
+            mode="production",
+            chat_guid=LEAGUE_CHAT,
+            listen=(LEAGUE_CHAT,),
+            extra={"test": TEST_CHAT},
+        ),
+        None,
+        None,
+        RecordingNotifier(),
+    )
+
+    league, rehearsal = _triggers_named(processor, "trade-registrar")
+
+    assert league.matches(_alert(LEAGUE_CHAT)) and not league.matches(_alert(TEST_CHAT))
+    assert rehearsal.matches(_alert(TEST_CHAT)) and not rehearsal.matches(_alert(LEAGUE_CHAT))
     assert allowed == {TEST_CHAT, LEAGUE_CHAT}
 
 

@@ -224,6 +224,7 @@ def _register_trade_registrar(
     registry,
     chat_guids: frozenset[str],
     listen_guids: Iterable[str] = (),
+    code_prefix: str | None = None,
 ) -> None:
     """Register the Trade Registrar, or say once why it is not running.
 
@@ -240,7 +241,8 @@ def _register_trade_registrar(
     called and a redelivered webhook cannot start a second extraction.
 
     Test mode writes `TEST-` trade codes: a gate rehearsal must not consume the
-    season's real trade numbers.
+    season's real trade numbers. ``code_prefix`` overrides the mode's prefix for
+    a registrar that only hears the self-test chat while production is live.
 
     The contact repository is what lets a first-person alert name its announcer:
     without loaded handles every sender is unplaceable, and `I sent X to Y` ends
@@ -268,7 +270,7 @@ def _register_trade_registrar(
         notifier,
         MemberAliasRepository(conn),
         PlayerRepository(conn),
-        TradeRepository(conn, code_prefix_for(settings.delivery_mode)),
+        TradeRepository(conn, code_prefix or code_prefix_for(settings.delivery_mode)),
         CommittingRepo(RunRepository(conn), conn),
         contacts_repo=MemberContactRepository(conn),
         sources_repo=SourceMessageRepository(conn),
@@ -335,6 +337,20 @@ def build_processor(
         trade_chat_guids(settings, production_target, listen_guids),
         listen_guids,
     )
+    # In production the league chat is the registrar's, and the self-test chat stays a
+    # rehearsal room: an alert posted there is logged under a TEST- code and answered
+    # there (`DeliveryService.reply_to`), never with a real trade number. Ben
+    # (2026-09-10): log a trade in the test chat, then ask for its video.
+    if settings.delivery_mode is DeliveryMode.PRODUCTION and test_target is not None:
+        _register_trade_registrar(
+            settings,
+            conn,
+            delivery,
+            notifier,
+            registry,
+            frozenset({test_target.chat_guid}),
+            code_prefix="TEST",
+        )
     _register_trade_advisor(
         settings,
         conn,
