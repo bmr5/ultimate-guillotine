@@ -47,7 +47,7 @@ export function TradeFilterBar(props: Props) {
     onClear,
   } = props;
   return (
-    <div className="sticky top-0 z-10 -mx-4 space-y-2 border-b bg-background/70 px-4 py-3 backdrop-blur-md sm:mx-0 sm:rounded-xl sm:border">
+    <div className="space-y-2 rounded-xl border bg-background/70 px-4 py-3 backdrop-blur-md">
       <div className="flex flex-wrap gap-1.5" role="group" aria-label="Season">
         {/* The vendored `Badge` is a plain div with no `asChild`, so a chip that must be
             clickable and focusable is a `Button` at `size="sm"`, not a Badge wrapping one. */}
