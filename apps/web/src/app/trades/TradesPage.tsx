@@ -1,7 +1,6 @@
 import { useMemo } from "react";
 import { useSearchParams } from "react-router";
 
-import { UNKNOWN_OWNER } from "@/board/derive/join";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -73,22 +72,29 @@ export function TradesPage() {
     [trades, filters],
   );
   const stats = useMemo(() => tradeStats(visible), [visible]);
-  // Sorted by the label the `<option>` will carry, not by member id: the id is an internal
-  // number, so ordering by it puts the owners in what reads as no order at all. The sort key is
-  // `ownerLabelFor`'s answer — the same call the filter bar renders — so the order on screen
-  // always matches the text on screen. `localeCompare`, not `<`, so the nicknames sort the way
-  // a reader expects rather than by code point.
+  // Only the owners this page can name, sorted by the label the `<option>` will carry.
+  //
+  // Ben's ruling: an unresolved party reads as a former manager, and the filter never lists
+  // them. One option reading "Former manager" would stand for every unmapped party across
+  // twenty years of catalog — picking it would gather strangers into one owner's view — and a
+  // list of several identical options is worse still. They stay on the cards, where the wording
+  // is about that one trade.
+  //
+  // Sorting by the label rather than by the member id: the id is an internal number, so
+  // ordering by it puts the owners in what reads as no order at all. `localeCompare`, not `<`,
+  // so the nicknames sort the way a reader expects rather than by code point.
   const memberIds = useMemo(() => {
-    const ids = [
-      ...new Set(
-        trades.flatMap((trade) => trade.parties.map((p) => p.memberId)),
-      ),
-    ];
-    return ids.sort((a, b) =>
-      (ownerLabelFor(a, members) ?? UNKNOWN_OWNER).localeCompare(
-        ownerLabelFor(b, members) ?? UNKNOWN_OWNER,
-      ),
-    );
+    const named = new Map<number, string>();
+    for (const trade of trades) {
+      for (const party of trade.parties) {
+        if (named.has(party.memberId)) continue;
+        const label = ownerLabelFor(party.memberId, members);
+        if (label !== null) named.set(party.memberId, label);
+      }
+    }
+    return [...named.entries()]
+      .sort(([, a], [, b]) => a.localeCompare(b))
+      .map(([id]) => id);
   }, [trades, members]);
 
   return (
