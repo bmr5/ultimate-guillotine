@@ -660,7 +660,14 @@ class MemberAliasRepository:
         Member row and aliases share one transaction: an alias another member already holds
         raises out of ``replace_aliases``, and a half-made profile (a member with no aliases
         for resolution to match on) is worse than none at all.
+
+        The name's own whitespace is collapsed before either use. The slug already ignores
+        the difference (``normalize_name`` collapses), but the nickname does not:
+        ``replace_aliases`` only strips its aliases, so a rerun typed with a stray double
+        space would land on the same row and republish a double-spaced public label. One
+        collapse here keeps the key and the label agreeing on what the name is.
         """
+        name = " ".join(name.split())
         display_name = former_display_name(name)
         with self._conn.transaction(), self._conn.cursor() as cur:
             cur.execute(
