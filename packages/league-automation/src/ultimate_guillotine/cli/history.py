@@ -1,15 +1,17 @@
-"""`ug history` subcommands: load-catalog.
+"""`ug history` subcommands: load-catalog and load-results.
 
 An operator command Ben runs on the Mac mini, and it prints counts and nothing else.
-The input names real people -- the classification file's parties, and the chat the
-analyst read to write it -- so a loader that echoed a row back would put a league
-member's name in a terminal scrollback and, worse, teach the next command that doing
-so is normal.
+The input names real people -- the classification file's parties, the chat the analyst
+read to write it, and the records workbook's champion cells, which sit in the same file
+as the dues ledger -- so a loader that echoed a row back would put a league member's
+name in a terminal scrollback and, worse, teach the next command that doing so is
+normal.
 """
 
 import argparse
 import json
 import sys
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -21,6 +23,7 @@ from ultimate_guillotine.history.catalog import (
     build_label_index,
     read_record,
 )
+from ultimate_guillotine.history.records import season_result_rows
 from ultimate_guillotine.history.repository import HistoryRepository, HistoryRowRejected
 from ultimate_guillotine.sleeper.players import PlayerRepository
 
@@ -32,6 +35,19 @@ def register(subparsers) -> None:
     catalog = history_sub.add_parser("load-catalog", help="load the private trade classification")
     catalog.add_argument("path")
     catalog.set_defaults(handler=cmd_load_catalog)
+
+    results = history_sub.add_parser(
+        "load-results", help="load the records workbook's public sheets"
+    )
+    results.add_argument("path")
+    results.add_argument(
+        "--notes",
+        action="append",
+        default=[],
+        metavar="SEASON=TEXT",
+        help="a caption for one season, e.g. 2022=co-champions; repeatable",
+    )
+    results.set_defaults(handler=cmd_load_results)
 
 
 def cmd_load_catalog(args: argparse.Namespace) -> int:
@@ -89,4 +105,60 @@ def cmd_load_catalog(args: argparse.Namespace) -> int:
         f"catalog: {loaded} rows, {updated} updated, "
         f"{unresolved} unresolved parties, {unmapped} unmapped conditions"
     )
+    return 1 if loaded == 0 else 0
+
+
+def _parse_notes(pairs: list[str]) -> dict[int, str]:
+    """`--notes 2022=co-champions` into `{2022: "co-champions"}`.
+
+    The usage message is fixed text: a malformed pair is Ben's typo, and echoing it back
+    would be the one place this command printed something it was handed.
+    """
+    notes: dict[int, str] = {}
+    for pair in pairs:
+        season, _, text = pair.partition("=")
+        if not text.strip() or not season.strip().isdigit():
+            raise SystemExit("--notes takes SEASON=TEXT")
+        notes[int(season.strip())] = text.strip()
+    return notes
+
+
+def cmd_load_results(args: argparse.Namespace) -> int:
+    """Upsert one public.season_results row per season in the workbook's Winners sheet.
+
+    The reader opens three sheets of the workbook and no others -- the file is also the
+    commissioner's dues ledger -- and it resolves the champion cells to member ids here,
+    inside the transaction, against the members table and the private aliases. A name
+    nobody answers to is counted, never stored and never printed: Ben adds an alias with
+    `ug members aliases load` and reruns, and the count drops.
+
+    The whole workbook loads in one transaction, for the same reason the catalog does: a
+    run that dies halfway leaves the table as it was rather than half a history the pages
+    would render as the whole thing. A row the jsonb validator refuses is reported on
+    stderr by its season and skipped. Exit 1 only when nothing landed at all, which means
+    the Winners sheet is empty or every row was refused.
+    """
+    deps = build_deps()
+    notes = _parse_notes(args.notes)
+    loaded_at = datetime.now(UTC)
+
+    loaded = updated = unresolved = 0
+    # The reads belong inside the transaction too -- see `cmd_load_catalog` for why a
+    # query taken first turns the whole load into a savepoint that rolls back at exit.
+    with deps.conn.transaction():
+        repo = HistoryRepository(deps.conn)
+        index = build_label_index(MemberAliasRepository(deps.conn).all_members())
+        rows, unresolved = season_result_rows(Path(args.path), index, notes, loaded_at)
+        for row in rows:
+            stored = replace(row, season_id=repo.season_id_for(row.season))
+            try:
+                outcome = repo.upsert_season_result(stored)
+            except HistoryRowRejected as exc:
+                # The message names the season and the constraint, never the row.
+                print(f"rejected: {exc}", file=sys.stderr)
+                continue
+            loaded += 1
+            updated += outcome == "updated"
+
+    print(f"results: {loaded} seasons, {updated} updated, {unresolved} unresolved names")
     return 1 if loaded == 0 else 0

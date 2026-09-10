@@ -122,16 +122,22 @@ def test_catalog_rerun_is_byte_identical(conn) -> None:
 
 
 def test_season_result_upsert_and_season_id_lookup(conn) -> None:
+    """Season 2098 is nobody's real season on purpose.
+
+    A real year would pass here until the day `ug history load-results` was run against
+    this stack, and then fail as "updated" -- a test that goes red because the loader
+    worked is a test about the machine, not about the upsert.
+    """
     repo = HistoryRepository(conn)
     season_id = repo.season_id_for(2026)
     assert season_id is not None, "supabase seed inserts the 2026 season row"
     assert repo.season_id_for(1999) is None
 
-    row = _season_row(season=2024)
+    row = _season_row(season=2098)
     assert repo.upsert_season_result(row) == "inserted"
 
     with conn.cursor() as cur:
-        cur.execute("select team_count, eliminations from public.season_results where season = 2024")
+        cur.execute("select team_count, eliminations from public.season_results where season = 2098")
         team_count, eliminations = cur.fetchone()
     assert team_count == 19
     assert eliminations[0]["gulag_out"] == 2
@@ -148,12 +154,12 @@ def test_season_result_upsert_and_season_id_lookup(conn) -> None:
         "note": None,
     }
     corrected = _season_row(
-        season=2024, team_count=18, eliminations=[*row.eliminations, second_week]
+        season=2098, team_count=18, eliminations=[*row.eliminations, second_week]
     )
     assert repo.upsert_season_result(corrected) == "updated"
 
     with conn.cursor() as cur:
-        cur.execute("select team_count, eliminations from public.season_results where season = 2024")
+        cur.execute("select team_count, eliminations from public.season_results where season = 2098")
         rows = cur.fetchall()
     assert len(rows) == 1
     team_count, eliminations = rows[0]

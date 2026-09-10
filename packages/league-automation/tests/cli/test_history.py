@@ -13,13 +13,21 @@ from typing import ClassVar
 
 import psycopg
 import pytest
+from openpyxl import Workbook
 
 from ultimate_guillotine.cli import history as history_cli
 from ultimate_guillotine.history.repository import HistoryRowRejected
 
 #: Every word the loader is allowed to print. A member name, a player name or a line of
 #: chat would all fail this, which is the point.
-ALLOWED_WORDS = {"catalog", "rows", "updated", "unresolved", "parties", "unmapped", "conditions"}
+ALLOWED_WORDS = {
+    "catalog", "rows", "updated", "unresolved", "parties", "unmapped", "conditions",
+    "results", "seasons", "names",
+}
+
+#: The records workbook, read by `load-results`. It is also the dues ledger, which is why
+#: the counts-only assertion below matters more here than anywhere else.
+WORKBOOK = str(Path(__file__).resolve().parents[4] / "history/league/ultimate-guillotine-records.xlsx")
 
 
 def _assert_counts_only(text: str) -> None:
@@ -55,6 +63,10 @@ class FakeRepo:
     #: Ids a previous run in this test wrote. The real repository answers "updated" from
     #: Postgres' own `xmax = 0`; this is the same answer, one run later.
     written: ClassVar[set[str]] = set()
+    #: The same, for the one row a season gets.
+    seasons: ClassVar[set[int]] = set()
+    #: Every season row written, so a test can look at what the command built.
+    season_rows: ClassVar[list] = []
 
     def __init__(self, conn) -> None:
         self.rows: list = []
@@ -70,12 +82,21 @@ class FakeRepo:
         FakeRepo.written.add(row.catalog_id)
         return outcome
 
+    def upsert_season_result(self, row) -> str:
+        self.rows.append(row)
+        FakeRepo.season_rows.append(row)
+        outcome = "updated" if row.season in FakeRepo.seasons else "inserted"
+        FakeRepo.seasons.add(row.season)
+        return outcome
+
 
 @pytest.fixture
 def stack(monkeypatch: pytest.MonkeyPatch):
     """The loader's whole world, minus a database."""
     conn = SimpleNamespace(transaction=contextlib.nullcontext)
     monkeypatch.setattr(FakeRepo, "written", set())
+    monkeypatch.setattr(FakeRepo, "seasons", set())
+    monkeypatch.setattr(FakeRepo, "season_rows", [])
     monkeypatch.setattr(history_cli, "build_deps", lambda: SimpleNamespace(conn=conn))
     monkeypatch.setattr(history_cli, "HistoryRepository", FakeRepo)
     monkeypatch.setattr(
@@ -100,6 +121,7 @@ def test_history_help_lists_load_catalog() -> None:
     )
     assert result.returncode == 0
     assert "load-catalog" in result.stdout
+    assert "load-results" in result.stdout
 
 
 def test_load_catalog_prints_counts_only(
@@ -221,3 +243,61 @@ def test_the_load_is_committed_and_not_left_open(
             with loader_conn.cursor() as cur:
                 cur.execute("delete from public.trade_catalog where catalog_id = %s", (probe,))
             loader_conn.commit()
+
+
+def test_load_results_prints_counts_only(stack, capsys: pytest.CaptureFixture[str]) -> None:
+    """The real workbook, so the assertion is about the real file's champion cells."""
+    exit_code = history_cli.cmd_load_results(argparse.Namespace(path=WORKBOOK, notes=[]))
+
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    # Six seasons on the Winners sheet; with no members loaded, six champions and one
+    # second name resolve to nobody.
+    assert out.strip() == "results: 6 seasons, 0 updated, 7 unresolved names"
+    _assert_counts_only(out)
+
+
+def test_a_results_rerun_reports_the_seasons_it_updated(
+    stack, capsys: pytest.CaptureFixture[str]
+) -> None:
+    args = argparse.Namespace(path=WORKBOOK, notes=[])
+    assert history_cli.cmd_load_results(args) == 0
+    capsys.readouterr()
+    assert history_cli.cmd_load_results(args) == 0
+
+    out = capsys.readouterr().out
+    assert out.strip() == "results: 6 seasons, 6 updated, 7 unresolved names"
+    _assert_counts_only(out)
+
+
+def test_load_results_carries_a_note_onto_its_season(stack) -> None:
+    """`--notes` is the one text the command stores, and it is Ben's, not the workbook's."""
+    history_cli.cmd_load_results(argparse.Namespace(path=WORKBOOK, notes=["2022=co-champions"]))
+
+    by_season = {row.season: row for row in FakeRepo.season_rows}
+    assert by_season[2022].notes == "co-champions"
+    assert by_season[2024].notes is None
+    # Nothing the workbook holds becomes a note.
+    assert all(row.notes in (None, "co-champions") for row in FakeRepo.season_rows)
+    # Nor a name: the rows are ids and counts.
+    assert all(row.champion_member_id is None for row in FakeRepo.season_rows)
+
+
+def test_notes_must_be_season_equals_text(stack) -> None:
+    with pytest.raises(SystemExit, match="SEASON=TEXT"):
+        history_cli.cmd_load_results(argparse.Namespace(path=WORKBOOK, notes=["co-champions"]))
+
+
+def test_load_results_exits_1_when_nothing_loaded(
+    tmp_path: Path, stack, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A Winners sheet with no seasons on it is a load that did nothing, not a success."""
+    book = Workbook()
+    book.active.title = "Winners"
+    path = tmp_path / "empty.xlsx"
+    book.save(path)
+
+    exit_code = history_cli.cmd_load_results(argparse.Namespace(path=str(path), notes=[]))
+
+    assert exit_code == 1
+    _assert_counts_only(capsys.readouterr().out)
