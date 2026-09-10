@@ -60,13 +60,21 @@ class FakeRepo:
 @dataclass
 class FakeDelivery:
     failure: Exception | None = None
+    attachment_failure: Exception | None = None
     calls: list = field(default_factory=list)
+    attachments: list = field(default_factory=list)
 
     def deliver(self, run_id, agent, content):
         self.calls.append((run_id, agent, content))
         if self.failure is not None:
             raise self.failure
         return DeliveryResult("sent", 1, "guid-1")
+
+    def deliver_attachment(self, run_id, agent, filename, data):
+        self.attachments.append((run_id, agent, filename, len(data)))
+        if self.attachment_failure is not None:
+            raise self.attachment_failure
+        return DeliveryResult("sent", 2, "guid-2")
 
 
 @dataclass
@@ -163,6 +171,18 @@ def test_compose_without_a_model_is_the_deterministic_message() -> None:
     assert composed.facts in composed.text
 
 
+def test_compose_also_yields_the_short_text_and_the_artifact() -> None:
+    """The chat gets the short text and the file; the full text is the record."""
+    composed = _agent(ai=FakeAI()).compose(_league(), NOW, simulations=50)
+    assert composed.short.startswith("🗡️ GUILLOTINE EOD · Week 1 · Sunday")
+    assert "🔥 Knives out" in composed.short
+    assert "Full board attached" in composed.short
+    assert "📊 THE BOARD" not in composed.short
+    assert composed.html.startswith("<!doctype html>")
+    assert "Knives out" in composed.html and "The board" in composed.html
+    assert composed.filename == "guillotine-eod-week-1-2026-09-13.html"
+
+
 def test_compose_with_a_faithful_model_adds_the_colour_and_records_the_model() -> None:
     composed = _agent(ai=FakeAI()).compose(_league(), NOW, simulations=50)
     assert "🔥 Knives out" in composed.text
@@ -215,8 +235,15 @@ def test_a_test_mode_run_stores_previews_delivers_and_records() -> None:
     assert repo.recaps[0][5] == outcome.text
     assert repo.sent == [1]
     assert repo.versions == [(7, f"{MODEL_VERSION}:{PROMPT_VERSION}:fake-model")]
+    # The short text goes first, then the file, under the same run.
+    assert outcome.text.startswith("🗡️ GUILLOTINE EOD") and "Full board attached" in outcome.text
     assert delivery.calls == [(7, AGENT, outcome.text)]
-    assert notifier.drafts_notes == [f"[{AGENT}] [test] preview\n{outcome.text}"]
+    assert len(delivery.attachments) == 1
+    run_id, agent, filename, size = delivery.attachments[0]
+    assert (run_id, agent, filename) == (7, AGENT, "guillotine-eod-week-1-2026-09-13.html")
+    assert size > 1000
+    assert notifier.drafts_notes[0].startswith(f"[{AGENT}] [test] preview · {filename}\n")
+    assert outcome.text in notifier.drafts_notes[0]
     assert conn.commits >= 2
 
 
@@ -240,10 +267,10 @@ def test_a_disabled_run_keeps_the_draft_and_the_preview_and_sends_nothing() -> N
     outcome = _agent(mode=DeliveryMode.DISABLED, repo=repo, delivery=delivery,
                      notifier=notifier).run(_league(), NOW, run_id=7, simulations=50)
     assert outcome.status == "draft"
-    assert delivery.calls == []
+    assert delivery.calls == [] and delivery.attachments == []
     assert repo.sent == []
     assert len(repo.recaps) == 1
-    assert notifier.drafts_notes[0].startswith(f"[{AGENT}] [disabled] preview\n")
+    assert notifier.drafts_notes[0].startswith(f"[{AGENT}] [disabled] preview · ")
 
 
 def test_a_production_run_posts_no_preview() -> None:
@@ -253,7 +280,7 @@ def test_a_production_run_posts_no_preview() -> None:
     )
     assert outcome.status == "sent"
     assert notifier.drafts_notes == []
-    assert len(delivery.calls) == 1
+    assert len(delivery.calls) == 1 and len(delivery.attachments) == 1
 
 
 def test_a_delivery_that_cannot_find_its_chat_alerts_and_fails_the_run() -> None:
@@ -264,8 +291,25 @@ def test_a_delivery_that_cannot_find_its_chat_alerts_and_fails_the_run() -> None
             _league(), NOW, run_id=7, simulations=50
         )
     assert repo.sent == []
+    assert delivery.attachments == []
     assert notifier.alerts_notes == [
         "EOD summary could not deliver: stored target does not match"
+    ]
+
+
+def test_a_failed_attachment_after_the_text_is_said_in_ops_and_the_run_still_succeeds() -> None:
+    """The chat already has the answer; the file not arriving is one ops line,
+    not a failed night and not a second text."""
+    repo, notifier = FakeRepo(), FakeNotifier()
+    delivery = FakeDelivery(attachment_failure=RuntimeError("boom"))
+    outcome = _agent(repo=repo, delivery=delivery, notifier=notifier).run(
+        _league(), NOW, run_id=7, simulations=50
+    )
+    assert outcome.status == "sent"
+    assert len(delivery.calls) == 1
+    assert repo.sent == [1]
+    assert notifier.ops_notes == [
+        "EOD summary attachment failed after the text went out: RuntimeError"
     ]
 
 

@@ -13,9 +13,15 @@ The colour, when there is one, has already been through the verifier.
 the gate -- renders no percentage anywhere and names the reason in the footer; a
 projected finish built on an estimated starter carries a ``~``; a missing score
 row is counted in the footer rather than shown as a zero that reads as a score.
+
+:class:`View` is the one reading of a packet -- who is live, who is in the gulag,
+who is on the block, the board's order, the roster notes -- and both this text
+renderer and the HTML artifact (:mod:`~ultimate_guillotine.summary.artifact`)
+are written over it, so the two can never rank a team differently.
 """
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal
 
@@ -51,21 +57,32 @@ def percent(probability: Decimal, *, settled: bool) -> str:
     return f"{int(hundred.quantize(Decimal(1), rounding=ROUND_HALF_UP))}%"
 
 
-def _plural(count: int, singular: str, plural: str) -> str:
-    return singular if count == 1 else plural
+def plural(count: int, singular: str, plural_form: str) -> str:
+    return singular if count == 1 else plural_form
 
 
-def _clock(stamp: datetime) -> str:
+def clock(stamp: datetime) -> str:
     return stamp.astimezone(LOCAL_TZ).strftime("%-I:%M %p") + " CT"
 
 
-class _View:
-    """One packet, pre-digested: who is live, who is in the gulag, how to say a number."""
+def move_suffix(kind: str, bid: int | None) -> str:
+    if kind == "waiver":
+        return f" (waiver ${bid})" if bid is not None else " (waiver)"
+    if kind == "trade":
+        return " (trade)"
+    if kind == "commissioner":
+        return " (commish)"
+    return ""
+
+
+class View:
+    """One packet, read once: who is live, who is paired, who is ranked where."""
 
     def __init__(self, packet: EodPacket) -> None:
         self.packet = packet
         self.snap = packet.snapshot
         self.result = packet.result
+        self.outlook = self.snap.day_state == "outlook"
         self.live = self.snap.live_teams()
         self.settled = not any(t.pending() for t in self.live)
         pair = tuple(
@@ -73,6 +90,19 @@ class _View:
         )
         self.gulag = pair if len(pair) == 2 and self.snap.phase.kind in ("gulag", "double") else ()
         self.pool = [t for t in self.live if t.team_id not in self.gulag]
+        kind = self.snap.phase.kind
+        if kind in ("entry", "gulag"):
+            self.block_emoji, self.block_title = "⚰️", "ON THE BLOCK"
+            self.block_note = f"bottom 2 enter the Week {self.snap.week + 1} gulag"
+            self.block_count = 2
+        elif kind == "final":
+            self.block_emoji, self.block_title = "🏆", "THE FINAL"
+            self.block_note, self.block_count = "lower score is runner-up", 1
+        else:
+            self.block_emoji, self.block_title = "⚰️", "ON THE BLOCK"
+            self.block_note, self.block_count = "lowest score is cut", 1
+
+    # -- one team ----------------------------------------------------------
 
     def odds(self, team: TeamLine) -> TeamOdds | None:
         return None if self.result is None else self.result.teams.get(team.team_id)
@@ -91,9 +121,136 @@ class _View:
     def risk(self, team: TeamLine) -> str:
         return percent(self.probability(team), settled=self.settled)
 
+    def pending_count(self, team: TeamLine) -> int:
+        return len(team.pending())
+
     def left(self, team: TeamLine) -> str:
-        count = len(team.pending())
-        return f"{count} left"
+        return f"{self.pending_count(team)} left"
+
+    def in_gulag(self, team: TeamLine) -> bool:
+        return team.team_id in self.gulag
+
+    def by_risk(self, teams: Sequence[TeamLine]) -> list[TeamLine]:
+        if self.result is None:
+            return sorted(teams, key=lambda t: (t.points, t.label))
+        return sorted(teams, key=lambda t: (-self.probability(t), t.points, t.label))
+
+    # -- the sections' data -------------------------------------------------
+
+    def header_line(self) -> str:
+        snap = self.snap
+        if snap.day_state == "outlook":
+            return "Nothing has kicked off yet · the projected board"
+        if snap.day_state == "final":
+            return "Every game is in the books · standings pending the commish"
+        if snap.day_state == "unknown":
+            return "Game status unavailable tonight"
+        left = sum(1 for t in self.live if t.pending())
+        return (
+            f"{snap.games_final} of {snap.games_total} games final · "
+            f"{left} {plural(left, 'team', 'teams')} still "
+            f"{plural(left, 'has', 'have')} players to go"
+        )
+
+    def title(self, now: datetime) -> str:
+        return f"Week {self.snap.week} · {now.astimezone(LOCAL_TZ):%A}"
+
+    def has_gulag_section(self) -> bool:
+        return self.snap.phase.kind in ("gulag", "double")
+
+    def gulag_problem(self) -> str | None:
+        """Why there is no pair to show, or ``None`` when there is one."""
+        if self.snap.phase.gulag_source == "unknown":
+            return "pairing unknown (a past week has no scores on file)"
+        if not self.gulag:
+            return "pairing unresolved (a named team is already out)"
+        return None
+
+    def gulag_provisional(self) -> bool:
+        return self.snap.phase.gulag_source == "replay"
+
+    def gulag_pair(self) -> list[TeamLine]:
+        return self.by_risk([t for t in self.live if t.team_id in self.gulag])
+
+    def block(self) -> tuple[list[TeamLine], list[TeamLine]]:
+        """The teams in the adverse position, and the ones sweating behind them."""
+        ranked = self.by_risk(self.pool)
+        top = ranked[: self.block_count]
+        if self.result is None:
+            return top, []
+        sweating = [
+            t for t in ranked[self.block_count:] if self.probability(t) >= SWEATING_FLOOR
+        ]
+        return top, sweating
+
+    def ranked_board(self) -> list[TeamLine]:
+        if self.result is not None:
+            return sorted(
+                self.live,
+                key=lambda t: (
+                    -(self.odds(t).projected_final if self.odds(t) else _ZERO),
+                    -t.points,
+                    t.label,
+                ),
+            )
+        return sorted(self.live, key=lambda t: (-t.points, t.label))
+
+    def eliminated(self) -> list[TeamLine]:
+        return sorted(
+            (t for t in self.snap.teams if t.is_eliminated),
+            key=lambda t: (t.eliminated_week or 0, t.label),
+        )
+
+    def out_line(self) -> str | None:
+        out = self.eliminated()
+        if not out:
+            return None
+        return "Out: " + ", ".join(
+            f"{t.label} (wk {t.eliminated_week})" if t.eliminated_week else t.label for t in out
+        )
+
+    def watch_notes(self) -> list[tuple[str, str]]:
+        """``(label, note)`` for every roster problem, uncapped, in board order."""
+        notes: list[tuple[str, str]] = []
+        for team in self.live:
+            empties = team.empty_slots()
+            if empties:
+                notes.append((team.label, f"{empties} empty {plural(empties, 'slot', 'slots')}"))
+            for starter in team.out_starters():
+                if starter.injury_status in UNAVAILABLE_STATUSES:
+                    notes.append(
+                        (team.label, f"{starter.name} ({starter.injury_status}) still in the lineup")
+                    )
+                else:
+                    notes.append(
+                        (team.label, f"{starter.name} ({starter.injury_status}, no projection)")
+                    )
+            for starter in team.unprojected_pending():
+                notes.append((team.label, f"{starter.name} has no projection"))
+        return notes
+
+    def footer_parts(self) -> list[str]:
+        snap = self.snap
+        parts: list[str] = []
+        if self.result is not None:
+            parts.append(f"{self.result.simulations:,} sims on Sleeper projections")
+        else:
+            parts.append(f"No odds tonight: {self.packet.no_odds_reason}")
+        parts.append(
+            f"scores as of {clock(snap.scores_synced_at)}"
+            if snap.scores_synced_at is not None
+            else "no scores on file"
+        )
+        missing = sum(1 for t in self.live if not t.has_score_row)
+        if missing:
+            parts.append(
+                f"{missing} {plural(missing, 'team', 'teams')} "
+                f"{plural(missing, 'has', 'have')} no score on file"
+            )
+        parts.append("estimates, not rulings")
+        return parts
+
+    # -- one line of text ----------------------------------------------------
 
     def team_line(self, team: TeamLine, *, suffix: str | None = None) -> str:
         """A team in the gulag or on the block: label, where it stands, the odds.
@@ -102,7 +259,7 @@ class _View:
         projected finish is the number the pairing is judged on until somebody
         plays, and it stands in for the score until then.
         """
-        if self.snap.day_state == "outlook":
+        if self.outlook:
             parts = [team.label]
             parts.append(f"proj {self.projected(team)}" if self.result else self.left(team))
         else:
@@ -111,131 +268,82 @@ class _View:
             parts.append(suffix)
         return " · ".join(parts)
 
-    def by_risk(self, teams: Sequence[TeamLine]) -> list[TeamLine]:
-        if self.result is None:
-            return sorted(teams, key=lambda t: (t.points, t.label))
-        return sorted(teams, key=lambda t: (-self.probability(t), t.points, t.label))
+
+@dataclass(frozen=True)
+class Sections:
+    """The message in pieces, so the chat text and the short text share them."""
+
+    header: str
+    gulag: str | None
+    block: str
+    board: str
+    watch: str | None
+    moves: str | None
+    footer: str
+
+    def middle(self) -> list[str]:
+        return [s for s in (self.gulag, self.block, self.board, self.watch, self.moves) if s]
 
 
-def _header(view: _View, now: datetime) -> str:
-    snap = view.snap
-    title = f"🗡️ GUILLOTINE EOD · Week {snap.week} · {now.astimezone(LOCAL_TZ):%A}"
-    if snap.day_state == "outlook":
-        line = "Nothing has kicked off yet · the projected board"
-    elif snap.day_state == "final":
-        line = "Every game is in the books · standings pending the commish"
-    elif snap.day_state == "unknown":
-        line = "Game status unavailable tonight"
-    else:
-        left = sum(1 for t in view.live if t.pending())
-        line = (
-            f"{snap.games_final} of {snap.games_total} games final · "
-            f"{left} {_plural(left, 'team', 'teams')} still "
-            f"{_plural(left, 'has', 'have')} players to go"
-        )
-    return f"{title}\n{line}"
+def _header(view: View, now: datetime) -> str:
+    return f"🗡️ GUILLOTINE EOD · {view.title(now)}\n{view.header_line()}"
 
 
-def _gulag_section(view: _View) -> str | None:
-    phase = view.snap.phase
-    if phase.kind not in ("gulag", "double"):
+def _gulag_section(view: View) -> str | None:
+    if not view.has_gulag_section():
         return None
-    if phase.gulag_source == "unknown":
-        return "⚔️ THE GULAG · pairing unknown (a past week has no scores on file)"
-    if not view.gulag:
-        return "⚔️ THE GULAG · pairing unresolved (a named team is already out)"
+    problem = view.gulag_problem()
+    if problem is not None:
+        return f"⚔️ THE GULAG · {problem}"
     lines = ["⚔️ THE GULAG · loser is out"]
-    pair = [t for t in view.live if t.team_id in view.gulag]
-    for team in view.by_risk(pair):
+    for team in view.gulag_pair():
         if view.result is None:
             lines.append(view.team_line(team))
             continue
         risk = view.risk(team)
         lines.append(view.team_line(team, suffix=risk if risk == "safe" else f"{risk} to lose"))
-    if phase.gulag_source == "replay":
+    if view.gulag_provisional():
         lines.append("(pairing inferred from last week's scores)")
     return "\n".join(lines)
 
 
-def _block_section(view: _View) -> str:
-    kind = view.snap.phase.kind
-    if kind in ("entry", "gulag"):
-        header, count = f"⚰️ ON THE BLOCK · bottom 2 enter the Week {view.snap.week + 1} gulag", 2
-    elif kind == "final":
-        header, count = "🏆 THE FINAL · lower score is runner-up", 1
-    else:
-        header, count = "⚰️ ON THE BLOCK · lowest score is cut", 1
-    ranked = view.by_risk(view.pool)
-    lines = [header]
-    for team in ranked[:count]:
-        lines.append(
-            view.team_line(team, suffix=None if view.result is None else view.risk(team))
-        )
-    if view.result is not None:
-        sweating = [t for t in ranked[count:] if view.probability(t) >= SWEATING_FLOOR]
-        if sweating:
-            lines.append(
-                "Sweating: " + " · ".join(f"{t.label} {view.risk(t)}" for t in sweating)
-            )
+def _block_section(view: View) -> str:
+    top, sweating = view.block()
+    lines = [f"{view.block_emoji} {view.block_title} · {view.block_note}"]
+    for team in top:
+        lines.append(view.team_line(team, suffix=None if view.result is None else view.risk(team)))
+    if sweating:
+        lines.append("Sweating: " + " · ".join(f"{t.label} {view.risk(t)}" for t in sweating))
     return "\n".join(lines)
 
 
-def _board_section(view: _View) -> str:
-    outlook = view.snap.day_state == "outlook"
+def _board_section(view: View) -> str:
+    outlook = view.outlook
     if view.result is not None:
         header = "📊 THE BOARD · proj · risk" if outlook else "📊 THE BOARD · score · proj · left · risk"
-        ranked = sorted(
-            view.live,
-            key=lambda t: (-(view.odds(t).projected_final if view.odds(t) else _ZERO),
-                           -t.points, t.label),
-        )
     else:
         header = "📊 THE BOARD · proj" if outlook else "📊 THE BOARD · score · left"
-        ranked = sorted(view.live, key=lambda t: (-t.points, t.label))
     lines = [header]
-    for rank, team in enumerate(ranked, start=1):
+    for rank, team in enumerate(view.ranked_board(), start=1):
         parts = [f"{rank}. {team.label}"]
         if not outlook:
             parts.append(f"{team.points:.1f}")
         if view.result is not None:
             parts.append(view.projected(team))
         if not outlook:
-            parts.append(str(len(team.pending())))
+            parts.append(str(view.pending_count(team)))
         if view.result is not None:
             risk = view.risk(team)
-            parts.append(f"⚔{risk}" if team.team_id in view.gulag else risk)
+            parts.append(f"⚔{risk}" if view.in_gulag(team) else risk)
         lines.append(" · ".join(parts))
-    out = sorted(
-        (t for t in view.snap.teams if t.is_eliminated),
-        key=lambda t: (t.eliminated_week or 0, t.label),
-    )
+    out = view.out_line()
     if out:
-        lines.append(
-            "Out: " + ", ".join(
-                f"{t.label} (wk {t.eliminated_week})" if t.eliminated_week else t.label
-                for t in out
-            )
-        )
+        lines.append(out)
     return "\n".join(lines)
 
 
-def _watch_section(view: _View) -> str | None:
-    notes: list[str] = []
-    for team in view.live:
-        empties = team.empty_slots()
-        if empties:
-            notes.append(f"{team.label}: {empties} empty {_plural(empties, 'slot', 'slots')}")
-        for starter in team.out_starters():
-            if starter.injury_status in UNAVAILABLE_STATUSES:
-                notes.append(
-                    f"{team.label}: {starter.name} ({starter.injury_status}) still in the lineup"
-                )
-            else:
-                notes.append(
-                    f"{team.label}: {starter.name} ({starter.injury_status}, no projection)"
-                )
-        for starter in team.unprojected_pending():
-            notes.append(f"{team.label}: {starter.name} has no projection")
+def _watch_section(view: View) -> str | None:
+    notes = [f"{label}: {note}" for label, note in view.watch_notes()]
     if not notes:
         return None
     if len(notes) > ROSTER_WATCH_LINES:
@@ -243,74 +351,56 @@ def _watch_section(view: _View) -> str | None:
     return "\n".join(["🩹 ROSTER WATCH", *notes])
 
 
-def _move_suffix(kind: str, bid: int | None) -> str:
-    if kind == "waiver":
-        return f" (waiver ${bid})" if bid is not None else " (waiver)"
-    if kind == "trade":
-        return " (trade)"
-    if kind == "commissioner":
-        return " (commish)"
-    return ""
-
-
-def _moves_section(view: _View) -> str | None:
+def _moves_section(view: View) -> str | None:
     moves = view.snap.moves
     if not moves:
         return None
     lines = ["🔁 MOVES TODAY"]
     for move in moves[:MOVES_LINES]:
         legs = [f"+{name}" for name in move.adds] + [f"−{name}" for name in move.drops]
-        lines.append(f"{move.team_label}: {' '.join(legs)}{_move_suffix(move.kind, move.waiver_bid)}")
+        lines.append(f"{move.team_label}: {' '.join(legs)}{move_suffix(move.kind, move.waiver_bid)}")
     if len(moves) > MOVES_LINES:
         lines.append(f"+{len(moves) - MOVES_LINES} more")
     return "\n".join(lines)
 
 
-def _footer(view: _View) -> str:
-    snap = view.snap
-    parts: list[str] = []
-    if view.result is not None:
-        parts.append(f"{view.result.simulations:,} sims on Sleeper projections")
-    else:
-        parts.append(f"No odds tonight: {view.packet.no_odds_reason}")
-    parts.append(
-        f"scores as of {_clock(snap.scores_synced_at)}"
-        if snap.scores_synced_at is not None
-        else "no scores on file"
+def build_sections(packet: EodPacket, now: datetime) -> Sections:
+    view = View(packet)
+    return Sections(
+        header=_header(view, now),
+        gulag=_gulag_section(view),
+        block=_block_section(view),
+        board=_board_section(view),
+        watch=_watch_section(view),
+        moves=_moves_section(view),
+        footer=" · ".join(view.footer_parts()),
     )
-    missing = sum(1 for t in view.live if not t.has_score_row)
-    if missing:
-        parts.append(
-            f"{missing} {_plural(missing, 'team', 'teams')} "
-            f"{_plural(missing, 'has', 'have')} no score on file"
-        )
-    parts.append("estimates, not rulings")
-    return " · ".join(parts)
-
-
-def _middle(view: _View) -> list[str]:
-    sections = [
-        _gulag_section(view),
-        _block_section(view),
-        _board_section(view),
-        _watch_section(view),
-        _moves_section(view),
-    ]
-    return [section for section in sections if section]
 
 
 def facts_text(packet: EodPacket) -> str:
     """The sections the colour is written over and checked against: no header,
     no footer, no colour."""
-    return "\n\n".join(_middle(_View(packet)))
+    view = View(packet)
+    sections = (
+        _gulag_section(view),
+        _block_section(view),
+        _board_section(view),
+        _watch_section(view),
+        _moves_section(view),
+    )
+    return "\n\n".join(s for s in sections if s)
+
+
+def colour_text(color: EodColor) -> str:
+    return f"🔥 {color.headline}\n{color.blurb}"
 
 
 def render(packet: EodPacket, color: EodColor | None, now: datetime) -> str:
     """The whole message, unsigned."""
-    view = _View(packet)
-    parts = [_header(view, now)]
+    sections = build_sections(packet, now)
+    parts = [sections.header]
     if color is not None:
-        parts.append(f"🔥 {color.headline}\n{color.blurb}")
-    parts.extend(_middle(view))
-    parts.append(_footer(view))
+        parts.append(colour_text(color))
+    parts.extend(sections.middle())
+    parts.append(sections.footer)
     return "\n\n".join(parts)

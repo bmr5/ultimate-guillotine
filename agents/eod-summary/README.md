@@ -28,8 +28,10 @@ message and nothing else.
   the simulation count and the input hash. Kept forever; public and anon-readable.
 - `public.recaps` — one row per composed message, `recap_kind = eod:<local date>`, `draft`
   until delivery succeeds, then `sent`. Kept forever.
-- The message, through the delivery layer, to the chat the delivery mode names; a preview in
-  `#guillotine-drafts` in every mode but production.
+- The post, through the delivery layer, to the chat the delivery mode names: a short signed
+  text, then the summary as one self-contained HTML file (`guillotine-eod-week-<N>-<date>.html`)
+  that Quick Look opens on a phone. A preview of the text in `#guillotine-drafts` in every mode
+  but production.
 
 ## External tools and permissions
 
@@ -51,7 +53,7 @@ left alone; `--force` overrides for rehearsal. Full table in the design.
 
 ```bash
 uv run --project packages/league-automation ug summary eod --fixture --no-ai   # no database
-uv run --project packages/league-automation ug summary eod --dry-run           # the real league
+uv run --project packages/league-automation ug summary eod --dry-run --out /tmp  # the real league; writes the HTML there
 uv run --project packages/league-automation ug summary eod --json              # the fact packet
 ```
 

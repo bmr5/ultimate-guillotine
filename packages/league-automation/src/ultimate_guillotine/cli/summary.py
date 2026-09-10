@@ -2,12 +2,13 @@
 
 The scheduled path is the whole agent under ``run_scheduled_with_notes``: one run
 row under the ``eod-summary`` agent, one ops note on the edge when a night fails,
-and the summary itself through the delivery layer. The dry run is the same
-composition with nothing to write through: ``--dry-run`` reads the real league and
-prints the message, records no run, posts nowhere; ``--json`` prints the fact
-packet -- every team's line and odds -- and makes no model call; ``--fixture``
-answers out of the closed-form league so the shape can be checked on a machine
-with no database, no Sleeper and no Hermes at all.
+and the post itself -- a short text, then the HTML file -- through the delivery
+layer. The dry run is the same composition with nothing to write through:
+``--dry-run`` reads the real league, prints the chat text, writes the file to
+``--out`` and prints its path, records no run, posts nowhere; ``--json`` prints
+the fact packet -- every team's line and odds -- and makes no model call;
+``--fixture`` answers out of the closed-form league so the shape can be checked
+on a machine with no database, no Sleeper and no Hermes at all.
 
 The colour is opportunistic on every path. No Hermes on the machine is one ops
 note (or one stderr line) and a message without colour, never a failed run: the
@@ -18,6 +19,7 @@ import argparse
 import json
 import sys
 from datetime import UTC, datetime
+from pathlib import Path
 
 import httpx
 
@@ -47,8 +49,6 @@ from ultimate_guillotine.summary.snapshot import load_snapshot
 from ultimate_guillotine.summary.store import SummaryRepository
 from ultimate_guillotine.summary.survival import DEFAULT_SIMULATIONS
 
-#: What a run that never called a model prints where the model would go.
-NO_MODEL = "none (answered without a model call)"
 NO_HERMES = "hermes CLI not found"
 
 
@@ -82,6 +82,11 @@ def register(subparsers) -> None:
         "--force",
         action="store_true",
         help="post again even if tonight's summary already went out",
+    )
+    eod.add_argument(
+        "--out",
+        default=".",
+        help="where a dry run writes the HTML file (default: the current directory)",
     )
     eod.add_argument(
         "--quiet",
@@ -226,9 +231,13 @@ def _dry_run(
         simulations=args.simulations,
         seed=args.seed,
     )
-    print(f"model: {composed.model or NO_MODEL}")
+    out_dir = Path(args.out).expanduser()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    artifact = out_dir / composed.filename
+    artifact.write_text(composed.html, encoding="utf-8")
+    print(composed.short)
     print()
-    print(composed.text)
+    print(f"artifact: {artifact.resolve()}")
     return 0
 
 

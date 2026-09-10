@@ -903,9 +903,14 @@ Three commands, none of which writes, sends, or records a run:
 
 | Command | What it does |
 | --- | --- |
-| `ug summary eod --fixture --no-ai` | the message over the built-in 18-team league: no database, no Sleeper, no Hermes |
-| `ug summary eod --dry-run` | the message over the real league, printed; add `--no-ai` to skip the colour |
-| `ug summary eod --json` | the fact packet the message is built from -- every team, every starter, every number -- with no model call |
+| `ug summary eod --fixture --no-ai` | the post over the built-in 18-team league: no database, no Sleeper, no Hermes |
+| `ug summary eod --dry-run` | the post over the real league; add `--no-ai` to skip the colour |
+| `ug summary eod --json` | the fact packet the post is built from -- every team, every starter, every number -- with no model call |
+
+A post is a short chat text followed by an HTML file (Ben's ruling, 2026-09-10): the
+dry run prints the text and writes the file to `--out DIR` (the current directory
+by default), printing its path last. Open the file on a phone -- AirDrop it, or
+send it to yourself -- to see what the league taps into.
 
 `--seed N` and `--simulations N` make a run reproducible and faster. Read the
 `--json` output before trusting a night's post: every starter's status (`done`,
@@ -925,8 +930,10 @@ put in the wrong state is the likeliest way an odds number is wrong.
    number in them is in the facts and that nothing looks like private data, and
    drops the colour if not.
 5. Writes `public.survival_snapshots` and a `public.recaps` draft, previews the
-   message in `#guillotine-drafts` (every mode but production), sends it through
-   the delivery layer (self-test chat in test mode), and marks the recap `sent`.
+   text in `#guillotine-drafts` (every mode but production), sends the text and
+   then the HTML file through the delivery layer (self-test chat in test mode),
+   and marks the recap `sent`. A file that fails after the text went out is one
+   ops line, not a failed night.
 
 The stdout Hermes delivers to `#guillotine-ops` is one line:
 `eod: sent, week N, odds yes, model <model>`. Under `--quiet` (the cron job)
@@ -939,6 +946,7 @@ nothing on success.
 | `EOD summary colour disabled: hermes CLI not found` | no Hermes on the machine; the message went out without colour |
 | `EOD summary colour unavailable: <class>` | the model call failed; same |
 | `EOD summary colour declined: <reason>` | the verifier threw the model's answer out; same |
+| `EOD summary attachment failed after the text went out: <class>` | the text arrived, the file did not; the run still succeeded |
 | `eod-summary: run failed at <time> UTC` | the night failed outright -- no snapshot, a delivery mismatch; see the run's `error` |
 | `EOD summary could not deliver: <reason>` (alerts) | the delivery target did not match; the recap stays a draft |
 
@@ -957,8 +965,9 @@ message text here.
 - [ ] 2. `ug summary eod --json` shows every starter in the right state for the
   night (Thursday: one game `done`; Sunday: Monday's players `remaining`).
   _date:_ · _outcome:_
-- [ ] 3. The 11:50 PM run lands in `#guillotine-drafts` and the self-test chat,
-  signed, and `#guillotine-feed` shows the mirror.
+- [ ] 3. The 11:50 PM run lands in `#guillotine-drafts` and the self-test chat
+  as a signed text followed by the HTML file; `#guillotine-feed` shows both. Tap
+  the file on an iPhone: Quick Look opens the board.
   _date:_ · _outcome:_
 - [ ] 4. `ug summary eod` run again the same night prints `eod: already_sent`
   and sends nothing; `ug summary eod --force` sends again.

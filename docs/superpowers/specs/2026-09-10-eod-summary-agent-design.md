@@ -134,7 +134,16 @@ These are estimates, never rulings. The footer says so on every post.
 
 ## The Message
 
-Deterministic text, phone-first, no markdown. In order:
+Two things travel to the chat, under one run: a short text, then a file. Ben (2026-09-10,
+after the first dry run): "what I would prefer here is an html that can be sent, similar to a
+claude artifact pattern." The text goes first so a member who never opens the file still has
+the answer -- the header, the colour, the gulag, the block, one line saying the full board is
+attached, and the footer -- and the file is the whole summary: every section below, the board
+as a table with the odds as bars. It is the League Agent's artifact pattern: tapping the file on
+an iPhone opens Quick Look, which renders HTML with inline CSS and nothing else.
+
+The full deterministic text below is still composed on every run: it is what the colour is
+written over and checked against, and what the recap's facts hash covers. In order:
 
 1. **Header** — `🗡️ GUILLOTINE EOD · Week N · Sunday`, then one line on the day: games final
    this week, teams with players still to play.
@@ -155,6 +164,17 @@ Deterministic text, phone-first, no markdown. In order:
 Members are named by their public label (`coalesce(nickname, sleeper_display_name,
 display_name)`) exactly as the board does; the join key is never rendered. Every string comes
 from public tables or from numbers this run computed. The delivery layer appends the signature.
+
+## The Artifact
+
+`summary/artifact.py` renders the same `View` the text renderer reads -- the same ranks, pairs
+and notes, so the two cannot disagree -- into one self-contained page: the board's own palette
+written inline, a hero, the colour card, the gulag and block cards with each team's standing and
+odds, the board table (rank, score, projected finish, players left, risk with a bar; the gulag
+pair marked ⚔, an estimated finish marked ~), the roster watch and the moves. No script, no
+image, no stylesheet link, no font, no URL of any kind; every string from a model or a member's
+Sleeper profile is HTML-escaped; the file is capped at 200 KB. It is named
+`guillotine-eod-week-<N>-<local date>.html`.
 
 ## The Colour
 
@@ -191,8 +211,12 @@ prompt version and model when a colour was used.
 ## Delivery
 
 Through `DeliveryService`, with the reserve → commit → send → reconcile path every other agent
-uses, under the run's id and agent `eod-summary`. In `test` mode that is the self-test chat; in
-`production` the league chat; in `disabled` nothing is sent and the recap stays a draft.
+uses, under the run's id and agent `eod-summary`: the short text through `deliver`, then the
+file through `deliver_attachment` (the League Agent branch's attachment path, brought over
+unchanged: multipart to BlueBubbles, reserved and reconciled by file name like text). In `test`
+mode that is the self-test chat; in `production` the league chat; in `disabled` nothing is sent
+and the recap stays a draft. A file that fails to send after the text went out is one ops note
+and a run that still succeeds: the chat has the answer.
 
 Whatever the mode short of production, the composed message is also posted to
 `#guillotine-drafts` first, as the foundation asks of test-mode previews, so Ben sees tomorrow
@@ -202,7 +226,8 @@ production comes from the delivery layer as today.
 ## Commands
 
 - `ug summary eod` — the scheduled run: load, simulate, compose, store, deliver, record.
-- `ug summary eod --dry-run` — everything but the writes and the sends: prints the message,
+- `ug summary eod --dry-run` — everything but the writes and the sends: prints the chat text,
+  writes the artifact to `--out DIR` (default: the current directory) and prints its path,
   records no run, posts nowhere. Still calls the model unless `--no-ai`.
 - `ug summary eod --json` — prints the fact packet (every team's line and odds) and makes no
   model call.
@@ -250,7 +275,8 @@ ultimate_guillotine/summary/
   phase.py      the rules table and the gulag pairing (events, else replay)
   survival.py   the Monte Carlo, input hash, seed
   snapshot.py   EodRepository (the reads) and assemble() (pure)
-  render.py     the deterministic message
+  render.py     the deterministic message, and the View both renderers read
+  artifact.py   the HTML file and the short chat text that travels ahead of it
   color.py      EodColor, the prompt call, the verifier
   store.py      survival_snapshots and recaps writes, the once-a-day check
   fixture.py    the closed-form league with scores and a half-played week
@@ -296,6 +322,7 @@ over the local Supabase for the two repositories. The cron manifest test learns 
 | Once a day | A `sent` recap row of today's kind blocks a second post | `summary/store.py`, `--force` |
 | Where the preview goes | `#guillotine-drafts` in every mode but production | `summary/agent.py` |
 | Naming | agent `eod-summary`, command `ug summary eod` | throughout |
+| Text or file | Ben's ruling: a short text then the HTML artifact; the file holds the board | `summary/artifact.py` |
 
 ## Out of Scope
 

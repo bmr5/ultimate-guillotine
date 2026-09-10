@@ -62,26 +62,33 @@ def test_eod_help_documents_the_flags() -> None:
     result = run("summary", "eod", "--help")
     assert result.returncode == 0
     for flag in ("--dry-run", "--json", "--fixture", "--no-ai", "--seed", "--simulations",
-                 "--force", "--quiet"):
+                 "--force", "--quiet", "--out"):
         assert flag in result.stdout
 
 
-def test_a_fixture_run_prints_the_whole_message_and_touches_nothing(tmp_path) -> None:
+def test_a_fixture_run_prints_the_chat_text_writes_the_artifact_and_touches_nothing(
+    tmp_path,
+) -> None:
+    """What the chat gets: the short text, then the file. No model line up top --
+    Ben: "Remove the Model line up top"."""
     result = run("summary", "eod", "--fixture", "--no-ai", "--simulations", "300",
-                 env=no_hermes(tmp_path))
+                 "--out", str(tmp_path), env=no_hermes(tmp_path))
 
     assert result.returncode == 0, result.stderr
     lines = result.stdout.splitlines()
-    assert lines[0] == f"model: {summary_cli.NO_MODEL}"
-    assert lines[1] == ""
-    assert lines[2] == "🗡️ GUILLOTINE EOD · Week 6 · Sunday"
+    assert lines[0] == "🗡️ GUILLOTINE EOD · Week 6 · Sunday"
+    assert "model:" not in result.stdout
     assert "⚔️ THE GULAG · loser is out" in result.stdout
     assert "⚰️ ON THE BLOCK · bottom 2 enter the Week 7 gulag" in result.stdout
-    assert "📊 THE BOARD" in result.stdout
-    assert "🩹 ROSTER WATCH" in result.stdout
-    assert "🔁 MOVES TODAY" in result.stdout
-    assert "Out: Member17 (wk 5)" in result.stdout
-    assert result.stdout.rstrip().endswith("estimates, not rulings")
+    assert "Full board attached" in result.stdout
+    assert "📊 THE BOARD" not in result.stdout
+    assert "estimates, not rulings" in result.stdout
+    artifact = tmp_path / "guillotine-eod-week-6-2026-10-11.html"
+    assert lines[-1] == f"artifact: {artifact}"
+    html = artifact.read_text()
+    assert html.startswith("<!doctype html>")
+    for expected in ("The board", "Member01", "Member17", "wk 5", "Roster watch", "Moves today"):
+        assert expected in html
 
 
 def test_a_fixture_run_without_hermes_still_prints_when_the_colour_was_asked_for(
@@ -89,7 +96,8 @@ def test_a_fixture_run_without_hermes_still_prints_when_the_colour_was_asked_for
 ) -> None:
     """No `--no-ai`, no Hermes: the colour is unavailable, said on stderr, and the
     message goes out anyway -- the same thing the cron job does on a bad night."""
-    result = run("summary", "eod", "--fixture", "--simulations", "100", env=no_hermes(tmp_path))
+    result = run("summary", "eod", "--fixture", "--simulations", "100", "--out", str(tmp_path),
+                 env=no_hermes(tmp_path))
     assert result.returncode == 0, result.stderr
     assert "EOD summary colour unavailable" in result.stderr
     assert "🗡️ GUILLOTINE EOD" in result.stdout
@@ -122,9 +130,9 @@ def test_the_fixture_output_carries_nothing_private(tmp_path) -> None:
 
 def test_a_seed_makes_two_fixture_runs_identical(tmp_path) -> None:
     first = run("summary", "eod", "--fixture", "--no-ai", "--seed", "3", "--simulations",
-                "100", env=no_hermes(tmp_path))
+                "100", "--out", str(tmp_path), env=no_hermes(tmp_path))
     second = run("summary", "eod", "--fixture", "--no-ai", "--seed", "3", "--simulations",
-                 "100", env=no_hermes(tmp_path))
+                 "100", "--out", str(tmp_path), env=no_hermes(tmp_path))
     assert first.stdout == second.stdout
 
 
@@ -274,14 +282,18 @@ def test_quiet_prints_nothing_on_success(
 
 
 def test_a_dry_run_against_the_league_composes_and_records_no_run(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture, tmp_path
 ) -> None:
     """`--dry-run` reads the real league, prints the message, and never reaches the
     runner: no run row, no recap, no send."""
     agents: list[str] = []
     _wire(monkeypatch, agents=agents)
 
-    assert summary_cli.cmd_eod(parse("--dry-run", "--no-ai", "--simulations", "50")) == 0
+    assert summary_cli.cmd_eod(
+        parse("--dry-run", "--no-ai", "--simulations", "50", "--out", str(tmp_path))
+    ) == 0
     assert agents == []
     out = capsys.readouterr().out
-    assert out.startswith(f"model: {summary_cli.NO_MODEL}\n\n🗡️ GUILLOTINE EOD")
+    assert out.startswith("🗡️ GUILLOTINE EOD")
+    # A real-league dry run is stamped with tonight's date, whatever the fixture's.
+    assert list(tmp_path.glob("guillotine-eod-week-6-*.html"))

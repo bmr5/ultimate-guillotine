@@ -28,6 +28,7 @@ from typing import Literal
 from ultimate_guillotine.ai.structured import AIInvalidOutput, AIUnavailable
 from ultimate_guillotine.config import DeliveryMode
 from ultimate_guillotine.messages.delivery import TargetMismatch
+from ultimate_guillotine.summary.artifact import artifact_filename, render_html, short_text
 from ultimate_guillotine.summary.color import (
     PROMPT_VERSION,
     ColorRejected,
@@ -53,13 +54,21 @@ Status = Literal["sent", "draft", "already_sent"]
 
 @dataclass(frozen=True)
 class Composed:
-    """One message, with everything that went into it."""
+    """One night's post, with everything that went into it.
+
+    ``text`` is the full deterministic message with the colour: the record, and
+    what the facts hash covers. ``short`` is the chat text that travels ahead of
+    the file, and ``html`` is the file itself, named ``filename``.
+    """
 
     packet: EodPacket
     text: str
     facts: str
     color: EodColor | None
     model: str | None
+    short: str
+    html: str
+    filename: str
 
 
 @dataclass(frozen=True)
@@ -141,7 +150,16 @@ def compose_summary(
             notifier.ops(f"EOD summary colour declined: {exc.reason}")
         except (AIUnavailable, AIInvalidOutput) as exc:
             notifier.ops(f"EOD summary colour unavailable: {exc.__class__.__name__}")
-    return Composed(packet, render(packet, color, now), facts, color, model)
+    return Composed(
+        packet,
+        render(packet, color, now),
+        facts,
+        color,
+        model,
+        short_text(packet, color, now),
+        render_html(packet, color, now),
+        artifact_filename(snapshot.week, now),
+    )
 
 
 class EodSummaryAgent:
@@ -218,25 +236,41 @@ class EodSummaryAgent:
             kind,
             PROMPT_VERSION,
             facts_hash(render(packet, None, now)),
-            composed.text,
+            composed.short,
         )
         self._repo.set_input_version(run_id, input_version(composed.model))
         self._commit()
 
+        odds = packet.result is not None
         mode = self._settings.delivery_mode
         if mode is not DeliveryMode.PRODUCTION:
-            self._notifier.drafts(f"[{AGENT}] [{mode.value}] preview\n{composed.text}")
+            self._notifier.drafts(
+                f"[{AGENT}] [{mode.value}] preview · {composed.filename}\n{composed.short}"
+            )
         if mode is DeliveryMode.DISABLED:
-            return Outcome("draft", composed.text, composed.model, packet.result is not None)
+            return Outcome("draft", composed.short, composed.model, odds)
 
         try:
-            self._delivery.deliver(run_id, AGENT, composed.text)
+            self._delivery.deliver(run_id, AGENT, composed.short)
         except TargetMismatch as exc:
             self._notifier.alerts(f"EOD summary could not deliver: {exc}")
             raise
         self._repo.mark_sent(recap_id)
         self._commit()
-        return Outcome("sent", composed.text, composed.model, packet.result is not None)
+        # The file follows the text. The chat already has the answer, so a file
+        # that does not arrive is one ops line, never a failed night and never a
+        # second text.
+        try:
+            self._delivery.deliver_attachment(
+                run_id, AGENT, composed.filename, composed.html.encode()
+            )
+        except Exception as exc:  # noqa: BLE001 - reported, never fatal
+            self._notifier.ops(
+                f"EOD summary attachment failed after the text went out: "
+                f"{exc.__class__.__name__}"
+            )
+        self._commit()
+        return Outcome("sent", composed.short, composed.model, odds)
 
     def _commit(self) -> None:
         if self._conn is not None:

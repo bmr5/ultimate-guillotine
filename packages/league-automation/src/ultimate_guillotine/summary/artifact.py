@@ -1,0 +1,264 @@
+"""The HTML artifact: the whole summary as one self-contained file for Quick Look.
+
+Ben (2026-09-10): "what I would prefer here is an html that can be sent, similar
+to a claude artifact pattern." The chat gets a short text first -- the header,
+the colour, the gulag, the block, the footer -- so a member who never opens the
+file still has the answer, and then the file: every section, the full board as a
+table, the odds as bars. Tapping it on an iPhone opens Quick Look, which renders
+HTML with inline CSS and nothing else.
+
+So the page references nothing outside itself: no script, no image, no stylesheet
+link, no font, no URL. The styling is the board's own palette written inline.
+Every string that came from a model or from a member's Sleeper profile goes
+through :func:`html.escape`; the page is built from the same :class:`View` the
+text renderer reads, so the two can never disagree about a rank or a number.
+"""
+
+from datetime import datetime
+from decimal import Decimal
+from html import escape
+
+from ultimate_guillotine.summary.color import EodColor
+from ultimate_guillotine.summary.models import LOCAL_TZ, EodPacket, TeamLine
+from ultimate_guillotine.summary.render import (
+    View,
+    build_sections,
+    colour_text,
+    move_suffix,
+    plural,
+)
+
+#: The League Agent spec's cap on a rendered artifact.
+ARTIFACT_MAX_BYTES = 200 * 1024
+
+#: Risk above which a board row's bar is red, and above which it is amber.
+_RED = Decimal("0.50")
+_AMBER = Decimal("0.20")
+
+_CSS = """
+:root{color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:#05070c;color:#f2f3f8;font:16px/1.45 -apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;-webkit-text-size-adjust:100%}
+main{max-width:640px;margin:0 auto;padding:20px 14px 36px}
+.hero{padding:6px 2px 14px}
+.kicker{font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:#f0a24a;font-weight:700}
+h1{margin:4px 0 6px;font-size:28px;line-height:1.15}
+.sub{margin:0;color:#a3a9bd}
+.card{background:rgba(11,14,23,.9);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:14px 14px 12px;margin:12px 0}
+.card h2{margin:0 0 2px;font-size:17px}
+.card .note{margin:0 0 10px;color:#a3a9bd;font-size:14px}
+.fire{border-color:rgba(240,162,74,.45);background:rgba(240,162,74,.08)}
+.fire h2{color:#f0a24a}
+.fire p{margin:6px 0 0}
+.row{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid rgba(255,255,255,.08)}
+.row:first-of-type{border-top:0}
+.row .who{font-weight:600}
+.row .num{color:#a3a9bd;white-space:nowrap}
+.pct{font-weight:700;white-space:nowrap}
+.pct.red{color:#ff6b7a}.pct.amber{color:#f0a24a}.pct.safe{color:#a3a9bd}
+.sweat{margin:10px 0 0;color:#a3a9bd;font-size:14px}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{text-align:left;color:#a3a9bd;font-weight:600;font-size:12px;letter-spacing:.06em;text-transform:uppercase;padding:6px 4px;border-bottom:1px solid rgba(255,255,255,.12)}
+td{padding:7px 4px;border-bottom:1px solid rgba(255,255,255,.06);vertical-align:middle}
+td.n,th.n{text-align:right;white-space:nowrap}
+td.rank{color:#a3a9bd;width:2em}
+td.team{font-weight:600}
+.bar{display:block;height:5px;border-radius:3px;background:rgba(255,255,255,.1);margin-top:4px;overflow:hidden}
+.bar i{display:block;height:100%;background:#f0a24a}
+.bar.red i{background:#ff6b7a}.bar.safe i{background:#5f6577}
+.gulag td.team::before{content:"⚔ ";color:#ff6b7a}
+.est{color:#a3a9bd}
+.out{margin:10px 0 0;color:#a3a9bd;font-size:14px}
+ul{margin:0;padding-left:18px}
+li{margin:4px 0}
+footer{margin-top:18px;color:#a3a9bd;font-size:13px;text-align:center}
+"""
+
+
+def artifact_filename(week: int, now: datetime) -> str:
+    return f"guillotine-eod-week-{week}-{now.astimezone(LOCAL_TZ):%Y-%m-%d}.html"
+
+
+def _pct_class(view: View, team: TeamLine) -> str:
+    probability = view.probability(team)
+    if probability >= _RED:
+        return "red"
+    if probability >= _AMBER:
+        return "amber"
+    return "safe"
+
+
+def _bar(view: View, team: TeamLine) -> str:
+    width = int(view.probability(team) * 100)
+    return f'<span class="bar {_pct_class(view, team)}"><i style="width:{width}%"></i></span>'
+
+
+def _stand(view: View, team: TeamLine) -> str:
+    """Where a team stands, as the gulag and block rows say it."""
+    if view.outlook:
+        return f"proj {escape(view.projected(team))}" if view.result else view.left(team)
+    return f"{team.points:.1f} · {view.left(team)}"
+
+
+def _pair_row(view: View, team: TeamLine, *, to_lose: bool) -> str:
+    cells = [
+        f'<span class="who">{escape(team.label)}</span>',
+        f'<span class="num">{_stand(view, team)}</span>',
+    ]
+    if view.result is not None:
+        risk = view.risk(team)
+        label = risk if (risk == "safe" or not to_lose) else f"{risk} to lose"
+        cells.append(f'<span class="pct {_pct_class(view, team)}">{escape(label)}</span>')
+    return f'<div class="row">{"".join(cells)}</div>'
+
+
+def _hero(view: View, now: datetime) -> str:
+    return (
+        '<header class="hero"><div class="kicker">🗡️ Guillotine EOD</div>'
+        f"<h1>{escape(view.title(now))}</h1>"
+        f'<p class="sub">{escape(view.header_line())}</p></header>'
+    )
+
+
+def _colour_card(color: EodColor) -> str:
+    return (
+        '<section class="card fire">'
+        f"<h2>🔥 {escape(color.headline)}</h2><p>{escape(color.blurb)}</p></section>"
+    )
+
+
+def _gulag_card(view: View) -> str | None:
+    if not view.has_gulag_section():
+        return None
+    problem = view.gulag_problem()
+    if problem is not None:
+        return f'<section class="card"><h2>⚔️ The gulag</h2><p class="note">{escape(problem)}</p></section>'
+    rows = "".join(_pair_row(view, team, to_lose=True) for team in view.gulag_pair())
+    note = (
+        '<p class="sweat">(pairing inferred from last week\'s scores)</p>'
+        if view.gulag_provisional()
+        else ""
+    )
+    return (
+        '<section class="card"><h2>⚔️ The gulag</h2><p class="note">loser is out</p>'
+        f"{rows}{note}</section>"
+    )
+
+
+def _block_card(view: View) -> str:
+    top, sweating = view.block()
+    title = view.block_title.capitalize() if view.block_title != "THE FINAL" else "The final"
+    if view.block_title == "ON THE BLOCK":
+        title = "On the block"
+    rows = "".join(_pair_row(view, team, to_lose=False) for team in top)
+    sweat = ""
+    if sweating:
+        sweat = '<p class="sweat">Sweating: ' + " · ".join(
+            f"{escape(t.label)} {escape(view.risk(t))}" for t in sweating
+        ) + "</p>"
+    return (
+        f'<section class="card"><h2>{view.block_emoji} {title}</h2>'
+        f'<p class="note">{escape(view.block_note)}</p>{rows}{sweat}</section>'
+    )
+
+
+def _board_card(view: View) -> str:
+    outlook, odds = view.outlook, view.result is not None
+    heads = ['<th class="n">#</th>', "<th>Team</th>"]
+    if not outlook:
+        heads.append('<th class="n">Score</th>')
+    if odds:
+        heads.append('<th class="n">Proj</th>')
+    if not outlook:
+        heads.append('<th class="n">Left</th>')
+    if odds:
+        heads.append('<th class="n">Risk</th>')
+    rows: list[str] = []
+    for rank, team in enumerate(view.ranked_board(), start=1):
+        classes = ' class="gulag"' if view.in_gulag(team) else ""
+        cells = [f'<td class="rank n">{rank}</td>', f'<td class="team">{escape(team.label)}</td>']
+        if not outlook:
+            cells.append(f'<td class="n">{team.points:.1f}</td>')
+        if odds:
+            projected = escape(view.projected(team))
+            if projected.startswith("~"):
+                projected = f'<span class="est">{projected}</span>'
+            cells.append(f'<td class="n">{projected}</td>')
+        if not outlook:
+            cells.append(f'<td class="n">{view.pending_count(team)}</td>')
+        if odds:
+            cells.append(
+                f'<td class="n"><span class="pct {_pct_class(view, team)}">'
+                f"{escape(view.risk(team))}</span>{_bar(view, team)}</td>"
+            )
+        rows.append(f"<tr{classes}>{''.join(cells)}</tr>")
+    out = view.out_line()
+    out_html = f'<p class="out">{escape(out)}</p>' if out else ""
+    return (
+        '<section class="card"><h2>📊 The board</h2>'
+        f'<table><thead><tr>{"".join(heads)}</tr></thead><tbody>{"".join(rows)}</tbody></table>'
+        f"{out_html}</section>"
+    )
+
+
+def _watch_card(view: View) -> str | None:
+    notes = view.watch_notes()
+    if not notes:
+        return None
+    items = "".join(f"<li><b>{escape(label)}:</b> {escape(note)}</li>" for label, note in notes)
+    return f'<section class="card"><h2>🩹 Roster watch</h2><ul>{items}</ul></section>'
+
+
+def _moves_card(view: View) -> str | None:
+    moves = view.snap.moves
+    if not moves:
+        return None
+    items = []
+    for move in moves:
+        legs = [f"+{name}" for name in move.adds] + [f"−{name}" for name in move.drops]
+        items.append(
+            f"<li><b>{escape(move.team_label)}:</b> "
+            f"{escape(' '.join(legs))}{escape(move_suffix(move.kind, move.waiver_bid))}</li>"
+        )
+    return f'<section class="card"><h2>🔁 Moves today</h2><ul>{"".join(items)}</ul></section>'
+
+
+def render_html(packet: EodPacket, color: EodColor | None, now: datetime) -> str:
+    """The whole summary as one page. Self-contained, static, escaped."""
+    view = View(packet)
+    cards = [_hero(view, now)]
+    if color is not None:
+        cards.append(_colour_card(color))
+    cards.extend(c for c in (_gulag_card(view), _block_card(view), _board_card(view),
+                             _watch_card(view), _moves_card(view)) if c)
+    cards.append(f"<footer>{escape(' · '.join(view.footer_parts()))}</footer>")
+    title = escape(f"Guillotine EOD · Week {view.snap.week}")
+    return (
+        "<!doctype html>\n"
+        '<html lang="en"><head><meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width, initial-scale=1">'
+        f"<title>{title}</title><style>{_CSS}</style></head>"
+        f'<body><main>{"".join(cards)}</main></body></html>\n'
+    )
+
+
+def short_text(packet: EodPacket, color: EodColor | None, now: datetime) -> str:
+    """The chat text that travels ahead of the file: header, colour, gulag, block, footer.
+
+    The board, the roster watch and the moves live in the attachment; the text
+    says so, so a member who never opens the file knows what it holds.
+    """
+    sections = build_sections(packet, now)
+    parts = [sections.header]
+    if color is not None:
+        parts.append(colour_text(color))
+    if sections.gulag:
+        parts.append(sections.gulag)
+    parts.append(sections.block)
+    teams = len(packet.snapshot.live_teams())
+    parts.append(
+        f"Full board attached: all {teams} {plural(teams, 'team', 'teams')}, "
+        "roster watch and today's moves."
+    )
+    parts.append(sections.footer)
+    return "\n\n".join(parts)
