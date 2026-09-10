@@ -67,6 +67,7 @@ const SEARCH_LABEL = "Search owner, team, or player";
 
 const team = (over: Partial<BoardTeam> & { teamId: number }): BoardTeam => ({
   isRosterFrozen: false,
+  risk: null,
   teamName: `Team ${over.teamId}`,
   ownerName: `owner${over.teamId}`,
   sleeperRosterId: over.teamId,
@@ -121,6 +122,7 @@ const result = (over: Partial<BoardDataResult> = {}): BoardDataResult => ({
   errors: [],
   projectionsUpdatedAt: Date.now(),
   scoresUpdatedAt: null,
+  oddsUpdatedAt: null,
   refetchAll: vi.fn(),
   ...over,
 });
@@ -336,6 +338,39 @@ describe("BoardPage", () => {
       expect(stamp(container)).toHaveAttribute("data-stamp", "projections");
       expect(screen.getByText(/^Updated /)).toBeInTheDocument();
       expect(container.querySelector("[data-projection-stamp]")).toBeNull();
+    });
+
+    it("says when the Daily computed the odds, under the other stamps", () => {
+      // Ben: "just write the last time it was run so people know". The Daily's own
+      // `snapshot_at`, on its own line, hidden from assistive tech like the stamps above it.
+      boardData.current = result({
+        teams: [team({ teamId: 1 })],
+        oddsUpdatedAt: Date.now(),
+      });
+      const { container } = renderPage();
+      const odds = container.querySelector("[data-odds-stamp]");
+      expect(odds).toHaveTextContent(/^Odds as of /);
+      expect(odds).toHaveAttribute("aria-hidden", "true");
+    });
+
+    it("drops the odds line before the week's first Daily", () => {
+      boardData.current = result({
+        teams: [team({ teamId: 1 })],
+        oddsUpdatedAt: null,
+      });
+      const { container } = renderPage();
+      expect(container.querySelector("[data-odds-stamp]")).toBeNull();
+    });
+
+    it("does not call the board stale over old odds", () => {
+      // The odds are computed twice a day at most; their age says nothing about the scores.
+      boardData.current = result({
+        teams: [team({ teamId: 1 })],
+        scoresUpdatedAt: Date.now(),
+        oddsUpdatedAt: Date.now() - STALE_AFTER_MS - MS_PER_MINUTE,
+      });
+      renderPage();
+      expect(screen.queryByText("Stale data")).not.toBeInTheDocument();
     });
 
     it("measures staleness against the scores once they lead", () => {

@@ -80,6 +80,7 @@ const raw = (over: Partial<BoardRawData> = {}): BoardRawData => ({
   ],
   finalRosters: [],
   draftPicks: [],
+  survivalSnapshot: null,
   ...over,
 });
 
@@ -796,5 +797,53 @@ describe("the drafted-here rule", () => {
     );
     expect(team.isRosterFrozen).toBe(true);
     expect(team.roster[0]?.draftedHere).toBe(true);
+  });
+});
+
+/**
+ * The Daily's odds ride on the card from the week's newest `survival_snapshots` row. Keyed by
+ * team id like everything else here; a team the Daily did not rate — it rates the live teams
+ * only — simply has none.
+ */
+describe("joinBoardTeams with the week's odds", () => {
+  const SNAPSHOT_AT = "2026-09-10T15:15:23Z";
+  const odds = (team_id: number, probability: number) => ({
+    team_id,
+    label: `Team ${team_id}`,
+    points: 7.8,
+    projected_final: 88.2,
+    pending: 8,
+    adverse_event: "gulag_entry",
+    probability,
+    is_estimated: false,
+  });
+
+  it("hangs a team's odds off its card", () => {
+    const [team] = joinBoardTeams(
+      raw({
+        survivalSnapshot: { snapshot_at: SNAPSHOT_AT, results: [odds(7, 0.37)] },
+      }),
+    );
+    expect(team.risk).toEqual({
+      probability: 0.37,
+      adverseEvent: "gulag_entry",
+      isEstimated: false,
+      settled: false,
+      snapshotAt: SNAPSHOT_AT,
+    });
+  });
+
+  it("gives a team the Daily did not rate no odds", () => {
+    const [team] = joinBoardTeams(
+      raw({
+        survivalSnapshot: { snapshot_at: SNAPSHOT_AT, results: [odds(8, 0.37)] },
+      }),
+    );
+    expect(team.risk).toBeNull();
+  });
+
+  it("gives every team no odds before the week's first Daily", () => {
+    const [team] = joinBoardTeams(raw({ survivalSnapshot: null }));
+    expect(team.risk).toBeNull();
   });
 });

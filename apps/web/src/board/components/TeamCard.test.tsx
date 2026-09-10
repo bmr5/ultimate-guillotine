@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { CardEmphasis } from "../derive/score";
-import type { BoardTeam, RosterPlayer } from "../types";
+import type { BoardTeam, RosterPlayer, TeamRisk } from "../types";
 import {
   CHIP_ROW_HEIGHT_CLASS,
   CHIP_ROW_INDENT_CLASS,
@@ -45,6 +45,7 @@ const player = (
 
 const team = (over: Partial<BoardTeam> = {}): BoardTeam => ({
   isRosterFrozen: false,
+  risk: null,
   teamId: 7,
   teamName: "The Choppers",
   ownerName: "benray",
@@ -1349,5 +1350,80 @@ describe("TeamCard score and projection", () => {
     expect(row).toHaveTextContent("—");
     expect(row).not.toHaveTextContent("0.0");
     expect(container.querySelector("[data-live-points]")).toBeNull();
+  });
+});
+
+/**
+ * Ben: "want to add your monte carlo simulation %s to the actual website? just write the last
+ * time it was run so people know". The Daily's odds lead the chip line, and the chip's tooltip
+ * says when they were computed.
+ */
+describe("the odds chip", () => {
+  const SNAPSHOT_AT = "2026-09-10T15:15:23Z";
+  const risk = (over: Partial<TeamRisk> = {}): TeamRisk => ({
+    probability: 0.37,
+    adverseEvent: "gulag_entry",
+    isEstimated: false,
+    settled: false,
+    snapshotAt: SNAPSHOT_AT,
+    ...over,
+  });
+  const oddsChip = (container: HTMLElement) =>
+    container.querySelector('[data-chip="odds"]');
+  const chipKinds = (container: HTMLElement) =>
+    [...container.querySelectorAll("[data-chip]")].map((chip) =>
+      chip.getAttribute("data-chip"),
+    );
+
+  it("leads the chip line with the chance of the gulag", () => {
+    const { container } = renderCard(
+      { risk: risk(), roster: [player({ sleeperPlayerId: "s0", injuryStatus: "Out" })] },
+      { rosterPositions: LEAGUE_SLOTS },
+    );
+    const chip = oddsChip(container);
+    expect(chip).toHaveTextContent("Gulag 37%");
+    expect(chip).toHaveTextContent("Chance of entering the gulag: 37%");
+    expect(chipKinds(container)).toEqual(["odds", "out"]);
+  });
+
+  it("says when the Daily computed the odds in the chip's tooltip", () => {
+    const { container } = renderCard({ risk: risk() });
+    const description = chipDescription(oddsChip(container));
+    expect(description).toMatch(/Monte Carlo/);
+    expect(description).toMatch(/Computed /);
+  });
+
+  it("colours the chip by how likely the bad thing is", () => {
+    expect(
+      oddsChip(renderCard({ risk: risk({ probability: 0.84 }) }).container),
+    ).toHaveAttribute("data-tone", "destructive");
+    expect(
+      oddsChip(renderCard({ risk: risk({ probability: 0.37 }) }).container),
+    ).toHaveAttribute("data-tone", "primary");
+    expect(
+      oddsChip(renderCard({ risk: risk({ probability: 0.05 }) }).container),
+    ).toHaveAttribute("data-tone", "muted");
+  });
+
+  it("reads as a result once every game is final", () => {
+    const { container } = renderCard({
+      risk: risk({ probability: 1, settled: true }),
+    });
+    expect(oddsChip(container)).toHaveTextContent("Gulag locked");
+  });
+
+  it("carries no odds chip before the week's first Daily", () => {
+    const { container } = renderCard({ risk: null });
+    expect(oddsChip(container)).toBeNull();
+  });
+
+  it("says nothing about the odds of an eliminated team", () => {
+    const { container } = renderCard({
+      risk: risk(),
+      isEliminated: true,
+      eliminatedWeek: 4,
+    });
+    expect(oddsChip(container)).toBeNull();
+    expect(chipKinds(container)).toEqual(["eliminated"]);
   });
 });

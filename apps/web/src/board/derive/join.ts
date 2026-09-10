@@ -7,6 +7,7 @@ import type {
   TableRow,
 } from "../types";
 import { draftedHere, indexDraftPicks } from "./draft";
+import { riskByTeamId } from "./odds";
 import { summarizeWeeklyResults, type WeeklyResultRow } from "./records";
 import { orderRoster } from "./roster";
 
@@ -39,7 +40,8 @@ export function resolveOwnerLabel(
 }
 
 /**
- * The twelve flat row sets the board reads, already scoped by the caller.
+ * The twelve flat row sets the board reads, plus the week's odds snapshot, already scoped by
+ * the caller.
  *
  * **The caller must pass single-season, single-week rows.** Every join key here is a team id
  * alone: `teamSeasonState`, `teamWeekProjections`, `teamWeekScores` and `finalRosters` are each keyed into a `Map`
@@ -86,6 +88,14 @@ export interface BoardRawData {
   >[];
   /** The season's auction, one row per pick. Empty before the draft or the first sync. */
   draftPicks: DraftPickRow[];
+  /**
+   * The Daily's newest odds row for the week, or null before its first run. `results` is
+   * narrowed by `riskByTeamId` on the way in, like the stored payloads above.
+   */
+  survivalSnapshot: Pick<
+    TableRow<"survival_snapshots">,
+    "snapshot_at" | "results"
+  > | null;
 }
 
 /**
@@ -195,6 +205,7 @@ export function joinBoardTeams(raw: BoardRawData): BoardTeam[] {
   );
   const summaryByTeamId = summarizeWeeklyResults(raw.weeklyResults);
   const draftByPlayerId = indexDraftPicks(raw.draftPicks);
+  const riskByTeam = riskByTeamId(raw.survivalSnapshot);
 
   // roster_holdings has no FK to players on purpose: Sleeper rosters can carry ids the
   // filtered skill-position directory drops. Those still get a row on the board. The same
@@ -293,6 +304,9 @@ export function joinBoardTeams(raw: BoardRawData): BoardTeam[] {
       eliminationSource: state?.elimination_source ?? null,
       emptySlots: projection === null ? null : projection.empty_slots,
       isRosterFrozen,
+      // The Daily rates the live teams only, so an eliminated team lands on null here without
+      // the join having to say so; the chip rule silences it anyway.
+      risk: riskByTeam.get(team.id) ?? null,
       roster: isRosterFrozen
         ? orderRoster(
             frozenRoster.map((holding) => buildRosterPlayer(holding, team.id)),

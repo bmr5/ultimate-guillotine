@@ -38,6 +38,9 @@ export const boardKeys = {
   /** Same scope as the projections key: one season, one week, one row per team. */
   teamWeekScores: (seasonId: number, week: number) =>
     ["board", "team_week_scores", seasonId, week] as const,
+  /** Same scope again: the Daily's newest odds row for one season and one week. */
+  survivalSnapshot: (seasonId: number, week: number) =>
+    ["board", "survival_snapshots", seasonId, week] as const,
   rosterHoldings: (seasonId: number) =>
     ["board", "roster_holdings", seasonId] as const,
   finalRosters: (seasonId: number) =>

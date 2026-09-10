@@ -12,6 +12,7 @@ vi.mock("./fetchers", () => ({
   fetchDraftPicks: vi.fn(),
   fetchFinalRosters: vi.fn(),
   fetchLatestSeason: vi.fn(),
+  fetchLatestSurvivalSnapshot: vi.fn(),
   fetchMembers: vi.fn(),
   fetchNflState: vi.fn(),
   fetchPlayerProjections: vi.fn(),
@@ -55,6 +56,7 @@ const TEAM = {
 function stubFetchers(): void {
   vi.mocked(fetchers.fetchNflState).mockResolvedValue(NFL_STATE);
   vi.mocked(fetchers.fetchLatestSeason).mockResolvedValue(SEASON);
+  vi.mocked(fetchers.fetchLatestSurvivalSnapshot).mockResolvedValue(null);
   vi.mocked(fetchers.fetchSeasonByYear).mockResolvedValue(SEASON);
   vi.mocked(fetchers.fetchTeams).mockResolvedValue([TEAM]);
   vi.mocked(fetchers.fetchMembers).mockResolvedValue([]);
@@ -572,3 +574,71 @@ function makeProjection(teamId: number, computedAt: string) {
     computed_at: computedAt,
   };
 }
+
+/**
+ * Ben: "want to add your monte carlo simulation %s to the actual website? just write the last
+ * time it was run so people know". The odds come from the Daily's newest `survival_snapshots`
+ * row for the week, and the stamp is that row's own `snapshot_at`, never the browser's fetch.
+ */
+describe("useBoardData and the week's odds", () => {
+  const SNAPSHOT_AT = "2026-09-10T15:15:23Z";
+  const SNAPSHOT = {
+    snapshot_at: SNAPSHOT_AT,
+    results: [
+      {
+        team_id: 11,
+        label: "Kneel Before Zod",
+        points: 7.8,
+        projected_final: 88.2,
+        pending: 8,
+        adverse_event: "gulag_entry",
+        probability: 0.37,
+        is_estimated: false,
+      },
+    ],
+  };
+
+  it("scopes the odds to the same season and week as the projections", async () => {
+    vi.mocked(fetchers.fetchLatestSurvivalSnapshot).mockResolvedValue(SNAPSHOT);
+    const { result } = renderBoardData();
+    await waitFor(() => {
+      expect(result.current.teams[0]?.risk?.probability).toBe(0.37);
+    });
+    expect(
+      vi.mocked(fetchers.fetchLatestSurvivalSnapshot).mock.calls[0].slice(1),
+    ).toEqual([7, 3]);
+    expect(result.current.errors).toEqual([]);
+  });
+
+  it("stamps the odds with when the Daily computed them", async () => {
+    vi.mocked(fetchers.fetchLatestSurvivalSnapshot).mockResolvedValue(SNAPSHOT);
+    const { result } = renderBoardData();
+    await waitFor(() => {
+      expect(result.current.oddsUpdatedAt).not.toBeNull();
+    });
+    expect(result.current.oddsUpdatedAt).toBe(Date.parse(SNAPSHOT_AT));
+  });
+
+  it("has no odds stamp before the week's first Daily", async () => {
+    const { result } = renderBoardData();
+    await waitFor(() => {
+      expect(result.current.teams).toHaveLength(1);
+    });
+    expect(result.current.oddsUpdatedAt).toBeNull();
+    expect(result.current.teams[0].risk).toBeNull();
+  });
+
+  it("labels a failed odds query by its own section", async () => {
+    vi.mocked(fetchers.fetchLatestSurvivalSnapshot).mockRejectedValue(
+      new Error("survival_snapshots: boom"),
+    );
+    const { result } = renderBoardData();
+    await waitFor(() => {
+      expect(result.current.errors).toHaveLength(1);
+    });
+    expect(result.current.errors[0]).toEqual({
+      section: "Odds",
+      message: "survival_snapshots: boom",
+    });
+  });
+});

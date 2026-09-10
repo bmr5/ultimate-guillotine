@@ -15,6 +15,7 @@ import {
   formatUpdatedTitle,
   isStale,
   MS_PER_MINUTE,
+  ODDS_AS_OF_LABEL,
   PROJECTIONS_PULLED_LABEL,
   SCORES_UPDATED_LABEL,
   STALE_AFTER_MS,
@@ -65,6 +66,13 @@ interface BoardHeaderProps {
    * beside a live score would go on making exactly that claim.
    */
   scoresUpdatedAt: number | null;
+  /**
+   * When the Daily computed the odds on the cards — the week's newest `survival_snapshots.
+   * snapshot_at`, or null before the week's first run. Its own line under the other stamps,
+   * and never the one the stale badge measures against: the odds are computed twice a day at
+   * most, and being hours old says nothing about the scores.
+   */
+  oddsUpdatedAt: number | null;
   /**
    * True only once the socket has been up and has since gone down. A cold load is not a
    * reconnect, so the page computes this from `hasConnectedOnce && !isConnected` rather than
@@ -152,6 +160,7 @@ export function BoardHeader({
   onSearchTermChange,
   projectionsUpdatedAt,
   scoresUpdatedAt,
+  oddsUpdatedAt,
   isReconnecting,
 }: BoardHeaderProps) {
   /**
@@ -289,6 +298,23 @@ export function BoardHeader({
             {},
             PROJECTIONS_PULLED_LABEL,
           )}
+        </p>
+      ) : null}
+
+      {/*
+        When the Daily computed the odds on the cards. Ben: "just write the last time it was run
+        so people know" — so the line is the snapshot's own time and nothing else. Dropped before
+        the week's first run, when no card carries odds and there is nothing to date; `aria-hidden`
+        for the same reason as the stamps above it.
+      */}
+      {oddsUpdatedAt !== null ? (
+        <p
+          data-odds-stamp
+          className="text-xs text-muted-foreground/80"
+          aria-hidden="true"
+          title={formatUpdatedTitle(oddsUpdatedAt, {}, ODDS_AS_OF_LABEL)}
+        >
+          {formatUpdatedAt(oddsUpdatedAt, now, {}, ODDS_AS_OF_LABEL)}
         </p>
       ) : null}
 

@@ -18,6 +18,7 @@ import {
 
 const team = (over: Partial<BoardTeam> & { teamId: number }): BoardTeam => ({
   isRosterFrozen: false,
+  risk: null,
   teamName: `Team ${over.teamId}`,
   ownerName: `Owner ${over.teamId}`,
   sleeperRosterId: over.teamId,

@@ -50,6 +50,10 @@ export type DraftPickRow = Pick<
   | "amount"
   | "drafted_at"
 >;
+export type SurvivalSnapshotRow = Pick<
+  TableRow<"survival_snapshots">,
+  "snapshot_at" | "results"
+>;
 
 interface SupabaseResult<T> {
   data: T[] | null;
@@ -343,4 +347,30 @@ export function fetchDraftPicks(
       .eq("season_id", seasonId),
     "draft_picks",
   );
+}
+
+/**
+ * The Guillotine Daily's newest odds for the week, or null before its first run of the week.
+ *
+ * One row per run, so a week accumulates several; ordered newest first and capped at one,
+ * because the board wants the latest odds and the header stamps them with the row's own
+ * `snapshot_at` — Ben: "just write the last time it was run so people know". Two equality
+ * filters over a small table, so it is not chunked, like the projection and score fetchers.
+ */
+export async function fetchLatestSurvivalSnapshot(
+  client: BoardClient,
+  seasonId: number,
+  week: number,
+): Promise<SurvivalSnapshotRow | null> {
+  const rows = await unwrap<SurvivalSnapshotRow>(
+    client
+      .from("survival_snapshots")
+      .select("snapshot_at, results")
+      .eq("season_id", seasonId)
+      .eq("week", week)
+      .order("snapshot_at", { ascending: false })
+      .limit(1),
+    "survival_snapshots",
+  );
+  return rows[0] ?? null;
 }

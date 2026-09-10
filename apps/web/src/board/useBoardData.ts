@@ -10,10 +10,12 @@ import { joinBoardTeams } from "./derive/join";
 import { latestFinalWeek } from "./derive/records";
 import { parseRosterPositions } from "./derive/roster";
 import { newestScoreSyncedAt } from "./derive/score";
+import { MS_PER_MINUTE } from "./derive/time";
 import {
   fetchDraftPicks,
   fetchFinalRosters,
   fetchLatestSeason,
+  fetchLatestSurvivalSnapshot,
   fetchMembers,
   fetchNflState,
   fetchPlayerProjections,
@@ -34,6 +36,15 @@ export interface BoardDataOptions {
   /** false while Realtime is healthy; 60_000 while it is not. */
   pollingMs: number | false;
 }
+
+/**
+ * How often the odds are asked for again while a board is open. `survival_snapshots` is not in
+ * the realtime publication — the Daily writes it twice a day at most — so a healthy socket
+ * cannot announce a new run, and a board left open on a phone would otherwise show the
+ * morning's odds all day. Five minutes: the Daily posts at fixed times, and nobody needs the
+ * row sooner than that.
+ */
+const ODDS_REFETCH_MS = 5 * MS_PER_MINUTE;
 
 export interface BoardQueryError {
   section: string;
@@ -90,6 +101,12 @@ export interface BoardDataResult {
    * so this is the stamp the header leads with whenever it exists.
    */
   scoresUpdatedAt: number | null;
+  /**
+   * When the Daily computed the odds on the cards: the week's newest `survival_snapshots.
+   * snapshot_at`, or null before the week's first run. Ben: "just write the last time it was
+   * run so people know" — so it is the snapshot's own time, never the browser's fetch.
+   */
+  oddsUpdatedAt: number | null;
   refetchAll: () => void;
 }
 
@@ -240,6 +257,20 @@ export function useBoardData(options: BoardDataOptions): BoardDataResult {
     ...shared,
   });
 
+  const survivalSnapshot = useQuery({
+    queryKey: boardKeys.survivalSnapshot(seasonId ?? 0, week ?? 0),
+    queryFn: () =>
+      fetchLatestSurvivalSnapshot(
+        boardClient,
+        seasonId as number,
+        week as number,
+      ),
+    enabled: hasSeason && week !== null && hasWeekScope,
+    ...shared,
+    // Not in the realtime publication, so a healthy socket is no reason not to poll.
+    refetchInterval: ODDS_REFETCH_MS,
+  });
+
   const finalRosters = useQuery({
     queryKey: boardKeys.finalRosters(seasonId ?? 0),
     queryFn: () => fetchFinalRosters(boardClient, seasonId as number),
@@ -355,6 +386,7 @@ export function useBoardData(options: BoardDataOptions): BoardDataResult {
         weeklyResults: weeklyResults.data ?? [],
         finalRosters: finalRosters.data ?? [],
         draftPicks: draftPicks.data ?? [],
+        survivalSnapshot: survivalSnapshot.data ?? null,
       }),
     [
       teams.data,
@@ -368,6 +400,7 @@ export function useBoardData(options: BoardDataOptions): BoardDataResult {
       weeklyResults.data,
       finalRosters.data,
       draftPicks.data,
+      survivalSnapshot.data,
     ],
   );
 
@@ -392,6 +425,17 @@ export function useBoardData(options: BoardDataOptions): BoardDataResult {
     [boardTeams],
   );
 
+  // The odds stamp: the snapshot's own `snapshot_at`, for the same reason as the two above — a
+  // refetch that returns the same row must not look fresher than the run that wrote it.
+  const oddsUpdatedAt = useMemo(() => {
+    const snapshotAt = survivalSnapshot.data?.snapshot_at;
+    if (snapshotAt === undefined) {
+      return null;
+    }
+    const at = Date.parse(snapshotAt);
+    return Number.isNaN(at) ? null : at;
+  }, [survivalSnapshot.data]);
+
   const sections: [string, { error: Error | null }][] = [
     ["NFL week", nflState],
     ["Season", seasonRow],
@@ -401,6 +445,7 @@ export function useBoardData(options: BoardDataOptions): BoardDataResult {
     ["Team state", state],
     ["Projections", teamProjections],
     ["Scores", teamScores],
+    ["Odds", survivalSnapshot],
     ["Rosters", holdings],
     ["Players", players],
     ["Player projections", playerProjections],
@@ -446,6 +491,7 @@ export function useBoardData(options: BoardDataOptions): BoardDataResult {
     errors,
     projectionsUpdatedAt,
     scoresUpdatedAt,
+    oddsUpdatedAt,
     refetchAll: () => {
       void queryClient.invalidateQueries({ queryKey: boardKeys.all });
     },
