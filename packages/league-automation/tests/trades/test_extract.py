@@ -22,7 +22,7 @@ class FakeAI:
 
 def test_prompt_is_versioned_and_states_the_rules() -> None:
     prompt = load_prompt()
-    assert PROMPT_VERSION == "2026.3"
+    assert PROMPT_VERSION == "2026.4"
     assert prompt.startswith(f"<!-- prompt_version: {PROMPT_VERSION} -->")
     assert "verbatim" in prompt and "null" in prompt and "fairness" in prompt
 
@@ -42,11 +42,11 @@ def test_prompt_orders_not_a_trade_before_unclear_and_scopes_naming() -> None:
     assert prompt.index("Decide `not_a_trade` first") < prompt.index("`unclear_reason`")
 
 
-#: The rules 2026.2 and 2026.3 added, each as the phrase the prompt has to carry. Kept as a
+#: The rules 2026.2, 2026.3 and 2026.4 added, each as the phrase the prompt has to carry. Kept as a
 #: table so a rule quietly dropped from the prompt fails under its own name --
 #: the suite proves the prompt still says these things, never what the model
 #: does with them, which is what `scripts/registrar_cases.py` is for.
-PROMPT_RULES_2026_3 = [
+PROMPT_RULES_2026_4 = [
     (
         "a report of an alert is not an announcement",
         "A message that reports or reacts to an alert instead of making one is `not_a_trade`",
@@ -183,15 +183,59 @@ PROMPT_RULES_2026_3 = [
         "what does count as stating direction",
         "Direction is stated by words and marks like `sends`, `to`, `for`, `gets`, `->`",
     ),
+    (
+        "the league's two budgets have one exchange rate",
+        "every $1 of unspent draft budget became $5 of FAAB at the start of the season",
+    ),
+    (
+        "a draft-dollar price is a FAAB price",
+        (
+            "an amount stated in **draft dollars** -- `draft dollars`, `draft FAAB`,"
+            " `auction dollars`, `draft budget`, `$13 draft` -- is a FAAB price written the other"
+            " way round"
+        ),
+    ),
+    (
+        "the converted amount is what is written",
+        "`amount` five times the stated number",
+    ),
+    (
+        "the announcement's own phrase is kept in the label",
+        "copy the announcement's own phrase into `description`",
+    ),
+    (
+        "the currency field is the alternative to converting",
+        "write the number exactly as the announcement states it and set `currency` to `draft`",
+    ),
+    (
+        "a draft figure left as faab records a fifth of what was paid",
+        "Never write a draft-dollar figure with `currency` left as `faab`",
+    ),
+    (
+        "usd is neither budget",
+        "`currency` is `faab` for every other amount, including `usd`",
+    ),
+    (
+        "a price stated both ways must agree at five to one",
+        "the two must agree at five to one",
+    ),
+    (
+        "one price written twice is one asset, never two",
+        "never two assets that would be added together",
+    ),
+    (
+        "two prices that disagree are unclear with a reason",
+        "set `kind` to `unclear` and say in one sentence which two amounts disagree",
+    ),
 ]
 
 
 @pytest.mark.parametrize(
     ("rule", "phrase"),
-    PROMPT_RULES_2026_3,
-    ids=[rule for rule, _ in PROMPT_RULES_2026_3],
+    PROMPT_RULES_2026_4,
+    ids=[rule for rule, _ in PROMPT_RULES_2026_4],
 )
-def test_prompt_states_the_2026_3_rules(rule: str, phrase: str) -> None:
+def test_prompt_states_the_2026_4_rules(rule: str, phrase: str) -> None:
     # The prompt wraps at 100 columns, so match against it as one flowing line.
     assert phrase in " ".join(load_prompt().split())
 

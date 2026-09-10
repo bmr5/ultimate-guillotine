@@ -1,6 +1,6 @@
 # Trade Registrar case suite (2026-09-09)
 
-89 end-to-end cases for the Trade Registrar, written to be run overnight against the real
+92 end-to-end cases for the Trade Registrar, written to be run overnight against the real
 extraction model without sending anything. Nothing here writes to the league chat: the
 runner calls `extract_trade` + `resolve_extracted` + `validate` directly, the same path
 `ug trades extract --text "<alert>"` takes.
@@ -76,7 +76,7 @@ uv run --project packages/league-automation python scripts/registrar_cases.py --
 
 Results land in `docs/testing/2026-09-09-trade-registrar-results.md`.
 
-## Happy paths (22)
+## Happy paths (24)
 
 | # | Input | Kind | Status | Reply | Prereq | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -102,6 +102,8 @@ Results land in `docs/testing/2026-09-09-trade-registrar-results.md`.
 | 84 | `kpbowe buys Quentin Johnston from mdurgin for $65 FAAB` | `permanent` | `created` | `🚨 Trade <code> logged` | — | The shape that started the shadow wave: no siren, no header, a buy verb and a price. Both halves are required -- a verb alone or a price alone is half the chat. |
 | 85 | `chobes sells Zay Flowers to kpbowe for a 3rd round pick` | `permanent` | `created` | `🚨 Trade <code> logged` | — | No siren and no money: `round` and `pick` are asset words too, so an alert paid in draft capital is not held out for lack of a FAAB figure. |
 | 86 | `mdurgin sends Khalil Shakir to chobes as a 2 week rental, back after the Week 6 games` | `rental` | `created` | `🚨 Trade <code> logged` | — | A rental with no siren. `rental` is an asset word, so it satisfies the second half of the rule beside `sends`. |
+| 90 | `🚨 Trade Alert 🚨 ⏎ kpbowe buys Quentin Johnston from mdurgin for $13 draft FAAB` | `permanent` | `created` | `🚨 Trade <code> logged` | — | A price quoted only in draft dollars. Every $1 of unspent draft budget became $5 of FAAB, so this is 65 FAAB. Two routes record the same asset -- the model converts, or it writes 13 with `currency: draft` and `_money` multiplies -- so the case checks the outcome and `test_resolve.py` pins the arithmetic. |
+| 91 | `🚨 Trade Alert 🚨 ⏎ kpbowe buys Quentin Johnston from mdurgin for $65 FAAB ($13 draft FAAB)` | `permanent` | `created` | `🚨 Trade <code> logged` | — | The real alert that started this wave, priced both ways. They agree at five to one, so it is one payment of 65 FAAB. The failure it exists against is two assets on one leg, which would log 130 paid. |
 
 ## Sloppy phrasing (23)
 
@@ -176,7 +178,7 @@ Results land in `docs/testing/2026-09-09-trade-registrar-results.md`.
 | 88 | `anyone trading a WR? I'll pay 200 FAAB for the right one` | `not_a_trade` | `not_a_trade` | none | — | An offer, not an announcement: nobody is on the other side and nothing has happened. Clears the detector on `for` and `FAAB`. |
 | 89 | `thanks for the draft advice last night, saved my whole season` | `not_a_trade` | `not_a_trade` | none | — | A `for` sentence that is not a trade. `for` plus `draft` is exactly the pair the wider rule accepts, which makes this the cheapest false positive the detector can produce: one model call, one silent run row, nothing in the chat. |
 
-## Unclear (10)
+## Unclear (11)
 
 | # | Input | Kind | Status | Reply | Prereq | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -190,6 +192,7 @@ Results land in `docs/testing/2026-09-09-trade-registrar-results.md`.
 | 77 | `🚨 Trade Alert 🚨 ⏎ I'm sending you Ja'Marr Chase for 450 FAAB` | `unclear` | `clarification` | `🚨 Trade not logged yet:` | — | From kpbowe. A known announcer is only ever one party. The alert names no other member for `you` to mean, so the bot asks who the other side is rather than guessing at whoever was being addressed in the chat. |
 | 82 | `🚨 Trade Alert 🚨 ⏎ kpbowe sends Michael to mdurgin for 300 FAAB` | `permanent` or `unclear` | `clarification` | `🚨 Trade not logged yet:` | — | Two players on the giver's roster answer to the name, and two readings are honest: pass the fragment through and let resolution ask, or see both in the pack and ask directly. The model has answered each way on consecutive runs; both end in the same question with nothing logged, so the case carries `alt_kind`. The code path is pinned by `test_resolve.py`, with no model involved. |
 | 83 | `🚨 Trade Alert 🚨 ⏎ chobes sends 950 FAAB to kpbowe for Michael Pittman` | `unclear` | `clarification` | `🚨 Trade not logged yet:` | — | More FAAB than the payer has. `FAAB remaining` is the one part of the context pack that is a check rather than a spelling aid: an amount a team cannot cover is a question, never quietly lowered to what they can afford. Everybody in the synthetic league holds 900. |
+| 92 | `🚨 Trade Alert 🚨 ⏎ kpbowe buys Quentin Johnston from mdurgin for $70 FAAB ($13 draft FAAB)` | `unclear` | `clarification` | `🚨 Trade not logged yet:` | — | The two prices disagree: $13 of draft budget is 65 FAAB, not 70. The model can read the mismatch itself or pass both through for the code guard to catch; `alt_kind` accepts the second, and the chat is asked the same question either way. |
 
 ## Privacy and injection (5)
 

@@ -805,6 +805,34 @@
       "expected_status": "not_a_trade",
       "prereq": null,
       "notes": "A `for` sentence that is not a trade. `for` plus `draft` is exactly the pair the wider rule accepts, which makes this the cheapest false positive the detector can produce -- one model call, one silent run row, no message in the chat."
+    },
+    {
+      "id": 90,
+      "category": "happy",
+      "text": "🚨 Trade Alert 🚨\nkpbowe buys Quentin Johnston from mdurgin for $13 draft FAAB",
+      "expected_kind": "permanent",
+      "expected_status": "created",
+      "prereq": null,
+      "notes": "A price quoted only in draft dollars. The league's rule is that every $1 of unspent draft budget became $5 of FAAB, so this is 65 FAAB and the trade log holds one currency. Two ways to land it -- the model converts and writes 65, or it writes 13 with `currency: draft` and `_money` multiplies -- and both record the same asset, which is why the case checks the outcome rather than the arithmetic. `test_resolve.py` pins the conversion itself with no model involved."
+    },
+    {
+      "id": 91,
+      "category": "happy",
+      "text": "🚨 Trade Alert 🚨\nkpbowe buys Quentin Johnston from mdurgin for $65 FAAB ($13 draft FAAB)",
+      "expected_kind": "permanent",
+      "expected_status": "created",
+      "prereq": null,
+      "notes": "The real alert that started this wave, with the price stated both ways. They agree at five to one, so it is one payment of 65 FAAB. The failure this case exists against is the plainest thing a model can do with two numbers -- write two assets -- which would log 130 FAAB paid; `_reconcile_draft_quotes` collapses the pair and `test_resolve.py` pins it."
+    },
+    {
+      "id": 92,
+      "category": "unclear",
+      "text": "🚨 Trade Alert 🚨\nkpbowe buys Quentin Johnston from mdurgin for $70 FAAB ($13 draft FAAB)",
+      "expected_kind": "unclear",
+      "expected_status": "clarification",
+      "prereq": null,
+      "notes": "The same alert with the two prices disagreeing: $13 of draft budget is 65 FAAB, not 70. Nobody here can pick which the announcement meant, so it is a question. Two honest routes reach it -- the model reads the mismatch and answers `unclear`, or it passes both amounts through and `_reconcile_draft_quotes` raises -- and the chat is asked the same thing either way, with nothing logged. `alt_kind` accepts the second reading rather than making the case turn on which route the model took; `test_resolve.py` pins both with no model involved.",
+      "alt_kind": "permanent"
     }
   ]
 }

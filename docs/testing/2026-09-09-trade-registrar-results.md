@@ -1,6 +1,6 @@
 # Trade Registrar case results
 
-Run 2026-09-10 04:19 UTC against the fake client (harness self-check).
+Run 2026-09-10 04:22 UTC against the fake client (harness self-check).
 Cases come from `packages/league-automation/tests/fixtures/registrar_cases.json`;
 case text is deliberately not repeated here.
 
@@ -10,7 +10,7 @@ one marked `dropped_upstream`, which the listener discards before the agent is
 reached at all. Asking the model about a message it never sees in production would
 score an answer nothing depends on.
 
-**74 run · 74 passed · 0 failed · 14 skipped (prerequisite state) · 1 dropped upstream.**
+**77 run · 77 passed · 0 failed · 14 skipped (prerequisite state) · 1 dropped upstream.**
 
 | # | category | expected kind | expected status | actual kind | outcome | result | mismatch |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -88,15 +88,18 @@ score an answer nothing depends on.
 | 87 | not_a_trade | `not_a_trade` | `not_a_trade` | `not_a_trade` | `not_a_trade` | pass | — |
 | 88 | not_a_trade | `not_a_trade` | `not_a_trade` | `not_a_trade` | `not_a_trade` | pass | — |
 | 89 | not_a_trade | `not_a_trade` | `not_a_trade` | `not_a_trade` | `not_a_trade` | pass | — |
+| 90 | happy | `permanent` | `created` | `permanent` | `created` | pass | — |
+| 91 | happy | `permanent` | `created` | `permanent` | `created` | pass | — |
+| 92 | unclear | `unclear` | `clarification` | `unclear` | `clarification` | pass | — |
 
 ## Totals by category
 
 | category | run | passed | failed |
 | --- | --- | --- | --- |
-| happy | 22 | 22 | 0 |
+| happy | 24 | 24 | 0 |
 | sloppy | 23 | 23 | 0 |
 | not_a_trade | 9 | 9 | 0 |
-| unclear | 10 | 10 | 0 |
+| unclear | 11 | 11 | 0 |
 | privacy | 5 | 5 | 0 |
 | scale | 4 | 4 | 0 |
 | rescission | 1 | 1 | 0 |

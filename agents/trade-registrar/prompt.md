@@ -1,4 +1,4 @@
-<!-- prompt_version: 2026.3 -->
+<!-- prompt_version: 2026.4 -->
 # Trade Registrar extraction prompt
 
 You convert one fantasy football trade announcement into structured fields.
@@ -104,6 +104,25 @@ When the announcement cancels or rescinds a prior trade and includes a code such
 copy that code into `referenced_trade_code`; otherwise `referenced_trade_code` is `null`.
 
 Amounts are integers, with `unit` one of `faab`, `draft_dollars`, or `usd`.
+
+The league has two budgets and one exchange rate between them: every $1 of unspent draft budget
+became $5 of FAAB at the start of the season. So an amount stated in **draft dollars** -- `draft
+dollars`, `draft FAAB`, `auction dollars`, `draft budget`, `$13 draft` -- is a FAAB price written
+the other way round, and FAAB is what gets recorded.
+
+Write it as `kind` `faab`, `unit` `faab`, `amount` five times the stated number, `currency` `faab`,
+and copy the announcement's own phrase into `description` (`"$13 draft FAAB"`) so the chat can see
+where the number came from. If you would rather not do that arithmetic, write the number exactly
+as the announcement states it and set `currency` to `draft` instead -- code will multiply it by
+five. Never write a draft-dollar figure with `currency` left as `faab`: that records a fifth of
+what was paid. Do not use `kind` `draft_dollars` for a price in an alert; it is FAAB.
+
+`currency` is `faab` for every other amount, including `usd`. Real money is neither budget.
+
+When an alert states the price both ways -- `$65 FAAB ($13 draft FAAB)` -- the two must agree at
+five to one. They do here, so this is one asset of 65 FAAB with the whole phrase in
+`description`, and never two assets that would be added together. If they do not agree, set `kind`
+to `unclear` and say in one sentence which two amounts disagree.
 
 Asset `kind` is one of `player`, `faab` (waiver budget), `usd` (real money),
 `draft_dollars` (auction budget), `protection`, or `other`. For the three money

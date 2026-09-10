@@ -265,7 +265,7 @@ def test_created_trade_sends_confirmation_and_records_run() -> None:
     assert delivery.sent[0][1].startswith("🚨 Trade T-2026-001 logged")
     assert runs.reserved == ["trade:g1"] and runs.finished[0][1] == "succeeded"
     # The run records which prompt and model produced it, and hashes what was sent.
-    assert runs.finished[0][4] == "2026.3:m"
+    assert runs.finished[0][4] == "2026.4:m"
     assert runs.finished[0][3] == hashlib.sha256(delivery.sent[0][1].encode()).hexdigest()
 
 
