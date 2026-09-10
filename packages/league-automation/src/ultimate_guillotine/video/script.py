@@ -59,10 +59,11 @@ _FAAB = re.compile(r"\b(\d+) FAAB\b")
 
 
 def spoken(text: str) -> str:
-    """The terms as they are said on air: ``450 FAAB`` is ``450 dollars``. The
-    lower third keeps the league's word; the voice model handles dollars better
+    """The terms as they are said on air: ``450 FAAB`` is ``450 dollars`` and
+    ``Player + 20 dollars`` is ``Player and 20 dollars``. The lower third keeps
+    the league's own wording; the voice model handles plain words better
     (Ben, 2026-09-10)."""
-    return _FAAB.sub(r"\1 dollars", text)
+    return _FAAB.sub(r"\1 dollars", text).replace(" + ", " and ")
 
 
 def normalize(script: Script, seconds: float) -> Script:

@@ -97,7 +97,7 @@ def test_format_script_lists_beats_and_the_count() -> None:
 
 def test_the_read_says_dollars_never_faab() -> None:
     assert spoken("Derek gets 450 FAAB · Charlie gets 20 FAAB + Player Alpha") == (
-        "Derek gets 450 dollars · Charlie gets 20 dollars + Player Alpha"
+        "Derek gets 450 dollars · Charlie gets 20 dollars and Player Alpha"
     )
     assert spoken("30 draft dollars") == "30 draft dollars"
     assert "never say FAAB" in SYSTEM
