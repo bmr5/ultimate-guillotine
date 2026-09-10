@@ -140,7 +140,7 @@ const PositionTeamRow = memo(function PositionTeamRow({
                     {`${NO_PLAYER_PREFIX} ${position}`}
                   </span>
                 ) : (
-                  row.players.map((player, index) => (
+                  row.players.map((player) => (
                     <span
                       key={player.sleeperPlayerId}
                       data-player={player.sleeperPlayerId}
@@ -149,8 +149,9 @@ const PositionTeamRow = memo(function PositionTeamRow({
                         highlightedPlayerIds.has(player.sleeperPlayerId) ||
                         undefined
                       }
+                      // One player per line (Ben, 2026-09-10): a list, not a run of prose.
                       className={cn(
-                        "mr-1 inline-block",
+                        "block",
                         highlightedPlayerIds.has(player.sleeperPlayerId) &&
                           "rounded bg-accent px-1 text-accent-foreground",
                       )}
@@ -215,9 +216,6 @@ const PositionTeamRow = memo(function PositionTeamRow({
                           <span aria-hidden="true">{` ${STARTER_MARK}`}</span>
                           <span className="sr-only">{` ${STARTER_LABEL}`}</span>
                         </>
-                      ) : null}
-                      {index < row.players.length - 1 ? (
-                        <span aria-hidden="true">,</span>
                       ) : null}
                     </span>
                   ))
