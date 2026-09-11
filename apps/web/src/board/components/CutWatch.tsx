@@ -93,7 +93,8 @@ function Lineup({ team }: { team: BoardTeam }) {
       )}
       {team.emptySlots ? (
         <p className="mt-2 text-xs text-destructive">
-          {team.emptySlots} empty lineup {team.emptySlots === 1 ? "slot" : "slots"}
+          {team.emptySlots} empty lineup{" "}
+          {team.emptySlots === 1 ? "slot" : "slots"}
         </p>
       ) : null}
       {team.isProvisional ? (
@@ -136,9 +137,7 @@ export function CutWatch({
           {watch.kind === "ranked"
             ? watch.tied
               ? "Cutoff tied"
-              : watch.basis === "score"
-                ? "Current bottom two"
-                : "Projected bottom two"
+              : "Projected bottom two"
             : "Gulag watch"}
         </span>
       </div>
@@ -173,9 +172,7 @@ export function CutWatch({
           </button>
           <p className="px-4 pb-4 text-center text-xs text-muted-foreground">
             {watch.tied
-              ? watch.basis === "score"
-                ? "Cutoff tied. Projections order teams tied on actual points."
-                : "Projections tied at the cutoff. Pairing is provisional."
+              ? "Projections tied at the cutoff. Pairing is provisional."
               : `On course for the Week ${week + 1} gulag.`}
           </p>
           <div
@@ -211,11 +208,8 @@ export function CutWatch({
                     </div>
                   )}
                   <p className="text-xs">
-                    {watch.basis === "score"
-                      ? "Ranked by actual points so far."
-                      : "Ranked by weekly projections."}{" "}
-                    The safety line is the third-lowest eligible total. Results
-                    are not official.
+                    Ranked by weekly projections. The safety line is the
+                    third-lowest eligible projection. Results are not official.
                   </p>
                 </div>
                 <div className="grid gap-6 md:grid-cols-2">

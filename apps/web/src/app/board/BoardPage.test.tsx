@@ -237,7 +237,7 @@ describe("BoardPage", () => {
       teams: Array.from({ length: 6 }, (_, index) =>
         team({
           teamId: index + 1,
-          projectedPoints: 80 + index,
+          projectedPoints: index === 5 ? 100 : 80,
           score: index === 5 ? 10 : 0,
         }),
       ),
@@ -247,7 +247,7 @@ describe("BoardPage", () => {
     expect(watch.getByText("owner1")).toBeVisible();
     expect(watch.getByText("owner2")).toBeVisible();
     expect(watch.queryByText(/owner3/)).not.toBeInTheDocument();
-    expect(watch.getByText(/Cutoff tied\. Projections/)).toBeVisible();
+    expect(watch.getByText(/Projections tied at the cutoff/)).toBeVisible();
     fireEvent.click(
       watch.getByRole("button", { name: "Show matchup details" }),
     );
@@ -258,7 +258,7 @@ describe("BoardPage", () => {
     ).toBeVisible();
   });
 
-  it("updates cut watch from projected to current bottom two when scores arrive", () => {
+  it("keeps the projected bottom two when scores arrive and updates when projections change", () => {
     const teams = [
       team({ teamId: 1, projectedPoints: 80 }),
       team({ teamId: 2, projectedPoints: 90 }),
@@ -275,7 +275,21 @@ describe("BoardPage", () => {
     });
     rerenderPage();
     const watch = within(screen.getByRole("region", { name: "Cut watch" }));
-    expect(watch.getByText(/Current bottom two/)).toBeInTheDocument();
+    expect(watch.getByText(/Projected bottom two/)).toBeInTheDocument();
+    expect(watch.getByText("owner1")).toBeInTheDocument();
+    expect(watch.getByText("owner2")).toBeInTheDocument();
+    expect(watch.queryByText("owner3")).not.toBeInTheDocument();
+    expect(watch.getByText("40.0")).toBeInTheDocument();
+    expect(watch.getByText("80.0")).toBeInTheDocument();
+    boardData.current = result({
+      week: 1,
+      teams: teams.map((team, index) => ({
+        ...team,
+        score: [40, 10, 20][index],
+        projectedPoints: [110, 90, 100][index],
+      })),
+    });
+    rerenderPage();
     expect(watch.queryByText("owner1")).not.toBeInTheDocument();
     expect(watch.getByText("owner2")).toBeInTheDocument();
     expect(watch.getByText("owner3")).toBeInTheDocument();

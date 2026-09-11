@@ -1,4 +1,5 @@
 import { injuryTag } from "@/board/derive/availability";
+import { draftedHereDescription, formatDraftValue } from "@/board/derive/draft";
 import { UNKNOWN_OWNER } from "@/board/derive/join";
 import type { DraftPickRow } from "@/board/fetchers";
 import type { BoardTeam } from "@/board/types";
@@ -106,7 +107,7 @@ function JourneyItem({
   let sentence: string;
   switch (entry.kind) {
     case "drafted":
-      sentence = `Drafted by ${owner(entry.teamId)} for $${entry.amount}`;
+      sentence = draftedHereDescription(owner(entry.teamId), entry.amount);
       break;
     case "traded":
       sentence = `Traded from ${owner(entry.fromTeamId)} to ${owner(entry.toTeamId)}`;
@@ -142,7 +143,9 @@ function JourneyItem({
       <p className="text-xs text-muted-foreground">
         {formatDateLine(entry.at, entry.week)}
       </p>
-      <p className={cn("font-medium", rescinded && "line-through")}>{sentence}</p>
+      <p className={cn("font-medium", rescinded && "line-through")}>
+        {sentence}
+      </p>
       {entry.kind === "traded" && entry.others.length > 0 ? (
         <ul className="text-xs text-muted-foreground">
           {entry.others.map((other) => (
@@ -164,7 +167,9 @@ function JourneyItem({
       {entry.kind === "traded" && entry.registered !== null ? (
         <Registered link={entry.registered} />
       ) : null}
-      {entry.kind === "announced" ? <Registered link={entry.registered} /> : null}
+      {entry.kind === "announced" ? (
+        <Registered link={entry.registered} />
+      ) : null}
     </li>
   );
 }
@@ -221,11 +226,16 @@ export function PlayerCardContent({
         <section aria-label="Numbers" className="flex flex-wrap gap-6">
           {view.numbers.rostered ? (
             <>
-              <Figure label="Projected" value={figure(view.numbers.projected)} />
+              <Figure
+                label="Projected"
+                value={figure(view.numbers.projected)}
+              />
               <Figure label="Live" value={figure(view.numbers.live)} />
             </>
           ) : (
-            <p className="text-sm text-muted-foreground">{NOT_ROSTERED_LABEL}</p>
+            <p className="text-sm text-muted-foreground">
+              {NOT_ROSTERED_LABEL}
+            </p>
           )}
           <Figure
             label="Season"
@@ -241,7 +251,7 @@ export function PlayerCardContent({
           ) : (
             <>
               <p className="mt-1 text-sm font-medium">
-                {`$${view.draft.amount} · pick ${view.draft.pickNo} · ${view.draft.ownerName}`}
+                {`${formatDraftValue(view.draft.amount)} · pick ${view.draft.pickNo} · ${view.draft.ownerName}`}
               </p>
               <p className="text-xs text-muted-foreground">
                 {view.draft.contextLine}

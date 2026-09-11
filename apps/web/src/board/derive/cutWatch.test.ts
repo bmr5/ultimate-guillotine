@@ -56,22 +56,21 @@ describe("cutWatch", () => {
     ]);
   });
 
-  it("switches to scores and keeps zero and negative scores in the running", () => {
+  it("keeps the lowest projections on watch after actual scoring starts", () => {
     const result = cutWatch(
       [
-        team(1, { score: 15 }),
-        team(2, { score: -2 }),
-        team(3),
-        team(4, { score: 10 }),
+        team(1, { score: 7.8, projectedPoints: 91.7 }),
+        team(2, { score: 0, projectedPoints: 98.5 }),
+        team(3, { score: 0, projectedPoints: 98.7 }),
+        team(4, { score: 10, projectedPoints: 110 }),
       ],
       1,
     );
-    expect(result).toMatchObject({ kind: "ranked", basis: "score" });
+    expect(result).toMatchObject({ kind: "ranked", basis: "projection" });
     if (result.kind !== "ranked") throw new Error("Expected rankings");
-    expect(result.teams.map(({ team, gap }) => [team.teamId, gap])).toEqual([
-      [2, 12],
-      [3, 10],
-    ]);
+    expect(result.teams.map(({ team }) => team.teamId)).toEqual([1, 2]);
+    expect(result.teams[0].gap).toBeCloseTo(7);
+    expect(result.teams[1].gap).toBeCloseTo(0.2);
   });
 
   it("excludes the current gulag pairing from next week's entrants", () => {
@@ -90,8 +89,10 @@ describe("cutWatch", () => {
       cutWatch([team(1), team(2), team(3, { projectedPoints: null })], 1).kind,
     ).toBe("waiting");
     expect(
-      cutWatch([team(1, { score: 5 }), team(2), team(3, { score: null })], 1)
-        .kind,
+      cutWatch(
+        [team(1, { score: 5 }), team(2), team(3, { projectedPoints: null })],
+        1,
+      ).kind,
     ).toBe("waiting");
   });
 
@@ -119,21 +120,21 @@ describe("cutWatch", () => {
     ).toBe("ranked");
   });
 
-  it("orders a broad scoreless tie by projection for the matchup preview", () => {
+  it("does not treat scoreless teams as tied when their projections differ", () => {
     const teams = Array.from({ length: 18 }, (_, index) =>
       team(index + 1, { score: index < 12 ? 0 : 10 }),
     );
     const result = cutWatch(teams.reverse(), 1);
     expect(result).toMatchObject({
       kind: "ranked",
-      basis: "score",
-      tied: true,
+      basis: "projection",
+      tied: false,
     });
     if (result.kind !== "ranked") throw new Error("Expected rankings");
-    expect(result.teams).toHaveLength(12);
+    expect(result.teams).toHaveLength(2);
     expect(result.teams.slice(0, 2).map(({ team }) => team.teamId)).toEqual([
       1, 2,
     ]);
-    expect(result.teams.every(({ gap }) => gap === null)).toBe(true);
+    expect(result.teams.every(({ gap }) => gap !== null)).toBe(true);
   });
 });
