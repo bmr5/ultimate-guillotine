@@ -854,7 +854,9 @@ Sunday and Monday, and 10:12 AM Thursday and Saturday after each waiver round;
 Tuesday and Friday off -- Ben's cadence: a break on Tuesdays, Wednesday
 before waivers close, Thursday after they clear, Friday after the Thursday game,
 Sunday and Monday after Saturday's free agency and Sunday's games. Each post is a
-short signed text and an HTML file: every live team's score and projected finish,
+single HTML file named `MonteCarlo-YYYY-MM-DD.html`, using the Chicago date. No
+text summary, caption or follow-up message is sent to chat. The report contains
+every live team's score and projected finish,
 the gulag pair and the two teams on the block with their odds, the roster problems
 worth fixing before the next kickoff, and the moves since the previous post. The
 agent's codename is `eod-summary` and the command is `ug summary eod`. Spec:
@@ -907,9 +909,9 @@ Three commands, none of which writes, sends, or records a run:
 | `ug summary eod --dry-run` | the post over the real league; add `--no-ai` to skip the colour |
 | `ug summary eod --json` | the fact packet the post is built from -- every team, every starter, every number -- with no model call |
 
-A post is a short chat text followed by an HTML file (Ben's ruling, 2026-09-10): the
-dry run prints the text and writes the file to `--out DIR` (the current directory
-by default), printing its path last. Open the file on a phone -- AirDrop it, or
+A post is only the HTML file, titled `MonteCarlo-YYYY-MM-DD` (Ben's ruling, 2026-09-10).
+The dry run writes the file to `--out DIR` (the current directory
+by default) and prints its path. Open the file on a phone -- AirDrop it, or
 send it to yourself -- to see what the league taps into.
 
 `--seed N` and `--simulations N` make a run reproducible and faster. Read the
@@ -932,10 +934,10 @@ put in the wrong state is the likeliest way an odds number is wrong.
    number in them is in the facts and that nothing looks like private data, and
    drops the colour if not.
 5. Writes `public.survival_snapshots` and a `public.recaps` draft, previews the
-   text in `#guillotine-drafts` (every mode but production), sends the text and
-   then the HTML file through the delivery layer (self-test chat in test mode),
-   and marks the recap `sent`. A file that fails after the text went out is one
-   ops line, not a failed night.
+   internal recap in `#guillotine-drafts` (every mode but production), sends only
+   the HTML file through the delivery layer (self-test chat in test mode),
+   and marks the recap `sent` after successful attachment delivery. If the file
+   fails, the run fails and the recap stays a draft. No fallback text goes to chat.
 
 Moves are everything executed since the previous post went out (a day back when
 there is none), so Thursday's post carries the claims that cleared at 2 AM and
@@ -952,7 +954,7 @@ nothing on success.
 | `EOD summary colour disabled: hermes CLI not found` | no Hermes on the machine; the message went out without colour |
 | `EOD summary colour unavailable: <class>` | the model call failed; same |
 | `EOD summary colour declined: <reason>` | the verifier threw the model's answer out; same |
-| `EOD summary attachment failed after the text went out: <class>` | the text arrived, the file did not; the run still succeeded |
+| `EOD summary attachment failed: <class>` | the file did not arrive; the run failed and the recap stays a draft |
 | `EOD summary refresh failed, posting from what is on file: <class>` | Sleeper could not be pulled before the read; the post used the last good rows |
 | `eod-summary: run failed at <time> UTC` | the night failed outright -- no snapshot, a delivery mismatch; see the run's `error` |
 | `EOD summary could not deliver: <reason>` (alerts) | the delivery target did not match; the recap stays a draft |
@@ -962,18 +964,18 @@ nothing on success.
 With `DELIVERY_MODE=test`. Fill the date and outcome on each line; do not record
 message text here.
 
-- [ ] 0. `ug summary eod --fixture --no-ai` prints a message with a gulag section,
+- [ ] 0. `ug summary eod --fixture --no-ai` writes an HTML report with a gulag section,
   a block, an 18-line board, a roster watch and a moves line.
   _date:_ · _outcome:_
-- [ ] 1. `ug summary eod --dry-run` against the real league prints a message
+- [ ] 1. `ug summary eod --dry-run` against the real league writes an HTML report
   whose board names all 18 teams by the labels the site shows and whose footer
   carries tonight's scores stamp.
   _date:_ · _outcome:_
 - [ ] 2. `ug summary eod --json` shows every starter in the right state for the
   night (Thursday: one game `done`; Sunday: Monday's players `remaining`).
   _date:_ · _outcome:_
-- [ ] 3. The morning run lands in `#guillotine-drafts` and the self-test chat
-  as a signed text followed by the HTML file; `#guillotine-feed` shows both. Tap
+- [ ] 3. The morning run previews in `#guillotine-drafts` and reaches the self-test chat
+  as only `MonteCarlo-YYYY-MM-DD.html`; `#guillotine-feed` shows the attachment. Tap
   the file on an iPhone: Quick Look opens the board.
   _date:_ · _outcome:_
 - [ ] 4. `ug summary eod` run again the same day prints `eod: already_sent`

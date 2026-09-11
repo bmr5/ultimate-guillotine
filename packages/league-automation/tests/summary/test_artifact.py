@@ -1,8 +1,8 @@
 """The HTML artifact: the whole summary as one self-contained file for Quick Look.
 
 Ben (2026-09-10): "what I would prefer here is an html that can be sent, similar
-to a claude artifact pattern." The file is attached to the chat after a short text
-message; tapping it on an iPhone opens Quick Look, which renders HTML with inline
+to a claude artifact pattern." The file is the only item sent to chat.
+Tapping it on an iPhone opens Quick Look, which renders HTML with inline
 CSS and nothing else. So the file may reference nothing outside itself, may carry
 no script, and must escape every string that came from a model or a member.
 """
@@ -148,7 +148,7 @@ def test_the_gulag_pair_are_marked_on_the_board() -> None:
     assert html.count("⚔") >= 2
 
 
-# -- the chat text that travels with the file -----------------------------
+# -- the internal recap, never sent to chat -------------------------------
 
 
 def test_the_short_text_is_the_header_the_gulag_the_block_the_sweating_and_the_footer() -> None:
@@ -177,7 +177,9 @@ def test_the_short_text_without_colour_has_no_gap() -> None:
     assert "\n\n\n" not in text
 
 
-def test_the_filename_names_the_week_and_the_local_date() -> None:
-    assert artifact_filename(1, datetime(2026, 9, 14, 4, 50, tzinfo=UTC)) == (
-        "guillotine-daily-week-1-2026-09-13.html"
-    )
+def test_filename_and_report_title_use_the_local_date_at_a_utc_day_boundary() -> None:
+    now = datetime(2026, 9, 14, 4, 50, tzinfo=UTC)
+    assert artifact_filename(now) == "MonteCarlo-2026-09-13.html"
+    html = render_html(_fixture_packet(), None, now)
+    assert "<title>MonteCarlo-2026-09-13</title>" in html
+    assert "<h1>MonteCarlo-2026-09-13</h1>" in html

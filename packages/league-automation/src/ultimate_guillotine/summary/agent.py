@@ -1,6 +1,6 @@
 """The EOD Summary agent: build, simulate, compose, store, deliver.
 
-One snapshot in, one signed message out, or one honest reason it stopped short.
+One snapshot in, one HTML attachment out, or one honest reason it stopped short.
 The pieces are the modules beside this one; this is where they are assembled
 around the run, and where every path settles what it leaves behind:
 
@@ -57,8 +57,8 @@ class Composed:
     """One night's post, with everything that went into it.
 
     ``text`` is the full deterministic message with the colour: the record, and
-    what the facts hash covers. ``short`` is the chat text that travels ahead of
-    the file, and ``html`` is the file itself, named ``filename``.
+    what the facts hash covers. ``short`` is the internal recap and draft preview,
+    never a chat message. ``html`` is the only delivered item, named ``filename``.
     """
 
     packet: EodPacket
@@ -154,7 +154,7 @@ def compose_summary(
         model,
         short_text(packet, color, now),
         render_html(packet, color, now),
-        artifact_filename(snapshot.week, now),
+        artifact_filename(now),
     )
 
 
@@ -245,23 +245,19 @@ class EodSummaryAgent:
             return Outcome("draft", composed.short, composed.model, odds)
 
         try:
-            self._delivery.deliver(run_id, AGENT, composed.short)
-        except TargetMismatch as exc:
-            self._notifier.alerts(f"EOD summary could not deliver: {exc}")
-            raise
-        self._repo.mark_sent(recap_id)
-        self._commit()
-        # The file follows the text. The chat already has the answer, so a file
-        # that does not arrive is one ops line, never a failed night and never a
-        # second text.
-        try:
             self._delivery.deliver_attachment(
                 run_id, AGENT, composed.filename, composed.html.encode()
             )
-        except Exception as exc:  # noqa: BLE001 - reported, never fatal
+        except TargetMismatch as exc:
+            self._notifier.alerts(f"EOD summary could not deliver: {exc}")
+            raise
+        except Exception as exc:
             self._notifier.ops(
-                f"EOD summary attachment failed after the text went out: {exc.__class__.__name__}"
+                f"EOD summary attachment failed: {exc.__class__.__name__}"
             )
+            raise
+        # The attachment is the entire post. Only a successful upload settles it.
+        self._repo.mark_sent(recap_id)
         self._commit()
         return Outcome("sent", composed.short, composed.model, odds)
 
