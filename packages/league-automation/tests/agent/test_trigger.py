@@ -162,11 +162,12 @@ def test_parent_recognition_stays_in_its_chat_before_and_after_session_creation(
     assert worker.jobs[0].session is None
 
 
-def test_matches_on_the_tag_or_a_reply_in_the_one_chat_only() -> None:
+def test_every_request_including_replies_requires_a_tag() -> None:
     trigger = _trigger()
     assert trigger.name == AGENT
     assert trigger.matches(_msg("@bot who has the most FAAB"))
-    assert trigger.matches(_msg("what about Joel?", thread="p:0/BOT-1"))
+    assert not trigger.matches(_msg("what about Joel?", thread="p:0/BOT-1"))
+    assert trigger.matches(_msg("@bot what about Joel?", thread="p:0/BOT-1"))
     assert not trigger.matches(_msg("what about Joel?", thread="p:0/REG-1"))
     assert not trigger.matches(_msg("no tag here"))
     assert not trigger.matches(_msg("@bot hi", chat="iMessage;+;other"))
@@ -176,12 +177,12 @@ def test_matches_on_the_tag_or_a_reply_in_the_one_chat_only() -> None:
 def test_handle_reserves_the_run_places_the_sender_and_submits() -> None:
     worker, runs = FakeWorker(), FakeRuns()
     trigger = _trigger(worker=worker, runs=runs)
-    trigger.handle(_msg("what about Joel?", guid="g9", thread="p:0/BOT-1"))
+    trigger.handle(_msg("@bot what about Joel?", guid="g9", thread="p:0/BOT-1"))
     assert runs.reserved == [(AGENT, "webhook", "agent:g9")]
     job = worker.jobs[0]
     assert job.run_id == 1 and job.asker == MEMBER
     assert job.session is None and job.parent_run_id == 41
-    assert job.message.text == "what about Joel?"
+    assert job.message.text == "@bot what about Joel?"
 
 
 def test_the_sender_is_matched_by_hash_and_an_empty_sender_by_nobody() -> None:
@@ -219,7 +220,7 @@ def test_a_redelivered_webhook_is_skipped() -> None:
 
 
 @pytest.mark.parametrize("text,thread", [
-    ("@bot hi", None), ("@Daddy hi", None), ("follow up", "p:0/BOT-1"),
+    ("@bot hi", None), ("@Daddy hi", None), ("@bot follow up", "p:0/BOT-1"),
 ])
 def test_reaction_follows_reservation_and_precedes_each_submission(text, thread):
     events = []
@@ -306,7 +307,7 @@ def test_reply_to_pending_agent_run_is_queued_by_parent_reference():
                                 FakeRuns(), FakeSessions())
     trigger = league_agent_trigger(worker=worker, contacts=FakeContacts(), resolver=resolver,
                                    runs=FakeRuns(), delivery=FakeDelivery(), chat_guid=CHAT)
-    msg = _msg("follow up", thread="pending")
+    msg = _msg("@bot follow up", thread="pending")
     assert trigger.matches(msg)
     assert not trigger.matches(_msg("follow up", thread="registrar"))
     trigger.handle(msg)

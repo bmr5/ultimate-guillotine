@@ -1,7 +1,7 @@
 """The listener's half of the League Agent: gates, then a hand-off.
 
 Everything here runs under the listener's one lock:
-is this the chat, is the bot addressed (by tag or by inline reply), is this an
+is this the chat, is the bot explicitly tagged, is this an
 attempt to overrule it, and who sent it. Then the run is reserved -- the
 idempotency guard against a redelivered webhook -- and a thumbs-up reaction is attempted
 before the job is queued for the worker. No league data is read and no model
@@ -81,9 +81,7 @@ def league_agent_trigger(
         # when they reply to an Agent receipt.
         if video_matches is not None and video_matches(msg):
             return False
-        return has_bot_tag(msg.text) or resolver.parent_run_id(
-            msg.thread_originator_guid, msg.chat_guid
-        ) is not None
+        return has_bot_tag(msg.text)
 
     def handle(msg: InboundMessage) -> None:
         run_id = runs.reserve(AGENT, "webhook", f"agent:{msg.guid}")

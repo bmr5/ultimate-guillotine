@@ -53,8 +53,8 @@ def test_a_true_answer_passes() -> None:
 def test_short_chat_preserves_full_report() -> None:
     report = {"title": "Options", "html_body": "<p>Alternative detail.</p>" * 100,
               "sources": []}
-    assert _check(_answer(chat_text="x" * 112, report=report)) == []
-    assert _check(_answer(chat_text="x" * 112)) == []
+    assert _check(_answer(chat_text="x" * 133, report=report)) == []
+    assert _check(_answer(chat_text="x" * 133)) == []
 
 
 def _money(amount, sender="Member05", recipient="Member02", kind="faab"):

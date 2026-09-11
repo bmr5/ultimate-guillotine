@@ -381,7 +381,7 @@ class FakeWorker:
         ("@daddy create trade video T-2026-003", None, "trade-video"),
         ("@daddy create trade video T-2026-003", "agent-receipt", "trade-video"),
         ("@daddy who won the trade?", None, "league-agent"),
-        ("What about my roster?", "agent-receipt", "league-agent"),
+        ("@bot What about my roster?", "agent-receipt", "league-agent"),
     ],
 )
 def test_production_dispatch_gives_explicit_video_requests_one_owner(

@@ -677,15 +677,15 @@ where week = (select week from public.nfl_state);
 ## 10. League Agent rollout
 
 The League Agent answers any `@daddy`, `@bot`, or `@guillotinebot` question, with
-case-insensitive tags, or an inline reply to one of its answers in an authorized
-chat. Production mode enables both registered test and league delivery targets.
+case-insensitive tags. Every request needs a tag, including inline replies.
+Untagged messages never trigger the League Agent. Production mode enables both registered test and league delivery targets.
 Test mode enables only the registered test target; disabled mode enables neither.
 Missing targets exclude those chats, and environment GUIDs alone grant no access.
 It can answer league facts, research players, explain rules,
 and compare trades. It sends a short answer and, when useful, an HTML artifact.
 It never registers trades. Announce a trade with a 🚨 alert for the Trade Registrar.
 
-The listener attempts a native thumbs-up on each accepted tagged question or inline
+The listener attempts a native thumbs-up on each accepted tagged question or tagged inline
 follow-up before queueing it. Reactions require BlueBubbles Private API and a connected
 helper. If unavailable or unsuccessful, the bot stays silent until its answer.
 The run reservation deduplicates reactions. No acknowledgment, queue or progress texts
@@ -701,25 +701,27 @@ chat. Delivery still checks registered targets, configured GUIDs and the league
 participant fingerprint. A missing or mismatched test target fails closed instead
 of redirecting its reply to the league chat.
 
-Follow-ups recognize a parent outbound message only in its delivery target's chat,
+Tagged follow-ups recognize a parent outbound message only in its delivery target's chat,
 including historical receipts sent before the parent session exists. Before resuming, the
 worker also checks that the session's stored chat hash matches the current chat.
 A foreign thread reference cannot load another chat's conversation history.
 
 The SOUL uses a curt, neutral, robotic tone without pet names or roleplay.
+Explicit requests for poems, jokes or league banter get only the requested creative text.
+Playful draft and FAAB trash talk does not count as bias in league rulings.
 Data lookups return only the requested value, name or list. Analysis and reports
 are reserved for requests for recommendations or detail.
 New trade confirmations say exactly `trade recorded in database`, without a signature.
 Other replies use the neutral `Guillotine Bot` signature.
-All League Agent replies fit 129 characters including the bot signature, leaving
-112 characters for the answer. Give only the requested result or one top recommendation.
+All League Agent replies fit 150 characters including the bot signature, leaving
+133 characters for the answer. Give only the requested result or one top recommendation.
 Alternatives, long lookup results, pricing, full terms and evidence go in the HTML
 report, never a sequence of short texts. The prompt evaluates whole-roster constraints,
 including a paid hold that
 frees a spot to fill DEF while an existing TE covers the injury. A zero base-lineup
 trade-math delta does not measure the value of an enabled DEF, K or FLEX starter.
 Internal verification retries correct unsent drafts without announcing a correction
-to an answer the member never received. These instructions are prompt version 2026.5.
+to an answer the member never received. These instructions are prompt version 2026.6.
 For roster holes, the playbook compares rentals, permanent acquisition, holding
 and waivers, with survival, FAAB, return terms and custody risk in view. It checks
 transaction history before treating a claimed recent drop or add as verified.

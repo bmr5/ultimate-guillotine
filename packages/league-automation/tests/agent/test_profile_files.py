@@ -30,7 +30,7 @@ def test_profile_documents_contract() -> None:
 def test_persona_rentals_and_transaction_claims_preserve_the_research_contract() -> None:
     soul = (PROFILE / "SOUL.md").read_text()
     skill = (PROFILE / "skills/league-agent/SKILL.md").read_text()
-    for phrase in ("curt, neutral, robotic tone", "No pet names",
+    for phrase in ("curt, neutral, robotic tone", "No unsolicited pet names",
                    "Facts and clear advice come first", "never invent another member's consent"):
         assert phrase in soul
     for phrase in ("short-term rentals", "permanent acquisition", "waiver alternatives",
@@ -55,7 +55,7 @@ def test_research_prioritizes_roster_spot_value_and_one_chat_recommendation() ->
     skill = (PROFILE / "skills/league-agent/SKILL.md").read_text()
     for phrase in ("entire roster", "paid hold", "Bowers-for-DEF swap", "Mayer",
                    "host's capacity", "player locks", "cost of the whole sequence",
-                   "Do not dismiss a hold", "calculator excludes", "112 characters",
+                   "Do not dismiss a hold", "calculator excludes", "133 characters",
                    "one top recommendation", "all alternatives", "internal unsent draft"):
         assert phrase in skill
     assert "one line per option" not in skill

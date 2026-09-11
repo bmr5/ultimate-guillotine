@@ -15,8 +15,8 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from ultimate_guillotine.ai.structured import parse_model_text
 from ultimate_guillotine.core.signature import BOT_SIGNATURE
 
-#: Ben's example is 129 characters. Reserve space for the delivery signature.
-CHAT_MESSAGE_LIMIT = 129
+#: Ben's approved message cap. Reserve space for the delivery signature.
+CHAT_MESSAGE_LIMIT = 150
 CHAT_TEXT_LIMIT = CHAT_MESSAGE_LIMIT - len(f"\n{BOT_SIGNATURE}")
 #: The report body before the template wraps it; the rendered cap is checked later.
 REPORT_BODY_LIMIT = 200_000
