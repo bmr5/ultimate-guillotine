@@ -50,6 +50,17 @@ def test_a_true_answer_passes() -> None:
     assert _check(_answer()) == []
 
 
+def test_research_chat_limit_preserves_lookup_length_and_full_report() -> None:
+    report = {"title": "Options", "html_body": "<p>Alternative detail.</p>" * 100,
+              "sources": []}
+    assert _check(_answer(chat_text="x" * 600, report=report)) == []
+    assert _check(_answer(chat_text="x" * 601, report=report)) == [
+        ("research chat_text must fit 600 characters: give one top "
+         "recommendation and move alternatives and details into the HTML report")
+    ]
+    assert _check(_answer(chat_text="x" * 1200)) == []
+
+
 def _money(amount, sender="Member05", recipient="Member02", kind="faab"):
     return {"kind": kind, "amount": amount, "from_member": sender, "to_member": recipient}
 

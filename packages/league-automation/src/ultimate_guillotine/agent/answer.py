@@ -14,8 +14,9 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ultimate_guillotine.ai.structured import parse_model_text
 
-#: Plain text for a phone. Long enough for a headline and three option lines.
+#: General phone reply limit; research summaries have a tighter verified limit.
 CHAT_TEXT_LIMIT = 1200
+RESEARCH_CHAT_TEXT_LIMIT = 600
 #: The report body before the template wraps it; the rendered cap is checked later.
 REPORT_BODY_LIMIT = 200_000
 

@@ -22,7 +22,15 @@ TURN = Turn(season=2026, week=6, local_time="Thu 7:42pm", asker_label="Member05"
 
 
 def test_the_prompt_version_is_read_off_the_file() -> None:
-    assert PROMPT_VERSION == "2026.1"
+    assert PROMPT_VERSION == "2026.2"
+
+
+def test_research_contract_keeps_one_recommendation_in_chat_and_details_in_html() -> None:
+    text = build_envelope(TURN)
+    for phrase in ("600 characters", "one top", "all alternatives", "HTML report",
+                   "hold-plus-DEF", "whole lineup"):
+        assert phrase in text
+    assert "one line per option" not in text
 
 
 def test_the_envelope_names_the_turn_and_fences_the_message() -> None:
@@ -59,6 +67,8 @@ def test_the_retry_envelope_names_each_problem() -> None:
     text = retry_envelope(["Tony Pollard is on Max's roster, not Joel's", "offer over budget"])
     assert "Tony Pollard is on Max's roster" in text and "offer over budget" in text
     assert "resend" in text.lower()
+    assert "internal unsent draft" in text
+    assert "Correct it silently" in text
 
 
 def test_the_version_comment_never_reaches_the_model() -> None:

@@ -87,8 +87,10 @@ def build_envelope(turn: Turn) -> str:
 def retry_envelope(problems: Sequence[str]) -> str:
     lines = "\n".join(f"- {problem}" for problem in problems)
     return (
-        "Your previous answer failed verification against the league data:\n"
+        "Your unsent draft failed verification:\n"
         f"{lines}\n\n"
         "Correct the facts -- check them with your tools -- and resend the complete "
-        "LeagueAnswer JSON block. Do not repeat a claim the data does not support."
+        "LeagueAnswer JSON block. Do not repeat a claim the data does not support. "
+        "This was an internal unsent draft. Correct it silently; do not describe the "
+        "verification or apologize for a previous answer the member never received."
     )

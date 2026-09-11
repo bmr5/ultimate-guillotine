@@ -710,6 +710,13 @@ worker also checks that the session's stored chat hash matches the current chat.
 A foreign thread reference cannot load another chat's conversation history.
 
 The SOUL uses a lightly playful Daddy voice and addresses members as kitten.
+Research chat replies contain one top recommendation and its key condition, capped
+at 600 characters. Alternatives, pricing, full terms and evidence go in the HTML
+report. The prompt evaluates whole-roster constraints, including a paid hold that
+frees a spot to fill DEF while an existing TE covers the injury. A zero base-lineup
+trade-math delta does not measure the value of an enabled DEF, K or FLEX starter.
+Internal verification retries correct unsent drafts without announcing a correction
+to an answer the member never received. These instructions are prompt version 2026.2.
 For roster holes, the playbook compares rentals, permanent acquisition, holding
 and waivers, with survival, FAAB, return terms and custody risk in view. It checks
 transaction history before treating a claimed recent drop or add as verified.

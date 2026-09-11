@@ -259,6 +259,19 @@ def test_two_failures_end_in_the_fixed_line() -> None:
     assert parts["answers"].recorded == []
 
 
+def test_verbose_research_chat_is_retried_without_truncating_the_report() -> None:
+    report = {**RESEARCH["report"], "html_body":
+              "<h2>Top option</h2><p>Hold plus DEF.</p><h2>Alternatives</h2><p>TE rental.</p>"}
+    verbose = {**RESEARCH, "chat_text": "x" * 601, "report": report}
+    concise = {**RESEARCH, "chat_text": "One top option. full write-up attached", "report": report}
+    worker, parts = _worker(_reply(verbose), _reply(concise))
+    assert worker.run_job(Job(7, _msg("@daddy help with my injured TE"), ASKER, None)) == "answer"
+    assert len(parts["client"].calls) == 2
+    assert "600" in parts["client"].calls[1][0]
+    assert parts["delivery"].texts == [concise["chat_text"]]
+    assert "Alternatives" in parts["delivery"].files[0][1].decode()
+
+
 def test_a_hermes_failure_is_the_fixed_line_and_an_alert() -> None:
     worker, parts = _worker(AIUnavailable("hermes exited with code 1"))
     assert worker.run_job(Job(7, _msg("@bot hi"), ASKER, None)) == "failed"

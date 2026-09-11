@@ -51,6 +51,16 @@ def test_shell_syntax() -> None:
         subprocess.run(["bash", "-n", str(PROFILE / name)], check=True)
 
 
+def test_research_prioritizes_roster_spot_value_and_one_chat_recommendation() -> None:
+    skill = (PROFILE / "skills/league-agent/SKILL.md").read_text()
+    for phrase in ("entire roster", "paid hold", "Bowers-for-DEF swap", "Mayer",
+                   "host's capacity", "player locks", "cost of the whole sequence",
+                   "Do not dismiss a hold", "calculator excludes", "600 characters",
+                   "one top recommendation", "all alternatives", "internal unsent draft"):
+        assert phrase in skill
+    assert "one line per option" not in skill
+
+
 @pytest.fixture
 def installation(tmp_path: Path) -> tuple[dict[str, str], Path]:
     home = tmp_path / "home"
