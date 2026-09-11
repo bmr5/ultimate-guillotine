@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 
 from ultimate_guillotine.core.signature import is_signed
+from ultimate_guillotine.trades.detect import is_trade_candidate
 
 FIXTURE = Path(__file__).parent / "fixtures" / "registrar_cases.json"
 KEYS = {"id", "category", "text", "expected_kind", "expected_status", "prereq", "notes"}
@@ -104,11 +105,12 @@ def test_states_needing_prior_state_declare_a_prerequisite() -> None:
 def test_dropped_upstream_cases_are_ones_the_listener_really_drops() -> None:
     """`dropped_upstream` is a claim about the listener, not a way to excuse a
     case the model gets wrong: the listener drops a message because the bot
-    signed it, so the text has to carry that signature."""
+    signed it, or because no word *trade* sits beside its siren (Ben's ruling
+    of 2026-09-10), so the text has to be one of those."""
     dropped = [case for case in CASES if case["expected_status"] == "dropped_upstream"]
     assert dropped
     for case in dropped:
-        assert is_signed(case["text"]), case["id"]
+        assert is_signed(case["text"]) or not is_trade_candidate(case["text"]), case["id"]
 
 
 def test_the_first_person_pair_differs_only_by_its_announcer() -> None:

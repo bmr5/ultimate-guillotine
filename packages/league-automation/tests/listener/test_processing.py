@@ -62,15 +62,15 @@ def test_signed_bot_message_is_ignored() -> None:
 
 def test_matching_trigger_runs_and_persists_source() -> None:
     calls = []
-    trigger = Trigger("ping", lambda m: m.text == "@bot ping", lambda m: calls.append(m.guid))
+    trigger = Trigger("ping", lambda m: m.text == "@daddy ping", lambda m: calls.append(m.guid))
     registry = TriggerRegistry()
     registry.register(trigger)
     sources = FakeSources()
     processor = InboundProcessor({CHAT}, registry, FakeReceipts(), sources)
-    assert processor.process(msg("@bot ping"), "e") == "handled:ping"
+    assert processor.process(msg("@daddy ping"), "e") == "handled:ping"
     assert calls == ["g1"]
     assert sources.rows[0].trigger_name == "ping"
-    assert sources.rows[0].excerpt == "@bot ping"
+    assert sources.rows[0].excerpt == "@daddy ping"
 
 
 def test_handler_error_is_reported_not_raised() -> None:
@@ -103,9 +103,9 @@ def test_ping_trigger_accepts_unsigned_messages_from_ben_but_not_signed_ones() -
             calls.append(content)
 
     trigger = ping_trigger(Delivery(), CHAT)
-    assert trigger.matches(msg("@bot ping", from_me=True))
-    assert trigger.matches(msg("@BOT PING"))
+    assert trigger.matches(msg("@daddy ping", from_me=True))
+    assert trigger.matches(msg("@daddy PING"))
     processor = build(trigger)
     assert processor.process(msg(sign("pong 1"), from_me=True), "e1") == "ignored_bot"
-    assert processor.process(msg("@bot ping", from_me=True), "e2") == "handled:ping"
+    assert processor.process(msg("@daddy ping", from_me=True), "e2") == "handled:ping"
     assert len(calls) == 1

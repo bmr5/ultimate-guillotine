@@ -7,6 +7,7 @@ import type { BoardClient } from "./fetchers";
 import {
   fetchFinalRosters,
   fetchLatestSeason,
+  fetchLatestSurvivalSnapshot,
   fetchMembers,
   fetchNflState,
   fetchPlayerProjections,
@@ -249,9 +250,9 @@ describe("state, projection and roster fetchers", () => {
   });
 
   it("reads the frozen final rosters for the season", async () => {
-    const { client, calls } = createFakeClient({ final_rosters: [] });
+    const { client, calls } = createFakeClient({ effective_final_rosters: [] });
     await fetchFinalRosters(client, 1);
-    expect(calls[0].table).toBe("final_rosters");
+    expect(calls[0].table).toBe("effective_final_rosters");
     expect(calls[0].columns).toBe(
       "team_id, eliminated_week, holdings, frozen_at",
     );
@@ -332,5 +333,39 @@ describe("bulk player fetchers", () => {
     expect(await fetchPlayers(client, [])).toEqual([]);
     expect(await fetchPlayerProjections(client, 2026, 3, [])).toEqual([]);
     expect(calls).toHaveLength(0);
+  });
+});
+
+/**
+ * The Daily's odds. One row per run, so the board asks for the newest row of the week and
+ * nothing older — Ben: "just write the last time it was run so people know".
+ */
+describe("fetchLatestSurvivalSnapshot", () => {
+  const ROW = { snapshot_at: "2026-09-10T15:15:23Z", results: [] };
+
+  it("reads the newest snapshot for the season and week, and nothing older", async () => {
+    const { client, calls } = createFakeClient({ survival_snapshots: [ROW] });
+    const row = await fetchLatestSurvivalSnapshot(client, 7, 3);
+    expect(row).toEqual(ROW);
+    expect(calls[0].table).toBe("survival_snapshots");
+    expect(calls[0].columns).toBe("snapshot_at, results");
+    expect(calls[0].filters).toEqual([
+      ["season_id", 7],
+      ["week", 3],
+    ]);
+    expect(calls[0].order).toEqual(["snapshot_at", false]);
+    expect(calls[0].limit).toBe(1);
+  });
+
+  it("returns null before the week's first Daily", async () => {
+    const { client } = createFakeClient({ survival_snapshots: [] });
+    expect(await fetchLatestSurvivalSnapshot(client, 7, 3)).toBeNull();
+  });
+
+  it("throws a labelled error", async () => {
+    const { client } = createFakeClient({}, { survival_snapshots: "boom" });
+    await expect(fetchLatestSurvivalSnapshot(client, 7, 3)).rejects.toThrow(
+      "survival_snapshots: boom",
+    );
   });
 });

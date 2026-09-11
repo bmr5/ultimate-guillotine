@@ -37,10 +37,11 @@ from ultimate_guillotine.listener.app import _die_on_lost_connection, create_app
 from ultimate_guillotine.listener.committing import CommittingRepo
 from ultimate_guillotine.listener.processing import (
     InboundProcessor,
+    Trigger,
     TriggerRegistry,
     ping_trigger,
 )
-from ultimate_guillotine.messages.bluebubbles import BlueBubblesClient
+from ultimate_guillotine.messages.bluebubbles import BlueBubblesClient, InboundMessage
 from ultimate_guillotine.messages.delivery import DeliveryService
 from ultimate_guillotine.ops.notify import HermesNotifier
 from ultimate_guillotine.sleeper.client import SleeperClient
@@ -227,6 +228,7 @@ def _register_league_agent(
     chat_guids: tuple[str, ...],
     worker_factory: Callable[[str], AgentWorker] | None = None,
     reconcile: bool = False,
+    video_matches: Callable[[InboundMessage], bool] | None = None,
 ) -> None:
     """Register the League Agent, or say once why it is not running.
 
@@ -270,6 +272,7 @@ def _register_league_agent(
                 runs=CommittingRepo(RunRepository(conn), conn),
                 delivery=delivery,
                 chat_guid=chat_guid,
+                video_matches=video_matches,
             )
         )
 
@@ -282,6 +285,7 @@ def _register_trade_registrar(
     registry,
     chat_guids: frozenset[str],
     listen_guids: Iterable[str] = (),
+    code_prefix: str | None = None,
 ) -> None:
     """Register the Trade Registrar, or say once why it is not running.
 
@@ -298,7 +302,8 @@ def _register_trade_registrar(
     called and a redelivered webhook cannot start a second extraction.
 
     Test mode writes `TEST-` trade codes: a gate rehearsal must not consume the
-    season's real trade numbers.
+    season's real trade numbers. ``code_prefix`` overrides the mode's prefix for
+    a registrar that only hears the self-test chat while production is live.
 
     The contact repository is what lets a first-person alert name its announcer:
     without loaded handles every sender is unplaceable, and `I sent X to Y` ends
@@ -326,7 +331,7 @@ def _register_trade_registrar(
         notifier,
         MemberAliasRepository(conn),
         PlayerRepository(conn),
-        TradeRepository(conn, code_prefix_for(settings.delivery_mode)),
+        TradeRepository(conn, code_prefix or code_prefix_for(settings.delivery_mode)),
         CommittingRepo(RunRepository(conn), conn),
         contacts_repo=MemberContactRepository(conn),
         sources_repo=SourceMessageRepository(conn),
@@ -336,7 +341,7 @@ def _register_trade_registrar(
     registry.register(trade_trigger(registrar, chat_guids))
 
 
-def _register_trade_video(conn, delivery, registry, chat_guids: frozenset[str]) -> None:
+def _register_trade_video(conn, delivery, registry, chat_guids: frozenset[str]) -> Trigger | None:
     """Register the video request trigger in every chat trade alerts are read in.
 
     It queues work and acknowledges; the render runs in `ug video jobs run`.
@@ -353,8 +358,12 @@ def _register_trade_video(conn, delivery, registry, chat_guids: frozenset[str]) 
         delivery,
         conn,
         code_for_outbound_guid=lambda guid: code_in(outbound.content_for_guid(guid)),
+        sources=SourceMessageRepository(conn),
+        members=MemberAliasRepository(conn),
     )
-    registry.register(video_trigger(requests, chat_guids))
+    trigger = video_trigger(requests, chat_guids)
+    registry.register(trigger)
+    return trigger
 
 
 def build_processor(
@@ -404,6 +413,26 @@ def build_processor(
         trade_chat_guids(settings, production_target, listen_guids),
         listen_guids,
     )
+    # In production the league chat is the registrar's, and the self-test chat stays a
+    # rehearsal room: an alert posted there is logged under a TEST- code and answered
+    # there (`DeliveryService.reply_to`), never with a real trade number. Ben
+    # (2026-09-10): log a trade in the test chat, then ask for its video.
+    if settings.delivery_mode is DeliveryMode.PRODUCTION and test_target is not None:
+        _register_trade_registrar(
+            settings,
+            conn,
+            delivery,
+            notifier,
+            registry,
+            frozenset({test_target.chat_guid}),
+            code_prefix="TEST",
+        )
+    # Requests are heard wherever alerts are, and in the self-test chat in every mode.
+    # Reuse the actual registered predicate so video and Agent ownership agree.
+    video_chats = trade_chat_guids(settings, production_target, listen_guids)
+    if test_target is not None:
+        video_chats = video_chats | {test_target.chat_guid}
+    video = _register_trade_video(conn, delivery, registry, video_chats)
     _register_league_agent(
         settings,
         conn,
@@ -414,14 +443,8 @@ def build_processor(
         agent_chat_guids(settings, test_target, production_target),
         agent_worker_factory,
         reconcile_agent_runs,
+        video_matches=video.matches if video is not None else None,
     )
-    # Requests are heard wherever alerts are, and in the self-test chat in every mode:
-    # in production a request there is answered there (`DeliveryService.reply_to`), so
-    # Ben can keep trying the bot out without the league seeing a thing.
-    video_chats = trade_chat_guids(settings, production_target, listen_guids)
-    if test_target is not None:
-        video_chats = video_chats | {test_target.chat_guid}
-    _register_trade_video(conn, delivery, registry, video_chats)
     processor = InboundProcessor(
         allowed,
         registry,

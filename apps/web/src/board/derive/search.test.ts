@@ -26,6 +26,7 @@ const player = (id: string, fullName: string): RosterPlayer => ({
 
 const team = (over: Partial<BoardTeam> & { teamId: number }): BoardTeam => ({
   isRosterFrozen: false,
+  risk: null,
   teamName: "The Choppers",
   ownerName: "benray",
   sleeperRosterId: over.teamId,

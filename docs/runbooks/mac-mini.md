@@ -207,7 +207,7 @@ checked.
 - [x] Delivery: `ug ops self-test` prints `sent`; exactly one signed
   `Self-test ...` message appears in the self-test chat; `#guillotine-feed`
   shows the mirror.
-- [x] Inbound: send `@bot ping` in the self-test chat from the non-Ben
+- [x] Inbound: send `@daddy ping` in the self-test chat from the non-Ben
   handle; a signed `pong ...` reply arrives within 10 seconds;
   `#guillotine-feed` shows it.
 - [x] Scheduler: `HERMES_HOME=~/.hermes/profiles/guillotine hermes cron run
@@ -222,7 +222,7 @@ checked.
   the listener log's recorded GUID; the response is
   `{"outcome":"duplicate"}`.
 - [x] Gap fill: stop the listener with `launchctl bootout
-  gui/$(id -u)/com.ultimateguillotine.listener`, send `@bot ping` in the
+  gui/$(id -u)/com.ultimateguillotine.listener`, send `@daddy ping` in the
   self-test chat, restart with the installer, run `ug ingest gap-fill`;
   exactly one `pong` arrives and a second `ug ingest gap-fill` handles
   zero messages.
@@ -873,6 +873,13 @@ at 8:15 AM); the same install also registered `guillotine-sleeper-draft` and
 profile. The draft job was removed again later that day (`hermes cron` delete of
 `6f210b46919c`) on Ben's ruling that the auction is synced by hand once a year.
 
+**A schedule edited minutes before it fires can skip that fire.** On 2026-09-10 the
+waiver-day row was edited to `12 10 * * 4,6` at 10:09; the 10:12 occurrence passed
+with no execution recorded and the next run moved to Saturday. `hermes cron run
+<id>` ran it on the spot and it posted normally. After any schedule change, read
+`hermes cron list` and, if the next occurrence is close, expect to trigger it by
+hand once; occurrences after the first behave like every other job's.
+
 ### The safe dry runs
 
 Three commands, none of which writes, sends, or records a run:
@@ -897,8 +904,10 @@ put in the wrong state is the likeliest way an odds number is wrong.
 
 1. Reads the week; outside the regular season it prints `eod: skipped` and stays
    green.
-2. Loads the league, the scores, the players directory, the gulag events, tonight's
-   moves, and Sleeper's schedule.
+2. Pulls the rosters and the transaction log from Sleeper first (waivers clear
+   at 10:08 and the post fires at 10:12; the ten-minute syncs run on their own
+   phase), then loads the league, the scores, the players directory, the gulag
+   events, the moves since the previous post, and Sleeper's schedule.
 3. Simulates 10,000 weeks when the schedule was read and projections cover at
    least 95 percent of the starters still to play; otherwise composes a factual
    message with no percentages and names the reason in the footer.
@@ -927,6 +936,7 @@ nothing on success.
 | `EOD summary colour unavailable: <class>` | the model call failed; same |
 | `EOD summary colour declined: <reason>` | the verifier threw the model's answer out; same |
 | `EOD summary attachment failed after the text went out: <class>` | the text arrived, the file did not; the run still succeeded |
+| `EOD summary refresh failed, posting from what is on file: <class>` | Sleeper could not be pulled before the read; the post used the last good rows |
 | `eod-summary: run failed at <time> UTC` | the night failed outright -- no snapshot, a delivery mismatch; see the run's `error` |
 | `EOD summary could not deliver: <reason>` (alerts) | the delivery target did not match; the recap stays a draft |
 
@@ -970,6 +980,13 @@ from public.survival_snapshots order by id desc limit 5;
 select week, recap_kind, publication_state, length(body), prompt_version
 from public.recaps where recap_kind like 'eod:%' order by id desc limit 5;
 ```
+
+On the site, the board at `/` reads the newest `survival_snapshots` row for the
+week: every live card leads its chip line with the odds (`Gulag 37%`, the chip's
+tooltip naming the simulation and the snapshot time) and the header shows
+`Odds as of <time>` under the score and projection stamps. The site deploys from
+GitHub `main`, so a merge to the local `main` alone does not put it in front of
+the league.
 
 ### Turning it off in a hurry
 

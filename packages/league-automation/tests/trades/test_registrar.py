@@ -378,14 +378,18 @@ def test_unclear_sends_clarification_and_logs_no_trade() -> None:
     assert runs.finished[0][1] == "succeeded"
 
 
-def test_not_a_trade_stays_silent() -> None:
+def test_a_joke_is_answered_with_the_kitten_line() -> None:
+    """Ben (2026-09-10): "if a joke is detected say something funny", signed
+    with the Daddy signature. The delivery service signs; the registrar sends
+    his line and logs nothing."""
     delivery, trades = FakeDelivery(), FakeTrades()
     joke = good_extraction().model_copy(update={"kind": "not_a_trade", "parties": [], "assets": []})
     reg, runs, _ = build(FakeAI(joke), trades=trades, delivery=delivery)
     assert (
         reg.handle(msg("🚨 Trade Alert 🚨 jk nobody is trading Member01 anything")) == "not_a_trade"
     )
-    assert delivery.sent == [] and trades.accepted == [] and runs.finished[0][1] == "succeeded"
+    assert delivery.sent == [("trade-registrar", "Sorry kitten, this isn't a real trade.")]
+    assert trades.accepted == [] and runs.finished[0][1] == "succeeded"
 
 
 def test_ai_unavailable_alerts_and_fails_run_without_sending() -> None:
@@ -411,10 +415,10 @@ def test_trigger_matches_alerts_and_ignores_signed_bot_text() -> None:
     reg, _, _ = build(FakeAI(good_extraction()))
     trigger = trade_trigger(reg, CHAT)
     assert trigger.name == "trade-registrar"
-    assert trigger.matches(msg("🚨 Member01 sends Player Alpha to Member02"))
+    assert trigger.matches(msg("🚨 Trade alert 🚨 Member01 sends Player Alpha to Member02"))
     assert not trigger.matches(
         msg(
-            "🚨 Trade T-2026-001 logged\nMember02 receives: Player Alpha\n— 🤖 Guillotine Bot",
+            "🚨 Trade T-2026-001 logged\nMember02 receives: Player Alpha\n— Daddy 🍼",
             from_me=True,
         )
     )
@@ -482,7 +486,10 @@ def test_trigger_ignores_alerts_from_another_chat() -> None:
     reg, _, _ = build(FakeAI(error=AssertionError("model must not be called")))
     trigger = trade_trigger(reg, CHAT)
     assert not trigger.matches(
-        msg("🚨 Member01 sends Player Alpha to Member02", chat="iMessage;+;chat-elsewhere")
+        msg(
+            "🚨 Trade alert 🚨 Member01 sends Player Alpha to Member02",
+            chat="iMessage;+;chat-elsewhere",
+        )
     )
 
 
@@ -771,10 +778,16 @@ def test_the_trigger_reads_every_chat_it_is_given() -> None:
     reg, _, _ = build(FakeAI(error=AssertionError("model must not be called")))
     trigger = trade_trigger(reg, frozenset({CHAT, "iMessage;+;chat-league"}))
 
-    assert trigger.matches(msg("🚨 Member01 sends Player Alpha to Member02"))
+    assert trigger.matches(msg("🚨 Trade alert 🚨 Member01 sends Player Alpha to Member02"))
     assert trigger.matches(
-        msg("🚨 Member01 sends Player Alpha to Member02", chat="iMessage;+;chat-league")
+        msg(
+            "🚨 Trade alert 🚨 Member01 sends Player Alpha to Member02",
+            chat="iMessage;+;chat-league",
+        )
     )
     assert not trigger.matches(
-        msg("🚨 Member01 sends Player Alpha to Member02", chat="iMessage;+;chat-elsewhere")
+        msg(
+            "🚨 Trade alert 🚨 Member01 sends Player Alpha to Member02",
+            chat="iMessage;+;chat-elsewhere",
+        )
     )

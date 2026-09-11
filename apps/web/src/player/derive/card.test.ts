@@ -47,6 +47,7 @@ const team = (over: Partial<BoardTeam> & { teamId: number }): BoardTeam => ({
   eliminationSource: null,
   emptySlots: null,
   isRosterFrozen: false,
+  risk: null,
   roster: [],
   ...over,
 });

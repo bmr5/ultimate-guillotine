@@ -10,6 +10,7 @@ import { REVEAL_CLASS, revealStyle } from "@/motion/reveal";
 import { resolveStarterAvailability } from "../derive/availability";
 import { resolveChipKinds, type ChipKind } from "../derive/chips";
 import { FAAB_LABEL, formatFaab } from "../derive/faab";
+import { resolveRiskDisplay } from "../derive/odds";
 import {
   COVERAGE_GATE_PCT,
   partialCoverageExplanation,
@@ -166,16 +167,21 @@ const EMPTY_SLOTS_DESCRIPTION = "empty starter slots";
 const CHIP_FACE_CLASS =
   "rounded-sm border px-1.5 py-0.5 text-[0.6875rem] font-medium leading-4";
 
-/** `destructive` for something costing points now; `muted` for a footnote on the number. */
-type ChipTone = "destructive" | "muted";
+/**
+ * `destructive` for something costing points now, or odds past the Daily's red line; `primary`
+ * — the site's amber — for odds past its amber line; `muted` for a footnote on the number.
+ */
+type ChipTone = "destructive" | "primary" | "muted";
 
 const CHIP_TEXT_CLASS: Record<ChipTone, string> = {
   destructive: "text-destructive",
+  primary: "text-primary",
   muted: "text-muted-foreground",
 };
 
 const CHIP_BORDER_CLASS: Record<ChipTone, string> = {
   destructive: "border-destructive/40",
+  primary: "border-primary/40",
   muted: "border-border",
 };
 
@@ -245,6 +251,7 @@ const SummaryChip = memo(function SummaryChip({
     return (
       <span
         data-chip={kind}
+        data-tone={tone}
         className={cn(
           "inline-flex shrink-0 items-center whitespace-nowrap",
           CHIP_ROW_HEIGHT_CLASS,
@@ -259,6 +266,7 @@ const SummaryChip = memo(function SummaryChip({
   return (
     <ExplainedBadge
       data-chip={kind}
+      data-tone={tone}
       description={description}
       secondary={computedText}
       className={cn(
@@ -381,8 +389,22 @@ export const TeamCard = memo(function TeamCard({
 
   // What each state would say, if the card is allowed to say it. Building the wording is not
   // deciding to show it: `resolveChipKinds` owns that, in one place, so the mutual exclusions
-  // read as a rule rather than as four conditions that happen to agree.
+  // read as a rule rather than as five conditions that happen to agree.
   const chipCopy: Partial<Record<ChipKind, SummaryChipProps>> = {};
+  // The Daily's odds. Ben: "want to add your monte carlo simulation %s to the actual website?
+  // just write the last time it was run so people know" — the second line of the tooltip is
+  // that time, in the viewer's own locale and timezone like every other time on the board.
+  const riskDisplay = resolveRiskDisplay(team.risk);
+  if (riskDisplay !== null && team.risk !== null) {
+    chipCopy.odds = {
+      kind: "odds",
+      tone: riskDisplay.tone,
+      text: riskDisplay.text,
+      label: riskDisplay.label,
+      description: riskDisplay.description,
+      computedText: formatComputedTitle(Date.parse(team.risk.snapshotAt)),
+    };
+  }
   if (availability.outChipText !== null && availability.outChipTitle !== null) {
     chipCopy.out = {
       kind: "out",
@@ -424,13 +446,14 @@ export const TeamCard = memo(function TeamCard({
   };
 
   // The ruling after fix round 2: the chip set is mutually limited, so a card carries at most
-  // two short chips. They no longer have to fit beside the name — they have their own line — but
-  // the limit is still what keeps that line to one row of `flex-nowrap`.
+  // three short chips. They no longer have to fit beside the name — they have their own line —
+  // but the limit is still what keeps that line to one row of `flex-nowrap`.
   const chips = resolveChipKinds({
     isEliminated: team.isEliminated,
     hasProjection: projection.kind === "value",
     outCount: availability.outCount,
     isPartial,
+    hasOdds: riskDisplay !== null,
   })
     .map((kind) => chipCopy[kind])
     .filter((chip): chip is SummaryChipProps => chip !== undefined);
@@ -611,8 +634,8 @@ export const TeamCard = memo(function TeamCard({
               It covers nothing, so it needs no `pointer-events-none`: an empty line has no
               children and is inert by having nothing in it, and a chip stays clickable without
               taking its own events back. `flex-nowrap` with `overflow-hidden` keeps it to one
-              line whatever it holds; it holds at most two chips, which is a property of the chip
-              set rather than of this line — see `derive/chips.ts`.
+              line whatever it holds; it holds at most three chips, which is a property of the
+              chip set rather than of this line — see `derive/chips.ts`.
             */}
             <div
               data-chip-row

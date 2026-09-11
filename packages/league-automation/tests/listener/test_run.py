@@ -13,14 +13,17 @@ connection could otherwise discard another thread's uncommitted work between its
 import os
 from datetime import UTC, datetime
 from typing import Self
+from unittest.mock import Mock
 
 import psycopg
 import pytest
 
+from ultimate_guillotine.agent.trigger import RECEIPT
 from ultimate_guillotine.config import Settings
 from ultimate_guillotine.data.repositories import DeliveryTarget
 from ultimate_guillotine.listener import run as run_module
 from ultimate_guillotine.messages.bluebubbles import InboundMessage
+from ultimate_guillotine.video.trigger import ACKNOWLEDGEMENT
 
 #: The self-test chat every test in this module configures.
 TEST_CHAT = "iMessage;+;chat-test"
@@ -274,9 +277,14 @@ class TargetCursor(EmptyCursor):
     listen-only rows -- the chats the listener reads and never posts to.
     """
 
-    def __init__(self, mode: str, chat_guid: str, listen: tuple[str, ...] = ()) -> None:
-        self._mode = mode
-        self._chat_guid = chat_guid
+    def __init__(
+        self,
+        mode: str,
+        chat_guid: str,
+        listen: tuple[str, ...] = (),
+        extra: dict[str, str] | None = None,
+    ) -> None:
+        self._targets = {mode: chat_guid, **(extra or {})}
         self._listen = listen
         self._row: tuple | None = None
         self._rows: list[tuple] = []
@@ -284,11 +292,8 @@ class TargetCursor(EmptyCursor):
     def execute(self, sql, params=None) -> None:
         wanted = params[0] if params else None
         self._rows = [(guid,) for guid in self._listen] if "role = 'listen'" in sql else []
-        self._row = (
-            (1, self._mode, self._chat_guid, "fingerprint", "label")
-            if "delivery_targets" in sql and wanted == self._mode
-            else None
-        )
+        chat = self._targets.get(wanted) if "delivery_targets" in sql else None
+        self._row = (1, wanted, chat, "fingerprint", "label") if chat else None
 
     def fetchone(self):
         return self._row
@@ -298,20 +303,23 @@ class TargetCursor(EmptyCursor):
 
 
 class ConfiguredConnection(EmptyConnection):
-    """A connection with one registered delivery target and any listen-only chats."""
+    """A connection with one registered delivery target (``extra`` adds others by
+    mode) and any listen-only chats."""
 
     def __init__(
         self,
         mode: str = "test",
         chat_guid: str = TEST_CHAT,
         listen: tuple[str, ...] = (),
+        extra: dict[str, str] | None = None,
     ) -> None:
         self._mode = mode
         self._chat_guid = chat_guid
         self._listen = listen
+        self._extra = extra
 
     def cursor(self) -> TargetCursor:
-        return TargetCursor(self._mode, self._chat_guid, self._listen)
+        return TargetCursor(self._mode, self._chat_guid, self._listen, self._extra)
 
 
 class RecordingNotifier:
@@ -344,6 +352,12 @@ def _trigger_named(processor, name: str):
     return next((t for t in processor._registry._triggers if t.name == name), None)
 
 
+def _triggers_named(processor, name: str) -> list:
+    """Every registered trigger by that name; production registers the registrar
+    twice, once per room."""
+    return [t for t in processor._registry._triggers if t.name == name]
+
+
 def _target(mode: str = "test", chat_guid: str = TEST_CHAT) -> DeliveryTarget:
     return DeliveryTarget(1, mode, chat_guid, "fingerprint", "label")
 
@@ -360,6 +374,80 @@ class FakeWorker:
 
     def submit(self, job) -> None:  # pragma: no cover - the trigger is tested elsewhere
         pass
+
+
+@pytest.mark.parametrize("chat_guid", [TEST_CHAT, LEAGUE_CHAT])
+@pytest.mark.parametrize(
+    ("text", "thread", "owner"),
+    [
+        ("@daddy create trade video T-2026-003", None, "trade-video"),
+        ("@daddy create trade video T-2026-003", "agent-receipt", "trade-video"),
+        ("@daddy who won the trade?", None, "league-agent"),
+        ("What about my roster?", "agent-receipt", "league-agent"),
+    ],
+)
+def test_production_dispatch_gives_explicit_video_requests_one_owner(
+    hermes_installed, monkeypatch, chat_guid, text, thread, owner,
+) -> None:
+    """Exercise the combined registry and real handlers with fake persistence."""
+    runs = Mock()
+    runs.reserve.return_value = 42
+    runs.is_agent_run.return_value = True
+    outbound = Mock()
+    outbound.run_id_for_guid.return_value = 7
+    trades = Mock()
+    trades.find_by_source_guid.return_value = None
+    trades.find_by_code.return_value = {
+        "trade_id": 5, "trade_code": "T-2026-003", "status": "accepted",
+    }
+    jobs = Mock()
+    jobs.enqueue.return_value = (1, True)
+    receipts = Mock()
+    receipts.record.side_effect = [True, False]
+    contacts = Mock()
+    contacts.member_for_handle_hash.return_value = None
+    for name, repo in {
+        "RunRepository": runs,
+        "OutboundRepository": outbound,
+        "TradeRepository": trades,
+        "VideoJobRepository": jobs,
+        "ReceiptRepository": receipts,
+        "SourceMessageRepository": Mock(),
+        "MemberContactRepository": contacts,
+    }.items():
+        monkeypatch.setattr(run_module, name, Mock(return_value=repo))
+    worker, delivery = Mock(), Mock()
+    notifier = RecordingNotifier()
+    processor, _ = run_module.build_processor(
+        _settings(
+            delivery_mode="production",
+            production_chat_guid=LEAGUE_CHAT,
+            production_participant_fingerprint="fingerprint",
+        ),
+        ConfiguredConnection(extra={"production": LEAGUE_CHAT}),
+        None, delivery, notifier, agent_worker_factory=lambda _: worker,
+    )
+    message = InboundMessage(
+        guid="request-1", chat_guid=chat_guid, sender_address="+15555550100",
+        text=text, is_from_me=False, is_group=True, sent_at=datetime.now(UTC),
+        thread_originator_guid=thread,
+    )
+    assert [t.name for t in processor._registry.match(message)] == [owner]
+    assert processor.process(message, "event-1") == f"handled:{owner}"
+    assert processor.process(message, "event-1") == "duplicate"
+    assert notifier.ops_sent == []
+    if owner == "trade-video":
+        jobs.enqueue.assert_called_once_with(5, "T-2026-003", message.guid, chat_guid)
+        delivery.deliver.assert_called_once_with(
+            None, owner, ACKNOWLEDGEMENT, reply_to=chat_guid, reply_to_message=message,
+        )
+        runs.reserve.assert_not_called()
+        worker.submit.assert_not_called()
+    else:
+        jobs.enqueue.assert_not_called()
+        delivery.deliver.assert_called_once_with(42, owner, RECEIPT, reply_to=chat_guid)
+        worker.submit.assert_called_once()
+        assert worker.submit.call_args.args[0].message == message
 
 
 def test_build_processor_registers_the_registrar_and_the_agent_with_a_chat_and_the_cli(
@@ -407,7 +495,7 @@ def _alert(chat_guid: str) -> InboundMessage:
         guid="g1",
         chat_guid=chat_guid,
         sender_address="+15555550100",
-        text="🚨 Member01 sends Player Alpha to Member02",
+        text="🚨 Trade alert 🚨 Member01 sends Player Alpha to Member02",
         is_from_me=False,
         is_group=True,
         sent_at=datetime.now(UTC),
@@ -455,6 +543,36 @@ def test_a_listen_only_chat_is_heard_but_never_delivered_to(hermes_installed: No
     assert trigger.matches(_alert(TEST_CHAT))
     assert not trigger.matches(_alert("iMessage;+;chat-elsewhere"))
     # The webhook has to be accepted at all before any trigger sees it.
+    assert allowed == {TEST_CHAT, LEAGUE_CHAT}
+
+
+def test_production_keeps_the_self_test_chat_as_a_rehearsal_room(hermes_installed: None) -> None:
+    """With the league chat live, an alert posted in the self-test chat is still
+    heard and logged -- by a second registrar that writes TEST- codes and answers
+    there -- and never taken by the league's registrar. Ben (2026-09-10): log a
+    trade in the test chat, then ask for its video."""
+    processor, allowed = run_module.build_processor(
+        _settings(
+            delivery_mode="production",
+            production_chat_guid=LEAGUE_CHAT,
+            production_participant_fingerprint="fingerprint",
+        ),
+        ConfiguredConnection(
+            mode="production",
+            chat_guid=LEAGUE_CHAT,
+            listen=(LEAGUE_CHAT,),
+            extra={"test": TEST_CHAT},
+        ),
+        None,
+        None,
+        RecordingNotifier(),
+        agent_worker_factory=lambda chat_guid: FakeWorker(),
+    )
+
+    league, rehearsal = _triggers_named(processor, "trade-registrar")
+
+    assert league.matches(_alert(LEAGUE_CHAT)) and not league.matches(_alert(TEST_CHAT))
+    assert rehearsal.matches(_alert(TEST_CHAT)) and not rehearsal.matches(_alert(LEAGUE_CHAT))
     assert allowed == {TEST_CHAT, LEAGUE_CHAT}
 
 

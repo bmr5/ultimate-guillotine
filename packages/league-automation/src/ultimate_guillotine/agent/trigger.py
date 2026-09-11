@@ -11,6 +11,7 @@ is called on this thread.
 import hashlib
 import logging
 import re
+from collections.abc import Callable
 
 from ultimate_guillotine.agent.records import Session
 from ultimate_guillotine.agent.worker import AGENT, Job
@@ -75,9 +76,14 @@ class FollowUpResolver:
 def league_agent_trigger(
     *, worker, contacts, resolver: FollowUpResolver, runs, delivery, chat_guid: str,
     commissioner_username: str | None = None, members=lambda: (),
+    video_matches: Callable[[InboundMessage], bool] | None = None,
 ) -> Trigger:
     def matches(msg: InboundMessage) -> bool:
         if msg.chat_guid != chat_guid or is_signed(msg.text):
+            return False
+        # Explicit video requests belong to the registered video workflow, even
+        # when they reply to an Agent receipt.
+        if video_matches is not None and video_matches(msg):
             return False
         return has_bot_tag(msg.text) or resolver.parent_run_id(
             msg.thread_originator_guid, msg.chat_guid

@@ -182,7 +182,7 @@ def test_compose_also_yields_the_short_text_and_the_artifact() -> None:
     composed = _agent(ai=FakeAI()).compose(_league(), NOW, simulations=50)
     assert composed.short.startswith("🗡️ GUILLOTINE DAILY · Week 1 · Sunday")
     assert "🔥" not in composed.short
-    assert "Full board attached" in composed.short
+    assert "attached" not in composed.short
     assert "📊 THE BOARD" not in composed.short
     assert composed.html.startswith("<!doctype html>")
     assert "Knives out" in composed.html and "The board" in composed.html
@@ -240,7 +240,7 @@ def test_a_test_mode_run_stores_previews_delivers_and_records() -> None:
     assert repo.sent == [1]
     assert repo.versions == [(7, f"{MODEL_VERSION}:{PROMPT_VERSION}:fake-model")]
     # The short text goes first, then the file, under the same run.
-    assert outcome.text.startswith("🗡️ GUILLOTINE DAILY") and "Full board attached" in outcome.text
+    assert outcome.text.startswith("🗡️ GUILLOTINE DAILY") and "attached" not in outcome.text
     assert delivery.calls == [(7, AGENT, outcome.text)]
     assert len(delivery.attachments) == 1
     run_id, agent, filename, size = delivery.attachments[0]

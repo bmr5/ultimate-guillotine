@@ -28,7 +28,7 @@ def fake_probe(path, ffprobe="ffprobe", run=None):
 @pytest.fixture
 def assets(tmp_path: Path) -> Assets:
     a = Assets(tmp_path)
-    for path in (a.reference_video, a.source_video, a.music):
+    for path in (a.reference_video, a.source_video, a.generation_reference, a.music):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(b"")
     return a
@@ -72,7 +72,7 @@ def test_generated_base_asks_higgsfield_with_the_reference_and_clamps_the_length
         now=now,
     )
     req = seen["req"]
-    assert req.reference_video == assets.reference_video and req.mode == "omni_reference"
+    assert req.reference_video == assets.generation_reference and req.mode == "omni_reference"
     assert req.duration == 8 and "no on-screen text" in req.prompt
     assert job.footage == assets.generated / "t-20260910-023000.mp4"
     assert job.footage_start == 0.0 and job.duration == 8.0

@@ -19,7 +19,6 @@ from ultimate_guillotine.cli.deps import build_delivery, build_deps, run_schedul
 from ultimate_guillotine.config import load_settings
 from ultimate_guillotine.core.hermes_cli import find_hermes_binary
 from ultimate_guillotine.data.repositories import MemberAliasRepository, RunRepository
-from ultimate_guillotine.trades.format import party_labels
 from ultimate_guillotine.trades.models import TradeProposal
 from ultimate_guillotine.trades.repository import TradeRepository
 from ultimate_guillotine.video import higgsfield as hf
@@ -30,7 +29,7 @@ from ultimate_guillotine.video.assets import (
     load_assets,
 )
 from ultimate_guillotine.video.card import CANVAS, Layout, render_card
-from ultimate_guillotine.video.copy import TradeCopy, default_caption, trade_copy
+from ultimate_guillotine.video.copy import TradeCopy, default_caption, on_air_labels, trade_copy
 from ultimate_guillotine.video.jobs import VideoJobRepository
 from ultimate_guillotine.video.pipeline import RenderError, RenderRequest, prepare, render
 from ultimate_guillotine.video.prompt import footage_prompt, voiced_prompt
@@ -163,7 +162,7 @@ def resolve_copy(args: argparse.Namespace) -> TradeCopy:
         trade = TradeRepository(deps.conn).find_by_code(args.trade)
         if trade is None:
             raise SystemExit(f"no trade {args.trade} on file")
-        labels = party_labels(MemberAliasRepository(deps.conn).all_members())
+        labels = on_air_labels(MemberAliasRepository(deps.conn).all_members())
         return trade_copy(TradeProposal(**trade["terms"]), labels, caption=args.caption)
     if not (args.headline and args.subline):
         args.parser.error("give --trade or both --headline and --subline")
@@ -182,7 +181,7 @@ def generate_request(copy: TradeCopy, args: argparse.Namespace) -> hf.GenerateRe
         prompt = footage_prompt(copy, args.duration)
     return hf.GenerateRequest(
         prompt=prompt,
-        reference_video=load_assets().reference_video,
+        reference_video=load_assets().generation_reference,
         duration=args.duration,
         resolution=args.resolution,
         aspect_ratio=args.aspect,
@@ -212,7 +211,12 @@ def cmd_assets(args: argparse.Namespace) -> int:
     assets = load_assets()
     missing = assets.missing()
     ok = True
-    for path in (assets.reference_video, assets.source_video, assets.music):
+    for path in (
+        assets.reference_video,
+        assets.source_video,
+        assets.generation_reference,
+        assets.music,
+    ):
         state = "MISSING" if path in missing else "ok"
         print(f"{state:8}{path}")
     for name in TOOLS:

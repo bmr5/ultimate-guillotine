@@ -29,6 +29,13 @@ export type EliminationSource = "adjudicator" | "sleeper_inferred" | "manual";
 export type TransactionKind = "trade" | "waiver" | "free_agent" | "commissioner";
 export type MoveAction = "add" | "drop";
 
+/**
+ * The bad thing the Daily's simulation counts for a team, by the rules phase: the bottom two
+ * enter the gulag, the gulag's loser is cut, the week's lowest score is cut, and the final's
+ * lower score is runner-up. Mirrors `AdverseEvent` in the Daily's `summary/models.py`.
+ */
+export type AdverseEvent = "gulag_entry" | "gulag_loss" | "cut" | "title_loss";
+
 /** One entry of `public.transactions.faab_moves`, as the sync writes it. */
 export interface FaabMoveEntry {
   amount: number;
@@ -142,6 +149,7 @@ export interface Database {
        * The elimination snapshot from Spec issue 10. `holdings` is the frozen roster; Sleeper
        * roster churn after elimination never touches it.
        */
+      effective_final_rosters: Database["public"]["Tables"]["final_rosters"];
       final_rosters: ReadOnlyTable<{
         season_id: number;
         team_id: number;
@@ -343,6 +351,24 @@ export interface Database {
         team_id: number;
         action: MoveAction;
       }>;
+      /**
+       * The Guillotine Daily's Monte Carlo odds, one row per run of `ug summary eod`. The board
+       * reads the newest row of the week and nothing older. `results` is jsonb the Daily's
+       * `results_payload` writes — one entry per live team — and is narrowed on the way in by
+       * `derive/odds`, like every other stored payload the board reads.
+       */
+      survival_snapshots: ReadOnlyTable<{
+        id: number;
+        season_id: number;
+        week: number;
+        game_window: string;
+        snapshot_at: string;
+        projection_source: string | null;
+        model_version: string;
+        simulations: number;
+        input_hash: string;
+        results: Json;
+      }>;
     };
     Views: { [_ in never]: never };
     Functions: { [_ in never]: never };
@@ -386,6 +412,29 @@ export interface RosterPlayer {
    * read the same answer.
    */
   draftedHere: boolean;
+}
+
+/**
+ * One team's odds from the Guillotine Daily's newest Monte Carlo run of the week. Defined here
+ * rather than in `derive/odds` because `BoardTeam` carries one, as with `DraftPickInfo`.
+ */
+export interface TeamRisk {
+  /** The chance, 0 to 1, that `adverseEvent` happens to this team this week. */
+  probability: number;
+  /**
+   * What the probability is the chance of, or null when the snapshot named an event this build
+   * has no word for — the figure still shows, under a plain `Risk`, rather than vanishing.
+   */
+  adverseEvent: AdverseEvent | null;
+  /** True when a pending starter had no projection and was simulated at his position's median. */
+  isEstimated: boolean;
+  /**
+   * True when no live team had a starter left to play when the odds were computed: every
+   * probability is then 0 or 1 and reads as a result — `locked`, `safe` — not a forecast.
+   */
+  settled: boolean;
+  /** `survival_snapshots.snapshot_at`: when the Daily computed these odds. */
+  snapshotAt: string;
 }
 
 export interface BoardTeam {
@@ -432,6 +481,11 @@ export interface BoardTeam {
   emptySlots: number | null;
   /** True when `roster` came from the frozen `final_rosters` snapshot, not live holdings. */
   isRosterFrozen: boolean;
+  /**
+   * The Daily's odds for the week, or null when the week has no snapshot yet or the Daily did
+   * not rate this team — it rates the live teams only, so an eliminated team never has any.
+   */
+  risk: TeamRisk | null;
   roster: RosterPlayer[];
 }
 

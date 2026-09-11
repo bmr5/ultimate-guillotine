@@ -25,8 +25,6 @@ from ultimate_guillotine.summary.render import (
     build_sections,
     move_suffix,
     moves_heading,
-    plural,
-    window_stamp,
 )
 
 #: The League Agent spec's cap on a rendered artifact.
@@ -249,10 +247,9 @@ def render_html(packet: EodPacket, color: EodColor | None, now: datetime) -> str
 def short_text(packet: EodPacket, color: EodColor | None, now: datetime) -> str:
     """The chat text that travels ahead of the file: header, gulag, block, sweating, footer.
 
-    Ben (2026-09-10): no commentary in the iMessage. The colour still leads the
-    file, so ``color`` is accepted and deliberately unused here. The board, the
-    roster watch and the moves live in the attachment; the text says so, so a
-    member who never opens the file knows what it holds.
+    Ben (2026-09-10): no commentary in the iMessage, and no line about the
+    attachment either -- the file speaks for itself. The colour still leads the
+    file, so ``color`` is accepted and deliberately unused here.
     """
     del color
     sections = build_sections(packet, now)
@@ -262,16 +259,5 @@ def short_text(packet: EodPacket, color: EodColor | None, now: datetime) -> str:
     parts.append(sections.block)
     if sections.sweating:
         parts.append(sections.sweating)
-    snap = packet.snapshot
-    teams = len(snap.live_teams())
-    window = (
-        f"moves since {window_stamp(snap.moves_since)}"
-        if snap.moves_since is not None
-        else "recent moves"
-    )
-    parts.append(
-        f"Full board attached: all {teams} {plural(teams, 'team', 'teams')}, "
-        f"roster watch and {window}."
-    )
     parts.append(sections.footer)
     return "\n\n".join(parts)

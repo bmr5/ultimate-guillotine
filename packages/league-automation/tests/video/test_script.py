@@ -139,3 +139,33 @@ def test_generate_script_with_no_length_asks_for_the_shortest_read_and_sizes_the
     assert "as short as the facts allow, up to 15 seconds" in client.calls[0]
     assert "Word limit: 39 words" in client.calls[0]
     assert script.words == 16 and script_seconds(script) == seconds_for(script) == 8
+
+
+def test_the_brief_lists_the_facts_in_dollars() -> None:
+    copy = TradeCopy(
+        caption=COPY.caption,
+        headline=COPY.headline,
+        subline=COPY.subline,
+        facts=(
+            (
+                "Announced in the league chat as: 🚨 Trade alert 🚨 Derek sends Josh Jacobs to "
+                "Charlie for 450 FAAB"
+            ),
+            "Derek gives Charlie: Josh Jacobs",
+            "Charlie gives Derek: 450 FAAB",
+        ),
+    )
+    client = ShortAnswer()
+    generate_script(client, copy)
+    brief = client.calls[0]
+    assert (
+        "The trade, fact by fact (state only these):\n- Announced in the league chat as:" in brief
+    )
+    assert "- Charlie gives Derek: 450 dollars\n" in brief
+    assert "FAAB" not in brief
+
+
+def test_the_writer_knows_the_gulag_and_the_commish() -> None:
+    assert "the announcement wins" in SYSTEM
+    assert "gulag" in SYSTEM and "whoever pays stays out" in SYSTEM
+    assert "'the Commish' on air" in SYSTEM

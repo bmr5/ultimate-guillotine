@@ -10,6 +10,7 @@ agent it records the run under, and what it prints.
 """
 
 import argparse
+import contextlib
 import json
 import os
 import subprocess
@@ -102,7 +103,7 @@ def test_a_fixture_run_prints_the_chat_text_writes_the_artifact_and_touches_noth
     assert "model:" not in result.stdout
     assert "⚔️ THE GULAG · loser is out" in result.stdout
     assert "⚰️ ON THE BLOCK · bottom 2 enter the Week 7 gulag" in result.stdout
-    assert "Full board attached" in result.stdout
+    assert "attached" not in result.stdout
     assert "📊 THE BOARD" not in result.stdout
     assert "Monte Carlo projections as of" in result.stdout
     artifact = tmp_path / "guillotine-daily-week-6-2026-10-11.html"
@@ -223,7 +224,9 @@ def _wire(
     hermes: bool = False,
 ):
     FakeAgent.instances = []
-    conn = SimpleNamespace(commit=lambda: None, rollback=lambda: None)
+    conn = SimpleNamespace(
+        commit=lambda: None, rollback=lambda: None, transaction=contextlib.nullcontext
+    )
     deps = SimpleNamespace(
         conn=conn,
         notifier=SimpleNamespace(ops=lambda text: True),
@@ -245,6 +248,10 @@ def _wire(
     )
     monkeypatch.setattr(summary_cli, "find_hermes_binary", lambda: "/x/hermes" if hermes else None)
     monkeypatch.setattr(summary_cli, "SummaryRepository", lambda conn: "repo")
+    # The pre-read refresh is a no-op unless a test wires the recording fakes in.
+    monkeypatch.setattr(summary_cli, "sync_season", lambda *args, **kwargs: None)
+    monkeypatch.setattr(summary_cli, "sync_transactions", lambda *args, **kwargs: None)
+    monkeypatch.setattr(summary_cli, "season_id_for", lambda conn, year: 4)
 
     def fake_load(conn, client, now):
         if isinstance(snapshot, Exception):
@@ -365,3 +372,80 @@ def test_a_dry_run_against_the_league_composes_and_records_no_run(
     assert out.startswith("🗡️ GUILLOTINE DAILY")
     # A real-league dry run is stamped with tonight's date, whatever the fixture's.
     assert list(tmp_path.glob("guillotine-daily-week-6-*.html"))
+
+
+# -- the refresh before the read ------------------------------------------
+
+
+def _refresh_wire(monkeypatch: pytest.MonkeyPatch, *, failure: Exception | None = None):
+    """The scheduled wiring plus the two Sleeper syncs, recorded in call order."""
+    deps = _wire(monkeypatch, hermes=True)
+    calls: list[str] = []
+    notes: list[str] = []
+    deps.notifier.ops = lambda text: notes.append(text) or True
+
+    def fake_sync_season(client, conn, year, league_id, week=None):
+        calls.append(f"sync_season:{year}:{league_id}:{week}")
+        if failure is not None:
+            raise failure
+        return SimpleNamespace(members=18, teams=18, holdings=162, states=18, frozen=0)
+
+    def fake_sync_transactions(client, conn, league_id, season_id, weeks, now):
+        calls.append(f"sync_transactions:{league_id}:{season_id}:{list(weeks)}")
+        return SimpleNamespace(
+            transactions=1, moves=2, weeks=list(weeks), unknown_kinds={}, unmatched_rosters=0
+        )
+
+    monkeypatch.setattr(summary_cli, "sync_season", fake_sync_season)
+    monkeypatch.setattr(summary_cli, "sync_transactions", fake_sync_transactions)
+    monkeypatch.setattr(summary_cli, "season_id_for", lambda conn, year: 4)
+    original_load = summary_cli.load_snapshot
+
+    def loading(conn, client, now):
+        calls.append("load_snapshot")
+        return original_load(conn, client, now)
+
+    monkeypatch.setattr(summary_cli, "load_snapshot", loading)
+    return calls, notes
+
+
+def test_the_scheduled_run_refreshes_rosters_and_transactions_before_it_reads(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Waivers clear at 10:08 and the post fires at 10:12; the roster and transaction
+    syncs run every ten minutes on their own phase, so the post pulls both itself
+    rather than trusting whatever the last fire happened to see."""
+    calls, notes = _refresh_wire(monkeypatch)
+    assert summary_cli.cmd_eod(parse("--quiet")) == 0
+    assert calls == [
+        "sync_season:2026:league-1:6",
+        "sync_transactions:league-1:4:[5, 6]",
+        "load_snapshot",
+    ]
+    assert notes == []
+
+
+def test_no_refresh_skips_the_syncs(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls, _notes = _refresh_wire(monkeypatch)
+    summary_cli.cmd_eod(parse("--quiet", "--no-refresh"))
+    assert calls == ["load_snapshot"]
+
+
+def test_a_failed_refresh_is_one_ops_note_and_the_post_still_goes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Sleeper being down for the refresh is not a reason to skip the post: the
+    data layer's last good rows are on file and the footer stamps their age."""
+    calls, notes = _refresh_wire(monkeypatch, failure=RuntimeError("sleeper down"))
+    assert summary_cli.cmd_eod(parse("--quiet")) == 0
+    assert calls[-1] == "load_snapshot"
+    assert notes == ["EOD summary refresh failed, posting from what is on file: RuntimeError"]
+    assert FakeAgent.instances[0].runs
+
+
+def test_a_dry_run_never_refreshes(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    calls, _notes = _refresh_wire(monkeypatch)
+    summary_cli.cmd_eod(
+        parse("--dry-run", "--no-ai", "--simulations", "20", "--out", str(tmp_path))
+    )
+    assert calls == ["load_snapshot"]

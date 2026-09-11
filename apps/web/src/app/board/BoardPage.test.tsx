@@ -67,6 +67,7 @@ const SEARCH_LABEL = "Search owner, team, or player";
 
 const team = (over: Partial<BoardTeam> & { teamId: number }): BoardTeam => ({
   isRosterFrozen: false,
+  risk: null,
   teamName: `Team ${over.teamId}`,
   ownerName: `owner${over.teamId}`,
   sleeperRosterId: over.teamId,
@@ -121,6 +122,7 @@ const result = (over: Partial<BoardDataResult> = {}): BoardDataResult => ({
   errors: [],
   projectionsUpdatedAt: Date.now(),
   scoresUpdatedAt: null,
+  oddsUpdatedAt: null,
   refetchAll: vi.fn(),
   ...over,
 });
@@ -168,6 +170,132 @@ describe("BoardPage", () => {
     expect(
       screen.getByRole("status", { name: BOARD_LOADING_LABEL }),
     ).toBeInTheDocument();
+  });
+
+  it("keeps cut watch on the full pool when the board is searched", async () => {
+    boardData.current = result({
+      week: 1,
+      teams: [
+        team({ teamId: 1, projectedPoints: 80 }),
+        team({ teamId: 2, projectedPoints: 90 }),
+        team({ teamId: 3, projectedPoints: 100 }),
+      ],
+    });
+    renderPage();
+    const watch = within(screen.getByRole("region", { name: "Cut watch" }));
+    expect(watch.getByText("owner1")).toBeInTheDocument();
+    expect(watch.getByText("owner2")).toBeInTheDocument();
+    expect(watch.getByText("VS")).toBeInTheDocument();
+    expect(watch.getAllByText("Actual")).toHaveLength(2);
+    expect(watch.getAllByText("Projected")).toHaveLength(2);
+    fireEvent.change(screen.getByRole("searchbox", { name: SEARCH_LABEL }), {
+      target: { value: "owner3" },
+    });
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: /owner1/ }),
+      ).not.toBeInTheDocument(),
+    );
+    expect(watch.getByText("owner1")).toBeInTheDocument();
+    expect(watch.getByText("owner2")).toBeInTheDocument();
+  });
+
+  it("expands the matchup to show the safety gap and lineups", () => {
+    boardData.current = result({
+      week: 1,
+      teams: [
+        team({ teamId: 1, projectedPoints: 80 }),
+        team({ teamId: 2, projectedPoints: 90 }),
+        team({ teamId: 3, projectedPoints: 100 }),
+      ],
+    });
+    renderPage();
+    const watch = within(screen.getByRole("region", { name: "Cut watch" }));
+    const toggle = watch.getByRole("button", { name: "Show matchup details" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(watch.queryByText(/pts to the safety line/)).not.toBeInTheDocument();
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(
+      watch.getByText("20.00 pts to the safety line", { exact: false }),
+    ).toBeVisible();
+    expect(
+      watch.getByRole("heading", { name: "owner1 · Starters" }),
+    ).toBeVisible();
+    expect(
+      watch.getByRole("heading", { name: "owner2 · Starters" }),
+    ).toBeVisible();
+    fireEvent.click(toggle);
+    expect(
+      watch.queryByRole("heading", { name: "owner1 · Starters" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps a broad tie to two names and puts the other contenders in details", () => {
+    boardData.current = result({
+      week: 1,
+      teams: Array.from({ length: 6 }, (_, index) =>
+        team({
+          teamId: index + 1,
+          projectedPoints: 80 + index,
+          score: index === 5 ? 10 : 0,
+        }),
+      ),
+    });
+    renderPage();
+    const watch = within(screen.getByRole("region", { name: "Cut watch" }));
+    expect(watch.getByText("owner1")).toBeVisible();
+    expect(watch.getByText("owner2")).toBeVisible();
+    expect(watch.queryByText(/owner3/)).not.toBeInTheDocument();
+    expect(watch.getByText(/Cutoff tied\. Projections/)).toBeVisible();
+    fireEvent.click(
+      watch.getByRole("button", { name: "Show matchup details" }),
+    );
+    expect(
+      watch.getByText(
+        /Teams at or below the cutoff: owner1, owner2, owner3, owner4, owner5/,
+      ),
+    ).toBeVisible();
+  });
+
+  it("updates cut watch from projected to current bottom two when scores arrive", () => {
+    const teams = [
+      team({ teamId: 1, projectedPoints: 80 }),
+      team({ teamId: 2, projectedPoints: 90 }),
+      team({ teamId: 3, projectedPoints: 100 }),
+    ];
+    boardData.current = result({ week: 1, teams });
+    const { rerenderPage } = renderPage();
+    boardData.current = result({
+      week: 1,
+      teams: teams.map((team, index) => ({
+        ...team,
+        score: [40, 10, 20][index],
+      })),
+    });
+    rerenderPage();
+    const watch = within(screen.getByRole("region", { name: "Cut watch" }));
+    expect(watch.getByText(/Current bottom two/)).toBeInTheDocument();
+    expect(watch.queryByText("owner1")).not.toBeInTheDocument();
+    expect(watch.getByText("owner2")).toBeInTheDocument();
+    expect(watch.getByText("owner3")).toBeInTheDocument();
+  });
+
+  it("does not advertise a new gulag after Week 11 or outside the current season", () => {
+    boardData.current = result({ week: 12, teams: [team({ teamId: 1 })] });
+    const { rerenderPage } = renderPage();
+    expect(
+      screen.queryByRole("region", { name: "Cut watch" }),
+    ).not.toBeInTheDocument();
+    boardData.current = result({
+      week: 1,
+      isOffRegularSeason: true,
+      teams: [team({ teamId: 1 })],
+    });
+    rerenderPage();
+    expect(
+      screen.queryByRole("region", { name: "Cut watch" }),
+    ).not.toBeInTheDocument();
   });
 
   it("shows the waiting card when there are no rows", () => {
@@ -336,6 +464,39 @@ describe("BoardPage", () => {
       expect(stamp(container)).toHaveAttribute("data-stamp", "projections");
       expect(screen.getByText(/^Updated /)).toBeInTheDocument();
       expect(container.querySelector("[data-projection-stamp]")).toBeNull();
+    });
+
+    it("says when the Daily computed the odds, under the other stamps", () => {
+      // Ben: "just write the last time it was run so people know". The Daily's own
+      // `snapshot_at`, on its own line, hidden from assistive tech like the stamps above it.
+      boardData.current = result({
+        teams: [team({ teamId: 1 })],
+        oddsUpdatedAt: Date.now(),
+      });
+      const { container } = renderPage();
+      const odds = container.querySelector("[data-odds-stamp]");
+      expect(odds).toHaveTextContent(/^Odds as of /);
+      expect(odds).toHaveAttribute("aria-hidden", "true");
+    });
+
+    it("drops the odds line before the week's first Daily", () => {
+      boardData.current = result({
+        teams: [team({ teamId: 1 })],
+        oddsUpdatedAt: null,
+      });
+      const { container } = renderPage();
+      expect(container.querySelector("[data-odds-stamp]")).toBeNull();
+    });
+
+    it("does not call the board stale over old odds", () => {
+      // The odds are computed twice a day at most; their age says nothing about the scores.
+      boardData.current = result({
+        teams: [team({ teamId: 1 })],
+        scoresUpdatedAt: Date.now(),
+        oddsUpdatedAt: Date.now() - STALE_AFTER_MS - MS_PER_MINUTE,
+      });
+      renderPage();
+      expect(screen.queryByText("Stale data")).not.toBeInTheDocument();
     });
 
     it("measures staleness against the scores once they lead", () => {
@@ -817,24 +978,34 @@ describe("the player card", () => {
   });
 
   it("opens from the URL on load, labelled by the player's name", () => {
-    boardData.current = result({ teams: [team({ teamId: 1, roster: [nacua] })] });
+    boardData.current = result({
+      teams: [team({ teamId: 1, roster: [nacua] })],
+    });
     renderPage("/?player=9493");
-    expect(screen.getByRole("dialog", { name: "Puka Nacua" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("dialog", { name: "Puka Nacua" }),
+    ).toBeInTheDocument();
   });
 
   it("opens when a name is tapped, and writes the player into the URL", () => {
-    boardData.current = result({ teams: [team({ teamId: 1, roster: [nacua] })] });
+    boardData.current = result({
+      teams: [team({ teamId: 1, roster: [nacua] })],
+    });
     renderPage("/?sort=faab");
     fireEvent.click(screen.getByRole("button", { name: /owner1/ }));
     fireEvent.click(screen.getByRole("button", { name: "Puka Nacua" }));
-    expect(screen.getByRole("dialog", { name: "Puka Nacua" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("dialog", { name: "Puka Nacua" }),
+    ).toBeInTheDocument();
     expect(screen.getByTestId("location")).toHaveTextContent(
       "/?sort=faab&player=9493",
     );
   });
 
   it("closes by taking the player out of the URL, keeping the rest", () => {
-    boardData.current = result({ teams: [team({ teamId: 1, roster: [nacua] })] });
+    boardData.current = result({
+      teams: [team({ teamId: 1, roster: [nacua] })],
+    });
     renderPage("/?sort=faab&player=9493");
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -854,7 +1025,9 @@ describe("the player card", () => {
       },
     };
     renderPage("/?player=9493");
-    expect(screen.getByRole("dialog", { name: "Puka Nacua" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("dialog", { name: "Puka Nacua" }),
+    ).toBeInTheDocument();
     expect(screen.getByText("Not rostered this week")).toBeInTheDocument();
   });
 });

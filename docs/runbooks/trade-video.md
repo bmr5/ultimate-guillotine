@@ -113,6 +113,17 @@ uv run --project packages/league-automation python -m ultimate_guillotine.cli.ma
 
 `higgsfield generate list --json` shows recent jobs when the id was not caught.
 
+## Why the reference has no text on it
+
+The first request from the chat came back with Denzo's "pov:" caption and ESPN's banner
+showing through under our overlay: Seedance had been given the Denzo clip as its reference
+and reproduced it, text and all. The generation reference is now
+`data/media/reference/source/espn-schefter-clean-1024.mp4`, 12 s of the ESPN footage
+cropped to the square above the lower third, so there is nothing written in frame to copy.
+The Denzo clip stays as the *style* reference for humans; Seedance never sees it. If text
+ever shows through again, the prompt's "nothing written anywhere in frame" line and this
+crop are the two knobs.
+
 ## What the one generated clip looked like (2026-09-10)
 
 Seedance 2.5 in `omni_reference` mode with the Denzo clip as the reference produced an 8 s
@@ -122,10 +133,26 @@ blazer, bookshelves and helmet, no text, animated speech. It composites cleanly
 from his footage, so whether generated clips are ever posted is Ben's call; the ESPN footage
 path uses the real segment the reference used.
 
+## The whole flow in the self-test chat (production mode)
+
+The league chat is live, and the self-test chat is the rehearsal room: an alert posted there
+is logged by a second registrar under a `TEST-` code and answered there, and a video asked
+for there is delivered there. So the full loop, without the league seeing anything:
+
+1. Post a trade alert in the self-test chat, siren and all:
+   `Trade alert 🚨 Derek sends Rhamondre to Charlie for Michael Wilson and 20 FAAB`
+2. Wait for `🚨 Trade TEST-2026-001 logged, kittens · Derek ↔ Charlie`.
+3. Reply to either message with `@daddy create trade video`.
+4. Read `🎬 On it — the video for TEST-2026-001 usually takes 5 to 10 minutes.`, then the clip.
+
+`TEST-` trades never reach the web app: the public read policies on trades, revisions and
+league events hide them (migration 20260910230000), while `ug trades list` and the video
+worker still see them. Rescind one with `ug trades rescind TEST-2026-001` when it has served.
+
 ## Asking for one from the chat
 
 Reply to a trade alert (or to the bot's "🚨 Trade T-2026-003 logged" line, or say the code)
-with **`@bot create trade video`**. The listener answers within a second:
+with **`@daddy create trade video`**. The listener answers within a second:
 
 > 🎬 On it — the video for T-2026-003 usually takes 5 to 10 minutes.
 
@@ -149,6 +176,58 @@ The worker has to run where the media tools are. On the mini that means, once: `
 ffmpeg`, the Higgsfield CLI logged in (`higgsfield auth login`), `uv sync` for Pillow, a
 `git pull` for `data/media/reference`, and `hermes/guillotine/install.sh` to register the cron
 job. `ug video assets` says whether it is all there.
+
+## Acknowledgments and videos as replies
+
+The acknowledgment (`On it kitten, hold on for 10 minutes`) and the already-running
+response target the video request's message GUID, not the trade alert's GUID. The
+delivery service keeps chat routing separate from the inline reply target.
+
+The completed video also targets the request GUID saved in `private.video_jobs.requested_guid`.
+Before sending it as a reply, the delivery service reads the original message to confirm its
+chat and thread. Missing requests and jobs created without a request GUID send normally.
+Crash reconciliation distinguishes identical attachments in different threads.
+
+BlueBubbles requires its Private API and a connected helper to send an inline reply.
+When either is unavailable, the acknowledgment remains a normal message in the
+requesting chat. A failed capability read also falls back before sending; a timeout
+after a threaded send is attempted does not trigger an extra standalone send.
+
+On September 10, 2026, the connected server reported `private_api: false` and
+`helper_connected: false` on macOS 26.5. The code support is tested locally, but true
+inline replies have not been verified live. Reload the listener after deploying the
+code, and verify a new request in the self-test chat once the helper is available.
+No server security settings were changed as part of this update.
+
+BlueBubbles is free and open source; replies do not require a paid upgrade. Its documented
+helper installation requires disabling library validation and System Integrity Protection,
+including a Recovery Mode reboot, then enabling Private API in BlueBubbles and checking the
+helper connection. The local Apple Silicon Mac currently has SIP enabled. This is a separate
+machine configuration decision, not an application-code change.
+
+There is an [open macOS 26 reply failure report](https://github.com/BlueBubblesApp/bluebubbles-server/issues/814)
+on BlueBubbles 1.9.9, close to this server's configuration. Check compatibility before
+changing security settings; enabling the helper alone is not evidence replies work.
+Both text and attachment replies need a self-test after setup and listener reload.
+
+Reference: [BlueBubbles reply support](https://docs.bluebubbles.app/private-api).
+Setup: [Private API installation](https://docs.bluebubbles.app/private-api/installation).
+
+## Names and facts on air
+
+- The writer gets the trade fact by fact, not just the lower third: the announcement as it
+  was posted, then `X gives Y: …` per asset, the special terms verbatim, the week. The
+  announcement wins any disagreement. This is `TradeCopy.facts` (`video/copy.py`); it exists
+  because the rehearsal trade of 2026-09-10 ("Max agrees to go to gulag for Ben in exchange
+  for $200") came out with the wrong man in the gulag when the read was written from
+  "Ben R gets go to gulag for Ben" alone.
+- An obligation (an `other` asset) shows on the bar in the announcer's words, taken from the
+  special terms: `Max gets $200 · Max agrees to go to gulag for Ben · Week 1`.
+- On-air names: `ON_AIR_NAMES` in `video/copy.py` maps a Sleeper display name to what the
+  video calls the member. Ben (`benray887`) is "the Commish" (his ruling of 2026-09-10).
+  The chat confirmations and the board keep the nickname (`Ben R`). Aliases
+  (`ug members aliases`) are for reading alerts, not for naming people on air; "Commish" is
+  already one of Ben's.
 
 ## Not done yet
 

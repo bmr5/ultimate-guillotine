@@ -153,7 +153,7 @@ def test_the_gulag_pair_are_marked_on_the_board() -> None:
 
 def test_the_short_text_is_the_header_the_gulag_the_block_the_sweating_and_the_footer() -> None:
     """Ben (2026-09-10): no commentary in the iMessage -- the colour stays in the
-    file -- and the sweating teams as their own list."""
+    file -- the sweating teams as their own list, and no line about the attachment."""
     packet = _fixture_packet()
     color = EodColor(headline="Knives out", blurb="Member18 is in trouble.")
     text = short_text(packet, color, FIXTURE_NOW)
@@ -165,7 +165,7 @@ def test_the_short_text_is_the_header_the_gulag_the_block_the_sweating_and_the_f
     assert "⚰️ SWEATING" in text
     assert "📊 THE BOARD" not in text
     assert "🩹" not in text
-    assert "moves since Sat 11:50 PM" in text
+    assert "attached" not in text  # Ben (2026-09-10): no "Full board attached" line
     assert text.rstrip().endswith(" CST")
     assert "sims" not in text and "rulings" not in text
     assert len(text) < 1000

@@ -10,7 +10,6 @@ hiccup in the wait. Every call is injectable so the tests never spend credits.
 """
 
 import json
-import re
 import subprocess
 import time
 from collections.abc import Callable
@@ -26,7 +25,6 @@ POLL_INTERVAL = 15
 #: Consecutive failed polls tolerated before the wait gives up.
 POLL_FAILURES = 5
 FAILED_STATES = frozenset({"failed", "error", "cancelled", "canceled", "rejected"})
-_MP4_URL = re.compile(r"https://[^\s\"']+\.mp4")
 
 
 class HiggsfieldError(RuntimeError):
@@ -106,11 +104,7 @@ def _find(obj, key: str):
 
 def parse_job(stdout: str) -> Job:
     """The job the CLI printed: a document (``get``), or the bare id list that
-    ``create --json`` answers with.
-
-    ``result_url`` is read from the document, or as a fallback any .mp4 URL in
-    the output, the way an older CLI printed it.
-    """
+    ``create --json`` answers with."""
     try:
         # The document quotes the prompt back, control characters and all,
         # which strict JSON refuses; the job id and status are what matter.
@@ -124,14 +118,15 @@ def parse_job(stdout: str) -> Job:
     if isinstance(doc, str):
         # `generate create --json` answers with just the ids: ["<uuid>"].
         return Job(id=doc, status="", result_url=None)
-    job_id = _find(doc, "id")
+    job_id = doc.get("id")
     if not job_id:
         raise HiggsfieldError("higgsfield job document has no id")
-    url = _find(doc, "result_url")
-    if not url:
-        match = _MP4_URL.search(stdout)
-        url = match.group(0) if match else None
-    return Job(id=str(job_id), status=str(_find(doc, "status") or ""), result_url=url)
+    # Only the document's own result counts. The document also lists the job's
+    # *inputs* with their URLs (the uploaded reference video), so scanning it
+    # for any .mp4 link would return the reference as the result while the job
+    # is still running -- which is exactly what happened on 2026-09-10.
+    url = doc.get("result_url") or None
+    return Job(id=str(job_id), status=str(doc.get("status") or ""), result_url=url)
 
 
 def run(cmd: list[str], run=subprocess.run) -> str:

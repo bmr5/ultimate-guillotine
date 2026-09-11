@@ -16,9 +16,9 @@ SUBJECT = (
     "camera: static broadcast framing, chest-up, centred, 9:16 vertical, one continuous shot\n"
 )
 NO_TEXT = (
-    "no on-screen text, no lower third, no captions, no logos, no ticker; "
-    "match the framing, lighting and pacing of the reference video; realistic skin, "
-    "no beauty filter"
+    "no on-screen text, no lower third, no captions, no logos, no ticker, nothing written "
+    "anywhere in frame; match the person, framing, lighting and pacing of the reference "
+    "video; realistic skin, no beauty filter"
 )
 
 

@@ -53,7 +53,7 @@ def test_the_header_names_the_week_the_day_and_the_games() -> None:
     text = render(_packet(snap), None, NOW)
     lines = text.splitlines()
     assert lines[0] == "🗡️ GUILLOTINE DAILY · Week 3 · Sunday"
-    assert lines[1] == "13 of 16 games final · 1 team still has players to go"
+    assert lines[1] == "Hello kittens. 13 of 16 games final · 1 team still has players to go"
 
 
 def test_the_outlook_header_says_nothing_has_kicked_off() -> None:
@@ -67,13 +67,13 @@ def test_the_outlook_header_says_nothing_has_kicked_off() -> None:
         games_final=0,
     )
     assert render(_packet(snap), None, NOW).splitlines()[1] == (
-        "Nothing has kicked off yet · the projected board"
+        "Hello kittens. Nothing has kicked off yet · the projected board"
     )
 
 
 def test_the_final_header_says_the_week_is_in_the_books() -> None:
     assert render(_packet(_entry_week()), None, NOW).splitlines()[1] == (
-        "Every game is in the books · standings pending the commish"
+        "Hello kittens. Every game is in the books · standings pending the commish"
     )
 
 
@@ -86,7 +86,7 @@ def test_the_unknown_header_says_the_schedule_was_unreachable() -> None:
         games_total=0,
     )
     assert render(_packet(snap, odds=False), None, NOW).splitlines()[1] == (
-        "Game status unavailable tonight"
+        "Hello kittens. Game status unavailable tonight"
     )
 
 

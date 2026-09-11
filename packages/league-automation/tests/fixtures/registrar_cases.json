@@ -239,9 +239,9 @@
       "category": "sloppy",
       "text": "🚨 Teranitup16 -> JRedWins: Breece Hall for 350 FAAB 🚨",
       "expected_kind": "permanent",
-      "expected_status": "created",
+      "expected_status": "dropped_upstream",
       "prereq": null,
-      "notes": "No verb at all, direction carried by an arrow. Detection passes on the word FAAB."
+      "notes": "No verb at all, direction carried by an arrow. Detection passes on the word FAAB. Ben (2026-09-10): the word trade has to sit beside the siren, so the detector drops this before any model call. Re-posted as '🚨 Trade alert 🚨 …' it is logged."
     },
     {
       "id": 28,
@@ -293,9 +293,9 @@
       "category": "sloppy",
       "text": "🚨 kpbowe just sent Jahmyr Gibbs to davidwiers for 400 FAAB",
       "expected_kind": "permanent",
-      "expected_status": "created",
+      "expected_status": "dropped_upstream",
       "prereq": null,
-      "notes": "No header: the siren plus a trade word is enough for detection."
+      "notes": "No header: the siren plus a trade word is enough for detection. Ben (2026-09-10): the word trade has to sit beside the siren, so the detector drops this before any model call. Re-posted as '🚨 Trade alert 🚨 …' it is logged."
     },
     {
       "id": 34,
@@ -489,7 +489,7 @@
     {
       "id": 55,
       "category": "not_a_trade",
-      "text": "🚨 Trade T-2026-001 logged\nblandon receives: Ja'Marr Chase\nWeek ? · Permanent\n— 🤖 Guillotine Bot",
+      "text": "🚨 Trade T-2026-001 logged\nblandon receives: Ja'Marr Chase\nWeek ? · Permanent\n— 🍼 Daddy",
       "expected_kind": "not_a_trade",
       "expected_status": "dropped_upstream",
       "prereq": null,
@@ -518,9 +518,9 @@
       "category": "not_a_trade",
       "text": "🚨🚨🚨 FAAB 🚨🚨🚨",
       "expected_kind": "not_a_trade",
-      "expected_status": "not_a_trade",
+      "expected_status": "dropped_upstream",
       "prereq": null,
-      "notes": "Siren plus a bare trade word and nothing else; detection passes, the model must not. 2026.2 says a message with no transaction in it at all -- a header, sirens, a bare trade word -- is not_a_trade and never unclear, so the bot stays silent rather than asking about nothing."
+      "notes": "Siren plus a bare trade word and nothing else; detection passes, the model must not. 2026.2 says a message with no transaction in it at all -- a header, sirens, a bare trade word -- is not_a_trade and never unclear, so the bot stays silent rather than asking about nothing. Ben (2026-09-10): the word trade has to sit beside the siren, so the detector drops this before any model call."
     },
     {
       "id": 59,

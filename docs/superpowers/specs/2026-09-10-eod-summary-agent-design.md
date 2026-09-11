@@ -60,6 +60,12 @@ one note to `#guillotine-ops` on the edge and `ug ops health` carries the standi
 
 ## Inputs
 
+Before the read, the scheduled run pulls the rosters and the transaction log from Sleeper
+itself (`sync_season` and `sync_transactions`, under a savepoint; a failure is one ops note and
+the post goes out from what is on file). The two syncs run every ten minutes on their own
+phase, and a 10:12 post after a 10:08 waiver clear cannot wait on them. `--no-refresh` skips
+it; dry runs never refresh.
+
 All from Supabase, through the Advisor's existing six-query `SnapshotRepository.load()` (rosters,
 lineup slots, this week's projections, coverage, FAAB, elimination), joined with:
 
@@ -349,11 +355,13 @@ over the local Supabase for the two repositories. The cron manifest test learns 
 | Where the preview goes | `#guillotine-drafts` in every mode but production | `summary/agent.py` |
 | Naming | agent `eod-summary`, command `ug summary eod` | throughout |
 | Text or file | Ben's ruling: a short text then the HTML artifact; the file holds the board | `summary/artifact.py` |
+| The website | Ben (2026-09-10): "want to add your monte carlo simulation %s to the actual website? just write the last time it was run so people know". The board's live cards lead their chip line with the week's newest odds (`Gulag 37%`, the Daily's own percent rule and red/amber thresholds), the chip's tooltip carries the snapshot time, and the header gains a third stamp, `Odds as of 10:15 AM`. The query polls every five minutes: the table is not in the realtime publication | `apps/web/src/board/derive/odds.ts`, `useBoardData.ts` |
 
 ## Out of Scope
 
 - Official rulings, eliminations, or gulag entries: the Weekly Adjudicator's.
 - The weekly narrative recap: the Storyteller's.
 - Game-window posts after each slate (Game Pulse), which would be extra schedules of this command.
-- Any page on the site; `survival_snapshots` is public and readable if the board ever wants it.
+- Any further page on the site. The board at `/` now reads `survival_snapshots` (see the
+  decisions table); the Daily itself writes nothing for the site.
 - Answering questions; the League Agent does that.

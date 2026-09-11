@@ -1,6 +1,7 @@
 from ultimate_guillotine.trades.format import (
     format_clarification,
     format_confirmation,
+    format_not_a_trade,
     format_rescinded,
     format_terms,
     format_updated,
@@ -35,7 +36,7 @@ def proposal(**overrides) -> TradeProposal:
 def test_confirmation_is_one_line_naming_the_parties() -> None:
     # Ben (2026-09-10): the chat gets a confirmation and nothing else.
     text = format_confirmation("T-2026-014", proposal())
-    assert text == "🚨 Trade T-2026-014 logged · Max ↔ Evan"
+    assert text == "🚨 Trade T-2026-014 logged, kittens · Max ↔ Evan"
     assert "\n" not in text
 
 
@@ -51,9 +52,9 @@ def test_confirmation_uses_the_board_labels_when_it_has_them() -> None:
     )
     assert labels == {1: "Max R", 2: "Evan Display"}
     text = format_confirmation("T-2026-014", proposal(), labels)
-    assert text == "🚨 Trade T-2026-014 logged · Max R ↔ Evan Display"
+    assert text == "🚨 Trade T-2026-014 logged, kittens · Max R ↔ Evan Display"
     assert format_updated("T-2026-014", proposal(), {"assets": []}, labels) == (
-        "🚨 Trade T-2026-014 updated · Max R ↔ Evan Display"
+        "🚨 Trade T-2026-014 updated, kittens · Max R ↔ Evan Display"
     )
 
 
@@ -80,12 +81,12 @@ def test_rental_shows_return_condition_and_special_terms() -> None:
 
 def test_updated_and_rescinded_and_clarification() -> None:
     assert format_updated("T-2026-014", proposal(), {"assets": []}) == (
-        "🚨 Trade T-2026-014 updated · Max ↔ Evan"
+        "🚨 Trade T-2026-014 updated, kittens · Max ↔ Evan"
     )
-    assert format_rescinded("T-2026-014") == "🚨 Trade T-2026-014 rescinded"
+    assert format_rescinded("T-2026-014") == "🚨 Trade T-2026-014 rescinded, kittens"
     assert format_clarification("Two players named Mike Williams; which team?") == (
-        "🚨 Trade not logged yet: Two players named Mike Williams; which team? "
-        "Reply with a corrected 🚨 alert."
+        "🚨 Trade not logged yet, kitten: Two players named Mike Williams; which team? "
+        "Reply with a corrected 🚨 Trade alert 🚨."
     )
 
 
@@ -209,3 +210,7 @@ def test_the_was_line_ignores_assets_that_are_not_amounts() -> None:
     )
     text = format_terms(current, previous.model_dump(mode="json"))
     assert "Was:" not in text
+
+
+def test_the_joke_answer_is_bens_line() -> None:
+    assert format_not_a_trade() == "Sorry kitten, this isn't a real trade."

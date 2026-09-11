@@ -39,6 +39,12 @@ export const SCORES_UPDATED_LABEL = "Scores updated";
 export const PROJECTIONS_PULLED_LABEL = "Projections pulled";
 
 /**
+ * The header's third stamp, for the Daily's odds on the cards. Ben: "just write the last time
+ * it was run so people know" — so the line is the snapshot's own time, and nothing else.
+ */
+export const ODDS_AS_OF_LABEL = "Odds as of";
+
+/**
  * The projection counterpart to `NEVER_UPDATED_LABEL`: a projection row whose `computed_at` is
  * missing or unparseable still needs a tooltip that reads like English, not `Invalid Date`.
  */
