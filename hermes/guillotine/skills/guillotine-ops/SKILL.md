@@ -120,10 +120,11 @@ Hermes session. There is no `--json` mode.
 Read recorded answers with `ug agent answers --last 5`. Keep private question
 and answer text out of Discord ops notes; report statuses and failure reasons.
 
-The agent answers any `@bot` question or inline reply in the self-test chat.
-Promotion requires editing `agent_chat_guid` in `listener/run.py` after the
-runbook's acceptance gates pass. See section 10 of `docs/runbooks/mac-mini.md`
-for profile installation, authentication, MCP checks, and rollout status.
+The agent answers `@daddy`, `@bot` and `@guillotinebot` questions or same-chat inline
+replies in both registered test and league chats when delivery mode is production.
+Test mode enables only the test chat. `agent_chat_guids` in `listener/run.py` owns
+that allowlist. Explicit video requests stay with the video workflow. See section
+10 of `docs/runbooks/mac-mini.md` for profile, authentication and rollout evidence.
 
 It never registers a trade. Announce a trade with a 🚨 alert for the Trade Registrar.
 

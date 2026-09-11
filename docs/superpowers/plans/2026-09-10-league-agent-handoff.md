@@ -1,5 +1,12 @@
 # League Agent build — handoff
 
+> Deployment update, 2026-09-10: Ben authorized commits and both-chat activation.
+> The reviewed Agent and completed main changes are integrated and committed.
+> The listener is running from main with Astra and both registered chats enabled.
+> See the [rollout record](../acceptance/2026-09-10-league-agent-rollout.md).
+> Keep this worktree: the configured authenticated profile and SDD evidence live here.
+> The handoff below is historical; its uncommitted/offline-only restrictions are superseded.
+
 > Current status, 2026-09-10: Tasks 14 through 18 are complete. Task 19 live acceptance is partial.
 > The consolidated final fixes passed the scoped GPT-6 Astra review. Offline work is complete.
 > Final offline tests: 1,385 passed, 180 skipped, one known warning. Authentication now works.

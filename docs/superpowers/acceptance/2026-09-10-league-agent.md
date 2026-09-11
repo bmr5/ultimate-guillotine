@@ -1,5 +1,10 @@
 # League Agent acceptance status, 2026-09-10
 
+Deployment update: Ben separately authorized activation in both registered chats.
+The new listener is live on Astra. See the [rollout record](2026-09-10-league-agent-rollout.md)
+for current operational evidence. The original five-question acceptance below remains partial;
+deployment does not replace its outstanding transaction-history and phone checks.
+
 Task 19 live acceptance is **PARTIAL**. All five questions and the follow-up produced actual GPT-6 Astra answers without correction retries. Question 4 missed the required transaction-history lookup; iPhone and operational gates remain open. [Read the exact replies and full write-ups](2026-09-10-league-agent-replies.md). Earlier authentication blocker observations below are historical. This is not rollout approval.
 
 ## Live test session

@@ -1,5 +1,11 @@
 # League Agent continuation in Codex
 
+Current deployment: the user authorized commits and both-chat activation after this
+continuation. The integrated listener is live from main using Astra. See the
+[rollout record](../acceptance/2026-09-10-league-agent-rollout.md). Preserve this exact
+worktree and ignored profile/evidence; the historical no-commit/no-deployment restrictions
+below no longer describe the latest authorization.
+
 This continues the existing build, beginning with the Task 14 review. It does not restart it.
 Ben authorized adapting the plan and requires GPT-6 Astra for every task and review.
 

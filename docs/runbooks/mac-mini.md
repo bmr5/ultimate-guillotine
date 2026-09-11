@@ -712,9 +712,11 @@ For roster holes, the playbook compares rentals, permanent acquisition, holding
 and waivers, with survival, FAAB, return terms and custody risk in view. It checks
 transaction history before treating a claimed recent drop or add as verified.
 
-The two-chat change is code ready but NOT deployed. Installing the revised profile,
-reconciling with the current deployment checkout and restarting the listener remain
-separate operational steps. Offline tests do not establish live acceptance.
+The two-chat change was activated on 2026-09-10 from main after the reviewed
+integration in `f727a21`. Explicit video requests stay with the registered video
+workflow and do not also start a League Agent conversation. See the
+[rollout record](../superpowers/acceptance/2026-09-10-league-agent-rollout.md) for
+installed profile, database, runtime and remaining acceptance evidence.
 
 ### One-time setup: profile and database
 
@@ -739,12 +741,15 @@ in `.env`, export that same value when running the installer, and use it as
 the model. The installer supports `UV_CACHE_DIR`; the MCP launcher inherits cache
 and fixture settings at invocation time.
 
-As of 2026-09-10, real profile installation and the 11-tool MCP check passed in
-the ignored, isolated
-`.superpowers/sdd/2026-09-10-league-agent/hermes-live-profile` directory.
-The default live profile has not been installed or authenticated. The Astra
-smoke test stopped before a model call because Codex credentials were missing.
-This is installation evidence, not completed live acceptance.
+The live deployment uses the previously authenticated profile in the preserved
+League Agent worktree's ignored `.superpowers/sdd/2026-09-10-league-agent/hermes-live-profile`
+directory. Main's ignored `.env` selects it with `HERMES_LEAGUE_PROFILE_HOME`.
+Its default model is `gpt-6-astra`, and its installed MCP launcher runs from main.
+The strict eleven-tool audit and installed-main real-league dry run passed.
+Do not delete the worktree while this profile is configured. The ops profile is unchanged.
+
+Only the League Agent migration was applied during this rollout. Other local and
+hosted migration-history differences remain; inspect them before any later schema push.
 
 ### One-time setup: who is asking
 

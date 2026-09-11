@@ -2,9 +2,10 @@
 
 ## Current state
 
-Preparing deployment. The live listener has not yet been switched to this build.
-Ben authorized activation in both the registered test and league chats, and
-committing the completed changes from the other finished task.
+Activated on 2026-09-10 in both registered test and league chats, as Ben authorized.
+Main was fast-forwarded to reviewed integration commit `f727a21`. The listener was
+stopped while the checkout and profile were updated, then started through launchd.
+The new process reported running and `/healthz` returned `{"ok":true}`.
 
 ## Verified before activation
 
@@ -13,6 +14,9 @@ committing the completed changes from the other finished task.
   participants match the production fingerprint. No messages were sent by this check.
 - Two-chat routing uses one worker. Test and production follow-ups remain isolated,
   including replies to acknowledgements before the original answer is complete.
+- Explicit video requests are owned by the existing registered video handler, not
+  also answered by the League Agent. Combined regressions cover both chats and
+  video requests replying to Agent receipts.
 - The exact immediate receipt is `Got it, kitten. Daddy's on it.`
 - Rental guidance compares short-term costs with buying, holding and waivers, and
   includes return terms, elimination risk and FAAB preservation.
@@ -40,9 +44,21 @@ configured profile and its authentication. The ops profile is unchanged.
 
 Final integration review approved the merge and video-dispatch fix. A read-only
 registry check using real target rows confirmed question/video routing in both chats
-and one shared worker. Activation, installed production MCP verification and listener
-health checks are pending. Actual Messages delivery after activation
-and an iPhone HTML rendering check are not yet verified by this rollout record.
+and one shared worker. The profile was reinstalled from main, preserving its existing
+authentication. The real MCP audit again verified web plus all eleven league tools;
+the installed launcher points to the live main checkout and the profile uses Astra.
+
+An installed-main dry run asked `@daddy how many two time champions are there` as
+Ben R. It returned `succeeded` and `answer`, model `gpt-6-astra`, session
+`20260910_190323_357954`. The answer identified Michael, Nick Nifty and Ben R when
+the shared 2022 title is counted, or two champions with two outright titles.
+No model override or test adapter was used. This was a dry run, not a Messages send.
+
+Actual Messages delivery after activation and an iPhone HTML rendering check are
+not yet verified by this rollout record. Send a fresh tagged question to exercise
+the listener; the earlier ignored question already has a webhook receipt and was
+not replayed or deleted during deployment.
 The earlier five-question acceptance remains partial for the reasons recorded in
 [the acceptance report](2026-09-10-league-agent.md). Prompt changes and deployment do
-not retroactively turn those unrun checks into passes.
+not retroactively turn those unrun checks into passes. No push was performed, and
+the original worktree and ignored evidence remain intact.
