@@ -13,10 +13,11 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ultimate_guillotine.ai.structured import parse_model_text
+from ultimate_guillotine.core.signature import BOT_SIGNATURE
 
-#: General phone reply limit; research summaries have a tighter verified limit.
-CHAT_TEXT_LIMIT = 1200
-RESEARCH_CHAT_TEXT_LIMIT = 600
+#: Ben's example is 129 characters. Reserve space for the delivery signature.
+CHAT_MESSAGE_LIMIT = 129
+CHAT_TEXT_LIMIT = CHAT_MESSAGE_LIMIT - len(f"\n{BOT_SIGNATURE}")
 #: The report body before the template wraps it; the rendered cap is checked later.
 REPORT_BODY_LIMIT = 200_000
 

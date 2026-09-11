@@ -22,12 +22,12 @@ TURN = Turn(season=2026, week=6, local_time="Thu 7:42pm", asker_label="Member05"
 
 
 def test_the_prompt_version_is_read_off_the_file() -> None:
-    assert PROMPT_VERSION == "2026.3"
+    assert PROMPT_VERSION == "2026.5"
 
 
 def test_research_contract_keeps_one_recommendation_in_chat_and_details_in_html() -> None:
     text = build_envelope(TURN)
-    for phrase in ("600 characters", "one top", "all alternatives", "HTML report",
+    for phrase in ("112\ncharacters", "129\ncharacters", "one top", "all alternatives", "HTML report",
                    "hold-plus-DEF", "whole lineup"):
         assert phrase in text
     assert "one line per option" not in text

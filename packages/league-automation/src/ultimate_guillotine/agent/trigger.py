@@ -33,10 +33,7 @@ OVERRIDE = re.compile(
     r"|\bsystem prompt\b",
     re.IGNORECASE,
 )
-REFUSAL = (
-    "I only answer from league data and my own rules — I can't change them, play "
-    "favorites, or make a trade. Members announce deals with a 🚨 alert for commissioner approval."
-)
+REFUSAL = "Cannot override bot rules or execute trades."
 
 
 def has_bot_tag(text: str) -> bool:

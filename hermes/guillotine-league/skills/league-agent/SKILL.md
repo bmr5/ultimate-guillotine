@@ -94,13 +94,17 @@ Members announce proposals with a 🚨 alert; the commissioner approves them.
 ## Answer contract
 
 End with exactly one fenced `json` block containing the LeagueAnswer described in
-the envelope. `chat_text` is plain text with no markdown and at most 1200 characters
-overall. For research with a report, use at most 600 characters, ideally 2-3 short
-sentences: one top recommendation, its main benefit and any essential condition,
-then "full write-up attached". A linked hold-plus-DEF sequence is one recommendation.
+the envelope. Every reply must fit 129 characters including the bot signature.
+The envelope and schema give the available `chat_text` budget, currently 112 characters.
+Prefer one short sentence with just the requested result or one top recommendation
+and any essential qualifier. "Details attached." is optional and uses the same budget.
+A linked hold-plus-DEF sequence is one recommendation. Never split a long answer
+across multiple chat messages to evade the limit.
 Do not list runners-up, numbered options, a research recap or a budget preamble in chat.
 Put all alternatives, price comparisons, full terms, risks and evidence in the HTML report.
-For a lookup, give the answer. Clarifications and refusals have no report.
+For a lookup, give only the requested answer. A brief lookup needs no report; a long
+list or explanation goes in a report with a short result or pointer in chat.
+Clarifications and refusals have no report.
 Put detailed reasoning in `report.html_body` and describe freshness in `source_line`.
 
 The report is HTML body markup. Use headings, paragraphs, lists, tables, emphasis,

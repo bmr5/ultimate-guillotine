@@ -12,6 +12,7 @@ from ultimate_guillotine.agent.answer import (
     extract_answer,
 )
 from ultimate_guillotine.ai.structured import AIInvalidOutput
+from ultimate_guillotine.core.signature import sign
 
 
 def _answer(**overrides) -> dict:
@@ -64,9 +65,24 @@ def test_a_clarification_carries_no_report() -> None:
         LeagueAnswer.model_validate(_answer(kind="clarification", report=report))
 
 
-def test_chat_text_is_bounded() -> None:
+@pytest.mark.parametrize("report", [
+    None,
+    {"title": "Full result", "html_body": "<p>Long details.</p>" * 100, "sources": []},
+])
+def test_chat_text_is_bounded(report) -> None:
+    assert len(sign("x" * CHAT_TEXT_LIMIT)) == 129
+    answer = LeagueAnswer.model_validate(_answer(chat_text="x" * CHAT_TEXT_LIMIT, report=report))
+    assert len(sign(answer.chat_text)) == 129
     with pytest.raises(ValidationError):
-        LeagueAnswer.model_validate(_answer(chat_text="x" * (CHAT_TEXT_LIMIT + 1)))
+        LeagueAnswer.model_validate(_answer(chat_text="x" * (CHAT_TEXT_LIMIT + 1), report=report))
+
+
+def test_fixed_agent_replies_also_fit_the_message_limit() -> None:
+    from ultimate_guillotine.agent.trigger import RECEIPT, REFUSAL
+    from ultimate_guillotine.agent.worker import ATTACHMENT_FAILED, COULD_NOT_FINISH
+
+    for text in (RECEIPT, REFUSAL, ATTACHMENT_FAILED, COULD_NOT_FINISH):
+        assert len(sign(text)) <= 129
 
 
 def test_anything_but_the_contract_is_invalid_output() -> None:

@@ -22,7 +22,7 @@ rather than quoted. As a last guard the fact sentences go through
 import re
 from collections.abc import Mapping, Sequence
 
-from ultimate_guillotine.agent.answer import FREE_AGENT, RESEARCH_CHAT_TEXT_LIMIT, LeagueAnswer
+from ultimate_guillotine.agent.answer import FREE_AGENT, LeagueAnswer
 from ultimate_guillotine.agent.artifact import ARTIFACT_MAX_BYTES
 from ultimate_guillotine.agent.tools.math import holdings_by_id
 from ultimate_guillotine.agent.tools.names import (
@@ -103,11 +103,6 @@ def verify(
 ) -> list[str]:
     """Every problem with the answer, or an empty list."""
     problems: list[str] = []
-    if answer.report is not None and len(answer.chat_text) > RESEARCH_CHAT_TEXT_LIMIT:
-        problems.append(
-            f"research chat_text must fit {RESEARCH_CHAT_TEXT_LIMIT} characters: give one top "
-            "recommendation and move alternatives and details into the HTML report"
-        )
     # One roster index and one player pool per call; every lookup below is in them.
     holdings = holdings_by_id(snapshot)
     pool = player_pool(snapshot, players)

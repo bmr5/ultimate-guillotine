@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
-from ultimate_guillotine.agent.answer import LeagueAnswer
+from ultimate_guillotine.agent.answer import CHAT_MESSAGE_LIMIT, CHAT_TEXT_LIMIT, LeagueAnswer
 
 _ENVELOPE_PATH = Path(__file__).resolve().parents[5] / "agents" / "league-agent" / "envelope.md"
 _VERSION = re.compile(r"<!--\s*prompt_version:\s*(\S+)\s*-->")
@@ -77,6 +77,8 @@ def build_envelope(turn: Turn) -> str:
             else "the first question in a new conversation"
         ),
         "__MESSAGE__": _neutralize(turn.message.strip()),
+        "__CHAT_TEXT_LIMIT__": str(CHAT_TEXT_LIMIT),
+        "__CHAT_MESSAGE_LIMIT__": str(CHAT_MESSAGE_LIMIT),
         "__SCHEMA__": json.dumps(LeagueAnswer.model_json_schema(), separators=(",", ":")),
     }
     # One pass, so no substituted value can be read as a later slot: a message
@@ -93,4 +95,6 @@ def retry_envelope(problems: Sequence[str]) -> str:
         "LeagueAnswer JSON block. Do not repeat a claim the data does not support. "
         "This was an internal unsent draft. Correct it silently; do not describe the "
         "verification or apologize for a previous answer the member never received."
+        f" Keep chat_text within {CHAT_TEXT_LIMIT} characters, including any required notice. "
+        "Give only the requested result or one top recommendation; put longer details in HTML."
     )

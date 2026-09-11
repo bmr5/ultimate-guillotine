@@ -712,13 +712,15 @@ A foreign thread reference cannot load another chat's conversation history.
 The SOUL uses a curt, neutral, robotic tone without pet names or roleplay.
 New trade confirmations say exactly `trade recorded in database`, without a signature.
 Other replies use the neutral `Guillotine Bot` signature.
-Research chat replies contain one top recommendation and its key condition, capped
-at 600 characters. Alternatives, pricing, full terms and evidence go in the HTML
-report. The prompt evaluates whole-roster constraints, including a paid hold that
+All League Agent replies fit 129 characters including the bot signature, leaving
+112 characters for the answer. Give only the requested result or one top recommendation.
+Alternatives, long lookup results, pricing, full terms and evidence go in the HTML
+report, never a sequence of short texts. The prompt evaluates whole-roster constraints,
+including a paid hold that
 frees a spot to fill DEF while an existing TE covers the injury. A zero base-lineup
 trade-math delta does not measure the value of an enabled DEF, K or FLEX starter.
 Internal verification retries correct unsent drafts without announcing a correction
-to an answer the member never received. These instructions are prompt version 2026.2.
+to an answer the member never received. These instructions are prompt version 2026.5.
 For roster holes, the playbook compares rentals, permanent acquisition, holding
 and waivers, with survival, FAAB, return terms and custody risk in view. It checks
 transaction history before treating a claimed recent drop or add as verified.

@@ -106,15 +106,15 @@ def test_general_resume_failure_does_not_start_another_model_call(reason):
 
 
 def test_lost_thread_notice_is_budgeted_before_recording_or_delivery():
-    long = {**LOOKUP, "chat_text": "x" * 1200}
+    long = {**LOOKUP, "chat_text": "x" * 112}
     worker, parts = _worker(SessionNotFound("gone"), _reply(long), _reply(LOOKUP))
     session = Session(1, "old", chat_guid_hash(CHAT), 1)
     assert worker.run_job(Job(7, _msg("follow up"), ASKER, session)) == "answer"
     assert [c[1] for c in parts["client"].calls] == ["old", None, "sess-1"]
-    assert "1200" in parts["client"].calls[2][0]
+    assert "112" in parts["client"].calls[2][0]
     assert parts["delivery"].texts == [LOST_THREAD + LOOKUP["chat_text"]]
     assert parts["answers"].recorded[0].chat_text == parts["delivery"].texts[0]
-    assert len(parts["delivery"].texts[0]) <= 1200
+    assert len(parts["delivery"].texts[0]) <= 112
 
 
 def test_pending_progress_reply_resumes_completed_parent_once():

@@ -299,7 +299,7 @@ def test_golden(golden, caplog):
         if len(client.calls) - seed_calls == 2:
             assert client.calls[-1][1] == client.replies[-2].session_id
 
-    assert len(expected.chat_text) <= 1200
+    assert len(expected.chat_text) <= 112
     assert record.report_title == (expected.report.title if expected.report else None)
     assert record.sources == ([s.model_dump() for s in expected.report.sources]
                               if expected.report else [])
