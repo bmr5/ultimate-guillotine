@@ -20,7 +20,7 @@ from typing import ClassVar
 
 import pytest
 
-from ultimate_guillotine.advisor.state import SnapshotUnavailable
+from ultimate_guillotine.agent.tools.snapshot import SnapshotUnavailable
 from ultimate_guillotine.cli import summary as summary_cli
 from ultimate_guillotine.summary.fixture import fixture_eod
 

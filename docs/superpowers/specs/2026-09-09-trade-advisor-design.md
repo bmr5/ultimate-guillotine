@@ -1,5 +1,7 @@
 # Trade Advisor Skill
 
+> **Superseded** by `docs/superpowers/specs/2026-09-10-league-agent-design.md` on 2026-09-10. Kept for the record; nothing here is built or maintained.
+
 ## Purpose
 
 Answer "who should I trade with, and what should I offer" in the league chat with two or three concrete, defensible proposals: a named counterparty, an exact offer, the reasoning, and the risk. The Advisor is grounded in what the league has actually paid for players — this season's registered trades and last season's replayed contracts — plus live rosters, projections, FAAB balances, and guillotine pressure.

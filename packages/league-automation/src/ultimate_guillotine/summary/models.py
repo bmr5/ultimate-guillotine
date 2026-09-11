@@ -1,6 +1,6 @@
 """The shapes the EOD summary is built from.
 
-Read shapes, like the Advisor's: a starter here carries his NFL team, his injury
+Read shapes, like the agent's: a starter here carries his NFL team, his injury
 flag, his points so far and where his game stands, none of which the sync's
 write shapes know. Points and projections stay ``Decimal`` to the renderer, as
 everywhere else in the package; the Monte Carlo converts to ``float`` at its own

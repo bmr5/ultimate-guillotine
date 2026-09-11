@@ -229,7 +229,7 @@ class VideoRequests:
             text = ACKNOWLEDGEMENT
         else:
             text = f"Patience, kitten, the video for {code} is already in the works."
-        self._delivery.deliver(None, AGENT, text, reply_to=msg.chat_guid)
+        self._delivery.deliver(None, AGENT, text, reply_to=msg.chat_guid, reply_to_message=msg)
 
 
 def video_trigger(requests: VideoRequests, chat_guids: frozenset[str]) -> Trigger:

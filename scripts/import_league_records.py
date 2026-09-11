@@ -119,7 +119,9 @@ def import_records(
 ) -> ImportSummary:
     workbook = load_workbook(source)
     if REGISTRATION_SHEET not in workbook.sheetnames:
-        raise ValueError(f"Workbook does not contain the {REGISTRATION_SHEET} registration sheet")
+        raise ValueError(
+            f"Workbook does not contain the {REGISTRATION_SHEET} registration sheet"
+        )
 
     registration = workbook[REGISTRATION_SHEET]
     members = extract_members(registration)
@@ -159,7 +161,9 @@ def main() -> None:
         return
 
     if args.sanitized_output is None or args.private_output is None:
-        raise SystemExit("--sanitized-output and --private-output are required for import")
+        raise SystemExit(
+            "--sanitized-output and --private-output are required for import"
+        )
 
     summary = import_records(args.source, args.sanitized_output, args.private_output)
     print(

@@ -1,5 +1,7 @@
 # League Concierge Agent
 
+> **Superseded** by `docs/superpowers/specs/2026-09-10-league-agent-design.md` on 2026-09-10. Kept for the record; nothing here is built or maintained.
+
 ## Purpose
 
 Answer league questions in the production iMessage chat from authoritative rules, contracts, trade records, current Sleeper state, and league history.
@@ -203,4 +205,3 @@ The agent first answers a fixed evaluation set without sending, then runs in the
    settles arguments; a paraphrase reads better in a group chat. Quote verbatim with the
    heading as the source line, paraphrase with a quote available on request, or both depending
    on length?
-

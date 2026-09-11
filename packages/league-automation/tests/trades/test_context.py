@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from ultimate_guillotine.advisor.state import AdvisorHolding, AdvisorTeamState, LeagueSnapshot
+from ultimate_guillotine.agent.tools.snapshot import LeagueHolding, LeagueSnapshot, LeagueTeamState
 from ultimate_guillotine.trades import context as context_module
 from ultimate_guillotine.trades.context import (
     CONTEXT_CHAR_BUDGET,
@@ -213,7 +213,7 @@ def test_a_full_league_fits_the_prompt_budget() -> None:
 
 
 def test_the_snapshot_adapter_reads_rosters_faab_and_the_week() -> None:
-    """The registrar and the CLI build the pack from the Advisor's one league
+    """The registrar and the CLI build the pack from the agent's one league
     read rather than from a second set of queries against the same tables."""
     pack = context_from_snapshot(
         _snapshot(),
@@ -238,8 +238,8 @@ def _snapshot() -> LeagueSnapshot:
         position: str,
         eliminated: bool = False,
         eliminated_week: int | None = None,
-    ) -> AdvisorTeamState:
-        return AdvisorTeamState(
+    ) -> LeagueTeamState:
+        return LeagueTeamState(
             team_id=100 + member_id,
             member_id=member_id,
             display_name=name,
@@ -253,7 +253,7 @@ def _snapshot() -> LeagueSnapshot:
             coverage_pct=Decimal("100.00"),
             is_provisional=False,
             holdings=(
-                AdvisorHolding(
+                LeagueHolding(
                     sleeper_player_id="p1",
                     player_name=player,
                     position=position,

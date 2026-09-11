@@ -266,7 +266,7 @@ export function fetchFinalRosters(
 ): Promise<FinalRosterRow[]> {
   return unwrap<FinalRosterRow>(
     client
-      .from("final_rosters")
+      .from("effective_final_rosters")
       .select("team_id, eliminated_week, holdings, frozen_at")
       .eq("season_id", seasonId),
     "final_rosters",

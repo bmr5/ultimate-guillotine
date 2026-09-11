@@ -13,14 +13,17 @@ connection could otherwise discard another thread's uncommitted work between its
 import os
 from datetime import UTC, datetime
 from typing import Self
+from unittest.mock import Mock
 
 import psycopg
 import pytest
 
+from ultimate_guillotine.agent.trigger import RECEIPT
 from ultimate_guillotine.config import Settings
 from ultimate_guillotine.data.repositories import DeliveryTarget
 from ultimate_guillotine.listener import run as run_module
 from ultimate_guillotine.messages.bluebubbles import InboundMessage
+from ultimate_guillotine.video.trigger import ACKNOWLEDGEMENT
 
 #: The self-test chat every test in this module configures.
 TEST_CHAT = "iMessage;+;chat-test"
@@ -268,8 +271,8 @@ class TargetCursor(EmptyCursor):
     """A cursor that answers the delivery-target lookups `build_processor` makes.
 
     `private.delivery_targets` is what the listener's trusted-chat allowlist is
-    built from, and now what the Advisor's chat comes from, so a test that wants
-    the Advisor registered has to have the row rather than only the environment
+    built from, and what the League Agent's chat comes from, so a test that wants
+    the agent registered has to have the row rather than only the environment
     variable. It answers two queries: the one delivery target for a mode, and the
     listen-only rows -- the chats the listener reads and never posts to.
     """
@@ -365,17 +368,105 @@ def hermes_installed(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(run_module, "find_hermes_binary", lambda: "/bin/hermes")
 
 
-def test_build_processor_registers_the_registrar_and_the_advisor_with_a_chat_and_the_cli(
+class FakeWorker:
+    def __init__(self) -> None:
+        self.started = False
+
+    def submit(self, job) -> None:  # pragma: no cover - the trigger is tested elsewhere
+        pass
+
+
+@pytest.mark.parametrize("chat_guid", [TEST_CHAT, LEAGUE_CHAT])
+@pytest.mark.parametrize(
+    ("text", "thread", "owner"),
+    [
+        ("@daddy create trade video T-2026-003", None, "trade-video"),
+        ("@daddy create trade video T-2026-003", "agent-receipt", "trade-video"),
+        ("@daddy who won the trade?", None, "league-agent"),
+        ("What about my roster?", "agent-receipt", "league-agent"),
+    ],
+)
+def test_production_dispatch_gives_explicit_video_requests_one_owner(
+    hermes_installed, monkeypatch, chat_guid, text, thread, owner,
+) -> None:
+    """Exercise the combined registry and real handlers with fake persistence."""
+    runs = Mock()
+    runs.reserve.return_value = 42
+    runs.is_agent_run.return_value = True
+    outbound = Mock()
+    outbound.run_id_for_guid.return_value = 7
+    trades = Mock()
+    trades.find_by_source_guid.return_value = None
+    trades.find_by_code.return_value = {
+        "trade_id": 5, "trade_code": "T-2026-003", "status": "accepted",
+    }
+    jobs = Mock()
+    jobs.enqueue.return_value = (1, True)
+    receipts = Mock()
+    receipts.record.side_effect = [True, False]
+    contacts = Mock()
+    contacts.member_for_handle_hash.return_value = None
+    for name, repo in {
+        "RunRepository": runs,
+        "OutboundRepository": outbound,
+        "TradeRepository": trades,
+        "VideoJobRepository": jobs,
+        "ReceiptRepository": receipts,
+        "SourceMessageRepository": Mock(),
+        "MemberContactRepository": contacts,
+    }.items():
+        monkeypatch.setattr(run_module, name, Mock(return_value=repo))
+    worker, delivery = Mock(), Mock()
+    notifier = RecordingNotifier()
+    processor, _ = run_module.build_processor(
+        _settings(
+            delivery_mode="production",
+            production_chat_guid=LEAGUE_CHAT,
+            production_participant_fingerprint="fingerprint",
+        ),
+        ConfiguredConnection(extra={"production": LEAGUE_CHAT}),
+        None, delivery, notifier, agent_worker_factory=lambda _: worker,
+    )
+    message = InboundMessage(
+        guid="request-1", chat_guid=chat_guid, sender_address="+15555550100",
+        text=text, is_from_me=False, is_group=True, sent_at=datetime.now(UTC),
+        thread_originator_guid=thread,
+    )
+    assert [t.name for t in processor._registry.match(message)] == [owner]
+    assert processor.process(message, "event-1") == f"handled:{owner}"
+    assert processor.process(message, "event-1") == "duplicate"
+    assert notifier.ops_sent == []
+    if owner == "trade-video":
+        jobs.enqueue.assert_called_once_with(5, "T-2026-003", message.guid, chat_guid)
+        delivery.deliver.assert_called_once_with(
+            None, owner, ACKNOWLEDGEMENT, reply_to=chat_guid, reply_to_message=message,
+        )
+        runs.reserve.assert_not_called()
+        worker.submit.assert_not_called()
+    else:
+        jobs.enqueue.assert_not_called()
+        delivery.deliver.assert_called_once_with(42, owner, RECEIPT, reply_to=chat_guid)
+        worker.submit.assert_called_once()
+        assert worker.submit.call_args.args[0].message == message
+
+
+def test_build_processor_registers_the_registrar_and_the_agent_with_a_chat_and_the_cli(
     hermes_installed: None,
 ) -> None:
     notifier = RecordingNotifier()
+    factories: list[str] = []
+
+    def worker_factory(chat_guid: str):
+        factories.append(chat_guid)
+        return FakeWorker()
 
     processor, _allowed = run_module.build_processor(
-        _settings(), ConfiguredConnection(), None, None, notifier
+        _settings(), ConfiguredConnection(), None, None, notifier,
+        agent_worker_factory=worker_factory,
     )
-
     assert _trigger_named(processor, "trade-registrar") is not None
-    assert _trigger_named(processor, "trade-advisor") is not None
+    assert _trigger_named(processor, "league-agent") is not None
+    assert factories == [TEST_CHAT]
     assert notifier.ops_sent == []
 
 
@@ -392,10 +483,10 @@ def test_build_processor_announces_the_registrar_is_disabled_exactly_once(
     )
 
     assert _trigger_named(processor, "trade-registrar") is None
-    assert _trigger_named(processor, "trade-advisor") is None
+    assert _trigger_named(processor, "league-agent") is None
     assert notifier.ops_sent == [
         "Trade Registrar disabled: hermes CLI not found",
-        "Trade Advisor disabled: hermes CLI not found",
+        "League Agent disabled: hermes CLI not found",
     ]
 
 
@@ -419,6 +510,7 @@ def test_the_registrar_trigger_is_gated_on_the_delivery_chat(hermes_installed: N
         None,
         None,
         RecordingNotifier(),
+        agent_worker_factory=lambda chat_guid: FakeWorker(),
     )
 
     trigger = _trigger_named(processor, "trade-registrar")
@@ -442,6 +534,7 @@ def test_a_listen_only_chat_is_heard_but_never_delivered_to(hermes_installed: No
         None,
         None,
         RecordingNotifier(),
+        agent_worker_factory=lambda chat_guid: FakeWorker(),
     )
 
     trigger = _trigger_named(processor, "trade-registrar")
@@ -473,6 +566,7 @@ def test_production_keeps_the_self_test_chat_as_a_rehearsal_room(hermes_installe
         None,
         None,
         RecordingNotifier(),
+        agent_worker_factory=lambda chat_guid: FakeWorker(),
     )
 
     league, rehearsal = _triggers_named(processor, "trade-registrar")
@@ -480,24 +574,6 @@ def test_production_keeps_the_self_test_chat_as_a_rehearsal_room(hermes_installe
     assert league.matches(_alert(LEAGUE_CHAT)) and not league.matches(_alert(TEST_CHAT))
     assert rehearsal.matches(_alert(TEST_CHAT)) and not rehearsal.matches(_alert(LEAGUE_CHAT))
     assert allowed == {TEST_CHAT, LEAGUE_CHAT}
-
-
-def test_the_advisor_does_not_answer_in_a_listen_only_chat(hermes_installed: None) -> None:
-    """Shadow mode is the Registrar's, and only the Registrar's. The Advisor
-    answers a member who asked it a question, and a chat we are only shadowing is
-    exactly the chat where an answer would be a surprise."""
-    processor, _allowed = run_module.build_processor(
-        _settings(),
-        ConfiguredConnection(listen=(LEAGUE_CHAT,)),
-        None,
-        None,
-        RecordingNotifier(),
-    )
-
-    trigger = _trigger_named(processor, "trade-advisor")
-
-    assert trigger.matches(_advice_request(TEST_CHAT))
-    assert not trigger.matches(_advice_request(LEAGUE_CHAT))
 
 
 def test_a_listen_only_chat_with_nowhere_to_answer_registers_nothing() -> None:
@@ -526,83 +602,66 @@ def test_build_processor_skips_the_registrar_when_no_chat_is_configured(
     assert notifier.ops_sent == ["Trade Registrar disabled: no target chat for disabled"]
 
 
-def test_the_advisor_answers_in_the_registered_self_test_chat_and_only_there() -> None:
-    """The spec keeps the Advisor in the self-test chat until Ben promotes it."""
-    assert run_module.advisor_chat_guid(_settings(), _target()) == TEST_CHAT
+def test_the_agent_uses_only_registered_targets_for_its_delivery_mode() -> None:
+    production = _target("production", LEAGUE_CHAT)
+    assert run_module.agent_chat_guids(_settings(), _target(), production) == (TEST_CHAT,)
+    assert run_module.agent_chat_guids(_settings(), None, production) == ()
+    settings = _settings(delivery_mode="production", production_chat_guid="iMessage;+;prod",
+                         production_participant_fingerprint="fp")
+    assert run_module.agent_chat_guids(settings, _target(), production) == (TEST_CHAT, LEAGUE_CHAT)
+    assert run_module.agent_chat_guids(settings, None, production) == (LEAGUE_CHAT,)
+    assert run_module.agent_chat_guids(settings, _target(), None) == (TEST_CHAT,)
+    assert run_module.agent_chat_guids(settings, None, None) == ()
+    assert run_module.agent_chat_guids(
+        _settings(delivery_mode="disabled"), _target(), production
+    ) == ()
 
 
-def test_the_advisor_answers_in_the_registered_target_not_the_environment() -> None:
-    """The listener refuses every webhook from a chat with no delivery-target row,
-    so a `TEST_CHAT_GUID` that no row backs would register the Advisor against a
-    chat it can never be reached in."""
-    settings = _settings(test_chat_guid="iMessage;+;chat-from-the-env")
-
-    assert run_module.advisor_chat_guid(settings, _target()) == TEST_CHAT
-    assert run_module.advisor_chat_guid(settings, None) is None
-
-
-def test_the_advisor_does_not_register_without_a_registered_test_target(
+def test_the_agent_does_not_register_without_a_registered_test_target(
     hermes_installed: None, caplog: pytest.LogCaptureFixture
 ) -> None:
     caplog.set_level("INFO")
+    processor, _allowed = run_module.build_processor(
+        _settings(), EmptyConnection(), None, None, RecordingNotifier(),
+        agent_worker_factory=lambda chat_guid: FakeWorker(),
+    )
+    assert _trigger_named(processor, "league-agent") is None
+    assert "league agent disabled" in caplog.text.lower()
+
+
+def test_the_agent_announces_a_missing_hermes_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(run_module, "find_hermes_binary", lambda: None)
     notifier = RecordingNotifier()
-
     processor, _allowed = run_module.build_processor(
-        _settings(), EmptyConnection(), None, None, notifier
+        _settings(), ConfiguredConnection(), None, None, notifier,
+        agent_worker_factory=lambda chat_guid: FakeWorker(),
     )
-
-    assert _trigger_named(processor, "trade-advisor") is None
-    assert not [note for note in notifier.ops_sent if "Advisor" in note]
-    assert "trade advisor disabled" in caplog.text.lower()
+    assert _trigger_named(processor, "league-agent") is None
+    assert any("League Agent disabled" in note for note in notifier.ops_sent)
 
 
-def test_the_advisor_never_registers_in_production(
-    hermes_installed: None, caplog: pytest.LogCaptureFixture
-) -> None:
-    """Production is a deliberate, reviewed change to `advisor_chat_guid`, not a
-    database row somebody adds -- and it is a log line, not an ops note, because
-    it is the expected state of every production start rather than a fault."""
-    caplog.set_level("INFO")
-    settings = _settings(
-        delivery_mode="production",
-        production_chat_guid="prod",
-        production_participant_fingerprint="fp",
-        test_chat_guid=None,
-    )
-    notifier = RecordingNotifier()
-
-    assert run_module.advisor_chat_guid(settings, _target()) is None
-    processor, _allowed = run_module.build_processor(
-        settings, ConfiguredConnection(), None, None, notifier
-    )
-
-    assert _trigger_named(processor, "trade-advisor") is None
-    assert not [note for note in notifier.ops_sent if "Advisor" in note]
-    assert "trade advisor disabled" in caplog.text.lower()
-
-
-def _advice_request(chat_guid: str) -> InboundMessage:
-    return InboundMessage(
-        guid="g2",
-        chat_guid=chat_guid,
-        sender_address="+15555550100",
-        text="@daddy who should I trade with for a RB",
-        is_from_me=False,
-        is_group=True,
-        sent_at=datetime.now(UTC),
-    )
-
-
-def test_the_advisor_trigger_is_gated_on_the_delivery_chat(hermes_installed: None) -> None:
-    processor, _allowed = run_module.build_processor(
-        _settings(),
-        ConfiguredConnection(),
-        None,
-        None,
-        RecordingNotifier(),
-    )
-
-    trigger = _trigger_named(processor, "trade-advisor")
-
-    assert trigger.matches(_advice_request(TEST_CHAT))
-    assert not trigger.matches(_advice_request("iMessage;+;chat-elsewhere"))
+@pytest.mark.parametrize("mode,expected", [
+    ("production", (TEST_CHAT, LEAGUE_CHAT)), ("test", (TEST_CHAT,)), ("disabled", ()),
+])
+def test_main_wires_recovery_to_registered_mode_targets_only(monkeypatch, mode, expected):
+    settings = _settings(delivery_mode=mode, production_chat_guid=LEAGUE_CHAT,
+                         production_participant_fingerprint="fingerprint",
+                         webhook_password="fake", bluebubbles_password="fake")
+    conn = ConfiguredConnection(mode="test", chat_guid=TEST_CHAT,
+                                extra={"production": LEAGUE_CHAT}, listen=("listen-only",))
+    processor, client, app = Mock(), Mock(), Mock()
+    factory = Mock(return_value=app)
+    build = Mock(return_value=(processor, {TEST_CHAT, LEAGUE_CHAT, "listen-only"}))
+    monkeypatch.setattr(run_module, "load_settings", lambda: settings)
+    monkeypatch.setattr(run_module, "connect", lambda settings: conn)
+    monkeypatch.setattr(run_module, "BlueBubblesClient", Mock(return_value=client))
+    monkeypatch.setattr(run_module.httpx, "Client", Mock())
+    monkeypatch.setattr(run_module, "build_processor", build)
+    monkeypatch.setattr(run_module, "start_heartbeat_thread", Mock())
+    monkeypatch.setattr(run_module, "create_app", factory)
+    monkeypatch.setattr(run_module.uvicorn, "run", Mock())
+    run_module.main()
+    assert factory.call_args.args[0] is processor
+    assert factory.call_args.kwargs["poll_client"] is client
+    assert factory.call_args.kwargs["poll_chat_guids"] == expected
+    build.assert_called_once()

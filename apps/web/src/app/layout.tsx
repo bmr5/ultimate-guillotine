@@ -3,6 +3,7 @@ import { NavLink, Outlet, useLocation } from "react-router";
 
 import { prefetchPages } from "@/app/lazyPages";
 import { BoardSkeleton } from "@/board/components/BoardStates";
+import { LoadingState } from "@/components/loading-state";
 import { DraftPageSkeleton } from "@/draft/components/DraftSkeleton";
 import { HistoryListSkeleton } from "@/history/components/HistorySkeleton";
 import { TradesPageSkeleton } from "@/history/components/TradesSkeleton";
@@ -41,6 +42,8 @@ const PREFETCH_DELAY_MS = 2500;
 function PageFallback({ pathname }: { pathname: string }) {
   if (pathname.startsWith("/draft")) return <DraftPageSkeleton />;
   if (pathname.startsWith("/trades")) return <TradesPageSkeleton />;
+  if (pathname.startsWith("/history/2026"))
+    return <LoadingState label="Loading 2026 history" />;
   if (pathname.startsWith("/history")) return <HistoryListSkeleton />;
   return <BoardSkeleton />;
 }

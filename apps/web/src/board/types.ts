@@ -149,6 +149,7 @@ export interface Database {
        * The elimination snapshot from Spec issue 10. `holdings` is the frozen roster; Sleeper
        * roster churn after elimination never touches it.
        */
+      effective_final_rosters: Database["public"]["Tables"]["final_rosters"];
       final_rosters: ReadOnlyTable<{
         season_id: number;
         team_id: number;

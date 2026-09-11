@@ -3,12 +3,14 @@ import os
 import secrets
 import threading
 from collections.abc import Callable
+from contextlib import asynccontextmanager
 from typing import NoReturn
 
 import psycopg
 from fastapi import FastAPI, HTTPException, Request
 from starlette.concurrency import run_in_threadpool
 
+from ultimate_guillotine.listener.polling import InboxRecovery
 from ultimate_guillotine.messages.bluebubbles import parse_webhook
 
 log = logging.getLogger(__name__)
@@ -31,13 +33,15 @@ def create_app(
     heartbeats,
     webhook_password: str,
     check_db: Callable[[], bool] | None = None,
+    *,
+    poll_client=None,
+    poll_chat_guids: tuple[str, ...] = (),
 ) -> FastAPI:
     """Build the listener's HTTP app.
 
     `check_db`, when given, is what makes /healthz mean "this process can still
     reach Supabase" rather than only "this process is still answering HTTP".
     """
-    app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     # Every repository the processor touches shares one psycopg connection, and
     # `CommittingRepo` commits or rolls back that whole connection per call. Work runs
     # off the event loop so /healthz stays responsive, but it must stay single-flight:
@@ -45,10 +49,46 @@ def create_app(
     # the registrar's step-by-step commit boundaries.
     single_flight = threading.Lock()
 
+    def beat_serialized() -> None:
+        with single_flight:
+            heartbeats.beat("listener")
+
     def process_serialized(msg, event_id: str) -> str:
         with single_flight:
             heartbeats.beat("listener")
             return processor.process(msg, event_id)
+
+    recovery = None
+
+    def process_recovered(msg, event_id: str) -> str:
+        # Waiting readers must notice shutdown even if a trade holds the lock.
+        while not recovery.stopped.is_set():
+            if not single_flight.acquire(timeout=0.1):
+                continue
+            try:
+                if recovery.stopped.is_set():
+                    return "stopped"
+                heartbeats.beat("listener")
+                return processor.process(msg, event_id)
+            except psycopg.OperationalError as exc:
+                _die_on_lost_connection(exc)
+            finally:
+                single_flight.release()
+        return "stopped"
+
+    @asynccontextmanager
+    async def lifespan(app):
+        nonlocal recovery
+        if poll_client is not None and poll_chat_guids:
+            recovery = InboxRecovery(poll_client, poll_chat_guids, process_recovered)
+            recovery.start()
+        try:
+            yield
+        finally:
+            if recovery is not None:
+                await run_in_threadpool(recovery.stop)
+
+    app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
 
     @app.get("/healthz")
     def healthz() -> dict:
@@ -69,8 +109,7 @@ def create_app(
         try:
             msg = parse_webhook(payload)
             if msg is None:
-                with single_flight:
-                    heartbeats.beat("listener")
+                await run_in_threadpool(beat_serialized)
                 return {"outcome": "ignored_event"}
             # `process` is entirely blocking -- a database round trip and, for a
             # trade candidate, a Hermes subprocess that can take the better part of a

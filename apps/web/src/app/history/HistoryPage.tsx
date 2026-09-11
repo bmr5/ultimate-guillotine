@@ -1,5 +1,6 @@
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { HistoryListSkeleton } from "@/history/components/HistorySkeleton";
+import { HistoryTabs } from "@/history/components/HistoryTabs";
 import { SeasonCard } from "@/history/components/SeasonCard";
 import { CARD_GRID } from "@/history/layout";
 import { useSeasonResults } from "@/history/useSeasonResults";
@@ -10,6 +11,7 @@ export function HistoryPage() {
 
   return (
     <section className="space-y-3">
+      <HistoryTabs />
       {/* Keyed by source, not by message: one outage fails both queries with the same text, and
           two alerts sharing a key would leave React rendering only one of them. */}
       {errors.map(({ source, error }) => (

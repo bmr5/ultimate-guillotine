@@ -5,6 +5,8 @@ requires-python = ">=3.12,<3.13"
 dependencies = [
   "fastapi==0.141.1",
   "httpx==0.28.1",
+  "mcp==2.2.0",
+  "nh3==0.3.7",
   "openpyxl==3.1.5",
   "pillow==12.3.0",
   "psycopg[binary,pool]==3.3.5",

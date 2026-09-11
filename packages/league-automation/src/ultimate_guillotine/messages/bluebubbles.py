@@ -81,12 +81,13 @@ class BlueBubblesClient:
     def _request(self, method: str, path: str, **kwargs) -> dict:
         params = dict(kwargs.pop("params", {}) or {})
         params["password"] = self._password
+        timeout = kwargs.pop("timeout", 15.0)
         try:
             response = self._http.request(
                 method,
                 f"{self._base}{path}",
                 params=params,
-                timeout=15.0,
+                timeout=timeout,
                 **kwargs,
             )
             response.raise_for_status()
@@ -103,6 +104,17 @@ class BlueBubblesClient:
 
     def server_info(self) -> dict:
         return self._request("GET", "/api/v1/server/info").get("data") or {}
+
+    def get_message(self, guid: str) -> InboundMessage | None:
+        data = (
+            self._request(
+                "GET",
+                f"/api/v1/message/{quote(guid, safe='')}",
+                params={"with": "chats,handle,attachment"},
+            ).get("data")
+            or {}
+        )
+        return _record_to_message(data)
 
     def chat_participants(self, chat_guid: str) -> list[str]:
         data = (
@@ -136,12 +148,42 @@ class BlueBubblesClient:
         )
         return [m for m in (_record_to_message(r) for r in data) if m]
 
-    def send_text(self, chat_guid: str, text: str) -> str:
+    def messages_page(
+        self, chat_guid: str, *, after: datetime, before: datetime,
+        offset: int = 0, limit: int = 100,
+    ) -> tuple[list[InboundMessage], int]:
+        """A bounded inbox page, including the raw count before reaction filtering.
+
+        The per-chat endpoint need not embed chats in its response. Supply the
+        requested chat when absent so those records use the same webhook parser.
+        """
+        data = self._request(
+            "GET", f"/api/v1/chat/{quote(chat_guid, safe='')}/message",
+            params={
+                "after": str(int(after.timestamp() * 1000)),
+                "before": str(int(before.timestamp() * 1000)),
+                "sort": "ASC", "offset": str(offset), "limit": str(limit),
+                "with": "handle,attachment",
+            },
+            timeout=3.0,
+        ).get("data") or []
+        messages = [_record_to_message({"chatGuid": chat_guid, **record}) for record in data]
+        return [msg for msg in messages if msg is not None], len(data)
+
+    def send_text(
+        self, chat_guid: str, text: str, *, reply_to_message_guid: str | None = None
+    ) -> str:
         body = {
             "chatGuid": chat_guid,
             "tempGuid": uuid.uuid4().hex,
             "message": text,
         }
+        if reply_to_message_guid:
+            body.update(
+                method="private-api",
+                selectedMessageGuid=reply_to_message_guid,
+                partIndex=0,
+            )
         data = self._request("POST", "/api/v1/message/text", json=body).get("data") or {}
         guid = data.get("guid")
         if not guid:
@@ -149,9 +191,15 @@ class BlueBubblesClient:
         return guid
 
     def send_attachment(
-        self, chat_guid: str, filename: str, data: bytes, mime: str = "text/html"
+        self,
+        chat_guid: str,
+        filename: str,
+        data: bytes,
+        mime: str = "text/html",
+        *,
+        reply_to_message_guid: str | None = None,
     ) -> str:
-        """Send one file to a chat. Multipart, and no Private API needed.
+        """Send a file; only an inline reply needs the Private API.
 
         The `name` form field is what iMessage shows as the file's name, so it
         is the artifact's own name and never a temp name.
@@ -161,6 +209,12 @@ class BlueBubblesClient:
             "tempGuid": uuid.uuid4().hex,
             "name": filename,
         }
+        if reply_to_message_guid:
+            fields.update(
+                method="private-api",
+                selectedMessageGuid=reply_to_message_guid,
+                partIndex="0",
+            )
         files = {"attachment": (filename, data, mime)}
         data_out = (
             self._request("POST", "/api/v1/message/attachment", data=fields, files=files).get(

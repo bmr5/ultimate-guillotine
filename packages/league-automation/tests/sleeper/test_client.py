@@ -166,3 +166,26 @@ def test_get_schedule_refuses_a_body_that_is_not_a_list() -> None:
     client = SleeperClient(httpx.Client())
     with pytest.raises(ValueError, match="not a list"):
         client.get_schedule(2026)
+
+
+@respx.mock
+def test_get_transactions_reads_one_week() -> None:
+    route = respx.get("https://api.sleeper.app/v1/league/L1/transactions/6").mock(
+        return_value=httpx.Response(
+            200,
+            json=[
+                {
+                    "type": "free_agent",
+                    "status": "complete",
+                    "adds": {"p1": 3},
+                    "drops": {"p2": 3},
+                    "roster_ids": [3],
+                    "leg": 6,
+                    "created": 0,
+                }
+            ],
+        )
+    )
+    client = SleeperClient(httpx.Client())
+    rows = client.get_transactions("L1", 6)
+    assert route.called and rows[0]["adds"] == {"p1": 3}

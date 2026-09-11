@@ -39,7 +39,24 @@ def test_send_text_posts_chat_guid_and_returns_guid() -> None:
     assert body["message"] == "hi"
     assert "tempGuid" in body
     assert "method" not in body
+    assert "selectedMessageGuid" not in body
     assert route.calls.last.request.url.params["password"] == "pw"
+
+
+@respx.mock
+def test_send_text_can_reply_to_the_selected_request() -> None:
+    route = respx.post("http://bb.local/api/v1/message/text").mock(
+        return_value=httpx.Response(200, json={"data": {"guid": "reply-1"}})
+    )
+    client = BlueBubblesClient("http://bb.local", "pw", httpx.Client())
+    assert (
+        client.send_text("iMessage;+;chat-test", "On it kitten", reply_to_message_guid="request-1")
+        == "reply-1"
+    )
+    body = json.loads(route.calls.last.request.content)
+    assert body["method"] == "private-api"
+    assert body["selectedMessageGuid"] == "request-1"
+    assert body["partIndex"] == 0
 
 
 @respx.mock
@@ -161,3 +178,44 @@ def test_send_attachment_raises_without_a_guid() -> None:
     client = BlueBubblesClient("http://bb.local", "pw", httpx.Client())
     with pytest.raises(BlueBubblesError):
         client.send_attachment("iMessage;+;chat-test", "report.html", b"x")
+
+
+@respx.mock
+def test_get_message_loads_the_requests_chat_and_thread() -> None:
+    record = json.loads(FIXTURE.read_text())["data"]
+    record["threadOriginatorGuid"] = "trade-alert"
+    route = respx.get("http://bb.local/api/v1/message/p%3A0%2FABC").mock(
+        return_value=httpx.Response(200, json={"data": record})
+    )
+    client = BlueBubblesClient("http://bb.local", "pw", httpx.Client())
+    request = client.get_message("p:0/ABC")
+    assert request.guid == "p:0/ABC"
+    assert request.chat_guid == "iMessage;+;chat-test"
+    assert request.thread_originator_guid == "trade-alert"
+    assert "chats" in route.calls.last.request.url.params["with"]
+
+
+@respx.mock
+def test_attachment_reply_posts_private_api_fields_in_multipart() -> None:
+    route = respx.post("http://bb.local/api/v1/message/attachment").mock(
+        return_value=httpx.Response(200, json={"data": {"guid": "video-reply"}})
+    )
+    client = BlueBubblesClient("http://bb.local", "pw", httpx.Client())
+    assert (
+        client.send_attachment(
+            "iMessage;+;chat-test",
+            "clip.mp4",
+            b"mp4",
+            mime="video/mp4",
+            reply_to_message_guid="video-request",
+        )
+        == "video-reply"
+    )
+    body = route.calls.last.request.content
+    for field, value in (
+        ("method", "private-api"),
+        ("selectedMessageGuid", "video-request"),
+        ("partIndex", "0"),
+    ):
+        assert f'name="{field}"\r\n\r\n{value}\r\n'.encode() in body
+    assert b"Content-Type: video/mp4" in body

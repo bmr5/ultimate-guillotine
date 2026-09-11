@@ -164,3 +164,30 @@ jobs:
     script: guillotine_video_jobs.sh
     deliver: "discord:#guillotine-ops"
     max_gap_minutes: 30
+  # Archive work uses America/Chicago internally. This host is America/Chicago
+  # (verified 2026-09-10); the explicit checkpoints are Central wall-clock times.
+  # All output stays local: these jobs do not send league or Discord messages.
+  - name: guillotine-archive-capture
+    agent: archive-capture
+    schedule: "every 2m"
+    script: guillotine_archive_capture.sh
+    deliver: local
+    max_gap_minutes: 10
+  - name: guillotine-archive-retry
+    agent: archive-tick
+    schedule: "every 15m"
+    script: guillotine_archive_tick.sh
+    deliver: local
+    max_gap_minutes: 45
+  - name: guillotine-week-close
+    agent: archive-tick
+    schedule: "30 23 * * 1"
+    script: guillotine_archive_tick.sh
+    deliver: local
+    max_gap_minutes: 45
+  - name: guillotine-week-verify
+    agent: archive-tick
+    schedule: "0 8 * * 2"
+    script: guillotine_archive_tick.sh
+    deliver: local
+    max_gap_minutes: 45
