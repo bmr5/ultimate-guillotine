@@ -721,7 +721,7 @@ including a paid hold that
 frees a spot to fill DEF while an existing TE covers the injury. A zero base-lineup
 trade-math delta does not measure the value of an enabled DEF, K or FLEX starter.
 Internal verification retries correct unsent drafts without announcing a correction
-to an answer the member never received. These instructions are prompt version 2026.6.
+to an answer the member never received. These instructions are prompt version 2026.7.
 For roster holes, the playbook compares rentals, permanent acquisition, holding
 and waivers, with survival, FAAB, return terms and custody risk in view. It checks
 transaction history before treating a claimed recent drop or add as verified.

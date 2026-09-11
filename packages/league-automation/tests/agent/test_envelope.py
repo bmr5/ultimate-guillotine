@@ -22,7 +22,7 @@ TURN = Turn(season=2026, week=6, local_time="Thu 7:42pm", asker_label="Member05"
 
 
 def test_the_prompt_version_is_read_off_the_file() -> None:
-    assert PROMPT_VERSION == "2026.6"
+    assert PROMPT_VERSION == "2026.7"
 
 
 def test_research_contract_keeps_one_recommendation_in_chat_and_details_in_html() -> None:

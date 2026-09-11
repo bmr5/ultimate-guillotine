@@ -1,4 +1,4 @@
-<!-- prompt_version: 2026.6 -->
+<!-- prompt_version: 2026.7 -->
 # League Agent turn
 
 Season __SEASON__, NFL week __WEEK__. Local time __LOCAL_TIME__ (America/Chicago).
