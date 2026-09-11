@@ -81,13 +81,29 @@ def sync_season(
         if row is None:
             raise ValueError(f"no season row for year {year}")
         season_id, expected_rosters = row
+        cur.execute("select pg_advisory_xact_lock(82426,%s)", (season_id,))
 
         validate_league(league, expected_id=league_id, expected_rosters=expected_rosters)
 
+        if league.season_year != year:
+            raise ValueError("Sleeper season year mismatch")
         SeasonSettingsRepository(conn).cache(season_id, league, now)
 
         member_ids: dict[str, int] = {}
         for user in users:
+            # Stable Sleeper identity preserves aliases/history through a display-name change.
+            cur.execute(
+                "select member_id from public.teams where season_id=%s and sleeper_user_id=%s",
+                (season_id, user.user_id),
+            )
+            known = cur.fetchone()
+            if known:
+                member_ids[user.user_id] = known[0]
+                cur.execute(
+                    "update public.members set sleeper_display_name=%s where id=%s",
+                    (user.display_name or None, known[0]),
+                )
+                continue
             # nickname is deliberately absent from both the column list and the
             # update: `ug members aliases load` owns it, and a sync that listed it
             # would blank every nickname in the league every ten minutes.

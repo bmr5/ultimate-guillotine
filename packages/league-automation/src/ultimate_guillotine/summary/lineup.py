@@ -90,7 +90,7 @@ def build_starters(
     """One line per starter slot, in lineup order, empties last.
 
     ``holdings`` are the snapshot's starter holdings
-    (:class:`~ultimate_guillotine.advisor.state.AdvisorHolding`): a player id, a
+    (:class:`~ultimate_guillotine.agent.tools.snapshot.LeagueHolding`): a player id, a
     name, a position, a lineup slot, and this week's projection. ``players`` is the
     directory's team and flag for each, ``points`` the per-starter map off the
     scores row. A slot the manager left blank is a line of its own so the roster

@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     webhook_listen_port: int = 8646
     webhook_password: SecretStr | None = None
     hermes_profile_home: str = "~/.hermes/profiles/guillotine"
+    hermes_league_profile_home: str = "~/.hermes/profiles/guillotine-league"
+    """The League Agent's own Hermes profile: its persona, its tools, no memory."""
     discord_ops_channel: str = "#guillotine-ops"
     discord_feed_channel: str = "#guillotine-feed"
     discord_drafts_channel: str = "#guillotine-drafts"

@@ -1,6 +1,6 @@
 """One sentinel league in the local database, for the EOD repository tests.
 
-Modelled on the Advisor's seed in ``tests/advisor/test_state.py``: a season year no
+Modelled on the agent's seed in ``tests/agent/test_snapshot.py``: a season year no
 sync will ever write, so nothing here depends on -- or collides with -- the real
 rows a developer's local stack carries, and the ``conn`` fixture rolls every row
 back on the way out.

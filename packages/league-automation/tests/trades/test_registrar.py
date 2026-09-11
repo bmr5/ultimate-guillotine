@@ -721,7 +721,7 @@ class FakeSnapshot:
 
 
 class FakeSnapshotRepository:
-    """Stands in for the Advisor's six-query read with a league already in hand."""
+    """Stands in for the agent's six-query read with a league already in hand."""
 
     def __init__(self, conn) -> None:
         self.conn = conn

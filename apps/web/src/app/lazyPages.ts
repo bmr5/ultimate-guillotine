@@ -31,6 +31,12 @@ export const HistoryPage = lazy(() =>
   })),
 );
 
+export const SeasonHistoryPage = lazy(() =>
+  import("@/app/history/SeasonHistoryPage").then((module) => ({
+    default: module.SeasonHistoryPage,
+  })),
+);
+
 /**
  * Fetches both chunks ahead of any tap on their tabs. The shell calls this once the browser is
  * idle after the board's first paint, so the chunks cost the board nothing and a tab opens at
@@ -42,5 +48,6 @@ export const HistoryPage = lazy(() =>
 export function prefetchPages(): void {
   void import("@/app/trades/TradesPage").catch(() => undefined);
   void import("@/app/history/HistoryPage").catch(() => undefined);
+  void import("@/app/history/SeasonHistoryPage").catch(() => undefined);
   void import("@/app/draft/DraftPage").catch(() => undefined);
 }

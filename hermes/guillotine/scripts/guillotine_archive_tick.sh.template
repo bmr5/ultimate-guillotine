@@ -1,0 +1,4 @@
+#!/bin/bash
+set -euo pipefail
+cd "__REPO__"
+exec "__REPO__/.venv/bin/ug" archive tick --quiet

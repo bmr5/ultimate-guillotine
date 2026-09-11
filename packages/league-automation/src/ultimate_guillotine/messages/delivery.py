@@ -1,4 +1,5 @@
 import hashlib
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -6,7 +7,10 @@ from typing import Literal
 
 from ultimate_guillotine.config import DeliveryMode, Settings
 from ultimate_guillotine.core.signature import sign
+from ultimate_guillotine.messages.bluebubbles import BlueBubblesError, InboundMessage
 from ultimate_guillotine.messages.fingerprint import participant_fingerprint
+
+log = logging.getLogger(__name__)
 
 
 class TargetMismatch(Exception):
@@ -24,16 +28,27 @@ class DeliveryResult:
     message_guid: str | None
 
 
-def content_hash(text: str) -> str:
-    return hashlib.sha256(sign(text).encode()).hexdigest()
+def content_hash(text: str, reply_to_message_guid: str | None = None) -> str:
+    signed = sign(text)
+    if reply_to_message_guid is not None:
+        signed += f"\0reply:{reply_to_message_guid}"
+    return hashlib.sha256(signed.encode()).hexdigest()
 
 
-def attachment_hash(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
+def attachment_hash(data: bytes, reply_to_message_guid: str | None = None) -> str:
+    digest = hashlib.sha256(data)
+    if reply_to_message_guid is not None:
+        digest.update(f"\0reply:{reply_to_message_guid}".encode())
+    return digest.hexdigest()
 
 
 def _normalized(text: str) -> str:
     return " ".join(text.split())
+
+
+def _thread_guid(guid: str | None) -> str | None:
+    # Messages may return the first text part as p:0/<guid>.
+    return guid.removeprefix("p:0/") if guid else None
 
 
 class DeliveryService:
@@ -62,6 +77,16 @@ class DeliveryService:
         if self._commit is not None:
             self._commit()
 
+    def _replies_available(self) -> bool:
+        try:
+            info = self._client.server_info()
+        except BlueBubblesError:
+            info = {}
+        available = bool(info.get("private_api") and info.get("helper_connected"))
+        if not available:
+            log.info("Inline reply unavailable; sending normally")
+        return available
+
     def _resolve_target(self, reply_to: str | None = None):
         """The chat a message goes to.
 
@@ -78,12 +103,14 @@ class DeliveryService:
         if (
             reply_to is not None
             and mode is DeliveryMode.PRODUCTION
-            and self._settings.test_chat_guid
-            and reply_to == self._settings.test_chat_guid
         ):
             test_target = self._targets.get(DeliveryMode.TEST)
             if test_target is not None and test_target.chat_guid == reply_to:
+                if reply_to != self._settings.test_chat_guid:
+                    raise TargetMismatch("stored test target does not match configured chat")
                 return test_target
+            if reply_to == self._settings.test_chat_guid:
+                raise TargetMismatch("no matching registered test target for reply")
         target = self._targets.get(mode)
         if target is None:
             raise TargetMismatch(f"no delivery target configured for {mode}")
@@ -110,6 +137,7 @@ class DeliveryService:
         content: str,
         *,
         reply_to: str | None = None,
+        reply_to_message: InboundMessage | None = None,
     ) -> DeliveryResult:
         """Deliver signed content to the configured chat, effectively once.
 
@@ -119,25 +147,54 @@ class DeliveryService:
         reservation the next attempt can reconcile instead of double-sending.
         """
         target = self._resolve_target(reply_to)
+        # Chat routing and inline replies are separate. Never reference a message
+        # from another chat when the configured delivery target redirects a send.
+        if reply_to_message is not None and (
+            reply_to_message.chat_guid != target.chat_guid or not self._replies_available()
+        ):
+            reply_to_message = None
         signed = sign(content)
-        digest = content_hash(content)
+        reply_guid = reply_to_message.guid if reply_to_message else None
+        thread_guid = (
+            _thread_guid(reply_to_message.thread_originator_guid or reply_guid)
+            if reply_to_message
+            else None
+        )
+        digest = content_hash(content, reply_guid)
         pending = self._outbound.pending_sending(target.id, digest)
         if pending is not None:
             since = pending.reserved_at - timedelta(minutes=1)
             for msg in self._client.messages_after(target.chat_guid, since):
-                if msg.is_from_me and _normalized(msg.text) == _normalized(signed):
+                if (
+                    msg.is_from_me
+                    and _normalized(msg.text) == _normalized(signed)
+                    and (
+                        thread_guid is None
+                        or _thread_guid(msg.thread_originator_guid) == thread_guid
+                    )
+                ):
                     self._outbound.set_state(pending.id, "reconciled", bluebubbles_guid=msg.guid)
                     self._notifier.feed(
                         f"[{agent}] [{self._settings.delivery_mode}] "
                         f"outbound #{pending.id} (reconciled after crash)\n{signed}"
                     )
-                    return DeliveryResult("reconciled", pending.id, msg.guid)
-            self._outbound.set_state(pending.id, "failed", error="unreconciled send; retrying")
+                    if pending.run_id == run_id:
+                        return DeliveryResult("reconciled", pending.id, msg.guid)
+                    # Recover the earlier run, then give this run its own outbound
+                    # and reply GUID even when both messages have identical text.
+                    break
+            else:
+                self._outbound.set_state(pending.id, "failed", error="unreconciled send; retrying")
         outbound_id = self._outbound.reserve(run_id, target.id, signed, digest)
         self._persist()
         self._outbound.set_state(outbound_id, "sending")
         self._persist()
-        guid = self._client.send_text(target.chat_guid, signed)
+        if reply_guid:
+            guid = self._client.send_text(
+                target.chat_guid, signed, reply_to_message_guid=reply_guid
+            )
+        else:
+            guid = self._client.send_text(target.chat_guid, signed)
         if self._crash_after_send:
             raise RuntimeError("simulated crash after send")
         self._outbound.set_state(outbound_id, "sent", bluebubbles_guid=guid)
@@ -154,6 +211,7 @@ class DeliveryService:
         data: bytes,
         *,
         reply_to: str | None = None,
+        reply_to_message_guid: str | None = None,
     ) -> DeliveryResult:
         """Send one file to the configured chat, effectively once.
 
@@ -167,13 +225,36 @@ class DeliveryService:
         the only thing about an attachment that iMessage hands back.
         """
         target = self._resolve_target(reply_to)
-        digest = attachment_hash(data)
+        # The queue retains the request GUID. Read its thread before replying,
+        # both to confirm the chat and to reconcile replies to nested requests.
+        request = None
+        if reply_to_message_guid and reply_to == target.chat_guid and self._replies_available():
+            try:
+                request = self._client.get_message(reply_to_message_guid)
+            except BlueBubblesError:
+                log.info("Video request unavailable; sending the file normally")
+            if request is not None and (
+                request.chat_guid != target.chat_guid or request.guid != reply_to_message_guid
+            ):
+                request = None
+        reply_guid = request.guid if request else None
+        thread_guid = (
+            _thread_guid(request.thread_originator_guid or reply_guid) if request else None
+        )
+        digest = attachment_hash(data, reply_guid)
         content = f"attachment:{filename}"
         pending = self._outbound.pending_sending(target.id, digest)
         if pending is not None:
             since = pending.reserved_at - timedelta(minutes=1)
             for msg in self._client.messages_after(target.chat_guid, since):
-                if msg.is_from_me and filename in msg.attachment_names:
+                if (
+                    msg.is_from_me
+                    and filename in msg.attachment_names
+                    and (
+                        thread_guid is None
+                        or _thread_guid(msg.thread_originator_guid) == thread_guid
+                    )
+                ):
                     self._outbound.set_state(pending.id, "reconciled", bluebubbles_guid=msg.guid)
                     self._notifier.feed(
                         f"[{agent}] [{self._settings.delivery_mode}] "
@@ -185,7 +266,12 @@ class DeliveryService:
         self._persist()
         self._outbound.set_state(outbound_id, "sending")
         self._persist()
-        guid = self._client.send_attachment(target.chat_guid, filename, data)
+        if reply_guid:
+            guid = self._client.send_attachment(
+                target.chat_guid, filename, data, reply_to_message_guid=reply_guid
+            )
+        else:
+            guid = self._client.send_attachment(target.chat_guid, filename, data)
         if self._crash_after_send:
             raise RuntimeError("simulated crash after send")
         self._outbound.set_state(outbound_id, "sent", bluebubbles_guid=guid)

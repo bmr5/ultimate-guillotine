@@ -65,9 +65,10 @@ class FakeDelivery:
     def __init__(self) -> None:
         self.sent: list[tuple[str, str]] = []
 
-    def deliver(self, run_id, agent, content, reply_to=None):
+    def deliver(self, run_id, agent, content, reply_to=None, reply_to_message=None):
         self.sent.append((agent, content))
         self.reply_to = reply_to
+        self.reply_to_message = reply_to_message
 
 
 class FakeConn:
@@ -108,6 +109,9 @@ def test_a_reply_to_the_alert_queues_that_trade_and_says_so() -> None:
     assert delivery.sent == [(AGENT, "On it kitten, hold on for 10 minutes")]
     # Answered in the chat that asked, when the delivery service allows it.
     assert delivery.reply_to == CHAT
+    # Reply to the video request itself, not the alert it replied to.
+    assert delivery.reply_to_message.guid == "reply-1"
+    assert delivery.reply_to_message.thread_originator_guid == "alert-1"
 
 
 def test_a_code_in_the_text_works_without_a_reply() -> None:
@@ -117,6 +121,7 @@ def test_a_code_in_the_text_works_without_a_reply() -> None:
     )
     assert jobs.enqueued[0][1] == "T-2026-003"
     assert delivery.sent[0][1] == "On it kitten, hold on for 10 minutes"
+    assert delivery.reply_to_message.guid == "m1"
 
 
 def test_a_reply_to_the_bots_confirmation_resolves_through_the_outbound_lookup() -> None:

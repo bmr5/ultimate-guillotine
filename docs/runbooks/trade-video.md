@@ -177,6 +177,42 @@ ffmpeg`, the Higgsfield CLI logged in (`higgsfield auth login`), `uv sync` for P
 `git pull` for `data/media/reference`, and `hermes/guillotine/install.sh` to register the cron
 job. `ug video assets` says whether it is all there.
 
+## Acknowledgments and videos as replies
+
+The acknowledgment (`On it kitten, hold on for 10 minutes`) and the already-running
+response target the video request's message GUID, not the trade alert's GUID. The
+delivery service keeps chat routing separate from the inline reply target.
+
+The completed video also targets the request GUID saved in `private.video_jobs.requested_guid`.
+Before sending it as a reply, the delivery service reads the original message to confirm its
+chat and thread. Missing requests and jobs created without a request GUID send normally.
+Crash reconciliation distinguishes identical attachments in different threads.
+
+BlueBubbles requires its Private API and a connected helper to send an inline reply.
+When either is unavailable, the acknowledgment remains a normal message in the
+requesting chat. A failed capability read also falls back before sending; a timeout
+after a threaded send is attempted does not trigger an extra standalone send.
+
+On September 10, 2026, the connected server reported `private_api: false` and
+`helper_connected: false` on macOS 26.5. The code support is tested locally, but true
+inline replies have not been verified live. Reload the listener after deploying the
+code, and verify a new request in the self-test chat once the helper is available.
+No server security settings were changed as part of this update.
+
+BlueBubbles is free and open source; replies do not require a paid upgrade. Its documented
+helper installation requires disabling library validation and System Integrity Protection,
+including a Recovery Mode reboot, then enabling Private API in BlueBubbles and checking the
+helper connection. The local Apple Silicon Mac currently has SIP enabled. This is a separate
+machine configuration decision, not an application-code change.
+
+There is an [open macOS 26 reply failure report](https://github.com/BlueBubblesApp/bluebubbles-server/issues/814)
+on BlueBubbles 1.9.9, close to this server's configuration. Check compatibility before
+changing security settings; enabling the helper alone is not evidence replies work.
+Both text and attachment replies need a self-test after setup and listener reload.
+
+Reference: [BlueBubbles reply support](https://docs.bluebubbles.app/private-api).
+Setup: [Private API installation](https://docs.bluebubbles.app/private-api/installation).
+
 ## Names and facts on air
 
 - The writer gets the trade fact by fact, not just the lower third: the announcement as it

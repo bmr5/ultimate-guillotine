@@ -9,7 +9,7 @@ the chat and the site can never disagree about who is playing.
 from decimal import Decimal
 from types import MappingProxyType
 
-from ultimate_guillotine.advisor.state import AdvisorHolding
+from ultimate_guillotine.agent.tools.snapshot import LeagueHolding
 from ultimate_guillotine.summary.lineup import (
     build_starters,
     classify_starter,
@@ -33,8 +33,8 @@ def _holding(
     position: str = "RB",
     points: str | None = "12.5",
     lineup_position: str | None = None,
-) -> AdvisorHolding:
-    return AdvisorHolding(
+) -> LeagueHolding:
+    return LeagueHolding(
         sleeper_player_id=pid,
         player_name=f"Player {pid}",
         position=position,

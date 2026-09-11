@@ -4,7 +4,7 @@ from ultimate_guillotine.summary.fixture import FIXTURE_NOW, fixture_eod
 from ultimate_guillotine.summary.survival import simulate
 
 
-def test_the_fixture_is_the_advisor_s_league_on_a_sunday_night() -> None:
+def test_the_fixture_is_the_agent_s_league_on_a_sunday_night() -> None:
     snap = fixture_eod()
     assert len(snap.teams) == 18
     assert snap.week == 6

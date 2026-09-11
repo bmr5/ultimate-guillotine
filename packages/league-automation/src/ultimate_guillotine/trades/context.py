@@ -24,8 +24,8 @@ the numbers mean anything -- that draft dollars are FAAB at five to one, that a
 rental and an option are ordinary trades here rather than something strange,
 that eliminated teams still hold tradeable players. It is a curated file
 (`agents/trade-registrar/league-rules.md`), not the whole document, and the
-Advisor appends the same file to its own prompt so the two agents cannot come to
-disagree about what the league allows.
+League Agent reads the same file through its rules tool so both agents use the
+same league rules.
 
 Two things this module is careful about.
 
@@ -38,8 +38,8 @@ them for no benefit: the terms are what the rules need.
 
 **It is a pure function over plain data.** Nothing here queries. The registrar
 and the CLI build :class:`ContextTeam` rows from
-:class:`~ultimate_guillotine.advisor.state.LeagueSnapshot` through
-:func:`context_from_snapshot` -- the Advisor's existing six-query read, not a
+:class:`~ultimate_guillotine.agent.tools.snapshot.LeagueSnapshot` through
+:func:`context_from_snapshot` -- the agent's existing six-query read, not a
 second set of queries against the same tables -- and the case runner builds them
 from its synthetic league, so a case exercises the same rendering production
 does.
@@ -65,7 +65,7 @@ __all__ = [
 #: The curated trade-bearing rules, extracted from
 #: `docs/rules/ultimate-guillotine-gulag-league-rules.docx`. A file rather than a
 #: string in this module because both agents read it: the Registrar puts it in
-#: the pack, the Advisor appends it to its own prompt, and a rule that lived in
+#: the pack, the League Agent exposes it through its rules tool, and a rule that lived in
 #: one of them would eventually disagree with the other.
 LEAGUE_RULES_PATH = (
     Path(__file__).resolve().parents[5] / "agents" / "trade-registrar" / "league-rules.md"
@@ -182,7 +182,7 @@ def build_registrar_context(
 
 
 def context_from_snapshot(snapshot, members, trades: Sequence[Mapping]) -> str:
-    """Build the pack from the Advisor's league snapshot and the trade log.
+    """Build the pack from the agent's league snapshot and the trade log.
 
     ``members`` are :class:`~ultimate_guillotine.trades.models.MemberRef` rows,
     which is where the aliases live: the snapshot carries one rendered label per

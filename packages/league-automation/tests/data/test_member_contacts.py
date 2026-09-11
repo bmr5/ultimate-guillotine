@@ -1,6 +1,6 @@
 """Sender-to-member mapping over the hashed handles in `private.member_contacts`.
 
-The whole table is hashes: the Advisor has to know whose "my roster" it is
+The whole table is hashes: the agent has to know whose "my roster" it is
 looking at without anybody ever writing an Apple handle down. These tests pin
 both halves of that -- the digest matches what the listener already stores in
 `private.source_messages.sender_hash`, and no raw handle reaches a column.

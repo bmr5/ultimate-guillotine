@@ -80,6 +80,7 @@ class OutboundRecord:
     reserved_at: datetime
     content_hash: str
     bluebubbles_guid: str | None
+    run_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -207,6 +208,36 @@ class RunRepository:
             )
             row = cur.fetchone()
             return row[0] if row else None
+
+    def set_session(self, run_id: int, session_id: int) -> None:
+        """Tie a run to the agent session it ran in, for the follow-up that replies to it."""
+        with self._conn.cursor() as cur:
+            cur.execute(
+                "update private.agent_runs set session_id = %s where id = %s",
+                (session_id, run_id),
+            )
+
+    def session_id_for(self, run_id: int) -> int | None:
+        with self._conn.cursor() as cur:
+            cur.execute("select session_id from private.agent_runs where id = %s", (run_id,))
+            row = cur.fetchone()
+            return row[0] if row else None
+
+    def is_agent_run(self, run_id: int, agent: str) -> bool:
+        with self._conn.cursor() as cur:
+            cur.execute("select 1 from private.agent_runs where id = %s and agent = %s",
+                        (run_id, agent))
+            return cur.fetchone() is not None
+
+    def running_ids(self, agent: str) -> list[int]:
+        """Every run of ``agent`` still ``running`` -- what a restart has to settle."""
+        with self._conn.cursor() as cur:
+            cur.execute(
+                "select id from private.agent_runs where agent = %s and status = 'running'"
+                " order by id",
+                (agent,),
+            )
+            return [row[0] for row in cur.fetchall()]
 
 
 class SeasonRepository:
@@ -424,7 +455,7 @@ class OutboundRepository:
         with self._conn.cursor() as cur:
             cur.execute(
                 """
-                select id, state, reserved_at, content_hash, bluebubbles_guid
+                select id, state, reserved_at, content_hash, bluebubbles_guid, run_id
                 from private.outbound_messages
                 where delivery_target_id = %s and content_hash = %s and state = 'sending'
                 order by reserved_at desc
@@ -436,6 +467,24 @@ class OutboundRepository:
             if row is None:
                 return None
             return OutboundRecord(*row)
+
+    def run_id_for_guid(self, bluebubbles_guid: str, chat_guid: str) -> int | None:
+        """The run behind one of the bot's own messages, by the GUID iMessage gave it.
+
+        A reply to the bot carries this GUID as its thread root, and the run is
+        how the reply finds the session it continues. The delivery target binds
+        even a pending receipt to its chat before a session exists.
+        """
+        with self._conn.cursor() as cur:
+            cur.execute(
+                "select o.run_id from private.outbound_messages o"
+                " join private.delivery_targets t on t.id = o.delivery_target_id"
+                " where o.bluebubbles_guid = %s and t.chat_guid = %s"
+                " and o.run_id is not null order by o.id desc limit 1",
+                (bluebubbles_guid, chat_guid),
+            )
+            row = cur.fetchone()
+            return row[0] if row else None
 
 
 class ReceiptRepository:
@@ -794,7 +843,7 @@ class MemberContactRepository:
         """Return the member this hashed handle belongs to, or ``None``.
 
         ``None`` is the answer for anybody the loader has not been told about,
-        and the caller has to treat it as such: a sender the Advisor cannot
+        and the caller has to treat it as such: a sender the agent cannot
         match is a sender whose "my roster" it must not guess at.
         """
         with self._conn.cursor() as cur:

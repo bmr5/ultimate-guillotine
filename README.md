@@ -6,7 +6,9 @@ Ultimate Guillotine is the shared home for the fantasy football league website, 
 
 ```text
 apps/web/                  React and Vite website
-agents/                    Future recap, research, and messaging agents
+agents/                    Agent prompts and shared league rules
+packages/league-automation/ Python automation, League Agent, and CLI
+hermes/guillotine-league/   Isolated League Agent profile
 data/private/              Local-only member and contact data
 docs/contracts/            Contract reference documents
 docs/rules/                Authoritative league rules
@@ -15,7 +17,10 @@ history/league/            Sanitized league history
 scripts/                   Imports and future scheduled operations
 ```
 
-The repository intentionally has no empty `packages/` directory. Shared packages should be introduced only after multiple applications or agents need the same code.
+The League Agent answers league questions through read-only tools. Setup, authentication,
+dry-run commands, and the self-test promotion gates are in
+[the Mac mini runbook](docs/runbooks/mac-mini.md#10-league-agent-rollout).
+Live acceptance remains incomplete; offline checks do not enable the listener.
 
 ## Website
 

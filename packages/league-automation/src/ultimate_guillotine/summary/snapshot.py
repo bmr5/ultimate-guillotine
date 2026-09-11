@@ -1,8 +1,8 @@
 """One EOD snapshot: the reads, and the pure assembly that turns them into shapes.
 
 The league itself -- rosters, lineup slots, this week's projections, coverage,
-FAAB, elimination -- comes from the Advisor's
-:class:`~ultimate_guillotine.advisor.state.SnapshotRepository`, the package's one
+FAAB, elimination -- comes from the agent's
+:class:`~ultimate_guillotine.agent.tools.snapshot.SnapshotRepository`, the package's one
 six-query read of the data layer. This module joins it with what the summary
 needs beyond that: each starter's NFL team and injury flag off the directory, the
 week's scores and every earlier week's for the gulag replay, the Adjudicator's
@@ -28,7 +28,8 @@ from decimal import Decimal
 
 import psycopg
 
-from ultimate_guillotine.advisor.state import LeagueSnapshot, SnapshotRepository
+from ultimate_guillotine.agent.tools.snapshot import LeagueSnapshot, SnapshotRepository
+from ultimate_guillotine.history.archive_store import current_gulag_events
 from ultimate_guillotine.sleeper.team_projections import TeamWeekRepository
 from ultimate_guillotine.summary.lineup import build_starters
 from ultimate_guillotine.summary.models import (
@@ -253,6 +254,9 @@ class EodRepository:
             return past
 
     def gulag_events(self, season_id: int) -> list[tuple[int | None, str, dict]]:
+        archived = current_gulag_events(self._conn, season_id)
+        if archived is not None:
+            return archived
         with self._conn.cursor() as cur:
             cur.execute(
                 "select week, event_type, payload from public.league_events"
@@ -312,8 +316,8 @@ class EodRepository:
 def load_snapshot(conn: psycopg.Connection, client, now: datetime) -> EodSnapshot:
     """The whole snapshot: the league read, the joins, the schedule, assembled.
 
-    Raises :class:`~ultimate_guillotine.advisor.state.SnapshotUnavailable` when
-    the data layer cannot say what week or league this is, exactly as the Advisor
+    Raises :class:`~ultimate_guillotine.agent.tools.snapshot.SnapshotUnavailable` when
+    the data layer cannot say what week or league this is, exactly as the agent
     does; the caller words that for its own audience.
     """
     league = SnapshotRepository(conn).load()
