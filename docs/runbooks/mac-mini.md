@@ -677,15 +677,15 @@ where week = (select week from public.nfl_state);
 ## 10. League Agent rollout
 
 The League Agent answers any `@daddy`, `@bot`, or `@guillotinebot` question, with
-case-insensitive tags, or an inline reply to one of its answers in an authorized
-chat. Production mode enables both registered test and league delivery targets.
+case-insensitive tags. Every request needs a tag, including inline replies.
+Untagged messages never trigger the League Agent. Production mode enables both registered test and league delivery targets.
 Test mode enables only the registered test target; disabled mode enables neither.
 Missing targets exclude those chats, and environment GUIDs alone grant no access.
 It can answer league facts, research players, explain rules,
 and compare trades. It sends a short answer and, when useful, an HTML artifact.
 It never registers trades. Announce a trade with a 🚨 alert for the Trade Registrar.
 
-The listener attempts a native thumbs-up on each accepted tagged question or inline
+The listener attempts a native thumbs-up on each accepted tagged question or tagged inline
 follow-up before queueing it. Reactions require BlueBubbles Private API and a connected
 helper. If unavailable or unsuccessful, the bot stays silent until its answer.
 The run reservation deduplicates reactions. No acknowledgment, queue or progress texts
@@ -701,12 +701,14 @@ chat. Delivery still checks registered targets, configured GUIDs and the league
 participant fingerprint. A missing or mismatched test target fails closed instead
 of redirecting its reply to the league chat.
 
-Follow-ups recognize a parent outbound message only in its delivery target's chat,
+Tagged follow-ups recognize a parent outbound message only in its delivery target's chat,
 including historical receipts sent before the parent session exists. Before resuming, the
 worker also checks that the session's stored chat hash matches the current chat.
 A foreign thread reference cannot load another chat's conversation history.
 
 The SOUL uses a curt, neutral, robotic tone without pet names or roleplay.
+Explicit requests for poems, jokes or league banter get only the requested creative text.
+Playful draft and FAAB trash talk does not count as bias in league rulings.
 Data lookups return only the requested value, name or list. Analysis and reports
 are reserved for requests for recommendations or detail.
 New trade confirmations say exactly `trade recorded in database`, without a signature.

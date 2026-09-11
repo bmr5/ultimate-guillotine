@@ -142,7 +142,7 @@ def test_pending_progress_reply_resumes_completed_parent_once():
             return
         assert parts["delivery"].texts == []
         assert parts["runs"].sessions == {}
-        reply = _msg("what about next week", guid="g2", thread="p:0/BOT-1")
+        reply = _msg("@bot what about next week", guid="g2", thread="p:0/BOT-1")
         assert trigger.matches(reply)
         trigger.handle(reply)
     parts["client"].on_run = during

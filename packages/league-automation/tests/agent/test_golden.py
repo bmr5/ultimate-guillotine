@@ -152,7 +152,7 @@ GOLDEN = (
            _answer("Member01, with 960.", faab=[_faab("Member01", 960, "balance")])),
     Golden("rules", "@bot are rentals allowed", "answer", _answer("Yes, rentals are allowed.")),
     Golden("history", "@bot who won in 2025", "answer", _answer("Member09 won 2025.")),
-    Golden("follow-up", "what about Member03 instead?", "answer",
+    Golden("follow-up", "@bot what about Member03 instead?", "answer",
            _answer("A starting offer could be 50 FAAB from Member18.",
                    faab=[_faab("Member18", 50)]), thread="p:0/BOT-1"),
     Golden("general NFL", "@bot is Bench 05-0 playing Sunday", "answer",

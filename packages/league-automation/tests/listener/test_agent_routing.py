@@ -175,7 +175,7 @@ def test_completed_and_queued_parents_cannot_transfer_context_between_chats(
                            update={"thread_originator_guid": "parent-receipt"})
         result = processor.process(question, question.guid)
         assert result == ("handled:league-agent" if tagged else "no_trigger")
-    same_chat = msg("follow up", chat=origin, guid="same-chat").model_copy(
+    same_chat = msg("@bot follow up", chat=origin, guid="same-chat").model_copy(
         update={"thread_originator_guid": "parent-receipt"})
     assert processor.process(same_chat, same_chat.guid) == "handled:league-agent"
     while not worker._queue.empty():
@@ -188,3 +188,22 @@ def test_completed_and_queued_parents_cannot_transfer_context_between_chats(
     assert [resume for _, resume in parts["client"].calls] == [None, None, "parent-session"]
     assert parts["delivery"].reply_tos == [origin, foreign, origin]
     assert [item[2] for item in receipt.reactions] == [origin, foreign, origin]
+
+
+@pytest.mark.parametrize("chat", [TEST, LEAGUE])
+def test_untagged_dismissal_in_bot_thread_is_silent(configure, chat):
+    worker, _ = _worker()
+    delivery = FakeDelivery()
+    outbound = FakeOutbound({"bot-refusal": 1}, chat=chat)
+    processor, _, _ = configure("production", (TEST, LEAGUE), worker, delivery,
+                                outbound=outbound)
+    # Register a real parent run so the previous untagged-reply rule would match.
+    assert processor.process(msg("@bot original question", chat=chat, guid="parent"),
+                             "parent-event") == "handled:league-agent"
+    worker._queue.get_nowait()
+    delivery.reactions.clear()
+    question = msg("Nm Ben feel free to axe this thing", chat=chat).model_copy(
+        update={"thread_originator_guid": "bot-refusal"})
+    assert processor.process(question, "untagged-dismissal") == "no_trigger"
+    assert delivery.sent == delivery.reactions == []
+    assert worker._queue.empty()
