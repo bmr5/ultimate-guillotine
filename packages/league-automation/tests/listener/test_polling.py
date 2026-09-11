@@ -7,7 +7,7 @@ from unittest.mock import Mock
 import httpx
 from fastapi.testclient import TestClient
 
-from ultimate_guillotine.agent.trigger import RECEIPT, FollowUpResolver, league_agent_trigger
+from ultimate_guillotine.agent.trigger import FollowUpResolver, league_agent_trigger
 from ultimate_guillotine.listener.app import create_app
 from ultimate_guillotine.listener.polling import POLL_INTERVAL_SECONDS, InboxRecovery
 from ultimate_guillotine.listener.processing import InboundProcessor, TriggerRegistry
@@ -46,8 +46,8 @@ def real_processor():
 
 def test_missed_webhooks_ack_both_chats_before_model_and_dedupe():
     processor, worker, delivery, runs = real_processor()
-    worker.submit.side_effect = lambda job: delivery.deliver.assert_any_call(
-        job.run_id, "league-agent", RECEIPT, reply_to=job.message.chat_guid
+    worker.submit.side_effect = lambda job: delivery.react.assert_any_call(
+        job.run_id, job.message
     )
     client = Mock()
     client.messages_page.side_effect = lambda chat, **kw: ([message(chat, chat)], 1)
@@ -57,7 +57,7 @@ def test_missed_webhooks_ack_both_chats_before_model_and_dedupe():
         recovery.scan(chat)
         assert processor.process(message(chat, chat), chat) == "duplicate"
         recovery.scan(chat)
-    assert delivery.deliver.call_count == worker.submit.call_count == runs.reserve.call_count == 2
+    assert delivery.react.call_count == worker.submit.call_count == runs.reserve.call_count == 2
 
 
 def test_paging_uses_raw_count_retains_cursor_and_overlaps_delayed_records():
@@ -188,7 +188,7 @@ def test_recent_overlap_catches_delayed_insert_and_skips_history_and_cached_rece
     recovery.scan("test")
     recovery.scan("test")
     assert [call.args[0].guid for call in process.call_args_list] == ["first", "delayed"]
-    assert runs.reserve.call_count == delivery.deliver.call_count == worker.submit.call_count == 2
+    assert runs.reserve.call_count == delivery.react.call_count == worker.submit.call_count == 2
 
 
 def test_equal_timestamp_backlog_beyond_page_budget_is_not_dropped():
@@ -230,7 +230,8 @@ def test_loop_checks_every_ten_seconds_without_waiting_for_model():
     recovery.stopped = FakeStop()
     recovery._loop("test")
     assert all(9 <= seconds <= 10 for seconds in waits)
-    delivery.deliver.assert_called_once_with(1, "league-agent", RECEIPT, reply_to="test")
+    delivery.react.assert_called_once_with(1, worker.submit.call_args.args[0].message)
+    delivery.deliver.assert_not_called()
     assert worker.submit.call_count == 1
     assert (clock[0] - arrival).total_seconds() < 30
 

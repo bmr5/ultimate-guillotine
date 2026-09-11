@@ -84,9 +84,13 @@ class FakeDelivery:
     def __init__(self):
         #: ``(run_id, agent, content, reply_to)`` of every send.
         self.sent = []
+        self.reactions = []
 
     def deliver(self, run_id, agent, content, *, reply_to=None):
         self.sent.append((run_id, agent, content, reply_to))
+
+    def react(self, run_id, message):
+        self.reactions.append((run_id, message.guid, message.chat_guid))
 
 
 def _resolver():
@@ -211,12 +215,13 @@ def test_a_redelivered_webhook_is_skipped() -> None:
     trigger.handle(_msg("@bot hi"))
     assert worker.jobs == []
     assert delivery.sent == []
+    assert delivery.reactions == []
 
 
 @pytest.mark.parametrize("text,thread", [
     ("@bot hi", None), ("@Daddy hi", None), ("follow up", "p:0/BOT-1"),
 ])
-def test_receipt_follows_reservation_and_precedes_each_submission(text, thread):
+def test_reaction_follows_reservation_and_precedes_each_submission(text, thread):
     events = []
 
     class Runs(FakeRuns):
@@ -225,9 +230,9 @@ def test_receipt_follows_reservation_and_precedes_each_submission(text, thread):
             return super().reserve(*args, **kwargs)
 
     class Delivery(FakeDelivery):
-        def deliver(self, *args, **kwargs):
-            events.append("receipt")
-            super().deliver(*args, **kwargs)
+        def react(self, *args, **kwargs):
+            events.append("reaction")
+            super().react(*args, **kwargs)
 
     class Worker(FakeWorker):
         def submit(self, job):
@@ -239,19 +244,18 @@ def test_receipt_follows_reservation_and_precedes_each_submission(text, thread):
     # Leave both jobs queued: each gets a receipt before any worker processing.
     for guid in ("g1", "g2"):
         trigger.handle(_msg(text, guid=guid, thread=thread))
-    assert events == ["reserve", "receipt", "submit"] * 2
-    assert delivery.sent == [
-        (run_id, AGENT, "request received", CHAT) for run_id in (1, 2)
-    ]
+    assert events == ["reserve", "reaction", "submit"] * 2
+    assert delivery.sent == []
+    assert delivery.reactions == [(1, "g1", CHAT), (2, "g2", CHAT)]
     assert [job.run_id for job in worker.jobs] == [1, 2]
     assert [job.message.text for job in worker.jobs] == [text, text]
 
 
-def test_receipt_failure_still_queues_and_logs_only_exception_class(caplog):
+def test_reaction_failure_still_queues_and_logs_only_exception_class(caplog):
     delivery_failed = False
 
     class BrokenDelivery:
-        def deliver(self, *args, **kwargs):
+        def react(self, *args, **kwargs):
             nonlocal delivery_failed
             delivery_failed = True
             raise RuntimeError("private question +15555550100 Member05 chat-secret")
@@ -269,35 +273,14 @@ def test_receipt_failure_still_queues_and_logs_only_exception_class(caplog):
     assert len(worker.jobs) == 1
     assert worker.jobs[0].parent_run_id == 41
     assert [record.getMessage() for record in caplog.records] == [
-        "league agent could not acknowledge receipt: RuntimeError"
+        "league agent could not react: RuntimeError"
     ]
     assert all(record.exc_info is None for record in caplog.records)
 
 
-@pytest.mark.parametrize("crash_after_send", [False, True])
-def test_receipt_is_signed_recorded_and_reply_resolvable_before_parent_session(
-    crash_after_send, monkeypatch,
-):
-    from tests.messages.test_delivery import FakeOutbound as DeliveryOutbound
+def test_reaction_is_recorded_once_without_a_confirmation_text():
     from tests.messages.test_delivery import make
     from ultimate_guillotine.config import DeliveryMode
-    from ultimate_guillotine.data.repositories import OutboundRecord
-
-    class Outbound(DeliveryOutbound):
-        def reserve(self, run_id, target_id, content, hash_):
-            oid = super().reserve(run_id, target_id, content, hash_)
-            self.records[oid].update(run_id=run_id, content=content)
-            return oid
-
-        def run_id_for_guid(self, guid, chat_guid):
-            return next((row["run_id"] for row in self.records.values()
-                         if row.get("guid") == guid and chat_guid == CHAT), None)
-
-        def pending_sending(self, target_id, hash_):
-            return next((OutboundRecord(oid, row["state"], NOW, row["hash"], row.get("guid"),
-                                        run_id=row["run_id"])
-                         for oid, row in self.records.items()
-                         if row["state"] == "sending" and row["hash"] == hash_), None)
 
     class Runs(FakeRuns):
         def reserve(self, agent, trigger, key, invoked_by=None):
@@ -305,43 +288,16 @@ def test_receipt_is_signed_recorded_and_reply_resolvable_before_parent_session(
                 return None
             return super().reserve(agent, trigger, key, invoked_by)
 
-        def is_agent_run(self, run_id, agent):
-            return 1 <= run_id <= len(self.reserved) and agent == AGENT
-
-    delivery, client, outbound, _ = make(DeliveryMode.TEST, outbound=Outbound(),
-                                        crash_after_send=crash_after_send)
-    worker, runs = FakeWorker(), Runs()
-    resolver = FollowUpResolver(outbound, runs, FakeSessions())
-    trigger = league_agent_trigger(worker=worker, contacts=FakeContacts(), resolver=resolver,
-                                  runs=runs, delivery=delivery, chat_guid=CHAT)
-    msg = _msg("@bot hi")
-    trigger.handle(msg)
-    trigger.handle(msg)
-    assert client.sent == [(CHAT, sign("request received"))]
+    delivery, client, outbound, _ = make(DeliveryMode.TEST)
+    worker = FakeWorker()
+    trigger = _trigger(worker=worker, runs=Runs(), delivery=delivery)
+    question = _msg("@bot hi")
+    trigger.handle(question)
+    trigger.handle(question)
+    assert client.sent == []
+    assert client.reactions == [(CHAT, "g1")]
     assert len(worker.jobs) == 1
-    assert outbound.records[1]["content"] == sign("request received")
-    assert outbound.records[1]["run_id"] == 1
-    assert outbound.records[1]["state"] == ("sending" if crash_after_send else "sent")
-    assert runs.session_id_for(1) is None
-    # A second tagged question must recover A and still get its own receipt.
-    client.history = [_msg(sign("request received"), guid="guid-1").model_copy(
-        update={"is_from_me": True},
-    )]
-    monkeypatch.setattr(delivery, "_crash_after_send", False)
-    trigger.handle(_msg("@bot another question", guid="g2"))
-    assert len(client.sent) == 2
-    assert [outbound.records[i]["run_id"] for i in (1, 2)] == [1, 2]
-    assert outbound.records[1]["state"] == ("reconciled" if crash_after_send else "sent")
-    assert outbound.records[2]["state"] == "sent"
-    assert [job.run_id for job in worker.jobs] == [1, 2]
-    assert resolver.parent_run_id("guid-1", CHAT) == 1
-    assert resolver.parent_run_id("guid-2", CHAT) == 2
-    reply = _msg("follow-up", guid="g3", thread="guid-2")
-    assert trigger.matches(reply)
-    trigger.handle(reply)
-    assert worker.jobs[2].parent_run_id == 2
-    assert worker.jobs[2].session is None
-    assert len(client.sent) == 3
+    assert outbound.records[1]["state"] == "sent"
 
 
 def test_reply_to_pending_agent_run_is_queued_by_parent_reference():

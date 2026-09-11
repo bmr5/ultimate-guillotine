@@ -3,10 +3,9 @@
 import pytest
 
 from tests.agent.test_trigger import FakeContacts, FakeDelivery, FakeOutbound, FakeRuns
-from tests.agent.test_worker import LOOKUP, RESEARCH, Timers, _reply, _worker
+from tests.agent.test_worker import LOOKUP, RESEARCH, _reply, _worker
 from tests.listener.test_processing import FakeReceipts, FakeSources, msg
 from tests.listener.test_run import EmptyConnection, RecordingNotifier, _settings, _target
-from ultimate_guillotine.agent.worker import PROGRESS_AFTER, QUEUED, QUEUED_AFTER, STILL_ON_IT
 from ultimate_guillotine.config import DeliveryMode
 from ultimate_guillotine.core.signature import sign
 from ultimate_guillotine.listener import run as run_module
@@ -101,41 +100,28 @@ def test_mode_and_missing_targets_gate_questions(configure, mode, registered, ex
             assert outcome == "handled:league-agent"
         else:
             assert outcome in {"no_trigger", "ignored_chat"}
-    assert [item[3] for item in delivery.sent] == list(expected)
+    assert [item[2] for item in delivery.reactions] == list(expected)
     assert worker._queue.qsize() == len(expected)
 
 
 @pytest.mark.parametrize("chat", [TEST, LEAGUE])
 def test_question_gets_one_receipt_then_answer_without_twenty_second_ack(configure, chat):
-    timers = Timers()
-    active_timers = []
-
-    def during_run():
-        active_timers.extend(t.interval for t in timers.timers if not t.cancelled)
-
-    worker, parts = _worker(_reply(LOOKUP), timers=timers, on_run=during_run)
+    worker, parts = _worker(_reply(LOOKUP))
     receipt = FakeDelivery()
     processor, _, _ = configure("production", (TEST, LEAGUE), worker, receipt)
     question = msg("@daddy who has the most FAAB?", chat=chat, guid="one-receipt")
     assert processor.process(question, question.guid) == "handled:league-agent"
-    assert receipt.sent == [(1, "league-agent", "request received", chat)]
+    assert receipt.sent == []
+    assert receipt.reactions == [(1, "one-receipt", chat)]
     assert parts["delivery"].texts == []
     assert worker.run_job(worker._queue.get_nowait()) == "answer"
-    assert active_timers == [300.0]
-    assert len(receipt.sent) == 1
+    assert len(receipt.reactions) == 1
     assert parts["delivery"].texts == [LOOKUP["chat_text"]]
     assert parts["delivery"].reply_tos == [chat]
 
 
 def test_two_chat_receipts_queue_pacing_answers_and_artifacts_keep_their_origin(configure):
-    timers = Timers()
-
-    def pace():
-        # The active job owns the newest five-minute progress timer.
-        next(t for t in reversed(timers.timers) if t.interval == PROGRESS_AFTER).fire()
-
-    worker, parts = _worker(_reply(RESEARCH), _reply(RESEARCH, "sess-2"),
-                            timers=timers, on_run=pace)
+    worker, parts = _worker(_reply(RESEARCH), _reply(RESEARCH, "sess-2"))
     receipt = FakeDelivery()
     processor, _, calls = configure("production", (TEST, LEAGUE), worker, receipt,
                                     default_factory=True)
@@ -146,29 +132,24 @@ def test_two_chat_receipts_queue_pacing_answers_and_artifacts_keep_their_origin(
         assert processor.process(question, f"event-{index}") == "duplicate"
         # A new webhook event for the same message also cannot reserve another run.
         assert processor.process(question, f"redelivery-{index}") == "handled:league-agent"
-    assert receipt.sent == [
-        (1, "league-agent", "request received", TEST),
-        (2, "league-agent", "request received", LEAGUE),
-    ]
+    assert receipt.sent == []
+    assert receipt.reactions == [(1, "g-0", TEST), (2, "g-1", LEAGUE)]
     assert worker._queue.qsize() == 2
-    timers.at(QUEUED_AFTER).fire()
-    assert parts["delivery"].texts == [QUEUED]
-    assert parts["delivery"].reply_tos == [LEAGUE]
+    assert parts["delivery"].texts == []
     for chat in (TEST, LEAGUE):
         job = worker._queue.get_nowait()
         assert job.message.chat_guid == chat
         assert worker.run_job(job) == "answer"
     assert parts["delivery"].texts == [
-        QUEUED, STILL_ON_IT.format(minutes=5), RESEARCH["chat_text"],
-        STILL_ON_IT.format(minutes=5), RESEARCH["chat_text"],
+        RESEARCH["chat_text"], RESEARCH["chat_text"],
     ]
     assert len(parts["delivery"].files) == 2
-    assert parts["delivery"].reply_tos == [LEAGUE, TEST, TEST, TEST, LEAGUE, LEAGUE, LEAGUE]
+    assert parts["delivery"].reply_tos == [TEST, TEST, LEAGUE, LEAGUE]
     assert worker._queue.empty()
     for chat in (TEST, LEAGUE):
         signed = msg(sign("@daddy hello"), chat=chat, from_me=True, guid=f"signed-{chat}")
         assert processor.process(signed, signed.guid) == "ignored_bot"
-    assert len(receipt.sent) == 2
+    assert len(receipt.reactions) == 2
 
 
 @pytest.mark.parametrize("origin,foreign", [(TEST, LEAGUE), (LEAGUE, TEST)])
@@ -206,4 +187,4 @@ def test_completed_and_queued_parents_cannot_transfer_context_between_chats(
         assert worker.run_job(job) == "answer"
     assert [resume for _, resume in parts["client"].calls] == [None, None, "parent-session"]
     assert parts["delivery"].reply_tos == [origin, foreign, origin]
-    assert [item[3] for item in receipt.sent] == [origin, foreign, origin]
+    assert [item[2] for item in receipt.reactions] == [origin, foreign, origin]

@@ -16,11 +16,6 @@ from ultimate_guillotine.agent.worker import (
     ATTACHMENT_FAILED,
     COULD_NOT_FINISH,
     LOST_THREAD,
-    PROGRESS_AFTER,
-    PROGRESS_EVERY,
-    QUEUED,
-    QUEUED_AFTER,
-    STILL_ON_IT,
     AgentWorker,
     Job,
 )
@@ -160,40 +155,12 @@ class FakeNotifier:
         return True
 
 
-class FakeTimer:
-    def __init__(self, interval, function, args=()):
-        self.interval, self.function, self.args = interval, function, args
-        self.started = self.cancelled = False
-
-    def start(self):
-        self.started = True
-
-    def cancel(self):
-        self.cancelled = True
-
-    def fire(self):
-        self.function(*self.args)
-
-
-class Timers:
-    def __init__(self):
-        self.timers: list[FakeTimer] = []
-
-    def __call__(self, interval, function, args=()):
-        timer = FakeTimer(interval, function, args)
-        self.timers.append(timer)
-        return timer
-
-    def at(self, interval) -> FakeTimer:
-        return next(t for t in self.timers if t.interval == interval)
-
-
-def _worker(*replies, delivery=None, runs=None, on_run=None, timers=None):
+def _worker(*replies, delivery=None, runs=None, on_run=None):
     parts = {
         "client": FakeClient(*replies, on_run=on_run), "source": FixtureSource(),
         "delivery": delivery or FakeDelivery(), "notifier": FakeNotifier(),
         "runs": runs or FakeRuns(), "sessions": FakeSessions(), "answers": FakeAnswers(),
-        "clock": lambda: NOW, "timer_factory": timers or Timers(),
+        "clock": lambda: NOW,
     }
     return AgentWorker(**parts), parts
 
@@ -312,55 +279,23 @@ def test_foreign_session_never_reaches_the_model_even_if_parent_lookup_is_suppli
     assert not parts["answers"].recorded[0].is_follow_up
 
 
-def test_running_question_has_no_second_acknowledgement_before_long_progress() -> None:
-    timers = Timers()
-    scheduled = []
-    messages_during_run = []
-
+def test_running_question_sends_only_the_answer(monkeypatch) -> None:
+    def no_timer(*args, **kwargs):
+        raise AssertionError("must not schedule progress messages")
+    monkeypatch.setattr(threading, "Timer", no_timer)
     def during_run():
-        scheduled.extend(timer.interval for timer in timers.timers)
-        messages_during_run.extend(parts["delivery"].texts)
-
-    worker, parts = _worker(_reply(LOOKUP), on_run=during_run, timers=timers)
+        assert parts["delivery"].texts == []
+    worker, parts = _worker(_reply(LOOKUP), on_run=during_run)
     worker.run_job(Job(7, _msg("@bot hi"), ASKER, None))
-    assert scheduled == [300.0]
-    assert messages_during_run == []
     assert parts["delivery"].texts == [LOOKUP["chat_text"]]
-    timers.at(PROGRESS_AFTER).fire()
-    assert parts["delivery"].texts == [LOOKUP["chat_text"]]
-    assert all(t.cancelled for t in timers.timers)
-
-
-def test_the_progress_line_repeats_while_the_job_runs_and_not_after() -> None:
-    timers = Timers()
-
-    def during_run():
-        timers.at(PROGRESS_AFTER).fire()
-        timers.at(PROGRESS_EVERY).fire()
-
-    worker, parts = _worker(_reply(LOOKUP), on_run=during_run, timers=timers)
-    worker.run_job(Job(7, _msg("@bot hi"), ASKER, None))
-    assert parts["delivery"].texts == [
-        STILL_ON_IT.format(minutes=5), STILL_ON_IT.format(minutes=15), LOOKUP["chat_text"],
-    ]
-    # The line the second progress post scheduled fires after the answer went out: silence.
-    repeats = [t for t in timers.timers if t.interval == PROGRESS_EVERY]
-    assert len(repeats) == 2 and all(t.cancelled for t in timers.timers)
-    repeats[-1].fire()
-    assert len(parts["delivery"].texts) == 3
 
 
 def test_every_send_replies_to_the_chat_that_asked() -> None:
-    timers = Timers()
     delivery = FakeDelivery(attachment_error=RuntimeError("boom"))
-    worker, _parts = _worker(_reply(RESEARCH), delivery=delivery,
-                             on_run=lambda: timers.at(PROGRESS_AFTER).fire(), timers=timers)
+    worker, _ = _worker(_reply(RESEARCH), delivery=delivery)
     worker.run_job(Job(7, _msg("@bot hold Bowers"), ASKER, None))
-    assert delivery.texts == [
-        STILL_ON_IT.format(minutes=5), RESEARCH["chat_text"], ATTACHMENT_FAILED,
-    ]
-    # The pacing line, the answer, the attachment attempt and the apology: all four.
-    assert delivery.reply_tos == [CHAT] * 4
+    assert delivery.texts == [RESEARCH["chat_text"], ATTACHMENT_FAILED]
+    assert delivery.reply_tos == [CHAT] * 3
 
 
 def test_an_unknown_sender_is_said_to_the_agent() -> None:
@@ -397,26 +332,17 @@ def test_startup_settles_runs_the_restart_orphaned() -> None:
     assert parts["notifier"].ops_sent == ["League Agent orphaned runs marked failed."]
 
 
-def test_a_queued_question_is_told_it_is_next_after_twenty_seconds() -> None:
-    timers = Timers()
-    worker, parts = _worker(_reply(LOOKUP), timers=timers)
-    worker._busy.set()
-    worker.submit(Job(8, _msg("@bot hi", guid="g2"), ASKER, None))
-    timers.at(QUEUED_AFTER).fire()
-    assert parts["delivery"].texts == [QUEUED]
-    assert parts["delivery"].reply_tos == [CHAT]
-
-
-def test_the_queued_line_is_dropped_once_the_job_starts() -> None:
-    timers = Timers()
-    worker, parts = _worker(_reply(LOOKUP), timers=timers)
-    worker._busy.set()
-    worker.submit(Job(8, _msg("@bot hi", guid="g2"), ASKER, None))
-    queued = timers.at(QUEUED_AFTER)
-    worker.run_job(worker._queue.get_nowait())
-    assert queued.cancelled
-    queued.fire()
-    assert parts["delivery"].texts == [LOOKUP["chat_text"]]
+def test_queued_questions_do_not_send_status_texts(monkeypatch) -> None:
+    def no_timer(*args, **kwargs):
+        raise AssertionError("must not schedule queue messages")
+    monkeypatch.setattr(threading, "Timer", no_timer)
+    worker, parts = _worker(_reply(LOOKUP), _reply(LOOKUP))
+    for run in (7, 8):
+        worker.submit(Job(run, _msg("@bot hi", guid=f"g{run}"), ASKER, None))
+    assert parts["delivery"].texts == []
+    while not worker._queue.empty():
+        worker.run_job(worker._queue.get_nowait())
+    assert parts["delivery"].texts == [LOOKUP["chat_text"]] * 2
 
 
 def test_wait_until_idle_finishes_running_and_queued_answers() -> None:

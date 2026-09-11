@@ -18,12 +18,10 @@ from unittest.mock import Mock
 import psycopg
 import pytest
 
-from ultimate_guillotine.agent.trigger import RECEIPT
 from ultimate_guillotine.config import Settings
 from ultimate_guillotine.data.repositories import DeliveryTarget
 from ultimate_guillotine.listener import run as run_module
 from ultimate_guillotine.messages.bluebubbles import InboundMessage
-from ultimate_guillotine.video.trigger import ACKNOWLEDGEMENT
 
 #: The self-test chat every test in this module configures.
 TEST_CHAT = "iMessage;+;chat-test"
@@ -438,14 +436,14 @@ def test_production_dispatch_gives_explicit_video_requests_one_owner(
     assert notifier.ops_sent == []
     if owner == "trade-video":
         jobs.enqueue.assert_called_once_with(5, "T-2026-003", message.guid, chat_guid)
-        delivery.deliver.assert_called_once_with(
-            None, owner, ACKNOWLEDGEMENT, reply_to=chat_guid, reply_to_message=message,
-        )
+        delivery.react.assert_called_once_with(None, message)
+        delivery.deliver.assert_not_called()
         runs.reserve.assert_not_called()
         worker.submit.assert_not_called()
     else:
         jobs.enqueue.assert_not_called()
-        delivery.deliver.assert_called_once_with(42, owner, RECEIPT, reply_to=chat_guid)
+        delivery.react.assert_called_once_with(42, message)
+        delivery.deliver.assert_not_called()
         worker.submit.assert_called_once()
         assert worker.submit.call_args.args[0].message == message
 

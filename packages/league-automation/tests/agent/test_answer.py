@@ -78,10 +78,10 @@ def test_chat_text_is_bounded(report) -> None:
 
 
 def test_fixed_agent_replies_also_fit_the_message_limit() -> None:
-    from ultimate_guillotine.agent.trigger import RECEIPT, REFUSAL
+    from ultimate_guillotine.agent.trigger import REFUSAL
     from ultimate_guillotine.agent.worker import ATTACHMENT_FAILED, COULD_NOT_FINISH
 
-    for text in (RECEIPT, REFUSAL, ATTACHMENT_FAILED, COULD_NOT_FINISH):
+    for text in (REFUSAL, ATTACHMENT_FAILED, COULD_NOT_FINISH):
         assert len(sign(text)) <= 129
 
 

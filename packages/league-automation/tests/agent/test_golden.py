@@ -4,7 +4,7 @@ Offline replies are scripted; live replies use the configured Hermes profile and
 Live permits answers, clarification or refusal, never failed verification or a fixed apology.
 Age and coverage variants are OFFLINE ONLY and skipped live: the separate MCP uses defaults.
 The other live cases use those same defaults, and real time like the MCP tools.
-Timers remain fake in both modes so delivery counts exclude wall-clock pacing.
+The worker sends only the answer, without progress messages.
 """
 
 import hashlib
@@ -37,7 +37,6 @@ from tests.agent.test_worker import (
     FakeNotifier,
     FakeRuns,
     FakeSessions,
-    Timers,
     _msg,
     _reply,
 )
@@ -223,7 +222,7 @@ def test_golden(golden, caplog):
     source = _source(golden, live=LIVE)
     worker = AgentWorker(
         client=client, source=source, delivery=delivery, notifier=notifier, runs=runs,
-        sessions=sessions, answers=answers, timer_factory=Timers(),
+        sessions=sessions, answers=answers,
         clock=(lambda: datetime.now(UTC)) if LIVE else (lambda: FIXTURE_SYNCED_AT),
     )
 
@@ -253,7 +252,8 @@ def test_golden(golden, caplog):
         assert delivery.texts == delivery.files == runs.finished == answers.recorded == []
         return
 
-    assert trigger_delivery.sent == [(1, AGENT, "request received", CHAT)]
+    assert trigger_delivery.sent == []
+    assert trigger_delivery.reactions == [(1, message.guid, CHAT)]
     assert trigger_runs.finished == []
     job = worker._queue.get_nowait()
     assert isinstance(job, Job) and job.asker == golden.member
@@ -289,7 +289,7 @@ def test_golden(golden, caplog):
     query, resumed = client.calls[seed_calls]
     assert resumed == (resume_id if golden.thread else None)
     assert golden.text in query
-    assert ("follow-up" in query) == bool(golden.thread)
+    assert ("Turn: a follow-up" in query) == bool(golden.thread)
     assert ("unknown sender" in query) == (golden.member is None)
     if not LIVE:
         assert len(client.calls) == 1 and final_reply.model == MODEL

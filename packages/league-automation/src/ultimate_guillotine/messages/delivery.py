@@ -84,7 +84,7 @@ class DeliveryService:
             info = {}
         available = bool(info.get("private_api") and info.get("helper_connected"))
         if not available:
-            log.info("Inline reply unavailable; sending normally")
+            log.info("Private API unavailable")
         return available
 
     def _resolve_target(self, reply_to: str | None = None):
@@ -201,6 +201,34 @@ class DeliveryService:
         self._notifier.feed(
             f"[{agent}] [{self._settings.delivery_mode}] outbound #{outbound_id}\n{signed}"
         )
+        return DeliveryResult("sent", outbound_id, guid)
+
+    def react(self, run_id: int | None, message: InboundMessage) -> DeliveryResult | None:
+        """Acknowledge in the originating chat, or stay silent if reactions are unavailable.
+
+        The caller reserves the agent run before calling this, so redelivered
+        webhooks cannot send a second reaction. Never redirect a reaction to a
+        different chat or replace a failed reaction with a text message.
+        """
+        target = self._resolve_target(message.chat_guid)
+        if target.chat_guid != message.chat_guid:
+            raise TargetMismatch("reaction target does not match originating chat")
+        if not self._replies_available():
+            return None
+        content = f"reaction:like:{message.guid}"
+        digest = hashlib.sha256(content.encode()).hexdigest()
+        outbound_id = self._outbound.reserve(run_id, target.id, content, digest)
+        self._persist()
+        self._outbound.set_state(outbound_id, "sending")
+        self._persist()
+        try:
+            guid = self._client.send_reaction(target.chat_guid, message.guid)
+        except BlueBubblesError as exc:
+            self._outbound.set_state(outbound_id, "failed", error=exc.__class__.__name__)
+            self._persist()
+            raise
+        self._outbound.set_state(outbound_id, "sent", bluebubbles_guid=guid)
+        self._persist()
         return DeliveryResult("sent", outbound_id, guid)
 
     def deliver_attachment(

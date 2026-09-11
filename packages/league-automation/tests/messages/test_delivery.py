@@ -23,6 +23,7 @@ PROD_MEMBERS = ["+15555550100", "+15555550101"]
 class FakeClient:
     def __init__(self) -> None:
         self.sent = []
+        self.reactions = []
         self.participants = {PROD_GUID: PROD_MEMBERS, TEST_GUID: ["+15555550100"]}
         self.history = []
         self.reply_guids = []
@@ -44,6 +45,10 @@ class FakeClient:
         self.sent.append((chat_guid, text))
         self.reply_guids.append(reply_to_message_guid)
         return f"guid-{len(self.sent)}"
+
+    def send_reaction(self, chat_guid, message_guid):
+        self.reactions.append((chat_guid, message_guid))
+        return f"reaction-{len(self.reactions)}"
 
     def send_attachment(
         self, chat_guid, filename, data, mime="text/html", *, reply_to_message_guid=None
@@ -515,3 +520,46 @@ def test_each_trade_gets_the_exact_database_confirmation() -> None:
     assert client.sent == [(TEST_GUID, "trade recorded in database")] * 2
     assert first.outbound_id != second.outbound_id
     assert all(row["state"] == "sent" for row in outbound.records.values())
+
+
+@pytest.mark.parametrize("chat", [TEST_GUID, PROD_GUID])
+def test_reaction_stays_in_the_request_chat_and_is_recorded(chat):
+    service, client, outbound, _ = make(DeliveryMode.PRODUCTION)
+    result = service.react(7, video_request(chat=chat))
+    assert client.reactions == [(chat, "request-1")]
+    assert client.sent == []
+    assert outbound.records[result.outbound_id]["state"] == "sent"
+
+
+@pytest.mark.parametrize("private_api,helper", [(False, False), (True, False), (False, True)])
+def test_unavailable_reactions_do_not_send_fallback_text(private_api, helper):
+    service, client, outbound, _ = make(DeliveryMode.TEST)
+    client.info = {"private_api": private_api, "helper_connected": helper}
+    assert service.react(7, video_request()) is None
+    assert client.sent == client.reactions == []
+    assert outbound.records == {}
+
+
+def test_reaction_cannot_be_redirected_between_chats():
+    service, client, _, _ = make(DeliveryMode.TEST)
+    with pytest.raises(TargetMismatch):
+        service.react(7, video_request(chat=PROD_GUID))
+    assert client.sent == client.reactions == []
+
+
+def test_failed_reaction_is_recorded_without_fallback_text():
+    service, client, outbound, _ = make(DeliveryMode.TEST)
+    def fail(*args):
+        raise BlueBubblesError("reaction failed")
+    client.send_reaction = fail
+    with pytest.raises(BlueBubblesError):
+        service.react(7, video_request())
+    assert client.sent == []
+    assert outbound.records[1]["state"] == "failed"
+
+
+def test_disabled_delivery_cannot_react():
+    service, client, _, _ = make(DeliveryMode.DISABLED)
+    with pytest.raises(DeliveryDisabled):
+        service.react(7, video_request())
+    assert client.sent == client.reactions == []

@@ -1,3 +1,4 @@
+import re
 import uuid
 from datetime import UTC, datetime
 from urllib.parse import quote
@@ -189,6 +190,19 @@ class BlueBubblesClient:
         if not guid:
             raise BlueBubblesError("send returned no message guid")
         return guid
+
+    def send_reaction(self, chat_guid: str, message_guid: str) -> str:
+        """Add a native thumbs-up to a message through the Private API."""
+        part = re.fullmatch(r"p:(\d+)/(.+)", message_guid)
+        data = self._request("POST", "/api/v1/message/react", json={
+            "chatGuid": chat_guid,
+            "selectedMessageGuid": part.group(2) if part else message_guid,
+            "reaction": "like",
+            "partIndex": int(part.group(1)) if part else 0,
+        }).get("data") or {}
+        if not data.get("guid"):
+            raise BlueBubblesError("reaction send returned no message guid")
+        return data["guid"]
 
     def send_attachment(
         self,

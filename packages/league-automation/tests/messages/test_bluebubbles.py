@@ -219,3 +219,28 @@ def test_attachment_reply_posts_private_api_fields_in_multipart() -> None:
     ):
         assert f'name="{field}"\r\n\r\n{value}\r\n'.encode() in body
     assert b"Content-Type: video/mp4" in body
+
+
+@pytest.mark.parametrize("guid,selected,part", [("message-1", "message-1", 0),
+                                             ("p:2/message-1", "message-1", 2)])
+@respx.mock
+def test_native_thumbs_up_selects_the_original_message(guid, selected, part):
+    route = respx.post("http://bb.local/api/v1/message/react").mock(
+        return_value=httpx.Response(200, json={"data": {"guid": "reaction-1"}})
+    )
+    client = BlueBubblesClient("http://bb.local", "pw", httpx.Client())
+    assert client.send_reaction("chat", guid) == "reaction-1"
+    assert json.loads(route.calls.last.request.content) == {
+        "chatGuid": "chat", "selectedMessageGuid": selected,
+        "reaction": "like", "partIndex": part,
+    }
+
+
+@respx.mock
+def test_native_reaction_without_a_receipt_fails():
+    respx.post("http://bb.local/api/v1/message/react").mock(
+        return_value=httpx.Response(200, json={"data": {}})
+    )
+    client = BlueBubblesClient("http://bb.local", "pw", httpx.Client())
+    with pytest.raises(BlueBubblesError):
+        client.send_reaction("chat", "message-1")

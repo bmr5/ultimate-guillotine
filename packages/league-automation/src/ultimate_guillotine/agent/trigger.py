@@ -3,7 +3,7 @@
 Everything here runs under the listener's one lock:
 is this the chat, is the bot addressed (by tag or by inline reply), is this an
 attempt to overrule it, and who sent it. Then the run is reserved -- the
-idempotency guard against a redelivered webhook -- and a receipt is delivered
+idempotency guard against a redelivered webhook -- and a thumbs-up reaction is attempted
 before the job is queued for the worker. No league data is read and no model
 is called on this thread.
 """
@@ -21,7 +21,6 @@ from ultimate_guillotine.listener.processing import Trigger
 from ultimate_guillotine.messages.bluebubbles import InboundMessage
 
 BOT_TAG = re.compile(r"@\s*(?:bot|guillotinebot|daddy)\b", re.IGNORECASE)
-RECEIPT = "request received"
 log = logging.getLogger(__name__)
 #: An explicit attempt to overwrite the agent's own instructions. Narrow on
 #: purpose: "register this trade" is a question the agent answers with the 🚨
@@ -109,9 +108,9 @@ def league_agent_trigger(
         job = Job(run_id, msg, asker, None,
                   parent_run_id=resolver.parent_run_id(msg.thread_originator_guid, msg.chat_guid))
         try:
-            delivery.deliver(run_id, AGENT, RECEIPT, reply_to=msg.chat_guid)
-        except Exception as exc:  # noqa: BLE001 - queue the question even if receipt fails
-            log.warning("league agent could not acknowledge receipt: %s", exc.__class__.__name__)
+            delivery.react(run_id, msg)
+        except Exception as exc:  # noqa: BLE001 - queue the question even if reaction fails
+            log.warning("league agent could not react: %s", exc.__class__.__name__)
         worker.submit(job)
 
     return Trigger(AGENT, matches, handle)

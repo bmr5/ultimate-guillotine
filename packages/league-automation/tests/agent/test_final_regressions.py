@@ -22,8 +22,6 @@ from ultimate_guillotine.agent.tools.names import PlayerInfo
 from ultimate_guillotine.agent.worker import (
     COULD_NOT_FINISH,
     LOST_THREAD,
-    PROGRESS_AFTER,
-    STILL_ON_IT,
 )
 from ultimate_guillotine.ai.structured import AIUnavailable
 from ultimate_guillotine.data.repositories import chat_guid_hash
@@ -123,7 +121,7 @@ def test_pending_progress_reply_resumes_completed_parent_once():
     from ultimate_guillotine.agent.trigger import FollowUpResolver, league_agent_trigger
 
     worker, parts = _worker(_reply(LOOKUP), _reply(LOOKUP))
-    outbound = FakeOutbound({})
+    outbound = FakeOutbound({"p:0/BOT-1": 7})
     resolver_runs = TriggerRuns()
     resolver_runs.is_agent_run = lambda run, agent: run == 7
     trigger = league_agent_trigger(
@@ -142,8 +140,7 @@ def test_pending_progress_reply_resumes_completed_parent_once():
     def during():
         if len(parts["client"].calls) != 1:
             return
-        parts["timer_factory"].at(PROGRESS_AFTER).fire()
-        assert parts["delivery"].texts == [STILL_ON_IT.format(minutes=5)]
+        assert parts["delivery"].texts == []
         assert parts["runs"].sessions == {}
         reply = _msg("what about next week", guid="g2", thread="p:0/BOT-1")
         assert trigger.matches(reply)
