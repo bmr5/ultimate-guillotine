@@ -479,6 +479,9 @@ def main() -> None:
     processor, _allowed = build_processor(
         settings, conn, client, delivery, notifier, reconcile_agent_runs=True
     )
+    poll_chats = agent_chat_guids(
+        settings, targets.get(DeliveryMode.TEST), targets.get(DeliveryMode.PRODUCTION)
+    )
     heartbeats = CommittingRepo(HeartbeatRepository(conn), conn)
     start_heartbeat_thread(settings)
 
@@ -490,6 +493,8 @@ def main() -> None:
         heartbeats,
         settings.webhook_password.get_secret_value(),
         check_db=check_db,
+        poll_client=client,
+        poll_chat_guids=poll_chats,
     )
     uvicorn.run(
         app,

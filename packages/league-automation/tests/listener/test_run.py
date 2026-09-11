@@ -638,3 +638,30 @@ def test_the_agent_announces_a_missing_hermes_once(monkeypatch: pytest.MonkeyPat
     )
     assert _trigger_named(processor, "league-agent") is None
     assert any("League Agent disabled" in note for note in notifier.ops_sent)
+
+
+@pytest.mark.parametrize("mode,expected", [
+    ("production", (TEST_CHAT, LEAGUE_CHAT)), ("test", (TEST_CHAT,)), ("disabled", ()),
+])
+def test_main_wires_recovery_to_registered_mode_targets_only(monkeypatch, mode, expected):
+    settings = _settings(delivery_mode=mode, production_chat_guid=LEAGUE_CHAT,
+                         production_participant_fingerprint="fingerprint",
+                         webhook_password="fake", bluebubbles_password="fake")
+    conn = ConfiguredConnection(mode="test", chat_guid=TEST_CHAT,
+                                extra={"production": LEAGUE_CHAT}, listen=("listen-only",))
+    processor, client, app = Mock(), Mock(), Mock()
+    factory = Mock(return_value=app)
+    build = Mock(return_value=(processor, {TEST_CHAT, LEAGUE_CHAT, "listen-only"}))
+    monkeypatch.setattr(run_module, "load_settings", lambda: settings)
+    monkeypatch.setattr(run_module, "connect", lambda settings: conn)
+    monkeypatch.setattr(run_module, "BlueBubblesClient", Mock(return_value=client))
+    monkeypatch.setattr(run_module.httpx, "Client", Mock())
+    monkeypatch.setattr(run_module, "build_processor", build)
+    monkeypatch.setattr(run_module, "start_heartbeat_thread", Mock())
+    monkeypatch.setattr(run_module, "create_app", factory)
+    monkeypatch.setattr(run_module.uvicorn, "run", Mock())
+    run_module.main()
+    assert factory.call_args.args[0] is processor
+    assert factory.call_args.kwargs["poll_client"] is client
+    assert factory.call_args.kwargs["poll_chat_guids"] == expected
+    build.assert_called_once()

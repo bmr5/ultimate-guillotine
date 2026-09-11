@@ -81,12 +81,13 @@ class BlueBubblesClient:
     def _request(self, method: str, path: str, **kwargs) -> dict:
         params = dict(kwargs.pop("params", {}) or {})
         params["password"] = self._password
+        timeout = kwargs.pop("timeout", 15.0)
         try:
             response = self._http.request(
                 method,
                 f"{self._base}{path}",
                 params=params,
-                timeout=15.0,
+                timeout=timeout,
                 **kwargs,
             )
             response.raise_for_status()
@@ -146,6 +147,28 @@ class BlueBubblesClient:
             or []
         )
         return [m for m in (_record_to_message(r) for r in data) if m]
+
+    def messages_page(
+        self, chat_guid: str, *, after: datetime, before: datetime,
+        offset: int = 0, limit: int = 100,
+    ) -> tuple[list[InboundMessage], int]:
+        """A bounded inbox page, including the raw count before reaction filtering.
+
+        The per-chat endpoint need not embed chats in its response. Supply the
+        requested chat when absent so those records use the same webhook parser.
+        """
+        data = self._request(
+            "GET", f"/api/v1/chat/{quote(chat_guid, safe='')}/message",
+            params={
+                "after": str(int(after.timestamp() * 1000)),
+                "before": str(int(before.timestamp() * 1000)),
+                "sort": "ASC", "offset": str(offset), "limit": str(limit),
+                "with": "handle,attachment",
+            },
+            timeout=3.0,
+        ).get("data") or []
+        messages = [_record_to_message({"chatGuid": chat_guid, **record}) for record in data]
+        return [msg for msg in messages if msg is not None], len(data)
 
     def send_text(
         self, chat_guid: str, text: str, *, reply_to_message_guid: str | None = None
