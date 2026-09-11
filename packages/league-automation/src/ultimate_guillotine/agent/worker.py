@@ -49,7 +49,6 @@ from ultimate_guillotine.trades.models import MemberRef
 log = logging.getLogger(__name__)
 
 AGENT = "league-agent"
-ON_IT = "On it — digging into this, give me a few minutes."
 STILL_ON_IT = "Still digging — {minutes} minutes in. I'll post when it's ready."
 QUEUED = "One at a time — yours is next."
 COULD_NOT_FINISH = "Couldn't finish that one — ask me again in a bit."
@@ -57,7 +56,7 @@ LOST_THREAD = "(I lost the thread of our earlier conversation, so this starts fr
 ATTACHMENT_FAILED = "The write-up didn't attach — ask me again and I'll resend it."
 NOT_AN_ANSWER = "your reply did not end with a valid LeagueAnswer JSON block"
 FORMER_MEMBER = "a former member"
-ON_IT_AFTER = 20.0
+QUEUED_AFTER = 20.0
 PROGRESS_AFTER = 300.0
 PROGRESS_EVERY = 600.0
 LOCAL_TZ = ZoneInfo("America/Chicago")
@@ -132,13 +131,7 @@ class _Pacer:
         self._scheduled.append(_start_timer(self._timers, delay, fn, args))
 
     def start(self) -> None:
-        self._schedule(ON_IT_AFTER, self._say, ON_IT)
         self._schedule(PROGRESS_AFTER, self._progress, int(PROGRESS_AFTER // 60))
-
-    def _say(self, text: str) -> None:
-        with self._lock:
-            if not self._done:
-                self._post(text)
 
     def _progress(self, minutes: int) -> None:
         with self._lock:
@@ -193,7 +186,7 @@ class AgentWorker:
         with self._queue_lock:
             if self._busy.is_set() or not self._queue.empty():
                 self._waiting[job.run_id] = _start_timer(
-                    self._timers, ON_IT_AFTER, self._say_queued, (job,)
+                    self._timers, QUEUED_AFTER, self._say_queued, (job,)
                 )
             self._queue.put(job)
 

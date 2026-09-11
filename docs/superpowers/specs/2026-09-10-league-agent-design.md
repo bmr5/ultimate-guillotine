@@ -77,10 +77,9 @@ conversation on. The commissioner resolves to his own team like anyone else.
 ## Flow
 
 ```text
-webhook ──lock──▶ gates ▶ reserve run ▶ enqueue job ▶ release lock
+webhook ──lock──▶ gates ▶ reserve run ▶ immediate kitten receipt ▶ enqueue job ▶ release lock
                                      │
       worker thread (serial) ◀───────┘
-        ├─ 20 s no answer  → "On it — digging into this, give me a few minutes."
         ├─ 5 min           → progress line, then one every 10 min
         ├─ hermes chat (resume for a follow-up) ──▶ LeagueAnswer JSON
         ├─ verify chat text + report ──✗──▶ resume once with the problem ──✗──▶ one-liner
@@ -328,8 +327,8 @@ it does touches the listener's connection or its commit boundaries. Jobs run one
 and the chat reads one answer at a time. A question that arrives while another is running waits;
 if it waits past twenty seconds it is told "one at a time — yours is next" once.
 
-Per job the worker: starts the pacing timers — twenty seconds for "On it — digging into this,
-give me a few minutes.", five minutes for the first progress line, then one every ten minutes,
+Per job the worker: starts the pacing timers, five minutes for the first progress line,
+then one every ten minutes,
 all of them posted only while the job is still running; builds the envelope; runs Hermes;
 parses `LeagueAnswer`; verifies, resuming once on failure; renders the artifact; writes
 `private.agent_answers`; delivers the chat text and then the file; finishes the run

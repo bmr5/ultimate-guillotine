@@ -16,11 +16,10 @@ from ultimate_guillotine.agent.worker import (
     ATTACHMENT_FAILED,
     COULD_NOT_FINISH,
     LOST_THREAD,
-    ON_IT,
-    ON_IT_AFTER,
     PROGRESS_AFTER,
     PROGRESS_EVERY,
     QUEUED,
+    QUEUED_AFTER,
     STILL_ON_IT,
     AgentWorker,
     Job,
@@ -300,19 +299,22 @@ def test_foreign_session_never_reaches_the_model_even_if_parent_lookup_is_suppli
     assert not parts["answers"].recorded[0].is_follow_up
 
 
-def test_pacing_lines_post_only_while_the_job_runs() -> None:
+def test_running_question_has_no_second_acknowledgement_before_long_progress() -> None:
     timers = Timers()
-    fired: list[str] = []
+    scheduled = []
+    messages_during_run = []
 
     def during_run():
-        timers.at(ON_IT_AFTER).fire()
-        fired.append("on it")
+        scheduled.extend(timer.interval for timer in timers.timers)
+        messages_during_run.extend(parts["delivery"].texts)
 
     worker, parts = _worker(_reply(LOOKUP), on_run=during_run, timers=timers)
     worker.run_job(Job(7, _msg("@bot hi"), ASKER, None))
-    assert parts["delivery"].texts == [ON_IT, LOOKUP["chat_text"]]
+    assert scheduled == [300.0]
+    assert messages_during_run == []
+    assert parts["delivery"].texts == [LOOKUP["chat_text"]]
     timers.at(PROGRESS_AFTER).fire()
-    assert parts["delivery"].texts == [ON_IT, LOOKUP["chat_text"]]
+    assert parts["delivery"].texts == [LOOKUP["chat_text"]]
     assert all(t.cancelled for t in timers.timers)
 
 
@@ -339,9 +341,11 @@ def test_every_send_replies_to_the_chat_that_asked() -> None:
     timers = Timers()
     delivery = FakeDelivery(attachment_error=RuntimeError("boom"))
     worker, _parts = _worker(_reply(RESEARCH), delivery=delivery,
-                             on_run=lambda: timers.at(ON_IT_AFTER).fire(), timers=timers)
+                             on_run=lambda: timers.at(PROGRESS_AFTER).fire(), timers=timers)
     worker.run_job(Job(7, _msg("@bot hold Bowers"), ASKER, None))
-    assert delivery.texts == [ON_IT, RESEARCH["chat_text"], ATTACHMENT_FAILED]
+    assert delivery.texts == [
+        STILL_ON_IT.format(minutes=5), RESEARCH["chat_text"], ATTACHMENT_FAILED,
+    ]
     # The pacing line, the answer, the attachment attempt and the apology: all four.
     assert delivery.reply_tos == [CHAT] * 4
 
@@ -385,7 +389,7 @@ def test_a_queued_question_is_told_it_is_next_after_twenty_seconds() -> None:
     worker, parts = _worker(_reply(LOOKUP), timers=timers)
     worker._busy.set()
     worker.submit(Job(8, _msg("@bot hi", guid="g2"), ASKER, None))
-    timers.at(ON_IT_AFTER).fire()
+    timers.at(QUEUED_AFTER).fire()
     assert parts["delivery"].texts == [QUEUED]
     assert parts["delivery"].reply_tos == [CHAT]
 
@@ -395,7 +399,7 @@ def test_the_queued_line_is_dropped_once_the_job_starts() -> None:
     worker, parts = _worker(_reply(LOOKUP), timers=timers)
     worker._busy.set()
     worker.submit(Job(8, _msg("@bot hi", guid="g2"), ASKER, None))
-    queued = timers.at(ON_IT_AFTER)
+    queued = timers.at(QUEUED_AFTER)
     worker.run_job(worker._queue.get_nowait())
     assert queued.cancelled
     queued.fire()

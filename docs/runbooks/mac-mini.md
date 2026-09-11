@@ -690,9 +690,11 @@ question or inline follow-up, before queueing it. This signed receipt uses the
 question's run and originating chat, so members can reply to it even before the
 worker creates a session. Duplicate webhooks send no extra receipt, and immediate
 override refusals receive only the refusal. A failed receipt send does not stop
-the question from being queued. The worker's existing twenty-second and later
-progress messages still apply. The dry-run CLI calls the worker directly and
-does not emit this listener receipt.
+the question from being queued. Running questions receive no second acknowledgement
+at twenty seconds. The first research progress update is at five minutes, then
+every ten minutes while the job is still running. A question waiting behind another
+job retains its one-time queue notice after twenty seconds. The dry-run CLI calls
+the worker directly and does not emit the listener receipt.
 
 The allowlist lives in `agent_chat_guids` in
 `packages/league-automation/src/ultimate_guillotine/listener/run.py`. Both chats

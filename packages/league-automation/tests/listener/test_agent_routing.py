@@ -6,7 +6,7 @@ from tests.agent.test_trigger import FakeContacts, FakeDelivery, FakeOutbound, F
 from tests.agent.test_worker import LOOKUP, RESEARCH, Timers, _reply, _worker
 from tests.listener.test_processing import FakeReceipts, FakeSources, msg
 from tests.listener.test_run import EmptyConnection, RecordingNotifier, _settings, _target
-from ultimate_guillotine.agent.worker import ON_IT, ON_IT_AFTER, QUEUED
+from ultimate_guillotine.agent.worker import PROGRESS_AFTER, QUEUED, QUEUED_AFTER, STILL_ON_IT
 from ultimate_guillotine.config import DeliveryMode
 from ultimate_guillotine.core.signature import sign
 from ultimate_guillotine.listener import run as run_module
@@ -105,12 +105,34 @@ def test_mode_and_missing_targets_gate_questions(configure, mode, registered, ex
     assert worker._queue.qsize() == len(expected)
 
 
+@pytest.mark.parametrize("chat", [TEST, LEAGUE])
+def test_question_gets_one_receipt_then_answer_without_twenty_second_ack(configure, chat):
+    timers = Timers()
+    active_timers = []
+
+    def during_run():
+        active_timers.extend(t.interval for t in timers.timers if not t.cancelled)
+
+    worker, parts = _worker(_reply(LOOKUP), timers=timers, on_run=during_run)
+    receipt = FakeDelivery()
+    processor, _, _ = configure("production", (TEST, LEAGUE), worker, receipt)
+    question = msg("@daddy who has the most FAAB?", chat=chat, guid="one-receipt")
+    assert processor.process(question, question.guid) == "handled:league-agent"
+    assert receipt.sent == [(1, "league-agent", "Got it, kitten. Daddy's on it.", chat)]
+    assert parts["delivery"].texts == []
+    assert worker.run_job(worker._queue.get_nowait()) == "answer"
+    assert active_timers == [300.0]
+    assert len(receipt.sent) == 1
+    assert parts["delivery"].texts == [LOOKUP["chat_text"]]
+    assert parts["delivery"].reply_tos == [chat]
+
+
 def test_two_chat_receipts_queue_pacing_answers_and_artifacts_keep_their_origin(configure):
     timers = Timers()
 
     def pace():
-        # The active job owns the newest twenty-second timer.
-        next(t for t in reversed(timers.timers) if t.interval == ON_IT_AFTER).fire()
+        # The active job owns the newest five-minute progress timer.
+        next(t for t in reversed(timers.timers) if t.interval == PROGRESS_AFTER).fire()
 
     worker, parts = _worker(_reply(RESEARCH), _reply(RESEARCH, "sess-2"),
                             timers=timers, on_run=pace)
@@ -129,15 +151,17 @@ def test_two_chat_receipts_queue_pacing_answers_and_artifacts_keep_their_origin(
         (2, "league-agent", "Got it, kitten. Daddy's on it.", LEAGUE),
     ]
     assert worker._queue.qsize() == 2
-    timers.at(ON_IT_AFTER).fire()
+    timers.at(QUEUED_AFTER).fire()
     assert parts["delivery"].texts == [QUEUED]
     assert parts["delivery"].reply_tos == [LEAGUE]
     for chat in (TEST, LEAGUE):
         job = worker._queue.get_nowait()
         assert job.message.chat_guid == chat
         assert worker.run_job(job) == "answer"
-    assert parts["delivery"].texts == [QUEUED, ON_IT, RESEARCH["chat_text"],
-                                       ON_IT, RESEARCH["chat_text"]]
+    assert parts["delivery"].texts == [
+        QUEUED, STILL_ON_IT.format(minutes=5), RESEARCH["chat_text"],
+        STILL_ON_IT.format(minutes=5), RESEARCH["chat_text"],
+    ]
     assert len(parts["delivery"].files) == 2
     assert parts["delivery"].reply_tos == [LEAGUE, TEST, TEST, TEST, LEAGUE, LEAGUE, LEAGUE]
     assert worker._queue.empty()

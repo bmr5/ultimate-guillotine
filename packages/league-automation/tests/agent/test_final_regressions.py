@@ -19,7 +19,12 @@ from tests.agent.test_worker import (
 )
 from ultimate_guillotine.agent.session import SessionNotFound
 from ultimate_guillotine.agent.tools.names import PlayerInfo
-from ultimate_guillotine.agent.worker import COULD_NOT_FINISH, LOST_THREAD, ON_IT, ON_IT_AFTER
+from ultimate_guillotine.agent.worker import (
+    COULD_NOT_FINISH,
+    LOST_THREAD,
+    PROGRESS_AFTER,
+    STILL_ON_IT,
+)
 from ultimate_guillotine.ai.structured import AIUnavailable
 from ultimate_guillotine.data.repositories import chat_guid_hash
 from ultimate_guillotine.trades.models import MemberRef
@@ -112,7 +117,7 @@ def test_lost_thread_notice_is_budgeted_before_recording_or_delivery():
     assert len(parts["delivery"].texts[0]) <= 1200
 
 
-def test_pending_on_it_reply_resumes_completed_parent_once():
+def test_pending_progress_reply_resumes_completed_parent_once():
     from tests.agent.test_trigger import FakeContacts, FakeOutbound
     from tests.agent.test_trigger import FakeRuns as TriggerRuns
     from ultimate_guillotine.agent.trigger import FollowUpResolver, league_agent_trigger
@@ -137,8 +142,8 @@ def test_pending_on_it_reply_resumes_completed_parent_once():
     def during():
         if len(parts["client"].calls) != 1:
             return
-        parts["timer_factory"].at(ON_IT_AFTER).fire()
-        assert parts["delivery"].texts == [ON_IT]
+        parts["timer_factory"].at(PROGRESS_AFTER).fire()
+        assert parts["delivery"].texts == [STILL_ON_IT.format(minutes=5)]
         assert parts["runs"].sessions == {}
         reply = _msg("what about next week", guid="g2", thread="p:0/BOT-1")
         assert trigger.matches(reply)
