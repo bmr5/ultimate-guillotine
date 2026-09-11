@@ -12,9 +12,9 @@ def test_is_signed() -> None:
     assert not is_signed("x")
 
 
-def test_the_bot_signs_as_daddy_with_the_bottle_after_the_name() -> None:
-    assert BOT_SIGNATURE == "— Daddy 🍼"
-    assert sign("🚨 Trade T-2026-003 logged · A ↔ B").endswith("\n— Daddy 🍼")
+def test_the_bot_uses_a_neutral_signature() -> None:
+    assert BOT_SIGNATURE == "— Guillotine Bot"
+    assert sign("🚨 Trade T-2026-003 logged · A ↔ B").endswith("\n— Guillotine Bot")
     assert is_signed(sign("hello"))
 
 
@@ -23,4 +23,11 @@ def test_the_old_signature_is_still_the_bots_own() -> None:
     read them as a member's announcement."""
     assert is_signed("🚨 Trade T-2026-001 logged\n— 🤖 Guillotine Bot")
     assert is_signed("🚨 Trade T-2026-001 logged · A ↔ B\n— 🍼 Daddy")
+    assert is_signed("trade logged\n— Daddy 🍼")
     assert not is_signed("🚨 Trade alert: A sends B to C for 10")
+
+
+def test_trade_confirmation_is_verbatim_and_recognized_on_echo() -> None:
+    assert sign("trade recorded in database") == "trade recorded in database"
+    assert is_signed("trade recorded in database")
+    assert not is_signed("trade recorded in database?")

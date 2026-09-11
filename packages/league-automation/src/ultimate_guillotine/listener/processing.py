@@ -96,7 +96,7 @@ def ping_trigger(delivery, test_chat_guid: str) -> Trigger:
 
     def handle(msg: InboundMessage) -> None:
         delivery.deliver(
-            None, "ping", f"pong kitten · {datetime.now(UTC).isoformat(timespec='seconds')}"
+            None, "ping", f"pong · {datetime.now(UTC).isoformat(timespec='seconds')}"
         )
 
     return Trigger("ping", matches, handle)

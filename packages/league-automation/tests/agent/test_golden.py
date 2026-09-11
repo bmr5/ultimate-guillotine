@@ -253,7 +253,7 @@ def test_golden(golden, caplog):
         assert delivery.texts == delivery.files == runs.finished == answers.recorded == []
         return
 
-    assert trigger_delivery.sent == [(1, AGENT, "Got it, kitten. Daddy's on it.", CHAT)]
+    assert trigger_delivery.sent == [(1, AGENT, "request received", CHAT)]
     assert trigger_runs.finished == []
     job = worker._queue.get_nowait()
     assert isinstance(job, Job) and job.asker == golden.member

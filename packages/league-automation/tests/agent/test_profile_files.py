@@ -30,7 +30,7 @@ def test_profile_documents_contract() -> None:
 def test_persona_rentals_and_transaction_claims_preserve_the_research_contract() -> None:
     soul = (PROFILE / "SOUL.md").read_text()
     skill = (PROFILE / "skills/league-agent/SKILL.md").read_text()
-    for phrase in ("Daddy", "kitten", "without sexual or coercive language",
+    for phrase in ("curt, neutral, robotic tone", "No pet names",
                    "Facts and clear advice come first", "never invent another member's consent"):
         assert phrase in soul
     for phrase in ("short-term rentals", "permanent acquisition", "waiver alternatives",

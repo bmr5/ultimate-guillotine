@@ -241,7 +241,7 @@ def test_receipt_follows_reservation_and_precedes_each_submission(text, thread):
         trigger.handle(_msg(text, guid=guid, thread=thread))
     assert events == ["reserve", "receipt", "submit"] * 2
     assert delivery.sent == [
-        (run_id, AGENT, "Got it, kitten. Daddy's on it.", CHAT) for run_id in (1, 2)
+        (run_id, AGENT, "request received", CHAT) for run_id in (1, 2)
     ]
     assert [job.run_id for job in worker.jobs] == [1, 2]
     assert [job.message.text for job in worker.jobs] == [text, text]
@@ -317,14 +317,14 @@ def test_receipt_is_signed_recorded_and_reply_resolvable_before_parent_session(
     msg = _msg("@bot hi")
     trigger.handle(msg)
     trigger.handle(msg)
-    assert client.sent == [(CHAT, sign("Got it, kitten. Daddy's on it."))]
+    assert client.sent == [(CHAT, sign("request received"))]
     assert len(worker.jobs) == 1
-    assert outbound.records[1]["content"] == sign("Got it, kitten. Daddy's on it.")
+    assert outbound.records[1]["content"] == sign("request received")
     assert outbound.records[1]["run_id"] == 1
     assert outbound.records[1]["state"] == ("sending" if crash_after_send else "sent")
     assert runs.session_id_for(1) is None
     # A second tagged question must recover A and still get its own receipt.
-    client.history = [_msg(sign("Got it, kitten. Daddy's on it."), guid="guid-1").model_copy(
+    client.history = [_msg(sign("request received"), guid="guid-1").model_copy(
         update={"is_from_me": True},
     )]
     monkeypatch.setattr(delivery, "_crash_after_send", False)

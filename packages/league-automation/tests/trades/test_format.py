@@ -33,14 +33,14 @@ def proposal(**overrides) -> TradeProposal:
     return TradeProposal(**base)
 
 
-def test_confirmation_is_one_line_naming_the_parties() -> None:
+def test_confirmation_is_only_the_database_acknowledgment() -> None:
     # Ben (2026-09-10): the chat gets a confirmation and nothing else.
     text = format_confirmation("T-2026-014", proposal())
-    assert text == "🚨 Trade T-2026-014 logged, kittens · Max ↔ Evan"
+    assert text == "trade recorded in database"
     assert "\n" not in text
 
 
-def test_confirmation_uses_the_board_labels_when_it_has_them() -> None:
+def test_party_labels_do_not_expand_the_confirmation() -> None:
     class Member:
         def __init__(self, member_id, nickname, sleeper_display_name):
             self.member_id = member_id
@@ -52,9 +52,9 @@ def test_confirmation_uses_the_board_labels_when_it_has_them() -> None:
     )
     assert labels == {1: "Max R", 2: "Evan Display"}
     text = format_confirmation("T-2026-014", proposal(), labels)
-    assert text == "🚨 Trade T-2026-014 logged, kittens · Max R ↔ Evan Display"
+    assert text == "trade recorded in database"
     assert format_updated("T-2026-014", proposal(), {"assets": []}, labels) == (
-        "🚨 Trade T-2026-014 updated, kittens · Max R ↔ Evan Display"
+        "trade T-2026-014 updated in database"
     )
 
 
@@ -81,12 +81,12 @@ def test_rental_shows_return_condition_and_special_terms() -> None:
 
 def test_updated_and_rescinded_and_clarification() -> None:
     assert format_updated("T-2026-014", proposal(), {"assets": []}) == (
-        "🚨 Trade T-2026-014 updated, kittens · Max ↔ Evan"
+        "trade T-2026-014 updated in database"
     )
-    assert format_rescinded("T-2026-014") == "🚨 Trade T-2026-014 rescinded, kittens"
+    assert format_rescinded("T-2026-014") == "trade T-2026-014 rescinded"
     assert format_clarification("Two players named Mike Williams; which team?") == (
-        "🚨 Trade not logged yet, kitten: Two players named Mike Williams; which team? "
-        "Reply with a corrected 🚨 Trade alert 🚨."
+        "trade not recorded: Two players named Mike Williams; which team? "
+        "Reply with a corrected trade alert."
     )
 
 
@@ -212,5 +212,5 @@ def test_the_was_line_ignores_assets_that_are_not_amounts() -> None:
     assert "Was:" not in text
 
 
-def test_the_joke_answer_is_bens_line() -> None:
-    assert format_not_a_trade() == "Sorry kitten, this isn't a real trade."
+def test_invalid_trade_reply() -> None:
+    assert format_not_a_trade() == "trade not recorded: no valid trade detected"

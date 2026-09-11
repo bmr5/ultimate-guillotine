@@ -21,7 +21,7 @@ from ultimate_guillotine.listener.processing import Trigger
 from ultimate_guillotine.messages.bluebubbles import InboundMessage
 
 BOT_TAG = re.compile(r"@\s*(?:bot|guillotinebot|daddy)\b", re.IGNORECASE)
-RECEIPT = "Got it, kitten. Daddy's on it."
+RECEIPT = "request received"
 log = logging.getLogger(__name__)
 #: An explicit attempt to overwrite the agent's own instructions. Narrow on
 #: purpose: "register this trade" is a question the agent answers with the 🚨

@@ -1,15 +1,19 @@
-#: Ben (2026-09-10): the bot is "Daddy", and the bottle is its mark -- after the
-#: name, since that afternoon ("move the squirt bottle emoji to after Daddy").
-BOT_NAME = "Daddy"
-BOT_SIGNATURE = "— Daddy 🍼"
-#: Earlier posts in the chat carry the old marks; they are still the bot's own and must
-#: never be read as a member's message.
-LEGACY_SIGNATURES = ("— 🍼 Daddy", "— 🤖 Guillotine Bot")
+BOT_NAME = "Guillotine Bot"
+BOT_SIGNATURE = "— Guillotine Bot"
+# Earlier posts remain recognizable as the bot's own messages during replay.
+LEGACY_SIGNATURES = ("— Daddy 🍼", "— 🍼 Daddy", "— 🤖 Guillotine Bot")
+# This fixed acknowledgment is deliberately sent verbatim, without a signature.
+# Recognize it as bot output as well so its echo cannot trigger another reply.
+TRADE_RECORDED = "trade recorded in database"
 
 
 def is_signed(text: str) -> bool:
     tail = text.rstrip()
-    return tail.endswith(BOT_SIGNATURE) or any(tail.endswith(old) for old in LEGACY_SIGNATURES)
+    return (
+        tail == TRADE_RECORDED
+        or tail.endswith(BOT_SIGNATURE)
+        or any(tail.endswith(old) for old in LEGACY_SIGNATURES)
+    )
 
 
 def sign(text: str) -> str:

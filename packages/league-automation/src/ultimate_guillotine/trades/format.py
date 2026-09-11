@@ -1,11 +1,12 @@
 """Chat text for logged trades, revisions, rescissions and clarifications.
 
 The registrar posts these into the league chat through the delivery service,
-which appends its own signature -- nothing here ever does.
+which sends confirmations verbatim and signs the other replies.
 """
 
 from typing import Any
 
+from ultimate_guillotine.core.signature import TRADE_RECORDED
 from ultimate_guillotine.trades.models import TradeAsset, TradeProposal
 
 __all__ = [
@@ -166,20 +167,9 @@ def party_labels(members) -> Labels:
     return labels
 
 
-def _parties_line(proposal: TradeProposal, labels: Labels | None) -> str:
-    labels = labels or {}
-    return " ↔ ".join(labels.get(p.member_id, p.display_name) for p in proposal.parties)
-
-
 def format_confirmation(code: str, proposal: TradeProposal, labels: Labels | None = None) -> str:
-    """The one line posted when a trade is logged.
-
-    Ben (2026-09-10): "I'd like the bot only to respond with confirmation that
-    the trade has been logged, nothing else." The terms are stored in full and
-    read back by ``format_terms`` for the operator, never by the chat. Later that
-    day: the league loves the kitten voice, so every line addresses them.
-    """
-    return f"🚨 Trade {code} logged, kittens · {_parties_line(proposal, labels)}"
+    """Acknowledge recording without repeating the stored trade details."""
+    return TRADE_RECORDED
 
 
 def format_updated(
@@ -188,13 +178,8 @@ def format_updated(
     previous_terms: dict[str, Any],
     labels: Labels | None = None,
 ) -> str:
-    """The one line posted when a logged trade is revised.
-
-    ``previous_terms`` is kept in the signature for the registrar's call and
-    for ``format_terms``; the chat no longer sees a ``Was:`` line.
-    """
-    del previous_terms
-    return f"🚨 Trade {code} updated, kittens · {_parties_line(proposal, labels)}"
+    """Acknowledge a revision; full terms remain available to the operator."""
+    return f"trade {code} updated in database"
 
 
 def format_terms(proposal: TradeProposal, previous_terms: dict[str, Any] | None = None) -> str:
@@ -213,17 +198,12 @@ def format_terms(proposal: TradeProposal, previous_terms: dict[str, Any] | None 
 
 
 def format_rescinded(code: str) -> str:
-    return f"🚨 Trade {code} rescinded, kittens"
+    return f"trade {code} rescinded"
 
 
 def format_clarification(reason: str) -> str:
-    return f"🚨 Trade not logged yet, kitten: {reason} Reply with a corrected 🚨 Trade alert 🚨."
+    return f"trade not recorded: {reason} Reply with a corrected trade alert."
 
 
 def format_not_a_trade() -> str:
-    """The answer to a message wearing the header that the model calls a joke.
-
-    Ben (2026-09-10): "if a joke is detected say something funny" -- this is his
-    line. The delivery service signs it like every other reply.
-    """
-    return "Sorry kitten, this isn't a real trade."
+    return "trade not recorded: no valid trade detected"

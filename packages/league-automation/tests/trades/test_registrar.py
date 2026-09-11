@@ -328,7 +328,7 @@ def test_created_trade_sends_confirmation_and_records_run() -> None:
     reg, runs, _ = build(FakeAI(good_extraction()), delivery=delivery)
     assert reg.handle(msg("🚨 Member01 sends Player Alpha to Member02 for 450 FAAB")) == "created"
     assert delivery.sent[0][0] == "trade-registrar"
-    assert delivery.sent[0][1].startswith("🚨 Trade T-2026-001 logged")
+    assert delivery.sent[0][1] == "trade recorded in database"
     assert runs.reserved == ["trade:g1"] and runs.finished[0][1] == "succeeded"
     # The run records which prompt and model produced it, and hashes what was sent.
     assert runs.finished[0][4] == "2026.5:m"
@@ -364,7 +364,7 @@ def test_revised_sends_updated_message() -> None:
     delivery = FakeDelivery()
     reg, _, _ = build(FakeAI(good_extraction()), trades=FakeTrades("revised"), delivery=delivery)
     assert reg.handle(msg("🚨 Member01 sends Player Alpha to Member02 for 500 FAAB")) == "revised"
-    assert delivery.sent[0][1].startswith("🚨 Trade T-2026-001 updated")
+    assert delivery.sent[0][1] == "trade T-2026-001 updated in database"
 
 
 def test_unclear_sends_clarification_and_logs_no_trade() -> None:
@@ -378,9 +378,9 @@ def test_unclear_sends_clarification_and_logs_no_trade() -> None:
     assert runs.finished[0][1] == "succeeded"
 
 
-def test_a_joke_is_answered_with_the_kitten_line() -> None:
+def test_a_joke_is_answered_with_a_short_rejection() -> None:
     """Ben (2026-09-10): "if a joke is detected say something funny", signed
-    with the Daddy signature. The delivery service signs; the registrar sends
+    with the bot signature. The delivery service signs; the registrar sends
     his line and logs nothing."""
     delivery, trades = FakeDelivery(), FakeTrades()
     joke = good_extraction().model_copy(update={"kind": "not_a_trade", "parties": [], "assets": []})
@@ -388,7 +388,7 @@ def test_a_joke_is_answered_with_the_kitten_line() -> None:
     assert (
         reg.handle(msg("🚨 Trade Alert 🚨 jk nobody is trading Member01 anything")) == "not_a_trade"
     )
-    assert delivery.sent == [("trade-registrar", "Sorry kitten, this isn't a real trade.")]
+    assert delivery.sent == [("trade-registrar", "trade not recorded: no valid trade detected")]
     assert trades.accepted == [] and runs.finished[0][1] == "succeeded"
 
 
