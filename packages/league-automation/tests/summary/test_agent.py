@@ -178,7 +178,7 @@ def test_compose_without_a_model_is_the_deterministic_message() -> None:
 
 
 def test_compose_also_yields_the_short_text_and_the_artifact() -> None:
-    """The chat gets the short text and the file; the full text is the record."""
+    """Compose an internal recap and the file that the chat receives."""
     composed = _agent(ai=FakeAI()).compose(_league(), NOW, simulations=50)
     assert composed.short.startswith("🗡️ GUILLOTINE DAILY · Week 1 · Sunday")
     assert "🔥" not in composed.short
@@ -186,7 +186,7 @@ def test_compose_also_yields_the_short_text_and_the_artifact() -> None:
     assert "📊 THE BOARD" not in composed.short
     assert composed.html.startswith("<!doctype html>")
     assert "Knives out" in composed.html and "The board" in composed.html
-    assert composed.filename == "guillotine-daily-week-1-2026-09-13.html"
+    assert composed.filename == "MonteCarlo-2026-09-13.html"
 
 
 def test_compose_with_a_faithful_model_adds_the_colour_and_records_the_model() -> None:
@@ -239,12 +239,12 @@ def test_a_test_mode_run_stores_previews_delivers_and_records() -> None:
     assert repo.recaps[0][5] == outcome.text
     assert repo.sent == [1]
     assert repo.versions == [(7, f"{MODEL_VERSION}:{PROMPT_VERSION}:fake-model")]
-    # The short text goes first, then the file, under the same run.
+    # Keep the recap internally, but deliver only the HTML file.
     assert outcome.text.startswith("🗡️ GUILLOTINE DAILY") and "attached" not in outcome.text
-    assert delivery.calls == [(7, AGENT, outcome.text)]
+    assert delivery.calls == []
     assert len(delivery.attachments) == 1
     run_id, agent, filename, size = delivery.attachments[0]
-    assert (run_id, agent, filename) == (7, AGENT, "guillotine-daily-week-1-2026-09-13.html")
+    assert (run_id, agent, filename) == (7, AGENT, "MonteCarlo-2026-09-13.html")
     assert size > 1000
     assert notifier.drafts_notes[0].startswith(f"[{AGENT}] [test] preview · {filename}\n")
     assert outcome.text in notifier.drafts_notes[0]
@@ -255,7 +255,8 @@ def test_a_night_already_posted_is_left_alone() -> None:
     repo, delivery, ai = FakeRepo(already_sent=True), FakeDelivery(), FakeAI()
     outcome = _agent(ai=ai, repo=repo, delivery=delivery).run(_league(), NOW, run_id=7)
     assert outcome.status == "already_sent"
-    assert delivery.calls == [] and repo.recaps == [] and ai.calls == 0
+    assert delivery.calls == [] and delivery.attachments == []
+    assert repo.recaps == [] and ai.calls == 0
 
 
 def test_force_posts_again_the_same_night() -> None:
@@ -264,7 +265,7 @@ def test_force_posts_again_the_same_night() -> None:
         _league(), NOW, run_id=7, force=True, simulations=50
     )
     assert outcome.status == "sent"
-    assert len(delivery.calls) == 1
+    assert delivery.calls == [] and len(delivery.attachments) == 1
 
 
 def test_a_disabled_run_keeps_the_draft_and_the_preview_and_sends_nothing() -> None:
@@ -286,35 +287,32 @@ def test_a_production_run_posts_no_preview() -> None:
     )
     assert outcome.status == "sent"
     assert notifier.drafts_notes == []
-    assert len(delivery.calls) == 1 and len(delivery.attachments) == 1
+    assert delivery.calls == [] and len(delivery.attachments) == 1
 
 
 def test_a_delivery_that_cannot_find_its_chat_alerts_and_fails_the_run() -> None:
     repo, notifier = FakeRepo(), FakeNotifier()
-    delivery = FakeDelivery(failure=TargetMismatch("stored target does not match"))
+    delivery = FakeDelivery(attachment_failure=TargetMismatch("stored target does not match"))
     with pytest.raises(TargetMismatch):
         _agent(repo=repo, delivery=delivery, notifier=notifier).run(
             _league(), NOW, run_id=7, simulations=50
         )
     assert repo.sent == []
-    assert delivery.attachments == []
+    assert delivery.calls == []
     assert notifier.alerts_notes == ["EOD summary could not deliver: stored target does not match"]
 
 
-def test_a_failed_attachment_after_the_text_is_said_in_ops_and_the_run_still_succeeds() -> None:
-    """The chat already has the answer; the file not arriving is one ops line,
-    not a failed night and not a second text."""
+def test_a_failed_attachment_leaves_a_draft_and_never_sends_fallback_text() -> None:
     repo, notifier = FakeRepo(), FakeNotifier()
     delivery = FakeDelivery(attachment_failure=RuntimeError("boom"))
-    outcome = _agent(repo=repo, delivery=delivery, notifier=notifier).run(
-        _league(), NOW, run_id=7, simulations=50
-    )
-    assert outcome.status == "sent"
-    assert len(delivery.calls) == 1
-    assert repo.sent == [1]
-    assert notifier.ops_notes == [
-        "EOD summary attachment failed after the text went out: RuntimeError"
-    ]
+    with pytest.raises(RuntimeError, match="boom"):
+        _agent(repo=repo, delivery=delivery, notifier=notifier).run(
+            _league(), NOW, run_id=7, simulations=50
+        )
+    assert delivery.calls == []
+    assert repo.sent == []
+    assert len(repo.recaps) == 1
+    assert notifier.ops_notes == ["EOD summary attachment failed: RuntimeError"]
 
 
 def test_a_factual_run_records_no_survival_snapshot() -> None:

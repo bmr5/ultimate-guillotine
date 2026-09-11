@@ -245,8 +245,6 @@ def _dry_run(
     out_dir.mkdir(parents=True, exist_ok=True)
     artifact = out_dir / composed.filename
     artifact.write_text(composed.html, encoding="utf-8")
-    print(composed.short)
-    print()
     print(f"artifact: {artifact.resolve()}")
     return 0
 

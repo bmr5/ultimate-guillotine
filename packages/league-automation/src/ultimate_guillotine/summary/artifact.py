@@ -1,10 +1,8 @@
 """The HTML artifact: the whole summary as one self-contained file for Quick Look.
 
-Ben (2026-09-10): "what I would prefer here is an html that can be sent, similar
-to a claude artifact pattern." The chat gets a short text first -- the header,
-the colour, the gulag, the block, the footer -- so a member who never opens the
-file still has the answer, and then the file: every section, the full board as a
-table, the odds as bars. Tapping it on an iPhone opens Quick Look, which renders
+Ben (2026-09-10): send only the HTML file, named MonteCarlo-Date. The file contains
+every section, the full board as a table, and the odds as bars.
+Tapping it on an iPhone opens Quick Look, which renders
 HTML with inline CSS and nothing else.
 
 So the page references nothing outside itself: no script, no image, no stylesheet
@@ -74,8 +72,12 @@ footer{margin-top:18px;color:#a3a9bd;font-size:13px;text-align:center}
 """
 
 
-def artifact_filename(week: int, now: datetime) -> str:
-    return f"guillotine-daily-week-{week}-{now.astimezone(LOCAL_TZ):%Y-%m-%d}.html"
+def artifact_title(now: datetime) -> str:
+    return f"MonteCarlo-{now.astimezone(LOCAL_TZ):%Y-%m-%d}"
+
+
+def artifact_filename(now: datetime) -> str:
+    return f"{artifact_title(now)}.html"
 
 
 def _pct_class(view: View, team: TeamLine) -> str:
@@ -104,9 +106,9 @@ def _pair_row(view: View, team: TeamLine, *, to_lose: bool) -> str:
 
 def _hero(view: View, now: datetime) -> str:
     return (
-        '<header class="hero"><div class="kicker">🗡️ Guillotine Daily</div>'
-        f"<h1>{escape(view.title(now))}</h1>"
-        f'<p class="sub">{escape(view.header_line())}</p></header>'
+        '<header class="hero"><div class="kicker">Monte Carlo</div>'
+        f"<h1>{escape(artifact_title(now))}</h1>"
+        f'<p class="sub">{escape(view.title(now))} · {escape(view.header_line())}</p></header>'
     )
 
 
@@ -234,7 +236,7 @@ def render_html(packet: EodPacket, color: EodColor | None, now: datetime) -> str
         if c
     )
     cards.append(f"<footer>{escape(' · '.join(view.footer_parts()))}</footer>")
-    title = escape(f"Guillotine Daily · Week {view.snap.week}")
+    title = escape(artifact_title(now))
     return (
         "<!doctype html>\n"
         '<html lang="en"><head><meta charset="utf-8">'
@@ -245,11 +247,9 @@ def render_html(packet: EodPacket, color: EodColor | None, now: datetime) -> str
 
 
 def short_text(packet: EodPacket, color: EodColor | None, now: datetime) -> str:
-    """The chat text that travels ahead of the file: header, gulag, block, sweating, footer.
+    """Internal recap text for storage and draft previews, never sent to chat.
 
-    Ben (2026-09-10): no commentary in the iMessage, and no line about the
-    attachment either -- the file speaks for itself. The colour still leads the
-    file, so ``color`` is accepted and deliberately unused here.
+    The colour leads the HTML file only, so ``color`` is deliberately unused here.
     """
     del color
     sections = build_sections(packet, now)
