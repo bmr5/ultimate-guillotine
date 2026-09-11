@@ -1,20 +1,7 @@
-"""The League Agent's worker: one question at a time, off the listener's lock.
+"""Answer queued league questions without acknowledgment or progress texts.
 
-The listener reserves a run and hands over a :class:`Job`; everything that
-takes time happens here, on this thread's own connection. The pacing lines are
-posted from timer threads while the Hermes call blocks this one, so every
-delivery and every repository call goes through one lock: a psycopg connection
-is not for two threads at once. The same lock is what makes "only while the
-job runs" exact: a timer checks that the job is still running and posts under
-it, and the answer stops the pacer under it before it goes out, so a timer that
-fires late finds the job done and says nothing.
-
-Every path finishes the run it was handed. A verification failure goes back
-into the session once; a second one, a Hermes failure, a missing snapshot and
-the hang guard all end in the same fixed line, because the chat already heard
-"on it" and silence would be worse than an apology. Every line goes back to
-the chat the question came from, and nothing about a question -- its text, the
-model's words, a session id -- is ever logged; a failure is logged by its class.
+Every path finishes the run. Failures receive a short error in the originating
+chat. Repository and delivery calls share a lock for their database connection.
 """
 
 import hashlib
@@ -24,7 +11,6 @@ import threading
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
-from typing import Protocol
 from zoneinfo import ZoneInfo
 
 from ultimate_guillotine.agent.answer import CHAT_TEXT_LIMIT, LeagueAnswer, extract_answer
@@ -49,31 +35,14 @@ from ultimate_guillotine.trades.models import MemberRef
 log = logging.getLogger(__name__)
 
 AGENT = "league-agent"
-STILL_ON_IT = "Still digging — {minutes} minutes in. I'll post when it's ready."
-QUEUED = "One at a time — yours is next."
-COULD_NOT_FINISH = "Couldn't finish that one — ask me again in a bit."
-LOST_THREAD = "(I lost the thread of our earlier conversation, so this starts fresh.) "
-ATTACHMENT_FAILED = "The write-up didn't attach — ask me again and I'll resend it."
+COULD_NOT_FINISH = "Request failed. Try again."
+LOST_THREAD = "Previous context unavailable. "
+ATTACHMENT_FAILED = "Report attachment failed."
 NOT_AN_ANSWER = "your reply did not end with a valid LeagueAnswer JSON block"
 FORMER_MEMBER = "a former member"
-QUEUED_AFTER = 20.0
-PROGRESS_AFTER = 300.0
-PROGRESS_EVERY = 600.0
 LOCAL_TZ = ZoneInfo("America/Chicago")
 #: Spelled out so the envelope reads the same whatever locale the process runs under.
 _WEEKDAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
-
-
-class _Timer(Protocol):
-    """What ``threading.Timer`` and a test's stand-in have in common."""
-
-    daemon: bool
-
-    def start(self) -> None: ...
-    def cancel(self) -> None: ...
-
-
-type _TimerFactory = Callable[[float, Callable[..., None], tuple], _Timer]
 
 
 @dataclass(frozen=True)
@@ -102,51 +71,6 @@ def local_time_label(at: datetime) -> str:
     return f"{_WEEKDAYS[local.weekday()]} {local.hour % 12 or 12}:{local:%M}{meridiem}"
 
 
-def _start_timer(
-    factory: _TimerFactory, delay: float, fn: Callable[..., None], args: tuple
-) -> _Timer:
-    """One started timer. A daemon, so a pending line never holds the process open."""
-    timer = factory(delay, fn, args)
-    timer.daemon = True
-    timer.start()
-    return timer
-
-
-class _Pacer:
-    """The waiting lines, posted while the job runs and never after it finishes.
-
-    Every check-and-post happens under the worker's lock, and so does ``stop``:
-    the worker stops the pacer under that lock before the answer goes out, so a
-    timer that fires late finds the job done. ``stop`` is safe to call twice.
-    """
-
-    def __init__(self, post: Callable[[str], None], timers: _TimerFactory, lock) -> None:
-        self._post = post
-        self._timers = timers
-        self._lock = lock  # the worker's re-entrant lock, shared, never a second one
-        self._done = False
-        self._scheduled: list[_Timer] = []
-
-    def _schedule(self, delay: float, fn: Callable[..., None], *args) -> None:
-        self._scheduled.append(_start_timer(self._timers, delay, fn, args))
-
-    def start(self) -> None:
-        self._schedule(PROGRESS_AFTER, self._progress, int(PROGRESS_AFTER // 60))
-
-    def _progress(self, minutes: int) -> None:
-        with self._lock:
-            if self._done:
-                return
-            self._post(STILL_ON_IT.format(minutes=minutes))
-            self._schedule(PROGRESS_EVERY, self._progress, minutes + int(PROGRESS_EVERY // 60))
-
-    def stop(self) -> None:
-        with self._lock:
-            self._done = True
-            for timer in self._scheduled:
-                timer.cancel()
-
-
 class AgentWorker:
     def __init__(
         self,
@@ -159,7 +83,6 @@ class AgentWorker:
         sessions,
         answers,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
-        timer_factory: _TimerFactory = threading.Timer,
     ) -> None:
         self._client = client
         self._source = source
@@ -169,26 +92,15 @@ class AgentWorker:
         self._sessions = sessions
         self._answers = answers
         self._clock = clock
-        self._timers = timer_factory
         self._queue: queue.Queue[Job] = queue.Queue()
-        #: Set while a job runs; ``submit`` reads it to know whether to promise "next".
-        self._busy = threading.Event()
-        #: Each queued job's "yours is next" timer, until it fires or the job starts.
-        self._waiting: dict[int, _Timer] = {}
-        self._queue_lock = threading.Lock()
         #: Around every delivery and repository call: the connection is one thread's at a time.
         self._lock = threading.RLock()
 
     # -- public ---------------------------------------------------------
 
     def submit(self, job: Job) -> None:
-        """Queue one question. A question that waits twenty seconds is told so, once."""
-        with self._queue_lock:
-            if self._busy.is_set() or not self._queue.empty():
-                self._waiting[job.run_id] = _start_timer(
-                    self._timers, QUEUED_AFTER, self._say_queued, (job,)
-                )
-            self._queue.put(job)
+        """Queue one question without posting a waiting message."""
+        self._queue.put(job)
 
     def start(self) -> threading.Thread:
         thread = threading.Thread(target=self._loop, name="league-agent-worker", daemon=True)
@@ -201,21 +113,11 @@ class AgentWorker:
 
     def run_job(self, job: Job) -> str:
         """Answer one question end to end. Returns the answer's kind, or the failure."""
-        self._busy.set()
-        self._drop_queued_line(job)
-        pacer = _Pacer(
-            lambda text: self._post(job.run_id, job.message.chat_guid, text),
-            self._timers, self._lock,
-        )
-        pacer.start()
         try:
-            return self._answer(job, pacer)
+            return self._answer(job)
         except Exception as exc:  # noqa: BLE001 - every failure is reported alike
-            self._fail(job, pacer, exc.__class__.__name__)
+            self._fail(job, exc.__class__.__name__)
             return "failed"
-        finally:
-            pacer.stop()
-            self._busy.clear()
 
     def reconcile_startup(self) -> list[int]:
         """Fail orphaned runs and notify ops; their originating chats are unknown."""
@@ -239,20 +141,6 @@ class AgentWorker:
             finally:
                 self._queue.task_done()
 
-    def _drop_queued_line(self, job: Job) -> None:
-        """The job is starting, so "yours is next" is no longer true: never say it."""
-        with self._queue_lock:
-            timer = self._waiting.pop(job.run_id, None)
-        if timer is not None:
-            timer.cancel()
-
-    def _say_queued(self, job: Job) -> None:
-        with self._lock:
-            with self._queue_lock:
-                still_waiting = self._waiting.pop(job.run_id, None) is not None
-            if still_waiting:
-                self._post(job.run_id, job.message.chat_guid, QUEUED)
-
     def _post(self, run_id: int, reply_to: str | None, text: str) -> None:
         """One line to the chat. A line that cannot be sent is a log line, not a lost run."""
         with self._lock:
@@ -271,9 +159,8 @@ class AgentWorker:
         except Exception as exc:  # noqa: BLE001 - nothing more can be done about it
             log.warning("league agent could not send a note: %s", exc.__class__.__name__)
 
-    def _fail(self, job: Job, pacer: _Pacer, name: str) -> None:
+    def _fail(self, job: Job, name: str) -> None:
         with self._lock:
-            pacer.stop()
             self._post(job.run_id, job.message.chat_guid, COULD_NOT_FINISH)
             try:
                 self._runs.finish(job.run_id, "failed", error=name)
@@ -338,7 +225,7 @@ class AgentWorker:
         )
         return _Checked(answer, problems, html)
 
-    def _answer(self, job: Job, pacer: _Pacer) -> str:
+    def _answer(self, job: Job) -> str:
         with self._lock:
             if job.parent_run_id is not None:
                 # Resolve on the worker connection after the serial parent job finishes.
@@ -353,7 +240,7 @@ class AgentWorker:
             try:
                 snapshot = self._source.snapshot()
             except SnapshotUnavailable as exc:
-                self._fail(job, pacer, f"SnapshotUnavailable: {exc.reason}")
+                self._fail(job, f"SnapshotUnavailable: {exc.reason}")
                 return "failed"
         turn = self._turn(snapshot, job)
         lost = job.parent_run_id is not None and job.session is None
@@ -395,30 +282,28 @@ class AgentWorker:
                     self._notifier.ops,
                     "League Agent declined an answer: " + "; ".join(checked.problems),
                 )
-                self._fail(job, pacer, "verification")
+                self._fail(job, "verification")
                 return "rejected"
         answer = checked.answer
         assert answer is not None  # a checked answer with no problems has an answer
-        self._deliver(job, pacer, answer, checked.html, reply, week=snapshot.week)
+        self._deliver(job, answer, checked.html, reply, week=snapshot.week)
         return answer.kind
 
     def _deliver(
         self,
         job: Job,
-        pacer: _Pacer,
         answer: LeagueAnswer,
         html: str | None,
         reply: AgentReply,
         *,
         week: int,
     ) -> None:
-        """Record, send, attach, finish: one locked stretch, with the pacer stopped first."""
+        """Record, send, attach and finish under the connection lock."""
         chat_text = answer.chat_text
         report = answer.report
         chat_hash = chat_guid_hash(job.message.chat_guid)
         reply_to = job.message.chat_guid
         with self._lock:
-            pacer.stop()
             session_id = (
                 self._sessions.create(reply.session_id, chat_hash) if reply.session_id else None
             )

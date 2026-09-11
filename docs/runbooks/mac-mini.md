@@ -685,16 +685,13 @@ It can answer league facts, research players, explain rules,
 and compare trades. It sends a short answer and, when useful, an HTML artifact.
 It never registers trades. Announce a trade with a 🚨 alert for the Trade Registrar.
 
-The listener replies `request received` as soon as it accepts a tagged
-question or inline follow-up, before queueing it. This signed receipt uses the
-question's run and originating chat, so members can reply to it even before the
-worker creates a session. Duplicate webhooks send no extra receipt, and immediate
-override refusals receive only the refusal. A failed receipt send does not stop
-the question from being queued. Running questions receive no second acknowledgement
-at twenty seconds. The first research progress update is at five minutes, then
-every ten minutes while the job is still running. A question waiting behind another
-job retains its one-time queue notice after twenty seconds. The dry-run CLI calls
-the worker directly and does not emit the listener receipt.
+The listener attempts a native thumbs-up on each accepted tagged question or inline
+follow-up before queueing it. Reactions require BlueBubbles Private API and a connected
+helper. If unavailable or unsuccessful, the bot stays silent until its answer.
+The run reservation deduplicates reactions. No acknowledgment, queue or progress texts
+are sent. Immediate override refusals receive only the refusal. New video requests use
+the same reaction behavior. Errors still receive a short status message.
+The dry-run CLI calls the worker directly and sends no reaction.
 
 The allowlist lives in `agent_chat_guids` in
 `packages/league-automation/src/ultimate_guillotine/listener/run.py`. Both chats
@@ -705,11 +702,13 @@ participant fingerprint. A missing or mismatched test target fails closed instea
 of redirecting its reply to the league chat.
 
 Follow-ups recognize a parent outbound message only in its delivery target's chat,
-including a receipt sent before the parent session exists. Before resuming, the
+including historical receipts sent before the parent session exists. Before resuming, the
 worker also checks that the session's stored chat hash matches the current chat.
 A foreign thread reference cannot load another chat's conversation history.
 
 The SOUL uses a curt, neutral, robotic tone without pet names or roleplay.
+Data lookups return only the requested value, name or list. Analysis and reports
+are reserved for requests for recommendations or detail.
 New trade confirmations say exactly `trade recorded in database`, without a signature.
 Other replies use the neutral `Guillotine Bot` signature.
 Research chat replies contain one top recommendation and its key condition, capped

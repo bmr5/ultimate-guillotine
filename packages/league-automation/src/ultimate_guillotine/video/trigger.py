@@ -1,12 +1,13 @@
 """``@daddy create trade video``: the reply that asks for a video.
 
 Ben replies to a trade alert (or to the bot's own confirmation) with a tagged
-request; the trade is read off the reply thread, a job is queued, and one line
-comes back saying the video is on its way. The render itself happens in
+request; the trade is read off the reply thread, a job is queued, and a
+thumbs-up acknowledges the request when reactions are available. The render itself happens in
 ``ug video jobs run``, never here: the listener answers in a second and the
 twenty-minute render runs on the queue.
 """
 
+import logging
 import re
 from collections.abc import Callable
 
@@ -22,12 +23,12 @@ from ultimate_guillotine.trades.repository import TradeRepository
 from ultimate_guillotine.video.jobs import VideoJobRepository
 
 AGENT = "trade-video"
+log = logging.getLogger(__name__)
 #: What Ben is told to expect: an 8 s voiced clip took about four minutes on
 #: 2026-09-10, and Higgsfield's queue adds what it adds.
 ETA = "usually takes 5 to 10 minutes"
-ACKNOWLEDGEMENT = "video queued. estimated time: 5 to 10 minutes"
 
-_TAG = re.compile(r"@daddy\b", re.IGNORECASE)
+_TAG = re.compile(r"@\s*(?:bot|guillotinebot|daddy)\b", re.IGNORECASE)
 _VIDEO = re.compile(r"\bvideo\b", re.IGNORECASE)
 TRADE_CODE = re.compile(r"\b(?:TEST|T)-\d{4}-\d{3}\b")
 
@@ -222,10 +223,13 @@ class VideoRequests:
         _job_id, created = self._jobs.enqueue(trade["trade_id"], code, msg.guid, msg.chat_guid)
         self._conn.commit()
         if created:
-            text = ACKNOWLEDGEMENT
+            try:
+                self._delivery.react(None, msg)
+            except Exception as exc:  # noqa: BLE001 - the durable video job remains queued
+                log.warning("video request could not react: %s", exc.__class__.__name__)
         else:
-            text = f"video for {code} already queued or running"
-        self._delivery.deliver(None, AGENT, text, reply_to=msg.chat_guid, reply_to_message=msg)
+            self._delivery.deliver(None, AGENT, f"video for {code} already queued or running",
+                                   reply_to=msg.chat_guid, reply_to_message=msg)
 
 
 def video_trigger(requests: VideoRequests, chat_guids: frozenset[str]) -> Trigger:
