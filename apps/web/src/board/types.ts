@@ -26,7 +26,8 @@ type ReadOnlyTable<
 
 export type RosterSlot = "starter" | "bench" | "ir" | "taxi";
 export type EliminationSource = "adjudicator" | "sleeper_inferred" | "manual";
-export type TransactionKind = "trade" | "waiver" | "free_agent" | "commissioner";
+export type TransactionKind =
+  "trade" | "waiver" | "free_agent" | "commissioner";
 export type MoveAction = "add" | "drop";
 
 /**
@@ -451,6 +452,8 @@ export interface BoardTeam {
   score: number | null;
   /** `team_week_scores.synced_at` for this team's row; the header folds these to the newest. */
   scoreSyncedAt: string | null;
+  /** Expected finish using actual scores for completed games; unavailable without game status. */
+  currentProjectedPoints?: number | null;
   projectedPoints: number | null;
   coveragePct: number | null;
   isProvisional: boolean;

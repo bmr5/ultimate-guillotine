@@ -655,6 +655,20 @@ describe("joinBoardTeams live scores", () => {
     expect(board.scoreSyncedAt).toBe("2026-09-13T17:30:00Z");
   });
 
+  it("adds a schedule-adjusted projection without changing the original or actual", () => {
+    const rows = raw({ teamWeekScores: [scoreRow({ points: 12.4 })] });
+    const [live] = joinBoardTeams({ ...rows, weekSchedule: { KC: "live" } });
+    expect(live.currentProjectedPoints).toBe(22.6);
+    const [finished] = joinBoardTeams({
+      ...rows,
+      weekSchedule: { KC: "done" },
+    });
+    expect(finished.currentProjectedPoints).toBe(12.4);
+    expect(finished.projectedPoints).toBe(112.4);
+    expect(finished.score).toBe(12.4);
+    expect(joinBoardTeams(rows)[0].currentProjectedPoints).toBeNull();
+  });
+
   it("leaves both null when the week has no score row", () => {
     // Null is "no row", which the card renders as `0.0`. The distinction still matters to the
     // header, which shows the scores stamp only when a row exists.
@@ -821,7 +835,10 @@ describe("joinBoardTeams with the week's odds", () => {
   it("hangs a team's odds off its card", () => {
     const [team] = joinBoardTeams(
       raw({
-        survivalSnapshot: { snapshot_at: SNAPSHOT_AT, results: [odds(7, 0.37)] },
+        survivalSnapshot: {
+          snapshot_at: SNAPSHOT_AT,
+          results: [odds(7, 0.37)],
+        },
       }),
     );
     expect(team.risk).toEqual({
@@ -836,7 +853,10 @@ describe("joinBoardTeams with the week's odds", () => {
   it("gives a team the Daily did not rate no odds", () => {
     const [team] = joinBoardTeams(
       raw({
-        survivalSnapshot: { snapshot_at: SNAPSHOT_AT, results: [odds(8, 0.37)] },
+        survivalSnapshot: {
+          snapshot_at: SNAPSHOT_AT,
+          results: [odds(8, 0.37)],
+        },
       }),
     );
     expect(team.risk).toBeNull();

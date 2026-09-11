@@ -17,14 +17,7 @@ import {
   resolveProjectionDisplay,
 } from "../derive/projection";
 import { layoutStarters, resolveEmptySlotCount } from "../derive/roster";
-import {
-  formatScore,
-  PROJECTION_CAPTION,
-  PROJECTION_LABEL,
-  SCORE_CAPTION,
-  SCORE_LABEL,
-  type CardEmphasis,
-} from "../derive/score";
+import { formatScore, type CardEmphasis } from "../derive/score";
 import { formatComputedTitle } from "../derive/time";
 import type { BoardTeam } from "../types";
 import { RosterPanel } from "./RosterPanel";
@@ -102,42 +95,7 @@ export const CHIP_ROW_HEIGHT_CLASS = "h-6";
  */
 export const CHIP_ROW_INDENT_CLASS = "pl-8 sm:pl-9";
 
-/**
- * The figures block's width. Fixed so the numbers line up down the grid.
- *
- * It used to do a second job — the chip row overlaid on the owner's line reserved exactly this
- * much plus the toggle's `gap-3`, so a chip never landed on the number. Round 3 measured that
- * geometry on a 375px card and it does not fit: the name field is 141px and a two-chip set is
- * 139px. The chips have their own line now, and nothing reserves against this any more.
- *
- * Widened from `w-18` (72px) to hold two figures rather than one — Ben: "the team cards on the
- * board should show their current score right next to their projected". It is the two fixed
- * figure columns below plus the `gap-1` between them: 56 + 4 + 44 = 104px below `sm`, and
- * 80 + 4 + 48 = 132px from `sm`, where the figures step up. On a 375px card that leaves the
- * owner's name 127px (375 − 32 page padding − 24 card padding − 20 rank − 12 `gap-3` − 104 −
- * 8 `gap-x-2` − 44 chevron), and the name no longer has to share that field with anything.
- */
-const PROJECTION_WIDTH_CLASS = "w-26 sm:w-34";
-
-/**
- * The two figure columns, sized rather than left to the text, so `Score` and `Proj` line up
- * down the whole grid instead of only when both happen to have the same number of digits.
- *
- * In the figures voice (Archivo at 75% width, tabular): 56px holds `199.9` at `text-2xl` and
- * 80px at `text-3xl`; 44px holds it at `text-base` and 48px at `text-xl`. The emphasis — and
- * therefore which column gets which width — is a board-wide decision, so every card in the grid
- * sizes them the same way at the same time.
- */
-const FIGURE_EMPHASIZED_WIDTH_CLASS = "w-14 sm:w-20";
-const FIGURE_SECONDARY_WIDTH_CLASS = "w-11 sm:w-12";
-
-/**
- * The type sizes of the two figures, in the figures voice (`figures` in `globals.css`): the
- * emphasised one `text-3xl`, the quiet one `text-xl` beside it. Below `sm` both step down a
- * size, because a 375px card cannot hold the pair at full size and still leave the owner's name
- * readable. The pair is the loudest thing on the card, and it is still what a thumb lands on —
- * the whole block stays inside the summary's one button.
- */
+/** The actual score leads once scoring starts; full-game estimates lead before kickoff. */
 const FIGURE_EMPHASIZED_CLASS =
   "figures text-2xl leading-none text-foreground sm:text-3xl";
 const FIGURE_SECONDARY_CLASS =
@@ -334,6 +292,7 @@ export const TeamCard = memo(function TeamCard({
   // true of everybody. See `SCORE_ZERO_TEXT` for why this differs from the projection beside it.
   const scoreText = formatScore(team.score);
   const scoreIsEmphasized = emphasis === "score";
+  const currentText = team.currentProjectedPoints?.toFixed(1) ?? "—";
   const totalPoints = team.pointsFor.toFixed(TOTAL_POINTS_DECIMALS);
   const faab = formatFaab(team.faabRemaining);
 
@@ -498,7 +457,7 @@ export const TeamCard = memo(function TeamCard({
               aria-controls={panelId}
               onClick={() => onToggle(team.teamId)}
               className={cn(
-                "col-start-1 row-start-1 flex min-h-[44px] min-w-0 items-start gap-3 text-left",
+                "col-start-1 row-start-1 flex min-h-[44px] min-w-0 flex-wrap items-start gap-3 text-left sm:flex-nowrap",
                 FOCUS_RING_CLASS,
               )}
             >
@@ -542,79 +501,60 @@ export const TeamCard = memo(function TeamCard({
                 </span>
               </span>
 
-              {/*
-                Ben's ruling: "the team cards on the board should show their current score right
-                next to their projected." Two figures side by side — the live score on the left,
-                the projection on the right — with the empty-slot count under them, because a
-                lineup with a hole in it has to be visible without expanding the card.
-
-                The positions never move; only the emphasis does, and it moves for the whole
-                board at once (see `resolveCardEmphasis`). A reader looking for the projection
-                finds it in the same place on Saturday morning and Sunday afternoon.
-
-                Spans, not <div>s, because this block lives inside the toggle button.
-              */}
               <span
                 data-projection
-                className={cn("shrink-0 text-right", PROJECTION_WIDTH_CLASS)}
+                className="grid basis-full grid-cols-3 items-end gap-x-3 text-right sm:w-72 sm:shrink-0 sm:basis-auto"
               >
-                <span className="flex items-baseline justify-end gap-1">
-                  <span
-                    data-figure="score"
-                    data-emphasized={scoreIsEmphasized || undefined}
-                    className={cn(
-                      "block text-right tabular-nums",
-                      scoreIsEmphasized
-                        ? `${FIGURE_EMPHASIZED_CLASS} ${FIGURE_EMPHASIZED_WIDTH_CLASS}`
-                        : `${FIGURE_SECONDARY_CLASS} ${FIGURE_SECONDARY_WIDTH_CLASS}`,
-                    )}
-                  >
-                    {scoreText}
+                {[
+                  {
+                    key: "projection",
+                    text: projection.text,
+                    caption: "Original proj.",
+                    label: "Original projection",
+                    emphasized: !scoreIsEmphasized,
+                    help: "Full-game estimates for the starting lineup, before replacing finished games with actual scores.",
+                  },
+                  {
+                    key: "current-projection",
+                    text: currentText,
+                    caption: "Current proj.",
+                    label: "Current projection",
+                    emphasized: false,
+                    help:
+                      currentText === "—"
+                        ? "Current projection unavailable: waiting for complete lineup, projection, score or game-status data."
+                        : "Finished games use actual points. Unfinished games keep their full-game estimate, or actual points if higher. Not a clock-based live forecast.",
+                  },
+                  {
+                    key: "score",
+                    text: scoreText,
+                    caption: "Actual score",
+                    label: "Actual score",
+                    emphasized: scoreIsEmphasized,
+                    help: "Points scored so far this week.",
+                  },
+                ].map((figure) => (
+                  <span key={figure.key} title={figure.help}>
+                    <span
+                      data-figure={figure.key}
+                      data-emphasized={figure.emphasized || undefined}
+                      className={cn(
+                        "block tabular-nums",
+                        figure.emphasized
+                          ? FIGURE_EMPHASIZED_CLASS
+                          : FIGURE_SECONDARY_CLASS,
+                      )}
+                    >
+                      {figure.text}
+                    </span>
+                    <span className="mt-1 block text-xs text-muted-foreground">
+                      <span aria-hidden="true">{figure.caption}</span>
+                      <span className="sr-only">{`${figure.label} ${figure.text}`}</span>
+                    </span>
                   </span>
-                  <span
-                    data-figure="projection"
-                    data-emphasized={!scoreIsEmphasized || undefined}
-                    className={cn(
-                      "block text-right tabular-nums",
-                      scoreIsEmphasized
-                        ? `${FIGURE_SECONDARY_CLASS} ${FIGURE_SECONDARY_WIDTH_CLASS}`
-                        : `${FIGURE_EMPHASIZED_CLASS} ${FIGURE_EMPHASIZED_WIDTH_CLASS}`,
-                    )}
-                  >
-                    {projection.text}
-                  </span>
-                </span>
-                {/*
-                  The captions, on the same two columns. `Score` and `Proj` are the short visible
-                  words; the sr-only copies name each figure in full, because `84.2` read out
-                  after `Score` could be a score of anything.
-                */}
-                <span className="mt-1 flex items-baseline justify-end gap-1 text-xs text-muted-foreground">
-                  <span
-                    className={cn(
-                      "block text-right",
-                      scoreIsEmphasized
-                        ? FIGURE_EMPHASIZED_WIDTH_CLASS
-                        : FIGURE_SECONDARY_WIDTH_CLASS,
-                    )}
-                  >
-                    <span aria-hidden="true">{SCORE_CAPTION}</span>
-                    <span className="sr-only">{`${SCORE_LABEL} ${scoreText}`}</span>
-                  </span>
-                  <span
-                    className={cn(
-                      "block text-right",
-                      scoreIsEmphasized
-                        ? FIGURE_SECONDARY_WIDTH_CLASS
-                        : FIGURE_EMPHASIZED_WIDTH_CLASS,
-                    )}
-                  >
-                    <span aria-hidden="true">{PROJECTION_CAPTION}</span>
-                    <span className="sr-only">{`${PROJECTION_LABEL} ${projection.text}`}</span>
-                  </span>
-                </span>
+                ))}
                 {emptySlots > 0 ? (
-                  <span className="mt-1 block text-xs font-medium text-destructive">
+                  <span className="col-span-3 mt-1 block text-xs font-medium text-destructive">
                     {`${emptySlots} empty`}
                     <span className="sr-only">{` ${EMPTY_SLOTS_DESCRIPTION}`}</span>
                   </span>

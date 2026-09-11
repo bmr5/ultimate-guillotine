@@ -6,6 +6,7 @@ import type {
   RosterSlot,
   TableRow,
 } from "../types";
+import { currentProjection, type WeekSchedule } from "./currentProjection";
 import { draftedHere, indexDraftPicks } from "./draft";
 import { riskByTeamId } from "./odds";
 import { summarizeWeeklyResults, type WeeklyResultRow } from "./records";
@@ -53,6 +54,7 @@ export function resolveOwnerLabel(
  * aggregate over a season's weeks and Task 3's `summarizeWeeklyResults` folds it.
  */
 export interface BoardRawData {
+  weekSchedule?: WeekSchedule | null;
   teams: Pick<
     TableRow<"teams">,
     "id" | "member_id" | "sleeper_roster_id" | "team_name"
@@ -264,7 +266,7 @@ export function joinBoardTeams(raw: BoardRawData): BoardTeam[] {
     // dropped out of it — so live holdings are ignored entirely once a snapshot exists.
     const isEliminated = state?.is_eliminated ?? false;
     const snapshot = isEliminated
-      ? finalRosterByTeamId.get(team.id) ?? null
+      ? (finalRosterByTeamId.get(team.id) ?? null)
       : null;
 
     // A snapshot that narrows to nothing — written empty, or entirely malformed — carries no
@@ -275,6 +277,11 @@ export function joinBoardTeams(raw: BoardRawData): BoardTeam[] {
     const frozenRoster =
       snapshot === null ? [] : narrowFrozenHoldings(snapshot.holdings);
     const isRosterFrozen = frozenRoster.length > 0;
+    const roster = isRosterFrozen
+      ? orderRoster(
+          frozenRoster.map((holding) => buildRosterPlayer(holding, team.id)),
+        )
+      : orderRoster(rosterByTeamId.get(team.id) ?? []);
 
     return {
       teamId: team.id,
@@ -287,6 +294,14 @@ export function joinBoardTeams(raw: BoardRawData): BoardTeam[] {
       score: score === null ? null : score.points,
       scoreSyncedAt: score === null ? null : score.synced_at,
       projectedPoints: projection === null ? null : projection.projected_points,
+      currentProjectedPoints: isEliminated
+        ? null
+        : currentProjection(
+            roster,
+            score?.points ?? null,
+            raw.weekSchedule,
+            score?.starters,
+          ),
       coveragePct: projection === null ? null : projection.coverage_pct,
       // No projection row for the week is as provisional as it gets.
       isProvisional: projection === null ? true : projection.is_provisional,
@@ -294,7 +309,7 @@ export function joinBoardTeams(raw: BoardRawData): BoardTeam[] {
       faabRemaining: state === null ? null : state.faab_remaining,
       // No wins, losses or ties: the board carries no record at all (Ben's card change 2), and
       // `weekly_results` has no opponent column to derive one from in the first place.
-      pointsFor: state === null ? summary?.pointsFor ?? 0 : state.points_for,
+      pointsFor: state === null ? (summary?.pointsFor ?? 0) : state.points_for,
       startersProjected:
         projection === null ? null : projection.starters_projected,
       starterSlots: projection === null ? null : projection.starter_slots,
@@ -307,11 +322,7 @@ export function joinBoardTeams(raw: BoardRawData): BoardTeam[] {
       // The Daily rates the live teams only, so an eliminated team lands on null here without
       // the join having to say so; the chip rule silences it anyway.
       risk: riskByTeam.get(team.id) ?? null,
-      roster: isRosterFrozen
-        ? orderRoster(
-            frozenRoster.map((holding) => buildRosterPlayer(holding, team.id)),
-          )
-        : orderRoster(rosterByTeamId.get(team.id) ?? []),
+      roster,
     };
   });
 }

@@ -1,5 +1,9 @@
 import type { PostgrestClient } from "@supabase/postgrest-js";
 
+import {
+  parseWeekSchedule,
+  type WeekSchedule,
+} from "./derive/currentProjection";
 import type { Database, TableRow } from "./types";
 
 export type BoardClient = PostgrestClient<Database>;
@@ -373,4 +377,18 @@ export async function fetchLatestSurvivalSnapshot(
     "survival_snapshots",
   );
   return rows[0] ?? null;
+}
+
+/** Public game status, polled independently of the league's score subscription. */
+export async function fetchWeekSchedule(
+  season: number,
+  week: number,
+  signal?: AbortSignal,
+): Promise<WeekSchedule> {
+  const response = await fetch(
+    `https://api.sleeper.app/schedule/nfl/regular/${season}`,
+    { signal },
+  );
+  if (!response.ok) throw new Error("NFL schedule unavailable");
+  return parseWeekSchedule(await response.json(), week);
 }

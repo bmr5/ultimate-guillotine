@@ -27,6 +27,7 @@ import {
   fetchTeamWeekProjections,
   fetchTeamWeekScores,
   fetchWeeklyResults,
+  fetchWeekSchedule,
   type DraftPickRow,
 } from "./fetchers";
 import { boardKeys, fingerprintIds } from "./queryKeys";
@@ -228,10 +229,10 @@ export function useBoardData(options: BoardDataOptions): BoardDataResult {
     () => latestFinalWeek(weeklyResults.data ?? []),
     [weeklyResults.data],
   );
-  const week = isOffRegularSeason ? lastScoredWeek ?? nflWeek : nflWeek;
+  const week = isOffRegularSeason ? (lastScoredWeek ?? nflWeek) : nflWeek;
   /** What the header names. Sleeper's own post-season week number, not the scoped week. */
   const displayWeek = isOffRegularSeason
-    ? nflState.data?.display_week ?? nflWeek
+    ? (nflState.data?.display_week ?? nflWeek)
     : nflWeek;
   /**
    * Outside the regular season the scoped week is not known until `weekly_results` lands, so
@@ -240,6 +241,16 @@ export function useBoardData(options: BoardDataOptions): BoardDataResult {
    */
   const hasWeekScope =
     !isOffRegularSeason || weeklyResults.isSuccess || weeklyResults.isError;
+
+  const weekSchedule = useQuery({
+    queryKey: boardKeys.weekSchedule(season ?? 0, week ?? 0),
+    queryFn: ({ signal }) =>
+      fetchWeekSchedule(season as number, week as number, signal),
+    enabled: hasWeekScope && season !== null && week !== null,
+    staleTime: MS_PER_MINUTE,
+    refetchInterval: MS_PER_MINUTE,
+    retry: 1,
+  });
 
   const teamProjections = useQuery({
     queryKey: boardKeys.teamWeekProjections(seasonId ?? 0, week ?? 0),
@@ -359,8 +370,7 @@ export function useBoardData(options: BoardDataOptions): BoardDataResult {
     */
     placeholderData: (previous, previousQuery) => {
       const previousKey = previousQuery?.queryKey as
-        | readonly unknown[]
-        | undefined;
+        readonly unknown[] | undefined;
       if (previousKey === undefined) {
         return undefined;
       }
@@ -375,6 +385,7 @@ export function useBoardData(options: BoardDataOptions): BoardDataResult {
   const boardTeams = useMemo(
     () =>
       joinBoardTeams({
+        weekSchedule: weekSchedule.isError ? null : (weekSchedule.data ?? null),
         teams: teams.data ?? [],
         members: members.data ?? [],
         teamSeasonState: state.data ?? [],
@@ -389,6 +400,8 @@ export function useBoardData(options: BoardDataOptions): BoardDataResult {
         survivalSnapshot: survivalSnapshot.data ?? null,
       }),
     [
+      weekSchedule.data,
+      weekSchedule.isError,
       teams.data,
       members.data,
       state.data,

@@ -148,8 +148,10 @@ const ownerName = (container: HTMLElement) =>
   container.querySelector("[data-owner-name]");
 
 /** One of the two figures beside the owner block, named by what it is rather than by its size. */
-const figure = (container: HTMLElement, name: "score" | "projection") =>
-  container.querySelector(`[data-figure="${name}"]`);
+const figure = (
+  container: HTMLElement,
+  name: "score" | "projection" | "current-projection",
+) => container.querySelector(`[data-figure="${name}"]`);
 
 /** Which figure is the large one; `data-emphasized` is the state's styling-independent handle. */
 const emphasized = (container: HTMLElement) =>
@@ -392,7 +394,7 @@ describe("TeamCard states", () => {
     ({ team: overrides, open, present, absent }) => {
       renderCard(overrides, { open: open ?? false });
       for (const text of present) {
-        expect(screen.getByText(text)).toBeInTheDocument();
+        expect(screen.getAllByText(text).length).toBeGreaterThan(0);
       }
       for (const text of absent ?? []) {
         expect(screen.queryByText(text)).not.toBeInTheDocument();
@@ -1239,7 +1241,7 @@ describe("TeamCard score and projection", () => {
     expect(emphasized(container)).toBe("score");
   });
 
-  it("keeps the score on the left and the projection on the right whichever is emphasised", () => {
+  it("keeps original, current and actual figures in the requested order", () => {
     // Only the size swaps. A reader looking for the projection finds it in the same place on
     // Saturday morning and on Sunday afternoon.
     for (const emphasis of ["projection", "score"] as const) {
@@ -1247,7 +1249,7 @@ describe("TeamCard score and projection", () => {
       const figures = [...view.container.querySelectorAll("[data-figure]")].map(
         (node) => node.getAttribute("data-figure"),
       );
-      expect(figures).toEqual(["score", "projection"]);
+      expect(figures).toEqual(["projection", "current-projection", "score"]);
       view.unmount();
     }
   });
@@ -1261,8 +1263,8 @@ describe("TeamCard score and projection", () => {
   it("names each figure for a reader who cannot see the captions", () => {
     // `Score 84.2` read out on its own could be a score of anything, and `Proj` is not a word.
     renderCard({ score: 84.2 });
-    expect(screen.getByText("Current score 84.2")).toBeInTheDocument();
-    expect(screen.getByText("Projected points 112.4")).toBeInTheDocument();
+    expect(screen.getByText("Actual score 84.2")).toBeInTheDocument();
+    expect(screen.getByText("Original projection 112.4")).toBeInTheDocument();
   });
 
   it("gives a starter his live points beside the projection on the roster", () => {
@@ -1377,7 +1379,10 @@ describe("the odds chip", () => {
 
   it("leads the chip line with the chance of the gulag", () => {
     const { container } = renderCard(
-      { risk: risk(), roster: [player({ sleeperPlayerId: "s0", injuryStatus: "Out" })] },
+      {
+        risk: risk(),
+        roster: [player({ sleeperPlayerId: "s0", injuryStatus: "Out" })],
+      },
       { rosterPositions: LEAGUE_SLOTS },
     );
     const chip = oddsChip(container);
@@ -1426,4 +1431,16 @@ describe("the odds chip", () => {
     expect(oddsChip(container)).toBeNull();
     expect(chipKinds(container)).toEqual(["eliminated"]);
   });
+});
+
+it("shows original, adjusted and actual scores without replacing the baseline", () => {
+  const { container } = renderCard({
+    projectedPoints: 111.97,
+    currentProjectedPoints: 100.71,
+    score: 5.6,
+  });
+  expect(figure(container, "projection")).toHaveTextContent("112.0");
+  expect(figure(container, "current-projection")).toHaveTextContent("100.7");
+  expect(figure(container, "score")).toHaveTextContent("5.6");
+  expect(screen.getByText("Current projection 100.7")).toBeInTheDocument();
 });

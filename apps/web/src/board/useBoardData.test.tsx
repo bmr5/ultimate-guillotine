@@ -9,6 +9,7 @@ import { useBoardData } from "./useBoardData";
 
 vi.mock("./boardClient", () => ({ boardClient: {} }));
 vi.mock("./fetchers", () => ({
+  fetchWeekSchedule: vi.fn().mockResolvedValue({}),
   fetchDraftPicks: vi.fn(),
   fetchFinalRosters: vi.fn(),
   fetchLatestSeason: vi.fn(),
