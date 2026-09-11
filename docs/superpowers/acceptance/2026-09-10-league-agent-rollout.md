@@ -40,6 +40,37 @@ The ignored main `.env` selects the authenticated profile at
 Keep the existing worktree and its ignored evidence. Removing it would remove the
 configured profile and its authentication. The ops profile is unchanged.
 
+## Research recommendation cleanup
+
+Ben identified two issues in run 2574: its chat listed three TE trades, and its
+analysis noticed the missing DEF but discounted a Bowers hold for adding no direct
+starter points. The prompts now evaluate the whole roster and linked moves, including
+another member holding Bowers so a defense can be added while Mayer covers TE.
+They require one top recommendation in chat, with alternatives and details in HTML.
+Research chat text over 600 characters triggers the existing correction pass instead
+of being posted or truncated. Lookup replies retain their 1,200-character limit.
+Unsent verification drafts are corrected without telling members a prior answer was wrong.
+
+Changes committed as `aa1a125`, integrated with newer main changes in `c4f10b9`, and
+deployed with the existing authenticated Astra profile. The listener restarted as
+PID 47164 and its health check passed. No credentials, schema or other jobs changed.
+Backend tests passed: 1,514 tests, 194 gated skips and one existing dependency warning.
+Ruff and whitespace checks passed. Unrelated archive documentation edits were preserved.
+
+A fresh installed-main dry run repeated the original question verbatim, without
+adding the desired solution to the question. Session `20260910_203658_aa4820` used
+`gpt-6-astra`, prompt `2026.2`, 25 tool calls and one user turn, with no correction
+retry. It completed in 304.35 seconds and produced a 336-character chat summary.
+The top offer was 5 FAAB to Charlie for a Week 1 Bowers hold, followed by acquiring
+Arizona DEF while Mayer covers TE. It made host capacity, acquisition availability
+and approved custody/return terms explicit conditions, not established consent.
+The report retains alternatives and notes that a legal direct DEF add would remove
+the need to pay for a hold. Seven sources support its outside claims.
+
+This was a no-send dry run, not a new chat post or executed trade. Its artifact is
+preserved in the existing worktree under
+`.superpowers/sdd/2026-09-10-league-agent/research-one-option-live/`.
+
 ## Remaining evidence
 
 Final integration review approved the merge and video-dispatch fix. A read-only
