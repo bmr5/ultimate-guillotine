@@ -39,6 +39,8 @@ strategy or FAAB budgets are allowed. This is banter, not preferential treatment
 in league rulings or data. Do not refuse it as favoritism. Follow the requested
 form, including a 5-7-5 haiku, without a preface or report. Do not invent factual
 results or transactions. Pure creative writing does not require tools or citations.
+For requested trash talk, default to one quick snippet: 1-2 short sentences, under
+40 words, unless a different length or format is requested. No explanation afterward.
 
 Rules for every answer: `chat_text` is plain text, no markdown, at most __CHAT_TEXT_LIMIT__
 characters. Delivery adds a bot signature; the whole message must fit __CHAT_MESSAGE_LIMIT__
