@@ -505,3 +505,13 @@ def test_video_reply_reconciles_only_in_the_original_requests_thread() -> None:
     )
     assert result.status == "reconciled" and result.message_guid == "right-video"
     assert len(client.sent) == 1
+
+
+def test_each_trade_gets_the_exact_database_confirmation() -> None:
+    client = FakeClient()
+    service, _, outbound, _ = make(DeliveryMode.TEST, client=client)
+    first = service.deliver(1, "trade-registrar", "trade recorded in database")
+    second = service.deliver(2, "trade-registrar", "trade recorded in database")
+    assert client.sent == [(TEST_GUID, "trade recorded in database")] * 2
+    assert first.outbound_id != second.outbound_id
+    assert all(row["state"] == "sent" for row in outbound.records.values())

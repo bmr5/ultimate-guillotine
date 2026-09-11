@@ -118,7 +118,7 @@ def test_question_gets_one_receipt_then_answer_without_twenty_second_ack(configu
     processor, _, _ = configure("production", (TEST, LEAGUE), worker, receipt)
     question = msg("@daddy who has the most FAAB?", chat=chat, guid="one-receipt")
     assert processor.process(question, question.guid) == "handled:league-agent"
-    assert receipt.sent == [(1, "league-agent", "Got it, kitten. Daddy's on it.", chat)]
+    assert receipt.sent == [(1, "league-agent", "request received", chat)]
     assert parts["delivery"].texts == []
     assert worker.run_job(worker._queue.get_nowait()) == "answer"
     assert active_timers == [300.0]
@@ -147,8 +147,8 @@ def test_two_chat_receipts_queue_pacing_answers_and_artifacts_keep_their_origin(
         # A new webhook event for the same message also cannot reserve another run.
         assert processor.process(question, f"redelivery-{index}") == "handled:league-agent"
     assert receipt.sent == [
-        (1, "league-agent", "Got it, kitten. Daddy's on it.", TEST),
-        (2, "league-agent", "Got it, kitten. Daddy's on it.", LEAGUE),
+        (1, "league-agent", "request received", TEST),
+        (2, "league-agent", "request received", LEAGUE),
     ]
     assert worker._queue.qsize() == 2
     timers.at(QUEUED_AFTER).fire()

@@ -685,7 +685,7 @@ It can answer league facts, research players, explain rules,
 and compare trades. It sends a short answer and, when useful, an HTML artifact.
 It never registers trades. Announce a trade with a 🚨 alert for the Trade Registrar.
 
-The listener replies `Got it, kitten. Daddy's on it.` as soon as it accepts a tagged
+The listener replies `request received` as soon as it accepts a tagged
 question or inline follow-up, before queueing it. This signed receipt uses the
 question's run and originating chat, so members can reply to it even before the
 worker creates a session. Duplicate webhooks send no extra receipt, and immediate
@@ -709,7 +709,9 @@ including a receipt sent before the parent session exists. Before resuming, the
 worker also checks that the session's stored chat hash matches the current chat.
 A foreign thread reference cannot load another chat's conversation history.
 
-The SOUL uses a lightly playful Daddy voice and addresses members as kitten.
+The SOUL uses a curt, neutral, robotic tone without pet names or roleplay.
+New trade confirmations say exactly `trade recorded in database`, without a signature.
+Other replies use the neutral `Guillotine Bot` signature.
 Research chat replies contain one top recommendation and its key condition, capped
 at 600 characters. Alternatives, pricing, full terms and evidence go in the HTML
 report. The prompt evaluates whole-roster constraints, including a paid hold that

@@ -28,7 +28,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from ultimate_guillotine.ai.hermes import HermesStructuredClient
 from ultimate_guillotine.ai.structured import AIUsage, StructuredOutputClient
 
-PROMPT_VERSION = "2026.1"
+PROMPT_VERSION = "2026.2"
 SCHEMA_NAME = "EodColor"
 COLOR_TIMEOUT_SECONDS = 60.0
 _PROMPT_PATH = Path(__file__).resolve().parents[5] / "agents" / "eod-summary" / "prompt.md"

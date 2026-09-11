@@ -109,3 +109,12 @@ def test_ping_trigger_accepts_unsigned_messages_from_ben_but_not_signed_ones() -
     assert processor.process(msg(sign("pong 1"), from_me=True), "e1") == "ignored_bot"
     assert processor.process(msg("@daddy ping", from_me=True), "e2") == "handled:ping"
     assert len(calls) == 1
+
+
+def test_verbatim_trade_confirmation_echo_does_not_run_triggers() -> None:
+    calls = []
+    trigger = Trigger("reply", lambda m: True, lambda m: calls.append(m.guid))
+    assert build(trigger).process(
+        msg("trade recorded in database", from_me=True), "confirmation-echo"
+    ) == "ignored_bot"
+    assert calls == []

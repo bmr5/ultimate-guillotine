@@ -25,16 +25,13 @@ AGENT = "trade-video"
 #: What Ben is told to expect: an 8 s voiced clip took about four minutes on
 #: 2026-09-10, and Higgsfield's queue adds what it adds.
 ETA = "usually takes 5 to 10 minutes"
-ACKNOWLEDGEMENT = "On it kitten, hold on for 10 minutes"
+ACKNOWLEDGEMENT = "video queued. estimated time: 5 to 10 minutes"
 
 _TAG = re.compile(r"@daddy\b", re.IGNORECASE)
 _VIDEO = re.compile(r"\bvideo\b", re.IGNORECASE)
 TRADE_CODE = re.compile(r"\b(?:TEST|T)-\d{4}-\d{3}\b")
 
-HELP = (
-    "Kitten, reply to the trade alert you mean, or include its code (like T-2026-003), "
-    "and I'll make the video."
-)
+HELP = "Reply to a trade alert or provide its code, such as T-2026-003."
 #: How many recent trades an alert with no trade behind it is matched against.
 RECENT = 20
 #: Names of a trade an alert must contain before it is taken as that trade.
@@ -122,9 +119,9 @@ def help_text(recent: list[dict], labels: dict[int, str]) -> str:
     if not lines:
         return HELP
     return (
-        "I couldn't tie that to a logged trade, kitten. Recent: "
+        "No matching trade found. Recent: "
         + "; ".join(lines)
-        + ". Reply with the code and I'll make the video."
+        + ". Reply with the trade code."
     )
 
 
@@ -218,17 +215,16 @@ class VideoRequests:
             self._delivery.deliver(
                 None,
                 AGENT,
-                f"{code} was rescinded, kitten, so no video for it.",
+                f"video unavailable: trade {code} was rescinded",
                 reply_to=msg.chat_guid,
             )
             return
         _job_id, created = self._jobs.enqueue(trade["trade_id"], code, msg.guid, msg.chat_guid)
         self._conn.commit()
         if created:
-            # Ben (2026-09-10): exactly this, no emoji, no code, no range.
             text = ACKNOWLEDGEMENT
         else:
-            text = f"Patience, kitten, the video for {code} is already in the works."
+            text = f"video for {code} already queued or running"
         self._delivery.deliver(None, AGENT, text, reply_to=msg.chat_guid, reply_to_message=msg)
 
 

@@ -330,8 +330,7 @@ class Sections:
 
 
 def _header(view: View, now: datetime) -> str:
-    # Ben (2026-09-10): the league loves the kitten voice, so the Daily says hello in it.
-    return f"🗡️ GUILLOTINE DAILY · {view.title(now)}\nHello kittens. {view.header_line()}"
+    return f"🗡️ GUILLOTINE DAILY · {view.title(now)}\n{view.header_line()}"
 
 
 def _gulag_section(view: View) -> str | None:
