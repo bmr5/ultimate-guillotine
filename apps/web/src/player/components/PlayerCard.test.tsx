@@ -94,7 +94,9 @@ const renderContent = (
 describe("PlayerCardContent", () => {
   it("leads with the name and the position line", () => {
     renderContent();
-    expect(screen.getByRole("heading", { name: "Puka Nacua" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Puka Nacua" }),
+    ).toBeInTheDocument();
     expect(screen.getByText("WR · LAR")).toBeInTheDocument();
   });
 
@@ -108,7 +110,9 @@ describe("PlayerCardContent", () => {
 
   it("shows the draft, the drafter, and the context line", () => {
     renderContent();
-    expect(screen.getByText("$53 · pick 1 · Ray Regime")).toBeInTheDocument();
+    expect(
+      screen.getByText("$53 draft ($265 FAAB at 5:1) · pick 1 · Ray Regime"),
+    ).toBeInTheDocument();
     expect(
       screen.getByText("9th priciest pick · 4th WR · WR average $22"),
     ).toBeInTheDocument();
@@ -130,7 +134,9 @@ describe("PlayerCardContent", () => {
   it("tells the journey oldest first, naming owners, the other players, the FAAB and the announcement", () => {
     renderContent();
     const items = screen.getAllByRole("listitem");
-    expect(items[0]).toHaveTextContent("Drafted by Ray Regime for $53");
+    expect(items[0]).toHaveTextContent(
+      "Drafted by Ray Regime for $53 draft ($265 FAAB at 5:1)",
+    );
     expect(items[1]).toHaveTextContent("Traded from Ray Regime to Rick Vice");
     expect(items[1]).toHaveTextContent("Brock Bowers to Ray Regime");
     expect(items[1]).toHaveTextContent("$65 FAAB from Ray Regime to Rick Vice");
@@ -155,7 +161,9 @@ describe("PlayerCardContent", () => {
     );
     expect(screen.getByText("Transactions could not load")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Puka Nacua" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Puka Nacua" }),
+    ).toBeInTheDocument();
   });
 
   it("strikes through a rescinded announcement", () => {
@@ -175,7 +183,10 @@ describe("PlayerCardContent", () => {
         },
       ],
     });
-    expect(screen.getByRole("listitem")).toHaveAttribute("data-rescinded", "true");
+    expect(screen.getByRole("listitem")).toHaveAttribute(
+      "data-rescinded",
+      "true",
+    );
     fireEvent.click(screen.getByText("T-2026-004"));
   });
 });

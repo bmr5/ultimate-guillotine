@@ -1,3 +1,4 @@
+import { FAAB_PER_DRAFT_DOLLAR } from "@/board/derive/draft";
 import { resolveOwnerLabel } from "@/board/derive/join";
 import type {
   DraftPickRow,
@@ -41,7 +42,7 @@ export function parseDraftSortMode(
  * auction budget is the FAAB budget over five. `seasons.waiver_budget` is the only budget the
  * data layer stores.
  */
-export const FAAB_PER_DRAFT_DOLLAR = 5;
+export { FAAB_PER_DRAFT_DOLLAR } from "@/board/derive/draft";
 
 export function draftBudgetPerTeam(waiverBudget: number | null): number | null {
   return waiverBudget === null

@@ -93,12 +93,19 @@ export function auctionContext(
 /** The mark's accessible name; the sentence behind it is `draftedHereDescription`. */
 export const DRAFTED_HERE_LABEL = "Drafted here";
 
+/** Each draft dollar is worth five FAAB dollars. */
+export const FAAB_PER_DRAFT_DOLLAR = 5;
+
+export function formatDraftValue(amount: number): string {
+  return `$${amount} draft ($${amount * FAAB_PER_DRAFT_DOLLAR} FAAB at 5:1)`;
+}
+
 /** What the mark's tooltip says, spelled once so the row and its tests cannot drift. */
 export function draftedHereDescription(
   ownerName: string,
   amount: number,
 ): string {
-  return `Drafted by ${ownerName} for $${amount}`;
+  return `Drafted by ${ownerName} for ${formatDraftValue(amount)}`;
 }
 
 /** The card's context line: `9th priciest pick · 4th RB · RB average $22`. */

@@ -9,6 +9,7 @@ import {
   EliminatedDivider,
   RealtimeBanner,
 } from "@/board/components/BoardStates";
+import { CutWatch } from "@/board/components/CutWatch";
 import { PositionView } from "@/board/components/PositionView";
 import { TeamCard } from "@/board/components/TeamCard";
 import { TiersView } from "@/board/components/TiersView";
@@ -310,6 +311,17 @@ export function BoardPage() {
 
         {board.isPending ? <BoardSkeleton /> : null}
         {!board.isPending && board.isEmpty ? <BoardEmpty /> : null}
+
+        {showList &&
+        !tiersActive &&
+        positionFilter === null &&
+        !board.isOffRegularSeason &&
+        !board.isSeasonFallback &&
+        board.week !== null &&
+        board.week >= 1 &&
+        board.week <= 11 ? (
+          <CutWatch teams={board.teams} week={board.week} />
+        ) : null}
 
         {showList && tiersActive ? <TiersView tiers={tiers} /> : null}
 

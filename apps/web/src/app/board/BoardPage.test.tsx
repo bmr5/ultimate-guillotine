@@ -172,6 +172,146 @@ describe("BoardPage", () => {
     ).toBeInTheDocument();
   });
 
+  it("keeps cut watch on the full pool when the board is searched", async () => {
+    boardData.current = result({
+      week: 1,
+      teams: [
+        team({ teamId: 1, projectedPoints: 80 }),
+        team({ teamId: 2, projectedPoints: 90 }),
+        team({ teamId: 3, projectedPoints: 100 }),
+      ],
+    });
+    renderPage();
+    const watch = within(screen.getByRole("region", { name: "Cut watch" }));
+    expect(watch.getByText("owner1")).toBeInTheDocument();
+    expect(watch.getByText("owner2")).toBeInTheDocument();
+    expect(watch.getByText("VS")).toBeInTheDocument();
+    expect(watch.getAllByText("Actual")).toHaveLength(2);
+    expect(watch.getAllByText("Projected")).toHaveLength(2);
+    fireEvent.change(screen.getByRole("searchbox", { name: SEARCH_LABEL }), {
+      target: { value: "owner3" },
+    });
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: /owner1/ }),
+      ).not.toBeInTheDocument(),
+    );
+    expect(watch.getByText("owner1")).toBeInTheDocument();
+    expect(watch.getByText("owner2")).toBeInTheDocument();
+  });
+
+  it("expands the matchup to show the safety gap and lineups", () => {
+    boardData.current = result({
+      week: 1,
+      teams: [
+        team({ teamId: 1, projectedPoints: 80 }),
+        team({ teamId: 2, projectedPoints: 90 }),
+        team({ teamId: 3, projectedPoints: 100 }),
+      ],
+    });
+    renderPage();
+    const watch = within(screen.getByRole("region", { name: "Cut watch" }));
+    const toggle = watch.getByRole("button", { name: "Show matchup details" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(watch.queryByText(/pts to the safety line/)).not.toBeInTheDocument();
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(
+      watch.getByText("20.00 pts to the safety line", { exact: false }),
+    ).toBeVisible();
+    expect(
+      watch.getByRole("heading", { name: "owner1 · Starters" }),
+    ).toBeVisible();
+    expect(
+      watch.getByRole("heading", { name: "owner2 · Starters" }),
+    ).toBeVisible();
+    fireEvent.click(toggle);
+    expect(
+      watch.queryByRole("heading", { name: "owner1 · Starters" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps a broad tie to two names and puts the other contenders in details", () => {
+    boardData.current = result({
+      week: 1,
+      teams: Array.from({ length: 6 }, (_, index) =>
+        team({
+          teamId: index + 1,
+          projectedPoints: index === 5 ? 100 : 80,
+          score: index === 5 ? 10 : 0,
+        }),
+      ),
+    });
+    renderPage();
+    const watch = within(screen.getByRole("region", { name: "Cut watch" }));
+    expect(watch.getByText("owner1")).toBeVisible();
+    expect(watch.getByText("owner2")).toBeVisible();
+    expect(watch.queryByText(/owner3/)).not.toBeInTheDocument();
+    expect(watch.getByText(/Projections tied at the cutoff/)).toBeVisible();
+    fireEvent.click(
+      watch.getByRole("button", { name: "Show matchup details" }),
+    );
+    expect(
+      watch.getByText(
+        /Teams at or below the cutoff: owner1, owner2, owner3, owner4, owner5/,
+      ),
+    ).toBeVisible();
+  });
+
+  it("keeps the projected bottom two when scores arrive and updates when projections change", () => {
+    const teams = [
+      team({ teamId: 1, projectedPoints: 80 }),
+      team({ teamId: 2, projectedPoints: 90 }),
+      team({ teamId: 3, projectedPoints: 100 }),
+    ];
+    boardData.current = result({ week: 1, teams });
+    const { rerenderPage } = renderPage();
+    boardData.current = result({
+      week: 1,
+      teams: teams.map((team, index) => ({
+        ...team,
+        score: [40, 10, 20][index],
+      })),
+    });
+    rerenderPage();
+    const watch = within(screen.getByRole("region", { name: "Cut watch" }));
+    expect(watch.getByText(/Projected bottom two/)).toBeInTheDocument();
+    expect(watch.getByText("owner1")).toBeInTheDocument();
+    expect(watch.getByText("owner2")).toBeInTheDocument();
+    expect(watch.queryByText("owner3")).not.toBeInTheDocument();
+    expect(watch.getByText("40.0")).toBeInTheDocument();
+    expect(watch.getByText("80.0")).toBeInTheDocument();
+    boardData.current = result({
+      week: 1,
+      teams: teams.map((team, index) => ({
+        ...team,
+        score: [40, 10, 20][index],
+        projectedPoints: [110, 90, 100][index],
+      })),
+    });
+    rerenderPage();
+    expect(watch.queryByText("owner1")).not.toBeInTheDocument();
+    expect(watch.getByText("owner2")).toBeInTheDocument();
+    expect(watch.getByText("owner3")).toBeInTheDocument();
+  });
+
+  it("does not advertise a new gulag after Week 11 or outside the current season", () => {
+    boardData.current = result({ week: 12, teams: [team({ teamId: 1 })] });
+    const { rerenderPage } = renderPage();
+    expect(
+      screen.queryByRole("region", { name: "Cut watch" }),
+    ).not.toBeInTheDocument();
+    boardData.current = result({
+      week: 1,
+      isOffRegularSeason: true,
+      teams: [team({ teamId: 1 })],
+    });
+    rerenderPage();
+    expect(
+      screen.queryByRole("region", { name: "Cut watch" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("shows the waiting card when there are no rows", () => {
     boardData.current = result({ isEmpty: true });
     renderPage();
@@ -852,24 +992,34 @@ describe("the player card", () => {
   });
 
   it("opens from the URL on load, labelled by the player's name", () => {
-    boardData.current = result({ teams: [team({ teamId: 1, roster: [nacua] })] });
+    boardData.current = result({
+      teams: [team({ teamId: 1, roster: [nacua] })],
+    });
     renderPage("/?player=9493");
-    expect(screen.getByRole("dialog", { name: "Puka Nacua" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("dialog", { name: "Puka Nacua" }),
+    ).toBeInTheDocument();
   });
 
   it("opens when a name is tapped, and writes the player into the URL", () => {
-    boardData.current = result({ teams: [team({ teamId: 1, roster: [nacua] })] });
+    boardData.current = result({
+      teams: [team({ teamId: 1, roster: [nacua] })],
+    });
     renderPage("/?sort=faab");
     fireEvent.click(screen.getByRole("button", { name: /owner1/ }));
     fireEvent.click(screen.getByRole("button", { name: "Puka Nacua" }));
-    expect(screen.getByRole("dialog", { name: "Puka Nacua" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("dialog", { name: "Puka Nacua" }),
+    ).toBeInTheDocument();
     expect(screen.getByTestId("location")).toHaveTextContent(
       "/?sort=faab&player=9493",
     );
   });
 
   it("closes by taking the player out of the URL, keeping the rest", () => {
-    boardData.current = result({ teams: [team({ teamId: 1, roster: [nacua] })] });
+    boardData.current = result({
+      teams: [team({ teamId: 1, roster: [nacua] })],
+    });
     renderPage("/?sort=faab&player=9493");
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -889,7 +1039,9 @@ describe("the player card", () => {
       },
     };
     renderPage("/?player=9493");
-    expect(screen.getByRole("dialog", { name: "Puka Nacua" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("dialog", { name: "Puka Nacua" }),
+    ).toBeInTheDocument();
     expect(screen.getByText("Not rostered this week")).toBeInTheDocument();
   });
 });
