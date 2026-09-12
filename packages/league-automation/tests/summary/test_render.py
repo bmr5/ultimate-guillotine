@@ -12,7 +12,7 @@ from tests.summary.helpers import NOW, done_team, phase, snapshot, starter, team
 from ultimate_guillotine.summary.color import EodColor
 from ultimate_guillotine.summary.fixture import FIXTURE_NOW, fixture_eod
 from ultimate_guillotine.summary.models import EodPacket, Move
-from ultimate_guillotine.summary.render import facts_text, percent, render, window_stamp
+from ultimate_guillotine.summary.render import View, facts_text, percent, render, window_stamp
 from ultimate_guillotine.summary.survival import simulate
 
 
@@ -123,8 +123,8 @@ def test_the_gulag_pair_are_listed_by_their_odds_of_losing() -> None:
     text = render(_packet(snap), None, NOW)
     assert "⚔️ THE GULAG · loser is out" in text
     gulag = text.split("⚔️ THE GULAG · loser is out\n", 1)[1].split("\n\n", 1)[0].splitlines()
-    assert gulag[0] == "Member05 · locked to lose · proj 70 · actual 70.0"
-    assert gulag[1] == "Member06 · safe · proj 80 · actual 80.0"
+    assert gulag[0] == "Member05 · locked to lose · original 12 · current 70 · actual 70.0"
+    assert gulag[1] == "Member06 · safe · original 12 · current 80 · actual 80.0"
     assert "inferred" not in text
 
 
@@ -158,10 +158,15 @@ def test_the_block_names_the_two_likeliest_and_who_is_sweating() -> None:
     block = block.split("\n\n", 1)[0].splitlines()
     # Ben's line: the team, its risk, its projected finish, its actual score.
     assert len(block) == 2
-    assert re.fullmatch(r"Member0\d · \d+% · proj \d+ · actual \d+\.\d", block[0]), block[0]
+    assert re.fullmatch(
+        r"Member0\d · \d+% · original \d+ · current \d+ · actual \d+\.\d", block[0]
+    ), block[0]
     sweating = text.split("⚰️ SWEATING\n", 1)[1].split("\n\n", 1)[0].splitlines()
     assert 1 <= len(sweating) <= 2
-    assert all(re.fullmatch(r"Member0\d · \d+% · proj \d+ · actual \d+\.\d", s) for s in sweating)
+    assert all(
+        re.fullmatch(r"Member0\d · \d+% · original \d+ · current \d+ · actual \d+\.\d", s)
+        for s in sweating
+    )
     assert "Member01" not in text.split("⚰️ SWEATING\n", 1)[1].split("\n\n", 1)[0]
 
 
@@ -174,7 +179,7 @@ def test_a_cut_week_puts_one_team_on_the_block() -> None:
     )
     text = render(_packet(snap), None, NOW)
     assert "⚰️ ON THE BLOCK · lowest score is cut" in text
-    assert "Member03 · locked · proj 60 · actual 60.0" in text
+    assert "Member03 · locked · original 12 · current 60 · actual 60.0" in text
     assert "SWEATING" not in text
 
 
@@ -189,6 +194,27 @@ def test_the_final_names_the_title_at_stake() -> None:
 
 
 # -- the board ------------------------------------------------------------
+
+
+def test_original_keeps_finished_and_out_estimates_but_requires_complete_data() -> None:
+    complete = team(
+        1,
+        starters=(
+            starter("done", projected="16.86", points="5.6"),
+            starter("out", projected="10"),
+            starter("remaining", projected="20"),
+            starter("empty", projected=None),
+        ),
+    )
+    missing = team(2, starters=(starter("done", projected=None),))
+    empty = team(3, starters=(starter("empty", projected=None),))
+    no_score = team(4, starters=(starter("remaining", projected="10"),), has_score_row=False)
+    view = View(_packet(snapshot((complete, missing, empty, no_score)), odds=False))
+    assert view.original_projected(complete) == "47"
+    assert view.original_projected(missing) == "—"
+    assert view.original_projected(empty) == "0"
+    assert view.projected(complete) == "—"
+    assert view.actual(no_score) == "—"
 
 
 def test_the_board_ranks_by_projected_finish_and_marks_the_gulag_and_the_estimates() -> None:
@@ -210,23 +236,22 @@ def test_the_board_ranks_by_projected_finish_and_marks_the_gulag_and_the_estimat
     )
     snap = snapshot(teams, week=5, phase_=phase(5, "gulag", gulag=(5, 6), source="events"))
     text = render(_packet(snap), None, NOW)
-    board = text.split("📊 THE BOARD · score · proj · left · risk\n", 1)[1]
+    board = text.split("📊 THE BOARD · original proj · current proj · actual · left · risk\n", 1)[1]
     board = board.split("\n\n", 1)[0].splitlines()
     # Team 2 finishes at 110 on average but with a 35-point spread, so its risk of the
     # bottom two is open; team 1 at 100 with nothing left can never be there. Team 4's
     # unprojected back is drawn at the RB median (12), so its finish is an estimate.
-    assert board[0].startswith("1. Member02 · 40.0 · 110 · 1 · ")
-    assert board[1] == "2. Member01 · 100.0 · 100 · 0 · 0%"
-    assert board[2].startswith("3. Member03 · 95.0 · 95 · 0 · ")
-    assert board[3].startswith("4. Member05 · 60.0 · 60 · 0 · ⚔")
-    assert board[4].startswith("5. Member06 · 50.0 · 50 · 0 · ⚔")
-    assert board[5].startswith("6. Member04 · 0.0 · ~42 · 2 · ")
+    assert board[0].startswith("1. Member02 · 70 · 110 · 40.0 · 1 · ")
+    assert board[1] == "2. Member01 · 12 · 100 · 100.0 · 0 · 0%"
+    assert board[2].startswith("3. Member03 · 12 · 95 · 95.0 · 0 · ")
+    assert board[3].startswith("4. Member05 · 12 · 60 · 60.0 · 0 · ⚔")
+    assert board[4].startswith("5. Member06 · 12 · 50 · 50.0 · 0 · ⚔")
+    assert board[5].startswith("6. Member04 · — · ~42 · 0.0 · 2 · ")
     assert board[6] == "Out: Member07 (wk 3)"
 
 
-def test_before_kickoff_the_block_and_the_gulag_lines_carry_the_projection_not_a_zero() -> None:
-    """On a Tuesday nobody has scored, so `0.0 · 8 left` says nothing; the projected
-    finish is the number the pairing is judged on until somebody plays."""
+def test_before_kickoff_the_block_and_the_gulag_lines_carry_all_three_figures() -> None:
+    """The three figures stay visible even before kickoff."""
     teams = (
         team(1, starters=(starter("remaining", projected="100"),)),
         team(2, starters=(starter("remaining", projected="90"),)),
@@ -244,13 +269,17 @@ def test_before_kickoff_the_block_and_the_gulag_lines_carry_the_projection_not_a
     )
     text = render(_packet(snap), None, NOW)
     gulag = text.split("⚔️ THE GULAG · loser is out\n", 1)[1].split("\n\n", 1)[0].splitlines()
-    assert re.fullmatch(r"Member06 · \d+% to lose · proj 50", gulag[0]), gulag[0]
-    assert "actual" not in gulag[0] and " left" not in gulag[0]
+    assert re.fullmatch(
+        r"Member06 · \d+% to lose · original 50 · current 50 · actual 0\.0", gulag[0]
+    ), gulag[0]
+    assert "actual 0.0" in gulag[0] and " left" not in gulag[0]
     block = text.split("⚰️ ON THE BLOCK · bottom 2 enter the Week 6 gulag\n", 1)[1]
-    assert re.fullmatch(r"Member04 · \d+% · proj 70", block.splitlines()[0])
+    assert re.fullmatch(
+        r"Member04 · \d+% · original 70 · current 70 · actual 0\.0", block.splitlines()[0]
+    )
 
 
-def test_the_outlook_board_drops_the_score_and_the_players_left() -> None:
+def test_the_outlook_board_keeps_all_three_figures_and_drops_the_players_left() -> None:
     snap = snapshot(
         (
             team(1, starters=(starter("remaining", projected="100"),)),
@@ -261,8 +290,8 @@ def test_the_outlook_board_drops_the_score_and_the_players_left() -> None:
         games_final=0,
     )
     text = render(_packet(snap), None, NOW)
-    assert "📊 THE BOARD · proj · risk" in text
-    assert "1. Member01 · 100 · " in text
+    assert "📊 THE BOARD · original proj · current proj · actual · risk" in text
+    assert "1. Member01 · 100 · 100 · 0.0 · " in text
     assert " left" not in text.split("📊 THE BOARD", 1)[1]
 
 
@@ -370,10 +399,10 @@ def test_factual_mode_carries_no_percentage_and_says_why() -> None:
     )
     assert "⚰️ ON THE BLOCK · bottom 2 enter the Week 2 gulag" in text
     block = text.split("⚰️ ON THE BLOCK · bottom 2 enter the Week 2 gulag\n", 1)[1]
-    assert block.splitlines()[0] == "Member04 · actual 45.0 · 1 left"
-    assert block.splitlines()[1] == "Member03 · actual 50.0 · 0 left"
+    assert block.splitlines()[0] == "Member04 · original — · current — · actual 45.0"
+    assert block.splitlines()[1] == "Member03 · original 12 · current — · actual 50.0"
     assert "SWEATING" not in text
-    assert "📊 THE BOARD · score · left" in text
+    assert "📊 THE BOARD · original proj · current proj · actual · left" in text
 
 
 def test_a_missing_scores_row_is_said_in_the_footer() -> None:

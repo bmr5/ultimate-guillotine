@@ -123,7 +123,7 @@ def test_factual_mode_shows_no_percentages_and_says_why() -> None:
     assert "No Monte Carlo odds: no schedule" in body
 
 
-def test_the_outlook_page_shows_projections_not_zero_scores() -> None:
+def test_the_outlook_page_shows_both_projections_and_actual_zero_scores() -> None:
     snap = snapshot(
         (
             team(1, starters=(starter("remaining", projected="100"),)),
@@ -136,7 +136,10 @@ def test_the_outlook_page_shows_projections_not_zero_scores() -> None:
     html = render_html(_packet(snap), None, NOW)
     body = html.split("</style>", 1)[1]
     assert "Nothing has kicked off yet" in body
-    assert "0.0" not in body
+    assert '<th class="n">Original</th>' in body
+    assert '<th class="n">Current</th>' in body
+    assert '<th class="n">Actual</th>' in body
+    assert "actual 0.0" in body
 
 
 def test_the_gulag_pair_are_marked_on_the_board() -> None:
@@ -146,6 +149,30 @@ def test_the_gulag_pair_are_marked_on_the_board() -> None:
     assert "The gulag" in html
     assert "inferred from last week" in html
     assert html.count("⚔") >= 2
+
+
+def test_original_current_and_actual_stay_distinct_in_the_table_and_summary() -> None:
+    snap = snapshot(
+        (
+            team(
+                1,
+                points="5.6",
+                label="Sean",
+                starters=(
+                    starter("done", projected="16.86", points="5.6"),
+                    starter("remaining", projected="95.11"),
+                    starter("empty", projected=None),
+                ),
+            ),
+        )
+    )
+    html = render_html(_packet(snap), None, NOW)
+    assert "original 112 · current 101 · actual 5.6" in html
+    assert (
+        '<td class="team">Sean</td><td class="n">112</td>'
+        '<td class="n">101</td><td class="n">5.6</td>'
+    ) in html
+    assert html.index(">Original</th>") < html.index(">Current</th>") < html.index(">Actual</th>")
 
 
 # -- the internal recap, never sent to chat -------------------------------
@@ -168,7 +195,7 @@ def test_the_short_text_is_the_header_the_gulag_the_block_the_sweating_and_the_f
     assert "attached" not in text  # Ben (2026-09-10): no "Full board attached" line
     assert text.rstrip().endswith(" CST")
     assert "sims" not in text and "rulings" not in text
-    assert len(text) < 1000
+    assert len(text) < 1400
 
 
 def test_the_short_text_without_colour_has_no_gap() -> None:

@@ -134,6 +134,21 @@ class View:
         mark = "~" if odds.is_estimated else ""
         return f"{mark}{odds.projected_final.quantize(Decimal(1), rounding=ROUND_HALF_UP)}"
 
+    def original_projected(self, team: TeamLine) -> str:
+        """Full-game estimates for this report's lineup, including finished and out players.
+
+        This is not a saved kickoff snapshot. Empty slots add zero; missing
+        estimates for filled slots make the baseline unavailable.
+        """
+        filled = [s for s in team.starters if s.status != "empty"]
+        if not team.starters or any(s.projected is None for s in filled):
+            return "—"
+        total = sum((s.projected for s in filled if s.projected is not None), _ZERO)
+        return f"{total.quantize(Decimal(1), rounding=ROUND_HALF_UP)}"
+
+    def actual(self, team: TeamLine) -> str:
+        return f"{team.points:.1f}" if team.has_score_row else "—"
+
     def risk(self, team: TeamLine) -> str:
         return percent(self.probability(team), settled=self.settled)
 
@@ -275,22 +290,14 @@ class View:
     # -- one line of text ----------------------------------------------------
 
     def stand(self, team: TeamLine) -> str:
-        """Where a team stands: its projected finish and its actual score.
-
-        Ben's line (2026-09-10): the team, its risk, ``Projected · Actual``. Before
-        kickoff nobody has scored, so the actual is left off; in factual mode
-        there is no projected finish, so the actual and the players left stand.
-        """
-        if self.result is None:
-            return (
-                self.left(team) if self.outlook else f"actual {team.points:.1f} · {self.left(team)}"
-            )
-        if self.outlook:
-            return f"proj {self.projected(team)}"
-        return f"proj {self.projected(team)} · actual {team.points:.1f}"
+        """All three figures, in the same order as the report's board."""
+        return (
+            f"original {self.original_projected(team)} · current {self.projected(team)}"
+            f" · actual {self.actual(team)}"
+        )
 
     def team_line(self, team: TeamLine, *, risk: str | None = None) -> str:
-        """``Ben R · 37% · proj 88 · actual 7.8``, the risk left out when there is none."""
+        """Team, risk when available, and the three scoring figures."""
         parts = [team.label]
         if risk is not None:
             parts.append(risk)
@@ -368,19 +375,15 @@ def _sweating_section(view: View) -> str | None:
 
 def _board_section(view: View) -> str:
     outlook = view.outlook
+    header = "📊 THE BOARD · original proj · current proj · actual"
+    if not outlook:
+        header += " · left"
     if view.result is not None:
-        header = (
-            "📊 THE BOARD · proj · risk" if outlook else "📊 THE BOARD · score · proj · left · risk"
-        )
-    else:
-        header = "📊 THE BOARD · proj" if outlook else "📊 THE BOARD · score · left"
+        header += " · risk"
     lines = [header]
     for rank, team in enumerate(view.ranked_board(), start=1):
         parts = [f"{rank}. {team.label}"]
-        if not outlook:
-            parts.append(f"{team.points:.1f}")
-        if view.result is not None:
-            parts.append(view.projected(team))
+        parts.extend([view.original_projected(team), view.projected(team), view.actual(team)])
         if not outlook:
             parts.append(str(view.pending_count(team)))
         if view.result is not None:

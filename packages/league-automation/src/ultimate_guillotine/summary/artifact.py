@@ -47,14 +47,15 @@ h1{margin:4px 0 6px;font-size:28px;line-height:1.15}
 .fire{border-color:rgba(240,162,74,.45);background:rgba(240,162,74,.08)}
 .fire h2{color:#f0a24a}
 .fire p{margin:6px 0 0}
-.row{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid rgba(255,255,255,.08)}
+.row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;padding:8px 0;border-top:1px solid rgba(255,255,255,.08)}
 .row:first-of-type{border-top:0}
 .row .who{font-weight:600}
-.row .num{color:#a3a9bd;white-space:nowrap}
+.row .num{grid-column:1/-1;color:#a3a9bd;font-size:14px}
 .pct{font-weight:700;white-space:nowrap}
 .pct.red{color:#ff6b7a}.pct.amber{color:#f0a24a}.pct.safe{color:#a3a9bd}
 .sweat{margin:10px 0 0;color:#a3a9bd;font-size:14px}
 table{width:100%;border-collapse:collapse;font-size:14px}
+.table-scroll{overflow-x:auto}
 th{text-align:left;color:#a3a9bd;font-weight:600;font-size:12px;letter-spacing:.06em;text-transform:uppercase;padding:6px 4px;border-bottom:1px solid rgba(255,255,255,.12)}
 td{padding:7px 4px;border-bottom:1px solid rgba(255,255,255,.06);vertical-align:middle}
 td.n,th.n{text-align:right;white-space:nowrap}
@@ -69,6 +70,7 @@ td.team{font-weight:600}
 ul{margin:0;padding-left:18px}
 li{margin:4px 0}
 footer{margin-top:18px;color:#a3a9bd;font-size:13px;text-align:center}
+@media(max-width:480px){table{font-size:12px}th{font-size:10px;letter-spacing:0}td,th{padding-left:3px;padding-right:3px}}
 """
 
 
@@ -95,7 +97,7 @@ def _bar(view: View, team: TeamLine) -> str:
 
 
 def _pair_row(view: View, team: TeamLine, *, to_lose: bool) -> str:
-    """Ben's line: the team, its risk, then ``proj · actual``."""
+    """The team, its risk, and original, current and actual scoring figures."""
     risk = view.loss_risk(team) if to_lose else view.block_risk(team)
     cells = [f'<span class="who">{escape(team.label)}</span>']
     if risk is not None:
@@ -158,10 +160,13 @@ def _sweating_card(view: View) -> str | None:
 def _board_card(view: View) -> str:
     outlook, odds = view.outlook, view.result is not None
     heads = ['<th class="n">#</th>', "<th>Team</th>"]
-    if not outlook:
-        heads.append('<th class="n">Score</th>')
-    if odds:
-        heads.append('<th class="n">Proj</th>')
+    heads.extend(
+        [
+            '<th class="n">Original</th>',
+            '<th class="n">Current</th>',
+            '<th class="n">Actual</th>',
+        ]
+    )
     if not outlook:
         heads.append('<th class="n">Left</th>')
     if odds:
@@ -170,13 +175,12 @@ def _board_card(view: View) -> str:
     for rank, team in enumerate(view.ranked_board(), start=1):
         classes = ' class="gulag"' if view.in_gulag(team) else ""
         cells = [f'<td class="rank n">{rank}</td>', f'<td class="team">{escape(team.label)}</td>']
-        if not outlook:
-            cells.append(f'<td class="n">{team.points:.1f}</td>')
-        if odds:
-            projected = escape(view.projected(team))
-            if projected.startswith("~"):
-                projected = f'<span class="est">{projected}</span>'
-            cells.append(f'<td class="n">{projected}</td>')
+        cells.append(f'<td class="n">{escape(view.original_projected(team))}</td>')
+        projected = escape(view.projected(team))
+        if projected.startswith("~"):
+            projected = f'<span class="est">{projected}</span>'
+        cells.append(f'<td class="n">{projected}</td>')
+        cells.append(f'<td class="n">{escape(view.actual(team))}</td>')
         if not outlook:
             cells.append(f'<td class="n">{view.pending_count(team)}</td>')
         if odds:
@@ -187,9 +191,18 @@ def _board_card(view: View) -> str:
         rows.append(f"<tr{classes}>{''.join(cells)}</tr>")
     out = view.out_line()
     out_html = f'<p class="out">{escape(out)}</p>' if out else ""
+    ranking_note = (
+        "Sorted by current projection; the block is ranked by risk."
+        if odds
+        else "Sorted by actual score while current projections and odds are unavailable."
+    )
     return (
         '<section class="card"><h2>📊 The board</h2>'
-        f"<table><thead><tr>{''.join(heads)}</tr></thead><tbody>{''.join(rows)}</tbody></table>"
+        '<p class="note">Original: full-game projections for this lineup. '
+        "Current: actual points plus projected scoring still to come. Actual: points scored. "
+        f"{ranking_note}</p>"
+        f'<div class="table-scroll"><table><thead><tr>{"".join(heads)}</tr></thead>'
+        f"<tbody>{''.join(rows)}</tbody></table></div>"
         f"{out_html}</section>"
     )
 
