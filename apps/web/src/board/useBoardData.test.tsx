@@ -9,6 +9,8 @@ import { useBoardData } from "./useBoardData";
 
 vi.mock("./boardClient", () => ({ boardClient: {} }));
 vi.mock("./fetchers", () => ({
+  fetchLiveGames: vi.fn(),
+  fetchLiveScores: vi.fn(),
   fetchWeekSchedule: vi.fn().mockResolvedValue({}),
   fetchDraftPicks: vi.fn(),
   fetchFinalRosters: vi.fn(),
@@ -55,6 +57,11 @@ const TEAM = {
 };
 
 function stubFetchers(): void {
+  vi.mocked(fetchers.fetchLiveGames).mockResolvedValue({});
+  vi.mocked(fetchers.fetchLiveScores).mockResolvedValue({
+    rows: [],
+    receivedAt: "2026-09-09T00:00:00Z",
+  });
   vi.mocked(fetchers.fetchNflState).mockResolvedValue(NFL_STATE);
   vi.mocked(fetchers.fetchLatestSeason).mockResolvedValue(SEASON);
   vi.mocked(fetchers.fetchLatestSurvivalSnapshot).mockResolvedValue(null);
@@ -90,6 +97,47 @@ beforeEach(() => {
 });
 
 describe("useBoardData", () => {
+  it("uses direct Sleeper scores without waiting for the database sync", async () => {
+    vi.mocked(fetchers.fetchTeamWeekScores).mockResolvedValue([
+      {
+        season_id: 7,
+        week: 3,
+        team_id: 11,
+        points: 12,
+        players_points: {},
+        starters: [],
+        synced_at: "2026-09-09T12:00:00Z",
+      },
+    ]);
+    vi.mocked(fetchers.fetchLiveScores).mockResolvedValue({
+      rows: [{ rosterId: 1, points: 24, playersPoints: {}, starters: [] }],
+      receivedAt: "2026-09-09T12:00:15Z",
+    });
+    const { result } = renderBoardData();
+    await waitFor(() => expect(result.current.teams[0]?.score).toBe(24));
+    expect(fetchers.fetchLiveScores).toHaveBeenCalledWith(
+      "x",
+      3,
+      expect.any(AbortSignal),
+    );
+    expect(fetchers.fetchLiveGames).toHaveBeenCalledWith(
+      2026,
+      3,
+      expect.any(AbortSignal),
+    );
+    expect(result.current.scoresUpdatedAt).toBe(
+      Date.parse("2026-09-09T12:00:15Z"),
+    );
+    vi.mocked(fetchers.fetchLiveScores).mockResolvedValue({
+      rows: [{ rosterId: 1, points: 30, playersPoints: {}, starters: [] }],
+      receivedAt: "2026-09-09T12:00:30Z",
+    });
+    await waitFor(() => expect(result.current.teams[0]?.score).toBe(30), {
+      timeout: 17_000,
+    });
+    expect(result.current.errors).toEqual([]);
+  }, 20_000);
+
   it("resolves the season and week from nfl_state", async () => {
     const { result } = renderBoardData();
     await waitFor(() => {

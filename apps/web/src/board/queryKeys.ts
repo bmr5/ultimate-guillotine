@@ -32,6 +32,10 @@ export const boardKeys = {
   teams: (seasonId: number) => ["board", "teams", seasonId] as const,
   weekSchedule: (season: number, week: number) =>
     ["board", "nfl_schedule", season, week] as const,
+  liveGames: (season: number, week: number) =>
+    ["board", "live_games", season, week] as const,
+  liveScores: (leagueId: string, week: number) =>
+    ["board", "live_scores", leagueId, week] as const,
   members: () => ["board", "members"] as const,
   teamSeasonState: (seasonId: number) =>
     ["board", "team_season_state", seasonId] as const,

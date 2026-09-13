@@ -388,7 +388,11 @@ export function BoardPage() {
         per-card and per-header disclaimers with this one line.
       */}
       <footer className="mt-6 text-xs text-muted-foreground">
-        {PROJECTION_SOURCE_LINE}
+        <p>{PROJECTION_SOURCE_LINE}</p>
+        <p className="mt-1">
+          Live estimates use ESPN game clocks. Scores and clocks checked every
+          15 seconds.
+        </p>
       </footer>
 
       {/* Mounted only while the URL names a player, so the card's reads run only then. */}

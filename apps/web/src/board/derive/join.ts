@@ -8,6 +8,7 @@ import type {
 } from "../types";
 import { currentProjection, type WeekSchedule } from "./currentProjection";
 import { draftedHere, indexDraftPicks } from "./draft";
+import type { LiveGames } from "./liveGames";
 import { riskByTeamId } from "./odds";
 import { summarizeWeeklyResults, type WeeklyResultRow } from "./records";
 import { orderRoster } from "./roster";
@@ -55,6 +56,7 @@ export function resolveOwnerLabel(
  */
 export interface BoardRawData {
   weekSchedule?: WeekSchedule | null;
+  liveGames?: LiveGames | null;
   teams: Pick<
     TableRow<"teams">,
     "id" | "member_id" | "sleeper_roster_id" | "team_name"
@@ -301,6 +303,7 @@ export function joinBoardTeams(raw: BoardRawData): BoardTeam[] {
             score?.points ?? null,
             raw.weekSchedule,
             score?.starters,
+            raw.liveGames,
           ),
       coveragePct: projection === null ? null : projection.coverage_pct,
       // No projection row for the week is as provisional as it gets.

@@ -7,6 +7,8 @@ import {
 
 import { boardClient } from "./boardClient";
 import { joinBoardTeams } from "./derive/join";
+import { scheduleWithLiveGames } from "./derive/liveGames";
+import { mergeLiveScores } from "./derive/liveScores";
 import { latestFinalWeek } from "./derive/records";
 import { parseRosterPositions } from "./derive/roster";
 import { newestScoreSyncedAt } from "./derive/score";
@@ -16,6 +18,8 @@ import {
   fetchFinalRosters,
   fetchLatestSeason,
   fetchLatestSurvivalSnapshot,
+  fetchLiveGames,
+  fetchLiveScores,
   fetchMembers,
   fetchNflState,
   fetchPlayerProjections,
@@ -46,6 +50,7 @@ export interface BoardDataOptions {
  * row sooner than that.
  */
 const ODDS_REFETCH_MS = 5 * MS_PER_MINUTE;
+export const LIVE_REFRESH_MS = 15_000;
 
 export interface BoardQueryError {
   section: string;
@@ -252,6 +257,29 @@ export function useBoardData(options: BoardDataOptions): BoardDataResult {
     retry: 1,
   });
 
+  const liveGames = useQuery({
+    queryKey: boardKeys.liveGames(season ?? 0, week ?? 0),
+    queryFn: ({ signal }) =>
+      fetchLiveGames(season as number, week as number, signal),
+    enabled: hasWeekScope && season !== null && week !== null,
+    staleTime: LIVE_REFRESH_MS,
+    refetchInterval: LIVE_REFRESH_MS,
+    refetchOnWindowFocus: "always",
+    retry: 1,
+  });
+  const leagueId = resolvedSeason?.sleeper_league_id ?? null;
+  const liveScores = useQuery({
+    queryKey: boardKeys.liveScores(leagueId ?? "", week ?? 0),
+    queryFn: ({ signal }) =>
+      fetchLiveScores(leagueId as string, week as number, signal),
+    enabled:
+      hasWeekScope && leagueId !== null && week !== null && !isOffRegularSeason,
+    staleTime: LIVE_REFRESH_MS,
+    refetchInterval: LIVE_REFRESH_MS,
+    refetchOnWindowFocus: "always",
+    retry: 1,
+  });
+
   const teamProjections = useQuery({
     queryKey: boardKeys.teamWeekProjections(seasonId ?? 0, week ?? 0),
     queryFn: () =>
@@ -385,12 +413,22 @@ export function useBoardData(options: BoardDataOptions): BoardDataResult {
   const boardTeams = useMemo(
     () =>
       joinBoardTeams({
-        weekSchedule: weekSchedule.isError ? null : (weekSchedule.data ?? null),
+        weekSchedule: scheduleWithLiveGames(
+          weekSchedule.isError ? null : (weekSchedule.data ?? null),
+          liveGames.isError ? null : (liveGames.data ?? null),
+        ),
+        liveGames: liveGames.isError ? null : (liveGames.data ?? null),
         teams: teams.data ?? [],
         members: members.data ?? [],
         teamSeasonState: state.data ?? [],
         teamWeekProjections: teamProjections.data ?? [],
-        teamWeekScores: teamScores.data ?? [],
+        teamWeekScores: mergeLiveScores(
+          teamScores.data ?? [],
+          liveScores.data,
+          teams.data ?? [],
+          seasonId ?? 0,
+          week ?? 0,
+        ),
         rosterHoldings: holdings.data ?? [],
         players: players.data ?? [],
         playerProjections: playerProjections.data ?? [],
@@ -402,6 +440,11 @@ export function useBoardData(options: BoardDataOptions): BoardDataResult {
     [
       weekSchedule.data,
       weekSchedule.isError,
+      liveGames.data,
+      liveGames.isError,
+      liveScores.data,
+      seasonId,
+      week,
       teams.data,
       members.data,
       state.data,

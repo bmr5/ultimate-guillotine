@@ -4,6 +4,8 @@ import {
   parseWeekSchedule,
   type WeekSchedule,
 } from "./derive/currentProjection";
+import { parseLiveGames } from "./derive/liveGames";
+import { parseLiveScores, type LiveScoreFeed } from "./derive/liveScores";
 import type { Database, TableRow } from "./types";
 
 export type BoardClient = PostgrestClient<Database>;
@@ -379,6 +381,11 @@ export async function fetchLatestSurvivalSnapshot(
   return rows[0] ?? null;
 }
 
+function liveRequestSignal(signal?: AbortSignal): AbortSignal {
+  const timeout = AbortSignal.timeout(10_000);
+  return signal ? AbortSignal.any([signal, timeout]) : timeout;
+}
+
 /** Public game status, polled independently of the league's score subscription. */
 export async function fetchWeekSchedule(
   season: number,
@@ -391,4 +398,31 @@ export async function fetchWeekSchedule(
   );
   if (!response.ok) throw new Error("NFL schedule unavailable");
   return parseWeekSchedule(await response.json(), week);
+}
+
+export async function fetchLiveGames(
+  season: number,
+  week: number,
+  signal?: AbortSignal,
+) {
+  const response = await fetch(
+    `https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?dates=${season}&seasontype=2&week=${week}`,
+    { signal: liveRequestSignal(signal), cache: "no-store" },
+  );
+  if (!response.ok) throw new Error("Live game clocks unavailable");
+  return parseLiveGames(await response.json(), season, week);
+}
+
+export async function fetchLiveScores(
+  leagueId: string,
+  week: number,
+  signal?: AbortSignal,
+): Promise<LiveScoreFeed> {
+  const response = await fetch(
+    `https://api.sleeper.app/v1/league/${encodeURIComponent(leagueId)}/matchups/${week}`,
+    { signal: liveRequestSignal(signal), cache: "no-store" },
+  );
+  if (!response.ok) throw new Error("Live scores unavailable");
+  const rows = parseLiveScores(await response.json());
+  return { rows, receivedAt: new Date().toISOString() };
 }

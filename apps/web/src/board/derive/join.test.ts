@@ -657,8 +657,12 @@ describe("joinBoardTeams live scores", () => {
 
   it("adds a schedule-adjusted projection without changing the original or actual", () => {
     const rows = raw({ teamWeekScores: [scoreRow({ points: 12.4 })] });
-    const [live] = joinBoardTeams({ ...rows, weekSchedule: { KC: "live" } });
-    expect(live.currentProjectedPoints).toBe(22.6);
+    const [live] = joinBoardTeams({
+      ...rows,
+      weekSchedule: { KC: "live" },
+      liveGames: { KC: { status: "live", remainingFraction: 0.5 } },
+    });
+    expect(live.currentProjectedPoints).toBe(23.7);
     const [finished] = joinBoardTeams({
       ...rows,
       weekSchedule: { KC: "done" },

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { currentProjection, parseWeekSchedule } from "./currentProjection";
+import type { LiveGames } from "./liveGames";
 
 const brown = {
   sleeperPlayerId: "5859",
@@ -57,12 +58,46 @@ describe("current projection", () => {
     "does not double count a live player's %s points",
     (points) => {
       expect(
-        currentProjection([{ ...brown, livePoints: points }], points, {
-          PHI: "live",
-        }),
-      ).toBe(Math.max(points, 16.86));
+        currentProjection(
+          [{ ...brown, livePoints: points }],
+          points,
+          {
+            PHI: "live",
+          },
+          undefined,
+          { PHI: { status: "live", remainingFraction: 0.5 } },
+        ),
+      ).toBeCloseTo(points + 8.43);
     },
   );
+  it("reduces an underperforming player's estimate as time runs out", () => {
+    const estimate = (remainingFraction: number) =>
+      currentProjection([brown], 5.6, { PHI: "live" }, undefined, {
+        PHI: { status: "live", remainingFraction },
+      });
+    expect(estimate(0.5)).toBe(14.03);
+    expect(estimate(0.25)).toBe(9.82);
+    expect(estimate(0)).toBe(5.6);
+  });
+  it("withholds a live estimate without a valid matching clock", () => {
+    for (const games of [
+      undefined,
+      {},
+      { PHI: { status: "live" as const, remainingFraction: NaN } },
+      { PHI: { status: "done" as const, remainingFraction: 0 } },
+    ] as (LiveGames | undefined)[]) {
+      expect(
+        currentProjection([brown], 5.6, { PHI: "live" }, undefined, games),
+      ).toBeNull();
+    }
+  });
+  it("keeps actual points for a player ruled out during a game", () => {
+    expect(
+      currentProjection([{ ...brown, injuryStatus: "Out" }], 5.6, {
+        PHI: "live",
+      }),
+    ).toBe(5.6);
+  });
   it("counts out starters and byes as zero future points", () => {
     expect(
       currentProjection(

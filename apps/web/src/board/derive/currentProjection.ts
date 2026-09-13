@@ -1,5 +1,6 @@
 import type { RosterPlayer } from "../types";
 import { isUnavailable } from "./availability";
+import type { LiveGames } from "./liveGames";
 
 export type GameStatus = "remaining" | "live" | "done" | "bye";
 export type WeekSchedule = Record<string, GameStatus>;
@@ -38,10 +39,7 @@ export function parseWeekSchedule(
   return schedule;
 }
 
-/** Actual points plus the part of each unfinished starter's estimate not yet scored.
- * Finished zeroes and negative scores count. Live players retain their full-game
- * estimate until they exceed it; this is not a clock-based in-game model.
- */
+/** Actual points plus each starter's projected scoring for the game time left. */
 export function currentProjection(
   roster: readonly Pick<
     RosterPlayer,
@@ -55,6 +53,7 @@ export function currentProjection(
   score: number | null,
   schedule: WeekSchedule | null | undefined,
   scoreStarters?: readonly string[],
+  liveGames?: LiveGames | null,
 ): number | null {
   if (!schedule) return null;
   const starters = roster.filter((player) => player.slot === "starter");
@@ -83,13 +82,26 @@ export function currentProjection(
     )
       return null;
     if (status === "done") continue;
+    if (status === "live" && isUnavailable(player.injuryStatus)) continue;
     if (
       player.projectedPoints === null ||
       !Number.isFinite(player.projectedPoints)
     )
       return null;
-    const remaining = player.projectedPoints - (player.livePoints ?? 0);
-    total += status === "live" ? Math.max(0, remaining) : remaining;
+    if (status === "live") {
+      const game = player.nflTeam ? liveGames?.[player.nflTeam] : undefined;
+      if (
+        !game ||
+        game.status !== "live" ||
+        !Number.isFinite(game.remainingFraction) ||
+        game.remainingFraction < 0 ||
+        game.remainingFraction > 1
+      )
+        return null;
+      total += player.projectedPoints * game.remainingFraction;
+    } else {
+      total += player.projectedPoints - (player.livePoints ?? 0);
+    }
   }
   return Number.isFinite(total) ? Math.round(total * 100) / 100 : null;
 }
