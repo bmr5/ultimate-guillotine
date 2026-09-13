@@ -1,4 +1,5 @@
 import type { BoardTeam } from "../types";
+import { sortValue } from "./sort";
 
 export interface CutWatchStanding {
   team: BoardTeam;
@@ -42,9 +43,8 @@ export function cutWatch(
   const pool = active.filter(
     (team) => week === 1 || team.risk?.adverseEvent === "gulag_entry",
   );
-  // Compare full-week projections even after scoring starts. Points so far favor
-  // teams whose players have already played and cannot predict the bottom two.
-  const points = (team: BoardTeam) => team.projectedPoints;
+  // Use the same adjusted finish as the board, including completed actual scores.
+  const points = (team: BoardTeam) => sortValue(team, "projection");
 
   // A missing team could be below the cutoff. Never silently rank a partial pool.
   if (
@@ -53,7 +53,7 @@ export function cutWatch(
   ) {
     return {
       kind: "waiting",
-      message: "Waiting for projections for the full eligible pool.",
+      message: "Waiting for current projections for the full eligible pool.",
     };
   }
 

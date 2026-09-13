@@ -1,6 +1,5 @@
 import type { BoardTeam, SortMode } from "../types";
 import { A_BEFORE_B, B_BEFORE_A, NAME_COLLATOR, TIED } from "./compare";
-import { resolveProjectionDisplay } from "./projection";
 
 /**
  * A Sleeper-inferred elimination can land before the week is known (`eliminated_week` is
@@ -26,8 +25,8 @@ export function sortValue(team: BoardTeam, mode: SortMode): number | null {
     // tie-breaks every other incomparable key does.
     return team.score;
   }
-  const display = resolveProjectionDisplay(team);
-  return display.kind === "value" ? display.points : null;
+  const current = team.currentProjectedPoints;
+  return current != null && Number.isFinite(current) ? current : null;
 }
 
 /**
@@ -116,7 +115,7 @@ export function selectEffectiveSortMode(
     return { mode: requested, fellBack: false };
   }
   const hasUsableProjection = teams.some(
-    (team) => resolveProjectionDisplay(team).kind === "value",
+    (team) => sortValue(team, "projection") !== null,
   );
   return hasUsableProjection
     ? { mode: "projection", fellBack: false }

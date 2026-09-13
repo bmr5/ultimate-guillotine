@@ -130,7 +130,7 @@ describe("parseSortMode", () => {
 
   it("labels every mode", () => {
     expect(SORT_MODES.map((mode) => SORT_MODE_LABELS[mode])).toEqual([
-      "Projection",
+      "Current proj.",
       "Score",
       "FAAB",
       "Total",

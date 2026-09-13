@@ -55,6 +55,8 @@ const team = (over: Partial<BoardTeam> & { teamId: number }): BoardTeam => ({
   score: null,
   scoreSyncedAt: null,
   projectedPoints: 100,
+  currentProjectedPoints:
+    over.projectedPoints === undefined ? 100 : over.projectedPoints,
   coveragePct: 100,
   isProvisional: false,
   projectionComputedAt: null,

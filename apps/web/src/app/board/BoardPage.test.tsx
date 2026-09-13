@@ -74,6 +74,8 @@ const team = (over: Partial<BoardTeam> & { teamId: number }): BoardTeam => ({
   score: null,
   scoreSyncedAt: null,
   projectedPoints: 100,
+  currentProjectedPoints:
+    over.projectedPoints === undefined ? 100 : over.projectedPoints,
   coveragePct: 100,
   isProvisional: false,
   projectionComputedAt: "2026-09-09T12:00:00Z",
@@ -187,7 +189,7 @@ describe("BoardPage", () => {
     expect(watch.getByText("owner2")).toBeInTheDocument();
     expect(watch.getByText("VS")).toBeInTheDocument();
     expect(watch.getAllByText("Actual")).toHaveLength(2);
-    expect(watch.getAllByText("Projected")).toHaveLength(2);
+    expect(watch.getAllByText("Current proj.")).toHaveLength(2);
     fireEvent.change(screen.getByRole("searchbox", { name: SEARCH_LABEL }), {
       target: { value: "owner3" },
     });
@@ -286,7 +288,7 @@ describe("BoardPage", () => {
       teams: teams.map((team, index) => ({
         ...team,
         score: [40, 10, 20][index],
-        projectedPoints: [110, 90, 100][index],
+        currentProjectedPoints: [110, 90, 100][index],
       })),
     });
     rerenderPage();
@@ -353,6 +355,49 @@ describe("BoardPage", () => {
     const items = screen.getAllByRole("listitem");
     expect(items[0]).toHaveTextContent("owner2");
     expect(items[1]).toHaveTextContent("owner1");
+  });
+
+  it("ranks the screenshot's teams and cut watch by current rather than original projection", () => {
+    boardData.current = result({
+      week: 1,
+      teams: [
+        team({
+          teamId: 1,
+          ownerName: "Derek",
+          projectedPoints: 102.8,
+          currentProjectedPoints: 95.9,
+        }),
+        team({
+          teamId: 2,
+          ownerName: "Ben R",
+          projectedPoints: 101.1,
+          currentProjectedPoints: 99.2,
+        }),
+        team({
+          teamId: 3,
+          ownerName: "Max",
+          projectedPoints: 100,
+          currentProjectedPoints: 100,
+        }),
+        team({
+          teamId: 4,
+          ownerName: "Brandon L",
+          projectedPoints: 98.4,
+          currentProjectedPoints: 103,
+        }),
+      ],
+    });
+    renderPage();
+    const items = screen.getAllByRole("listitem");
+    ["Brandon L", "Max", "Ben R", "Derek"].forEach((name, index) => {
+      expect(items[index]).toHaveTextContent(name);
+    });
+    const watch = within(screen.getByRole("region", { name: "Cut watch" }));
+    expect(watch.getByText("Derek")).toBeInTheDocument();
+    expect(watch.getByText("Ben R")).toBeInTheDocument();
+    expect(watch.queryByText("Max")).not.toBeInTheDocument();
+    expect(watch.getByText("95.9")).toBeInTheDocument();
+    expect(watch.getByText("99.2")).toBeInTheDocument();
   });
 
   /**
@@ -773,7 +818,7 @@ describe("BoardPage", () => {
     renderPage();
     expect(
       screen.getByText(
-        "No projections available, so teams are sorted by total points.",
+        "No current projections available, so teams are sorted by total points.",
       ),
     ).toBeInTheDocument();
   });
@@ -882,7 +927,7 @@ describe("BoardPage position quick view", () => {
     renderPage("/?pos=TE");
     expect(screen.getByRole("radio", { name: "FAAB" })).toBeInTheDocument();
     expect(
-      screen.getByRole("radio", { name: "Projection" }),
+      screen.getByRole("radio", { name: "Current proj." }),
     ).toBeInTheDocument();
     expect(screen.queryByRole("radio", { name: "Total" })).toBeNull();
   });
@@ -898,7 +943,7 @@ describe("BoardPage position quick view", () => {
     renderPage("/?pos=TE");
     expect(screen.getAllByRole("listitem")[0]).toHaveTextContent("owner2");
 
-    fireEvent.click(screen.getByRole("radio", { name: "Projection" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Current proj." }));
     await waitFor(() => {
       expect(screen.getAllByRole("listitem")[0]).toHaveTextContent("owner1");
     });
@@ -936,7 +981,7 @@ describe("BoardPage position quick view", () => {
     renderPage("/?pos=TE");
     expect(
       screen.queryByText(
-        "No projections available, so teams are sorted by total points.",
+        "No current projections available, so teams are sorted by total points.",
       ),
     ).toBeNull();
   });

@@ -15,6 +15,10 @@ const team = (
   score: 0,
   scoreSyncedAt: null,
   projectedPoints: teamId * 10,
+  currentProjectedPoints:
+    overrides.projectedPoints === undefined
+      ? teamId * 10
+      : overrides.projectedPoints,
   coveragePct: 100,
   isProvisional: false,
   projectionComputedAt: null,

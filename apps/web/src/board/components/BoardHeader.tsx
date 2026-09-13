@@ -461,7 +461,7 @@ export function BoardHeader({
 
       {sortFellBack ? (
         <p className="text-xs text-muted-foreground">
-          No projections available, so teams are sorted by total points.
+          No current projections available, so teams are sorted by total points.
         </p>
       ) : null}
     </header>

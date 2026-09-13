@@ -507,7 +507,7 @@ export type SortMode = (typeof SORT_MODES)[number];
 export const DEFAULT_SORT_MODE: SortMode = "projection";
 
 export const SORT_MODE_LABELS: Record<SortMode, string> = {
-  projection: "Projection",
+  projection: "Current proj.",
   score: "Score",
   faab: "FAAB",
   points_for: "Total",

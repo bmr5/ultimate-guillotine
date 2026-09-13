@@ -25,6 +25,8 @@ const team = (over: Partial<BoardTeam> & { teamId: number }): BoardTeam => ({
   score: null,
   scoreSyncedAt: null,
   projectedPoints: 100,
+  currentProjectedPoints:
+    over.projectedPoints === undefined ? 100 : over.projectedPoints,
   coveragePct: 100,
   isProvisional: false,
   projectionComputedAt: "2026-09-09T12:00:00Z",
@@ -311,6 +313,27 @@ describe("partitionByElimination", () => {
 });
 
 describe("selectEffectiveSortMode", () => {
+  it("does not silently rank original estimates when the current projection is missing", () => {
+    const missing = team({
+      teamId: 1,
+      projectedPoints: 200,
+      currentProjectedPoints: null,
+    });
+    const known = team({
+      teamId: 2,
+      projectedPoints: 90,
+      currentProjectedPoints: 95,
+    });
+    expect(sortValue(missing, "projection")).toBeNull();
+    expect(
+      sortBoardTeams([missing, known], "projection").active.map(
+        (t) => t.teamId,
+      ),
+    ).toEqual([2, 1]);
+    expect(selectEffectiveSortMode([missing], "projection").fellBack).toBe(
+      true,
+    );
+  });
   it("keeps projection when at least one team has a usable projection", () => {
     expect(
       selectEffectiveSortMode(

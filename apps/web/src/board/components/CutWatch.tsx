@@ -30,10 +30,10 @@ function MatchupSide({ team }: { team: BoardTeam }) {
         </span>
         <span>
           <span className="block text-3xl figures sm:text-4xl">
-            {projection(team.projectedPoints)}
+            {projection(team.currentProjectedPoints ?? null)}
           </span>
           <span className="mt-1 block text-xs text-muted-foreground">
-            Projected
+            Current proj.
           </span>
         </span>
       </span>
