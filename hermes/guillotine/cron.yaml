@@ -6,7 +6,8 @@ jobs:
     agent: health
     schedule: "every 5m"
     script: guillotine_health.sh
-    deliver: "discord:#guillotine-ops"
+    # The health command sends deduplicated alerts itself; stdout is a local log.
+    deliver: local
     max_gap_minutes: 15
   - name: guillotine-gap-fill
     agent: gap-fill

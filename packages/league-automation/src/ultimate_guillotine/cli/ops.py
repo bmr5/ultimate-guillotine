@@ -33,6 +33,7 @@ from ultimate_guillotine.ops.health import (
     missed_runs,
 )
 from ultimate_guillotine.ops.notify import HermesNotifier
+from ultimate_guillotine.ops.recovery import health_state, recover_bluebubbles, report_changes
 
 log = logging.getLogger(__name__)
 
@@ -63,6 +64,12 @@ def register(subparsers) -> None:
     health = ops_sub.add_parser("health", help="report health problems")
     health.add_argument(
         "--escalate", action="store_true", help="also post problems to the alerts channel"
+    )
+    health.add_argument(
+        "--auto-recover", action="store_true", help="reopen a stopped local BlueBubbles app"
+    )
+    health.add_argument(
+        "--changes-only", action="store_true", help="send Discord alerts only on health changes"
     )
     health.set_defaults(handler=cmd_health)
 
@@ -109,7 +116,6 @@ def cmd_health(args: argparse.Namespace) -> int:
         deps = build_deps()
     except Exception as exc:  # noqa: BLE001 - never let a health check crash Hermes
         message = f"Health check could not start: {exc.__class__.__name__}"
-        print(message)
         if args.escalate:
             settings = None
             try:
@@ -117,24 +123,41 @@ def cmd_health(args: argparse.Namespace) -> int:
             except Exception:  # noqa: BLE001 - settings themselves are what failed
                 settings = None
             if settings is not None:
-                HermesNotifier.from_settings(settings).alerts(message)
+                notifier = HermesNotifier.from_settings(settings)
+                if args.changes_only:
+                    with health_state(settings.hermes_profile_home) as (state, _save):
+                        report_changes([message], state, notifier.alerts, incomplete=True)
+                else:
+                    notifier.alerts(message)
+        print(message)
         return 0
 
     conn = deps.conn
 
     def action(run_id: int) -> int:
-        problems = check_health(
-            now,
-            HeartbeatRepository(conn),
-            RunRepository(conn),
-            ExpectedRunRepository(conn),
-            deps.client,
-            OutboundRepository(conn),
-        )
-        for problem in problems:
-            print(problem)
-        if args.escalate and problems:
-            deps.notifier.alerts("\n".join(problems))
+        with health_state(deps.settings.hermes_profile_home) as (state, save):
+            recovery_note = None
+            if args.auto_recover:
+                recovery_note = recover_bluebubbles(
+                    deps.client, deps.settings.bluebubbles_server_url, state, save, now
+                )
+            problems = check_health(
+                now,
+                HeartbeatRepository(conn),
+                RunRepository(conn),
+                ExpectedRunRepository(conn),
+                deps.client,
+                OutboundRepository(conn),
+            )
+            for problem in problems:
+                print(problem)
+            if recovery_note:
+                print(recovery_note)
+            if args.escalate:
+                if args.changes_only:
+                    report_changes(problems, state, deps.notifier.alerts, recovery_note)
+                elif problems:
+                    deps.notifier.alerts("\n".join(problems))
         return 0
 
     return run_scheduled(conn, "health", now, action)
