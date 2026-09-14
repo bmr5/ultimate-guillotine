@@ -1,38 +1,19 @@
-"""The survival model: how likely each team is to suffer this week's adverse event.
+"""10,000 reproducible league finishes using clock-scaled, fitted scoring distributions.
 
-A deterministic Monte Carlo, pure standard library. Each simulation draws a
-finish for every starter who can still score, adds it to what the team has
-already put on the board, ranks the live teams, and applies the phase's rule --
-the bottom two of the pool go down, the lower of the gulag pair goes out, the
-lowest score is cut. The share of simulations in which a team suffers its event
-is its odds.
-
-**The numbers are estimates and the model says so.** Variance is a per-position
-coefficient of variation with a floor, not a fitted distribution: a running back
-projected for 15 is drawn from a normal with a standard deviation of 7.5,
-truncated at zero. That is roughly the spread the position shows week to week and
-it is deliberately simple, so the constants below are the whole model and a reader
-can check any number by hand. The renderer rounds to whole percentages; nothing
-here claims more precision than the inputs have.
-
-**The seed comes from the inputs.** :func:`input_hash` digests the season, the
-week, the phase, the gulag pairing and every team's score and starter statuses,
-and the seed is the first sixteen hex digits of that digest. The same inputs
-therefore always yield the same odds, and a stored snapshot can be replayed
-exactly; ``--seed`` overrides it for a rehearsal.
-
-Floats live inside this module and nowhere else: projections arrive as
-``Decimal``, are converted at the draw, and the probabilities go back out as
-``Decimal`` to four places.
+Offense uses a mean-preserving zero-inflated gamma. Defense uses signed normal
+increments, including scoring declines. Historical full-game data fits dispersion;
+linear remaining means and variance scaled by time are live-model assumptions.
 """
 
 import hashlib
 import json
+import math
 import random
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 
+from ultimate_guillotine.summary.distributions import draw_points, parameters
 from ultimate_guillotine.summary.lineup import position_medians
 from ultimate_guillotine.summary.models import (
     AdverseEvent,
@@ -42,23 +23,8 @@ from ultimate_guillotine.summary.models import (
     TeamOdds,
 )
 
-MODEL_VERSION = "mc-2026.1"
+MODEL_VERSION = "mc-2026.2"
 DEFAULT_SIMULATIONS = 10_000
-
-#: A starter's standard deviation is this share of his projection, by position,
-#: and never under :data:`SIGMA_FLOOR` points.
-POSITION_CV: Mapping[str, float] = {
-    "QB": 0.35,
-    "RB": 0.50,
-    "WR": 0.55,
-    "TE": 0.60,
-    "K": 0.55,
-    "DEF": 0.60,
-}
-DEFAULT_CV = 0.50
-SIGMA_FLOOR = 2.0
-#: A starter whose game is under way has already resolved part of his week.
-LIVE_SIGMA_SCALE = 0.6
 
 _PROBABILITY = Decimal("0.0001")
 _CENTS = Decimal("0.01")
@@ -66,41 +32,54 @@ _CENTS = Decimal("0.01")
 
 @dataclass(frozen=True)
 class Draw:
-    """What one pending starter adds: a mean, a spread, and whether the mean was a guess."""
-
     mean: Decimal
     sigma: float
     estimated: bool
+    position: str = "RB"
+    zero_probability: float = 0
 
 
-def starter_draw(starter: StarterLine, medians: Mapping[str, Decimal]) -> Draw | None:
-    """The draw for a starter who can still score, or ``None`` for one who cannot.
-
-    A pending starter with no projection is drawn at his position's median and
-    marked estimated; with no median either he counts for nothing, still marked.
-    A ``live`` starter's mean is what his projection still has in it --
-    ``max(0, projection - points so far)`` -- with a tighter spread.
-    """
+def starter_draw(
+    starter: StarterLine, medians: Mapping[str, Decimal], model: dict | None = None
+) -> Draw | None:
     if not starter.is_pending:
         return None
+    model = model or parameters()
     projected = starter.projected
     estimated = projected is None
     if projected is None:
         projected = medians.get(starter.position or "")
         if projected is None:
-            return Draw(Decimal(0), 0.0, True)
-    cv = POSITION_CV.get(starter.position or "", DEFAULT_CV)
-    sigma = max(SIGMA_FLOOR, cv * float(projected))
-    mean = projected
+            return Draw(Decimal(0), 0, True)
+    if not projected.is_finite():
+        raise ValueError("Nonfinite projection")
+    position = starter.position or "RB"
+    config = model["positions"].get(position, model["positions"]["RB"])
+    fraction = Decimal(1)
     if starter.status == "live":
-        mean = max(projected - starter.points, Decimal(0))
-        sigma *= LIVE_SIGMA_SCALE
-    return Draw(mean, sigma, estimated)
+        fraction = starter.remaining_fraction
+        if fraction is None or not fraction.is_finite() or not 0 <= fraction <= 1:
+            raise ValueError("Missing or invalid live game clock")
+    mu = projected * fraction
+    if position == "DEF" and starter.status == "live":
+        # Defense starts with points that can be lost. Project a signed change
+        # toward the full-game expectation, converging to actual as time expires.
+        mu = (projected - starter.points) * fraction
+    sigma = (
+        config["def_sigma"]
+        if position == "DEF"
+        else max(config["sigma_floor"], abs(float(projected)) * config["cv"])
+    )
+    sigma *= math.sqrt(float(fraction))
+    zero = config["zero_probability"] ** float(fraction) if fraction else 0
+    return Draw(mu, sigma, estimated, position, zero)
 
 
-def input_hash(snapshot: EodSnapshot) -> str:
+def input_hash(snapshot: EodSnapshot, model: dict | None = None) -> str:
     """SHA-256 over everything the odds depend on, in a canonical order."""
     body = {
+        "model_version": MODEL_VERSION,
+        "parameters": model or parameters(),
         "season": snapshot.season,
         "week": snapshot.week,
         "phase": snapshot.phase.kind,
@@ -117,6 +96,7 @@ def input_hash(snapshot: EodSnapshot) -> str:
                         "position": s.position,
                         "projected": None if s.projected is None else str(s.projected),
                         "points": str(s.points),
+                        "remaining_fraction": str(s.remaining_fraction),
                     }
                     for s in team.starters
                 ],
@@ -171,6 +151,7 @@ def simulate(
     *,
     simulations: int = DEFAULT_SIMULATIONS,
     seed: int | None = None,
+    model: dict | None = None,
 ) -> SurvivalResult | None:
     """Every live team's odds of this week's adverse event, or ``None`` after week 17.
 
@@ -182,7 +163,10 @@ def simulate(
     phase = snapshot.phase
     if phase.kind == "over":
         return None
-    digest = input_hash(snapshot)
+    if simulations < 1:
+        raise ValueError("simulations must be positive")
+    model = model or parameters()
+    digest = input_hash(snapshot, model)
     chosen_seed = seed if seed is not None else int(digest[:16], 16)
     rng = random.Random(chosen_seed)
 
@@ -191,24 +175,24 @@ def simulate(
     medians = position_medians(live)
 
     base: dict[int, float] = {}
-    draws: dict[int, list[tuple[float, float]]] = {}
+    draws: dict[int, list[Draw]] = {}
     means: dict[int, Decimal] = {}
     estimated: dict[int, bool] = {}
     pending: dict[int, int] = {}
     for team in live:
         base[team.team_id] = float(team.points)
-        team_draws: list[tuple[float, float]] = []
+        team_draws: list[Draw] = []
         mean_total = team.points
         was_estimated = False
         left = 0
         for starter in team.starters:
-            draw = starter_draw(starter, medians)
+            draw = starter_draw(starter, medians, model)
             if draw is None:
                 continue
             left += 1
             mean_total += draw.mean
             was_estimated = was_estimated or draw.estimated
-            team_draws.append((float(draw.mean), draw.sigma))
+            team_draws.append(draw)
         draws[team.team_id] = team_draws
         means[team.team_id] = mean_total.quantize(_CENTS, rounding=ROUND_HALF_UP)
         estimated[team.team_id] = was_estimated
@@ -220,15 +204,14 @@ def simulate(
     pool = [t for t in live_ids if t not in gulag]
 
     counts = dict.fromkeys(live_ids, 0)
-    gauss = rng.gauss
     for _ in range(simulations):
         totals: dict[int, float] = {}
         for team_id in live_ids:
             total = base[team_id]
-            for mean, sigma in draws[team_id]:
-                drawn = gauss(mean, sigma) if sigma > 0 else mean
-                if drawn > 0:
-                    total += drawn
+            for draw in draws[team_id]:
+                total += draw_points(
+                    rng, float(draw.mean), draw.sigma**2, draw.position, draw.zero_probability
+                )
             totals[team_id] = total
         for loser in _losers(phase.kind, totals, gulag, pool, rng):
             counts[loser] += 1
@@ -252,4 +235,5 @@ def simulate(
         seed=chosen_seed,
         input_hash=digest,
         teams=teams,
+        model_parameters=model,
     )

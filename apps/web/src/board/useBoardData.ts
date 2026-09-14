@@ -42,14 +42,8 @@ export interface BoardDataOptions {
   pollingMs: number | false;
 }
 
-/**
- * How often the odds are asked for again while a board is open. `survival_snapshots` is not in
- * the realtime publication — the Daily writes it twice a day at most — so a healthy socket
- * cannot announce a new run, and a board left open on a phone would otherwise show the
- * morning's odds all day. Five minutes: the Daily posts at fixed times, and nobody needs the
- * row sooner than that.
- */
-const ODDS_REFETCH_MS = 5 * MS_PER_MINUTE;
+/** The worker refreshes odds after each score sync; the board checks for new runs. */
+const ODDS_REFETCH_MS = 15_000;
 export const LIVE_REFRESH_MS = 15_000;
 
 export interface BoardQueryError {

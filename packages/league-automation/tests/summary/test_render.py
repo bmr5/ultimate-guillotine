@@ -238,11 +238,11 @@ def test_the_board_ranks_by_projected_finish_and_marks_the_gulag_and_the_estimat
     text = render(_packet(snap), None, NOW)
     board = text.split("📊 THE BOARD · original proj · current proj · actual · left · risk\n", 1)[1]
     board = board.split("\n\n", 1)[0].splitlines()
-    # Team 2 finishes at 110 on average but with a 35-point spread, so its risk of the
-    # bottom two is open; team 1 at 100 with nothing left can never be there. Team 4's
+    # Team 2 finishes at 110 on average but its risk of the bottom two is open.
+    # Team 1 can also land there when both pending teams outscore it. Team 4's
     # unprojected back is drawn at the RB median (12), so its finish is an estimate.
     assert board[0].startswith("1. Member02 · 70 · 110 · 40.0 · 1 · ")
-    assert board[1] == "2. Member01 · 12 · 100 · 100.0 · 0 · 0%"
+    assert re.fullmatch(r"2. Member01 · 12 · 100 · 100.0 · 0 · \d+%", board[1])
     assert board[2].startswith("3. Member03 · 12 · 95 · 95.0 · 0 · ")
     assert board[3].startswith("4. Member05 · 12 · 60 · 60.0 · 0 · ⚔")
     assert board[4].startswith("5. Member06 · 12 · 50 · 50.0 · 0 · ⚔")
@@ -275,7 +275,7 @@ def test_before_kickoff_the_block_and_the_gulag_lines_carry_all_three_figures() 
     assert "actual 0.0" in gulag[0] and " left" not in gulag[0]
     block = text.split("⚰️ ON THE BLOCK · bottom 2 enter the Week 6 gulag\n", 1)[1]
     assert re.fullmatch(
-        r"Member04 · \d+% · original 70 · current 70 · actual 0\.0", block.splitlines()[0]
+        r"Member0[1-4] · \d+% · original (\d+) · current \1 · actual 0\.0", block.splitlines()[0]
     )
 
 

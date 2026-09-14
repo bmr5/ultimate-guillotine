@@ -67,7 +67,7 @@ const RISK_UNKNOWN_DESCRIPTION = "The chance the week goes against this team.";
 
 /** Where the number comes from, said once in every tooltip. */
 export const MONTE_CARLO_SENTENCE =
-  "From the Guillotine Daily's Monte Carlo simulation of the games still to play.";
+  "From the latest Monte Carlo simulation using scores and game time remaining.";
 
 /** The settled counterpart: nothing is left to simulate, so the figure is a result. */
 const SETTLED_SENTENCE =
@@ -196,16 +196,15 @@ export function resolveRiskTone(probability: number): RiskTone {
 }
 
 /** The odds chip's wording, or null for a team with no odds this week. */
-export function resolveRiskDisplay(
-  risk: TeamRisk | null,
-): RiskDisplay | null {
+export function resolveRiskDisplay(risk: TeamRisk | null): RiskDisplay | null {
   if (risk === null) {
     return null;
   }
   const percent = formatRiskPercent(risk.probability, risk.settled);
   const event = risk.adverseEvent;
   const word = event === null ? RISK_UNKNOWN_LABEL : RISK_EVENT_LABELS[event];
-  const spoken = event === null ? RISK_UNKNOWN_SPOKEN : RISK_EVENT_SPOKEN[event];
+  const spoken =
+    event === null ? RISK_UNKNOWN_SPOKEN : RISK_EVENT_SPOKEN[event];
   const sentences = [
     event === null ? RISK_UNKNOWN_DESCRIPTION : RISK_EVENT_DESCRIPTIONS[event],
     risk.settled ? SETTLED_SENTENCE : MONTE_CARLO_SENTENCE,

@@ -41,6 +41,7 @@ def starter(
         projected=None if projected is None else Decimal(projected),
         points=Decimal(points),
         status=status,
+        remaining_fraction=Decimal(".5") if status == "live" else None,
     )
 
 

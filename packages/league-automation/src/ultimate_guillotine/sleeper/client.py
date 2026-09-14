@@ -132,6 +132,15 @@ class SleeperClient:
         result: dict[str, dict[str, Any]] = response.json()
         return result
 
+    def get_game_clocks(self, season: int, week: int) -> dict:
+        """ESPN's public scoreboard supplies clocks absent from Sleeper's schedule."""
+        response = self._http.get(
+            'https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard',
+            params={'dates': season, 'seasontype': 2, 'week': week}, timeout=10,
+        )
+        response.raise_for_status()
+        return response.json()
+
     def get_projections(self, season: int, week: int) -> list[dict[str, Any]]:
         """Fetch weekly player projections for ``season``/``week``.
 

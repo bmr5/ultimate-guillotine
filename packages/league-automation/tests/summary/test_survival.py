@@ -57,8 +57,7 @@ def test_a_settled_week_puts_the_bottom_two_on_the_block_with_certainty() -> Non
 
 def test_a_team_with_a_player_left_has_an_open_number() -> None:
     """A at 50 and B at 52 are done; D has one starter left projected 60 with the
-    running-back spread (sigma 30). D lands on the block when he scores under 52,
-    which a normal table puts near 39 percent; A is on it whatever happens."""
+    historically fitted running-back spread. D lands on the block when he scores under 52; A is on it whatever happens."""
     teams = (
         done_team(1, "50"),
         done_team(2, "52"),
@@ -67,7 +66,7 @@ def test_a_team_with_a_player_left_has_an_open_number() -> None:
     )
     result = simulate(snapshot(teams), simulations=4000, seed=1)
     d = result.teams[4]
-    assert Decimal("0.30") < d.probability < Decimal("0.48")
+    assert Decimal("0.45") < d.probability < Decimal("0.65")
     assert result.teams[1].probability == ONE
     assert result.teams[2].probability == ONE - d.probability
     assert result.teams[3].probability == ZERO
@@ -86,8 +85,8 @@ def test_projected_final_is_points_so_far_plus_the_remaining_means() -> None:
         snapshot((team(1, points="17.5", starters=lineup), done_team(2, "5"), done_team(3, "6"))),
         simulations=10,
     )
-    # 17.5 scored + 8.25 to come + max(0, 12 - 7) still to come from the live starter.
-    assert result.teams[1].projected_final == Decimal("30.75")
+    # 17.5 scored + 8.25 unplayed + 12 * half a game still to come.
+    assert result.teams[1].projected_final == Decimal("31.75")
     assert result.teams[1].pending == 2
 
 

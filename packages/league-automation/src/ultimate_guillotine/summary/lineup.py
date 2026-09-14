@@ -111,6 +111,11 @@ def build_starters(
                 injury_status=_status(info.injury_status),
                 projected=projected,
                 points=_points(points.get(holding.sleeper_player_id)),
+                remaining_fraction=(
+                    week_games[info.nfl_team].remaining_fraction
+                    if info.nfl_team in week_games
+                    else None
+                ),
                 status=classify_starter(
                     info.injury_status, projected, info.nfl_team, week_games, schedule_available
                 ),

@@ -523,7 +523,7 @@ export const TeamCard = memo(function TeamCard({
                     help:
                       currentText === "—"
                         ? "Current projection unavailable: waiting for complete lineup, projection, score or game-status data."
-                        : "Actual points plus each starter's full-game projection scaled to time remaining. Uses ESPN game clocks and Sleeper scores; our estimate may differ from Sleeper's live projection.",
+                        : "Actual points plus each starter's full-game projection scaled to time remaining. Defenses can lose points. Uses ESPN game clocks and Sleeper scores; our estimate may differ from Sleeper's live projection.",
                   },
                   {
                     key: "score",

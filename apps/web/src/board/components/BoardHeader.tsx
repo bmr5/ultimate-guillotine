@@ -315,6 +315,7 @@ export function BoardHeader({
           title={formatUpdatedTitle(oddsUpdatedAt, {}, ODDS_AS_OF_LABEL)}
         >
           {formatUpdatedAt(oddsUpdatedAt, now, {}, ODDS_AS_OF_LABEL)}
+          {now - oddsUpdatedAt > 10 * 60_000 ? " · Awaiting refresh" : ""}
         </p>
       ) : null}
 

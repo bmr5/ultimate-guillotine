@@ -15,6 +15,7 @@ from ultimate_guillotine.cli import (
     ingest,
     listener,
     members,
+    odds,
     ops,
     sleeper,
     summary,
@@ -29,6 +30,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="group", required=True)
     for module in (
         ops,
+        odds,
         targets,
         sleeper,
         ingest,

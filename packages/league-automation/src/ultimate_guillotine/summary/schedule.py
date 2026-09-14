@@ -13,9 +13,12 @@ state we cannot name may still be scoring, so its starters keep their variance
 rather than being called finished on a word nobody read.
 """
 
+import logging
+import math
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import date
+from decimal import Decimal
 from typing import Any, Literal
 
 from ultimate_guillotine.summary.models import DayState
@@ -34,6 +37,7 @@ class Game:
     home: str
     away: str
     status: str
+    remaining_fraction: Decimal | None = None
 
 
 def _date_or_none(value: object) -> date | None:
@@ -129,4 +133,68 @@ def fetch_week_games(client: Any, season: int, week: int) -> dict[str, Game] | N
         payload = client.get_schedule(season)
     except Exception:  # noqa: BLE001 - any failure to read the feed is the same answer
         return None
-    return games_for_week(parse_schedule(payload), week)
+    games = games_for_week(parse_schedule(payload), week)
+    if not hasattr(client, "get_game_clocks"):
+        return games or None
+    try:
+        clocks = parse_clocks(client.get_game_clocks(season, week), season, week)
+        if not games.keys() <= clocks.keys():
+            raise ValueError("Incomplete game clock slate")
+        games.update(clocks)
+    except Exception as exc:  # noqa: BLE001 - any unavailable clock withholds live odds
+        logging.getLogger(__name__).warning("Game clocks unavailable: %s", type(exc).__name__)
+        return None
+    return games or None
+
+
+def parse_clocks(payload: object, season: int, week: int) -> dict[str, Game]:
+    """Validate the requested ESPN regular-season slate and retain game-clock fractions."""
+    if (
+        not isinstance(payload, dict)
+        or payload.get("season", {}).get("year") != season
+        or payload.get("season", {}).get("type") != 2
+        or payload.get("week", {}).get("number") != week
+    ):
+        raise ValueError("Wrong clock scope")
+    games = {}
+    aliases = {"WSH": "WAS", "JAC": "JAX", "LA": "LAR"}
+    for event in payload.get("events", []):
+        if (
+            event.get("season", {}).get("year") != season
+            or event.get("season", {}).get("type") != 2
+            or event.get("week", {}).get("number") != week
+        ):
+            continue
+        state = event.get("status", {})
+        kind = state.get("type", {})
+        if kind.get("state") == "post" and kind.get("completed") is True:
+            status, fraction = "complete", Decimal(0)
+        elif kind.get("state") == "pre":
+            status, fraction = "pre_game", Decimal(1)
+        elif kind.get("state") == "in":
+            period, clock = state.get("period"), state.get("clock")
+            if (
+                not isinstance(period, int)
+                or isinstance(period, bool)
+                or period < 1
+                or not isinstance(clock, (int, float))
+                or not math.isfinite(clock)
+                or not 0 <= clock <= 900
+            ):
+                continue
+            seconds = (4 - period) * 900 + clock if period <= 4 else min(clock, 600)
+            status, fraction = "in_game", Decimal(str(seconds)) / Decimal(3600)
+        else:
+            continue
+        competitors = event["competitions"][0]["competitors"]
+        if len(competitors) != 2:
+            continue
+        codes = [
+            aliases.get(c["team"]["abbreviation"], c["team"]["abbreviation"]) for c in competitors
+        ]
+        game = Game(str(event["id"]), week, None, codes[0], codes[1], status, fraction)
+        for code in codes:
+            games[code] = game
+    if not games:
+        raise ValueError("Missing clocks")
+    return games

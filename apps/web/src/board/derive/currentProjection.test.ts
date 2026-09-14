@@ -6,6 +6,7 @@ import type { LiveGames } from "./liveGames";
 const brown = {
   sleeperPlayerId: "5859",
   slot: "starter" as const,
+  position: "WR",
   nflTeam: "PHI",
   projectedPoints: 16.86,
   livePoints: 5.6,
@@ -156,4 +157,18 @@ it("scopes game states to the requested week and does not call unknown states fi
   expect(schedule.CHI).toBe("bye");
   expect(() => parseWeekSchedule([], 1)).toThrow();
   expect(() => parseWeekSchedule({}, 1)).toThrow();
+});
+
+it("allows a live defense forecast to decline as points are conceded", () => {
+  const defense = {
+    ...brown,
+    position: "DEF",
+    projectedPoints: 6,
+    livePoints: 10,
+  };
+  expect(
+    currentProjection([defense], 10, { PHI: "live" }, undefined, {
+      PHI: { status: "live", remainingFraction: 0.5 },
+    }),
+  ).toBe(8);
 });

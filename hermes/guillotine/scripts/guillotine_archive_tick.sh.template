@@ -1,4 +1,6 @@
 #!/bin/bash
 set -euo pipefail
 cd "__REPO__"
-exec "__REPO__/.venv/bin/ug" archive tick --quiet
+"__REPO__/.venv/bin/ug" archive tick --quiet
+# Refresh the forecast scorecard after final-result adjudication; local file only.
+exec "__REPO__/.venv/bin/ug" odds evaluate --out "__REPO__/data/private/monte-carlo-evaluation.json"

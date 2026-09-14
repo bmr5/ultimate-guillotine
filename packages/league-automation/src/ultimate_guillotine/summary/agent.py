@@ -107,6 +107,14 @@ def build_packet(
     reason: str | None = None
     if not snapshot.schedule_available:
         reason = NO_SCHEDULE
+    elif any(not t.has_score_row or not t.lineup_matches for t in snapshot.live_teams()):
+        reason = "waiting for matching lineup and score data"
+    elif any(
+        s.status == "live" and s.remaining_fraction is None
+        for t in snapshot.live_teams()
+        for s in t.starters
+    ):
+        reason = "live game clocks unavailable"
     elif coverage < COVERAGE_GATE:
         reason = (
             f"projections cover {coverage}% of the starters still to play, "
@@ -252,9 +260,7 @@ class EodSummaryAgent:
             self._notifier.alerts(f"EOD summary could not deliver: {exc}")
             raise
         except Exception as exc:
-            self._notifier.ops(
-                f"EOD summary attachment failed: {exc.__class__.__name__}"
-            )
+            self._notifier.ops(f"EOD summary attachment failed: {exc.__class__.__name__}")
             raise
         # The attachment is the entire post. Only a successful upload settles it.
         self._repo.mark_sent(recap_id)

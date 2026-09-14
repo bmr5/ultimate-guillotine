@@ -168,6 +168,11 @@ def assemble(inputs: EodInputs) -> EodSnapshot:
                 starters=starters,
                 scores_synced_at=score.synced_at if score is not None else None,
                 has_score_row=score is not None,
+                lineup_matches=(
+                    score is not None
+                    and {s.sleeper_player_id for s in starters if s.sleeper_player_id}
+                    == {pid for pid in score.starters if pid != "0"}
+                ),
             )
         )
 

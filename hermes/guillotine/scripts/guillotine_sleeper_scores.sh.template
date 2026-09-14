@@ -1,5 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 cd "__REPO__"
-exec /opt/homebrew/bin/uv run --project packages/league-automation \
+/opt/homebrew/bin/uv run --project packages/league-automation \
   ug sleeper scores --quiet
+# The odds share the score job's existing game-window cadence; no messages.
+exec /opt/homebrew/bin/uv run --project packages/league-automation \
+  ug odds refresh --quiet

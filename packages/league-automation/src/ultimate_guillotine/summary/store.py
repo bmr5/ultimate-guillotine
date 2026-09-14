@@ -16,6 +16,7 @@ import psycopg
 from psycopg.types.json import Jsonb
 
 from ultimate_guillotine.summary.models import EodSnapshot, SurvivalResult
+from ultimate_guillotine.summary.replay import encode
 
 PROJECTION_SOURCE = "sleeper"
 #: ``recaps.state_version`` is for a corrected week's re-issue. A summary is never
@@ -65,8 +66,8 @@ class SummaryRepository:
                 """
                 insert into public.survival_snapshots
                   (season_id, week, game_window, snapshot_at, projection_source,
-                   model_version, simulations, input_hash, results)
-                values (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                   model_version, simulations, input_hash, results, inputs)
+                values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 on conflict (season_id, week, game_window, input_hash, model_version)
                   do nothing
                 returning id
@@ -81,6 +82,7 @@ class SummaryRepository:
                     result.simulations,
                     result.input_hash,
                     Jsonb(results_payload(snapshot, result)),
+                    Jsonb(encode(snapshot, result)),
                 ),
             )
             return cur.fetchone() is not None

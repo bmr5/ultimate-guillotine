@@ -44,6 +44,7 @@ export function currentProjection(
   roster: readonly Pick<
     RosterPlayer,
     | "sleeperPlayerId"
+    | "position"
     | "slot"
     | "nflTeam"
     | "projectedPoints"
@@ -98,7 +99,11 @@ export function currentProjection(
         game.remainingFraction > 1
       )
         return null;
-      total += player.projectedPoints * game.remainingFraction;
+      const remaining =
+        player.position === "DEF"
+          ? player.projectedPoints - (player.livePoints ?? 0)
+          : player.projectedPoints;
+      total += remaining * game.remainingFraction;
     } else {
       total += player.projectedPoints - (player.livePoints ?? 0);
     }

@@ -75,6 +75,8 @@ class StarterLine:
     points: Decimal
     status: StarterStatus
 
+    remaining_fraction: Decimal | None = None
+
     @property
     def is_pending(self) -> bool:
         return self.status in PENDING_STATUSES
@@ -103,6 +105,7 @@ class TeamLine:
     #: False when ``team_week_scores`` has no row for this team this week, so the
     #: zero above is an absence rather than a score.
     has_score_row: bool
+    lineup_matches: bool = True
 
     def pending(self) -> tuple[StarterLine, ...]:
         return tuple(s for s in self.starters if s.is_pending)
@@ -148,6 +151,7 @@ class SurvivalResult:
     seed: int
     input_hash: str
     teams: Mapping[int, TeamOdds]
+    model_parameters: Mapping | None = None
 
 
 @dataclass(frozen=True)
