@@ -101,7 +101,12 @@ export interface BoardDataResult {
    * so this is the stamp the header leads with whenever it exists.
    */
   scoresUpdatedAt: number | null;
-  /** Oldest team-state sync on this board; FAAB is no fresher than its oldest row. */
+  /**
+   * When the roster sync last ran: `seasons.league_synced_at`, stamped by the same pass that
+   * writes the FAAB. Not the team-state rows' own `synced_at` — the sync leaves an unchanged row
+   * alone, since every rewrite was a Realtime message to every open board, so a quiet roster's
+   * rows keep days-old stamps under a sync that ran a minute ago. Null before any sync.
+   */
   faabUpdatedAt: number | null;
   /**
    * When the Daily computed the odds on the cards: the week's newest `survival_snapshots.
@@ -143,6 +148,9 @@ export function useBoardData(options: BoardDataOptions): BoardDataResult {
     queryFn: () => fetchSeasonByYear(boardClient, nflSeason as number),
     enabled: nflSeason !== null,
     ...shared,
+    // The row carries the roster sync's heartbeat, `league_synced_at`, and no Realtime event
+    // carries `seasons`: without its own interval the FAAB stamp would freeze at page load.
+    refetchInterval: MS_PER_MINUTE,
   });
 
   /**
@@ -174,12 +182,15 @@ export function useBoardData(options: BoardDataOptions): BoardDataResult {
   const season = resolvedSeason?.year ?? null;
   /**
    * jsonb, so it is `string[]` by declaration only; `parseRosterPositions` is what makes it one.
-   * Memoized on the season row because it is a prop on every memoized card below: a fresh array
-   * identity each render would re-render the whole board on every tick.
+   * Memoized because it is a prop on every memoized card below: a fresh array identity each
+   * render would re-render the whole board on every tick. Keyed on the column, not the row: the
+   * row refetches every minute for its heartbeat, and structural sharing keeps an unchanged
+   * `roster_positions` the same array while the row around it is new.
    */
+  const rawRosterPositions = resolvedSeason?.roster_positions;
   const rosterPositions = useMemo(
-    () => parseRosterPositions(resolvedSeason?.roster_positions),
-    [resolvedSeason],
+    () => parseRosterPositions(rawRosterPositions),
+    [rawRosterPositions],
   );
 
   const teams = useQuery({
@@ -480,15 +491,11 @@ export function useBoardData(options: BoardDataOptions): BoardDataResult {
     [boardTeams],
   );
 
+  const rosterSyncedAt = resolvedSeason?.league_synced_at ?? null;
   const faabUpdatedAt = useMemo(() => {
-    let oldest: number | null = null;
-    for (const row of state.data ?? []) {
-      const syncedAt = Date.parse(row.synced_at);
-      if (Number.isNaN(syncedAt)) continue;
-      oldest = oldest === null ? syncedAt : Math.min(oldest, syncedAt);
-    }
-    return oldest;
-  }, [state.data]);
+    const syncedAt = rosterSyncedAt === null ? Number.NaN : Date.parse(rosterSyncedAt);
+    return Number.isNaN(syncedAt) ? null : syncedAt;
+  }, [rosterSyncedAt]);
 
   // The odds stamp: the snapshot's own `snapshot_at`, for the same reason as the two above — a
   // refetch that returns the same row must not look fresher than the run that wrote it.

@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as fetchers from "./fetchers";
@@ -165,6 +165,92 @@ describe("useBoardData", () => {
     });
     // jsonb, so the non-strings are dropped rather than becoming slots.
     expect(result.current.rosterPositions).toEqual(["QB", "RB", "RB", "FLEX"]);
+  });
+
+  /**
+   * The sync leaves an unchanged team-state row alone — every rewrite was a Realtime message to
+   * every open board — so a quiet roster's rows keep days-old stamps. How current the FAAB is,
+   * is how recently the sync ran: `seasons.league_synced_at`, stamped by the same pass.
+   */
+  it("dates FAAB from the roster sync's heartbeat, not the oldest state row", async () => {
+    vi.mocked(fetchers.fetchSeasonByYear).mockResolvedValue({
+      ...SEASON,
+      league_synced_at: "2026-09-09T12:00:00Z",
+    });
+    vi.mocked(fetchers.fetchTeamSeasonState).mockResolvedValue([
+      {
+        season_id: 7,
+        team_id: 11,
+        faab_budget: 100,
+        faab_used: 20,
+        faab_remaining: 80,
+        points_for: 0,
+        points_against: 0,
+        is_eliminated: false,
+        eliminated_week: null,
+        elimination_source: null,
+        state_version: 1,
+        synced_at: "2026-09-06T12:00:00Z",
+      },
+    ]);
+    const { result } = renderBoardData();
+    await waitFor(() => {
+      expect(result.current.faabUpdatedAt).toBe(
+        Date.parse("2026-09-09T12:00:00Z"),
+      );
+    });
+  });
+
+  it("has no FAAB stamp before the roster sync has ever run", async () => {
+    vi.mocked(fetchers.fetchSeasonByYear).mockResolvedValue({
+      ...SEASON,
+      league_synced_at: null,
+    });
+    const { result } = renderBoardData();
+    await waitFor(() => {
+      expect(result.current.teams).toHaveLength(1);
+    });
+    expect(result.current.faabUpdatedAt).toBeNull();
+  });
+
+  it("keeps the heartbeat's season row refreshing while the socket is healthy", async () => {
+    // No Realtime event carries `seasons`, so without its own interval the stamp would freeze
+    // at page load and the "FAAB may be behind" badge would go up five minutes into any visit.
+    const { result, queryClient } = renderBoardData();
+    await waitFor(() => {
+      expect(result.current.teams).toHaveLength(1);
+    });
+    const query = queryClient
+      .getQueryCache()
+      .find({ queryKey: boardKeys.season(2026) });
+    expect(query?.observers[0]?.options.refetchInterval).toBe(60_000);
+  });
+
+  it("keeps the lineup's identity when a refetch only moves the heartbeat", async () => {
+    // Every memoized card takes the lineup as a prop: a fresh array each minute would re-render
+    // the whole board for a stamp none of them shows.
+    const lined = { ...SEASON, roster_positions: ["QB", "RB", "FLEX"] };
+    vi.mocked(fetchers.fetchSeasonByYear).mockResolvedValue(lined);
+    const { result, queryClient } = renderBoardData();
+    await waitFor(() => {
+      expect(result.current.rosterPositions).toHaveLength(3);
+    });
+    const before = result.current.rosterPositions;
+    act(() => {
+      queryClient.setQueryData(boardKeys.season(2026), {
+        ...lined,
+        roster_positions: ["QB", "RB", "FLEX"],
+        league_synced_at: "2026-09-09T00:01:00Z",
+      });
+    });
+    // The new heartbeat reached the hook...
+    await waitFor(() => {
+      expect(result.current.faabUpdatedAt).toBe(
+        Date.parse("2026-09-09T00:01:00Z"),
+      );
+    });
+    // ...and the lineup the cards hold did not change identity for it.
+    expect(result.current.rosterPositions).toBe(before);
   });
 
   it("reports no lineup at all until the season row lands", async () => {
