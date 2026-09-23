@@ -75,22 +75,26 @@ class InboundProcessor:
         triggers = self._registry.match(msg)
         if not triggers:
             return "no_trigger"
-        if not msg.is_from_me and (self._blocked_member_ids or self._allowed_member_ids is not None):
-            if any(trigger.requires_bot_access for trigger in triggers):
-                member = (
-                    self._contacts.member_for_handle_hash(handle_hash(msg.sender_address))
-                    if self._contacts is not None and msg.sender_address else None
-                )
-                denied = (
-                    member is not None and member.member_id in self._blocked_member_ids
-                ) or (
-                    self._allowed_member_ids is not None
-                    and (member is None or member.member_id not in self._allowed_member_ids)
-                )
-                if denied:
-                    triggers = [trigger for trigger in triggers if not trigger.requires_bot_access]
-                    if not triggers:
-                        return "blocked_member"
+        has_access_rules = bool(self._blocked_member_ids) or self._allowed_member_ids is not None
+        if (
+            not msg.is_from_me
+            and has_access_rules
+            and any(trigger.requires_bot_access for trigger in triggers)
+        ):
+            member = (
+                self._contacts.member_for_handle_hash(handle_hash(msg.sender_address))
+                if self._contacts is not None and msg.sender_address else None
+            )
+            denied = (
+                member is not None and member.member_id in self._blocked_member_ids
+            ) or (
+                self._allowed_member_ids is not None
+                and (member is None or member.member_id not in self._allowed_member_ids)
+            )
+            if denied:
+                triggers = [trigger for trigger in triggers if not trigger.requires_bot_access]
+                if not triggers:
+                    return "blocked_member"
         names = ",".join(t.name for t in triggers)
         self._sources.upsert(
             SourceMessage(

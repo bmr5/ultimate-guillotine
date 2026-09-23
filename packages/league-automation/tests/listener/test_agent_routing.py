@@ -47,6 +47,9 @@ def configure(monkeypatch):
             def listen_chat_guids(self):
                 return [LISTEN]
 
+            def reply_chat_guids(self):
+                return []
+
         monkeypatch.setattr(run_module, "TargetRepository", Targets)
         if outbound is not None:
             monkeypatch.setattr(run_module, "OutboundRepository", lambda conn: outbound)
