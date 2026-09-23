@@ -1,7 +1,7 @@
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { HistoryListSkeleton } from "@/history/components/HistorySkeleton";
-import { HistoryTabs } from "@/history/components/HistoryTabs";
 import { SeasonCard } from "@/history/components/SeasonCard";
+import { WeeklyScoreRecords } from "@/history/components/WeeklyScoreRecords";
 import { CARD_GRID } from "@/history/layout";
 import { useSeasonResults } from "@/history/useSeasonResults";
 import { REVEAL_CLASS, revealStyle } from "@/motion/reveal";
@@ -11,7 +11,7 @@ export function HistoryPage() {
 
   return (
     <section className="space-y-3">
-      <HistoryTabs />
+      <WeeklyScoreRecords />
       {/* Keyed by source, not by message: one outage fails both queries with the same text, and
           two alerts sharing a key would leave React rendering only one of them. */}
       {errors.map(({ source, error }) => (
@@ -39,18 +39,20 @@ export function HistoryPage() {
         </p>
       )}
 
-      {/* The champion cards are the whole page (Ben, 2026-09-10: the winners table said
-          the same thing twice). Each card's place in the cascade is its place in the list. */}
+      {/* Keep the past champions below the weekly record boards. */}
       {seasons.length > 0 && (
-        <ul aria-label="Seasons" className={CARD_GRID}>
-          {seasons.map((season, index) => (
-            <SeasonCard
-              key={season.season}
-              season={season}
-              revealIndex={index}
-            />
-          ))}
-        </ul>
+        <section aria-label="Past champions" className="space-y-3">
+          <h2 className="text-2xl figures">Past champions</h2>
+          <ul aria-label="Seasons" className={CARD_GRID}>
+            {seasons.map((season, index) => (
+              <SeasonCard
+                key={season.season}
+                season={season}
+                revealIndex={index}
+              />
+            ))}
+          </ul>
+        </section>
       )}
     </section>
   );

@@ -53,6 +53,7 @@ from ultimate_guillotine.trades.resolve import (
     resolve_extracted,
     validate,
 )
+from ultimate_guillotine.trades.transfers import recent_transfers_context
 from ultimate_guillotine.trades.week import week_for
 
 AGENT = "trade-registrar"
@@ -235,7 +236,7 @@ class TradeRegistrar:
             None,
             [_member_line(m) for m in members],
             announcer.display_name if announcer else None,
-            self._context(members),
+            self._context(members, season),
         )
         input_version = f"{PROMPT_VERSION}:{usage.model}"
 
@@ -341,7 +342,7 @@ class TradeRegistrar:
             return None
         return self._contacts.member_for_handle_hash(handle_hash(msg.sender_address))
 
-    def _context(self, members) -> str | None:
+    def _context(self, members, season: int) -> str | None:
         """The rosters, the FAAB, the week and the season's trades, or nothing.
 
         People announce trades by first name -- `a 1 week Rhamondre rental` --
@@ -367,10 +368,7 @@ class TradeRegistrar:
             return None
         try:
             snapshot = SnapshotRepository(self._conn).load()
-            return (
-                context_from_snapshot(snapshot, members, self._trades.list_recent(TRADE_LIMIT))
-                or None
-            )
+            pack = context_from_snapshot(snapshot, members, self._trades.list_recent(TRADE_LIMIT))
         except Exception as exc:  # noqa: BLE001 - any context failure degrades the same way
             with contextlib.suppress(Exception):
                 self._conn.rollback()
@@ -378,6 +376,17 @@ class TradeRegistrar:
                 f"Trade Registrar could not build the context pack: {exc.__class__.__name__}"
             )
             return None
+        # Losing transaction history must not discard the roster context.
+        try:
+            transfers = recent_transfers_context(self._conn, season, self._clock())
+        except Exception as exc:  # noqa: BLE001 - optional evidence may be unavailable
+            with contextlib.suppress(Exception):
+                self._conn.rollback()
+            self._notifier.ops(
+                f"Trade Registrar could not load recent transfers: {exc.__class__.__name__}"
+            )
+            transfers = ""
+        return "\n\n".join(section for section in (pack, transfers) if section) or None
 
     def _clarify(self, run_id: int, reason: str, input_version: str | None) -> str:
         """Ask the chat one question and log the run as a success.

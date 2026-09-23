@@ -142,8 +142,8 @@ records no run. `--no-ai` skips the model's headline; `--json` prints the fact
 packet instead and makes no model call; `--fixture` answers out of the built-in
 league with no database at all.
 
-The scheduled job (`guillotine-eod-summary`, 8:15 AM on Wednesday, Sunday and
-Monday, and 10:12 AM on Thursday and Saturday) posts the same thing to the chat through the delivery
+The scheduled report runs at 8:15 AM on Sunday and Monday and noon on Thursday
+and Saturday. It posts the same thing to the chat through the delivery
 layer and previews the text in `#guillotine-drafts`. Run again the same day it
 prints `eod: already_sent`; `--force` posts again.
 

@@ -59,6 +59,16 @@ def gulag_from_events(
     """
     ids: set[int] = set()
     for event_week, event_type, payload in events:
+        if event_week == week and event_type == "archive_gulag_qualifiers":
+            pair = payload.get("team_ids")
+            if (
+                isinstance(pair, list)
+                and len(pair) == 2
+                and all(type(t) is int for t in pair)
+                and len(set(pair)) == 2
+            ):
+                return tuple(sorted(pair))
+            return ()
         if event_week == week and event_type == "archive_gulag_pair":
             pair = payload.get("team_ids")
             if (
@@ -143,11 +153,15 @@ def resolve_phase(
         return Phase(week=week, kind=kind, gulag_team_ids=(), gulag_source="none")
     ruled = gulag_from_events(events, week)
     if ruled is not None:
+        qualifiers_only = any(
+            event_week == week and event_type == "archive_gulag_qualifiers"
+            for event_week, event_type, _payload in events
+        )
         return Phase(
             week=week,
             kind=kind,
             gulag_team_ids=ruled,
-            gulag_source="events" if ruled else "unknown",
+            gulag_source=("qualifiers" if qualifiers_only else "events") if ruled else "unknown",
         )
     replayed = replay_gulag(week, scores_by_week, eliminated, team_ids)
     source: GulagSource = "unknown" if replayed is None else "replay"

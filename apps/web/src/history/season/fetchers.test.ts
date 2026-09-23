@@ -2,7 +2,11 @@
 import { PostgrestClient } from "@supabase/postgrest-js";
 import { describe, expect, it, vi } from "vitest";
 
-import { fetchEventPlayers, fetchSeasonArchive } from "./fetchers";
+import {
+  fetchEventPlayers,
+  fetchSeasonArchive,
+  fetchWeeklyRosters,
+} from "./fetchers";
 import { eventRecord, weekRecord } from "./fixtures.test-support";
 import type { ArchiveDatabase } from "./types";
 
@@ -24,6 +28,22 @@ const json = (data: unknown) =>
   });
 
 describe("archive reads", () => {
+  it("requests only the selected archive revision through the public roster API", async () => {
+    const fetch = vi.fn(
+      async (_input: RequestInfo | URL, init?: RequestInit) => {
+        expect(JSON.parse(String(init?.body))).toEqual({
+          p_week_revision_id: 4,
+        });
+        return json([]);
+      },
+    );
+    const client = new PostgrestClient<ArchiveDatabase>(
+      "https://archive.invalid/rest/v1",
+      { fetch },
+    );
+    expect(await fetchWeeklyRosters(client, 4)).toEqual([]);
+    expect(String(fetch.mock.calls[0][0])).toContain("/rpc/get_weekly_rosters");
+  });
   it("scopes to 2026 and does not query any historical event table when empty", async () => {
     const { client, fetch } = clientWith((url) => {
       expect(url.pathname).toContain("season_history_current_weeks");

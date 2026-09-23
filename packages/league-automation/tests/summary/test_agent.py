@@ -251,6 +251,18 @@ def test_a_test_mode_run_stores_previews_delivers_and_records() -> None:
     assert conn.commits >= 2
 
 
+def test_missing_odds_skip_delivery_and_ai() -> None:
+    repo, delivery, notifier = FakeRepo(), FakeDelivery(), FakeNotifier()
+    ai = FakeAI()
+    agent = _agent(ai=ai, repo=repo, delivery=delivery, notifier=notifier)
+    snap = snapshot(_league().teams, schedule_available=False, day_state="unknown")
+    outcome = agent.run(snap, NOW, run_id=7, simulations=50)
+    assert outcome.status == "skipped"
+    assert ai.calls == 0
+    assert repo.snapshots == repo.recaps == delivery.attachments == []
+    assert notifier.ops_notes == ["EOD summary skipped: game status unavailable"]
+
+
 def test_a_night_already_posted_is_left_alone() -> None:
     repo, delivery, ai = FakeRepo(already_sent=True), FakeDelivery(), FakeAI()
     outcome = _agent(ai=ai, repo=repo, delivery=delivery).run(_league(), NOW, run_id=7)
@@ -315,7 +327,7 @@ def test_a_failed_attachment_leaves_a_draft_and_never_sends_fallback_text() -> N
     assert notifier.ops_notes == ["EOD summary attachment failed: RuntimeError"]
 
 
-def test_a_factual_run_records_no_survival_snapshot() -> None:
+def test_a_factual_run_without_odds_does_not_post() -> None:
     repo = FakeRepo()
     outcome = _agent(repo=repo).run(
         snapshot(_league().teams, schedule_available=False, day_state="unknown"),
@@ -323,10 +335,10 @@ def test_a_factual_run_records_no_survival_snapshot() -> None:
         run_id=7,
         simulations=50,
     )
-    assert outcome.status == "sent"
+    assert outcome.status == "skipped"
     assert outcome.odds is False
     assert repo.snapshots == []
-    assert len(repo.recaps) == 1
+    assert repo.recaps == []
 
 
 def test_the_input_version_names_the_model_only_when_one_wrote_something() -> None:

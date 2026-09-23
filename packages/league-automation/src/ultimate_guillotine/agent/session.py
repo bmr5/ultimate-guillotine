@@ -1,8 +1,8 @@
 """One `hermes chat` per turn on the league profile, and the session it leaves behind.
 
-The profile decides what the agent can do: its config names the model, the
-`web` toolset and the league MCP server, and nothing here overrides any of it
--- no `-t`, no `--ignore-rules`, no budget. The hang guard is the one limit,
+The profile decides what the agent can do. Each turn passes its current model
+explicitly so an older resumed session cannot retain a previous profile model.
+No toolset or rules override is passed. The hang guard is the one limit,
 and it is an hour: long enough for any honest research, short enough that a
 stuck network call cannot hold the queue all night.
 """
@@ -51,17 +51,17 @@ class HermesAgentClient:
         self._binary = binary
         self._hang_guard = hang_guard_seconds
         self._extra_env = dict(extra_env or {})
-        self._reported_model = model or _profile_model(self._home)
 
     def run(self, query: str, *, resume: str | None = None) -> AgentReply:
         """One turn. ``resume`` continues an earlier session by id."""
+        selected_model = self._model or _profile_model(self._home)
         handle, path = mkstemp(suffix=".md", prefix="ug-agent-")
         try:
             with os.fdopen(handle, "w", encoding="utf-8") as query_file:
                 query_file.write(query)
             command = [self._binary or hermes_binary(), *FLAGS]
-            if self._model:
-                command += ["-m", self._model]
+            if selected_model != "hermes":
+                command += ["-m", selected_model]
             if resume:
                 command += ["--resume", resume]
             command += ["--query-file", path]
@@ -84,4 +84,4 @@ class HermesAgentClient:
         text = (result.stdout or "").strip()
         if not text:
             raise AIInvalidOutput("hermes returned no output")
-        return AgentReply(text, _session_id(result.stderr or ""), self._reported_model)
+        return AgentReply(text, _session_id(result.stderr or ""), selected_model)

@@ -1,5 +1,7 @@
 """Sessions, answers, and the two lookups a follow-up needs, against the real schema."""
 
+from dataclasses import replace
+
 import pytest
 
 from ultimate_guillotine.agent.records import (
@@ -70,3 +72,30 @@ def test_an_answer_is_recorded_and_listed_newest_first(conn) -> None:
     assert latest[0].question == record.question
     assert latest[0].chat_text == record.chat_text
     assert latest[0].facts == {"faab": []}
+
+
+def test_recent_questions_are_scoped_to_one_member_and_chat(conn) -> None:
+    with conn.cursor() as cur:
+        cur.execute("insert into public.members (display_name) values ('Derek Context') returning id")
+        derek_id = cur.fetchone()[0]
+        cur.execute("insert into public.members (display_name) values ('Other Context') returning id")
+        other_id = cur.fetchone()[0]
+    runs = RunRepository(conn)
+    answers = AgentAnswerRepository(conn)
+    base = AnswerRecord(
+        run_id=0, session_id=None, chat_guid_hash=CHAT_HASH, asker_member_id=derek_id,
+        question="First Derek question", is_follow_up=False, kind="answer",
+        chat_text="First answer", source_line="", report_title=None, report_html=None,
+        facts={}, sources=[], prompt_version="2026.9", model="fake-model",
+    )
+    for number, (chat_hash, member_id, question) in enumerate((
+        (CHAT_HASH, derek_id, "First Derek question"),
+        (CHAT_HASH, other_id, "Other member question"),
+        ("d" * 64, derek_id, "Other chat question"),
+        (CHAT_HASH, derek_id, "Latest Derek question"),
+    )):
+        run_id = runs.reserve("league-agent", "webhook", f"agent:member-context-{number}")
+        answers.record(replace(base, run_id=run_id, chat_guid_hash=chat_hash,
+                               asker_member_id=member_id, question=question))
+    result = answers.recent_for_member(CHAT_HASH, derek_id)
+    assert [row.question for row in result] == ["Latest Derek question", "First Derek question"]

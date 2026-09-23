@@ -118,6 +118,10 @@ class NoSessions:
 
 
 class PrintingAnswers:
+    def recent_for_member(self, chat_guid_hash, member_id, limit):
+        # The dry run uses a synthetic chat and never reads private Q&A history.
+        return []
+
     def record(self, answer):
         print(f"model: {answer.model} · prompt {answer.prompt_version} · kind {answer.kind}")
         return 0

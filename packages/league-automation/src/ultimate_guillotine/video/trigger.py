@@ -32,7 +32,7 @@ _TAG = re.compile(r"@\s*(?:bot|guillotinebot|daddy)\b", re.IGNORECASE)
 _VIDEO = re.compile(r"\bvideo\b", re.IGNORECASE)
 TRADE_CODE = re.compile(r"\b(?:TEST|T)-\d{4}-\d{3}\b")
 
-HELP = "Reply to a trade alert or provide its code, such as T-2026-003."
+HELP = "Reply to a trade alert with @bot make a trade video, or send @bot make a trade video T-2026-003."
 #: How many recent trades an alert with no trade behind it is matched against.
 RECENT = 20
 #: Names of a trade an alert must contain before it is taken as that trade.
@@ -122,7 +122,7 @@ def help_text(recent: list[dict], labels: dict[int, str]) -> str:
     return (
         "No matching trade found. Recent: "
         + "; ".join(lines)
-        + ". Reply with the trade code."
+        + ". Send @bot make a trade video followed by the trade code."
     )
 
 
@@ -248,4 +248,4 @@ def video_trigger(requests: VideoRequests, chat_guids: frozenset[str]) -> Trigge
     def handle(msg: InboundMessage) -> None:
         requests.handle(msg)
 
-    return Trigger(AGENT, matches, handle)
+    return Trigger(AGENT, matches, handle, requires_bot_access=True)

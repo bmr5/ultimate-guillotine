@@ -162,14 +162,18 @@ describe("App layout", () => {
     }
   });
 
-  it("keeps the four page links, with the current one marked", () => {
+  it("keeps current season separate from history in the main navigation", () => {
     const router = makeRouter("/history", [
       { path: "history", element: <p>history</p> },
     ]);
     render(<RouterProvider router={router} />);
     const links = screen.getAllByRole("link");
     expect(links.map((link) => link.textContent)).toEqual([
-      "Board", "Trades", "Draft", "History",
+      "Board",
+      "Current season",
+      "Trades",
+      "Draft",
+      "History",
     ]);
     expect(screen.getByRole("link", { name: "History" })).toHaveAttribute(
       "aria-current",

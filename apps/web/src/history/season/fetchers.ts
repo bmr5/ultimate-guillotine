@@ -64,3 +64,15 @@ export async function fetchEventPlayers(
     if ((page.data?.length ?? 0) < 100) return rows;
   }
 }
+
+export async function fetchWeeklyRosters(
+  client: ArchiveClient,
+  revisionId: number,
+) {
+  const result = await client.rpc("get_weekly_rosters", {
+    p_week_revision_id: revisionId,
+  });
+  if (result.error)
+    throw new Error("Could not load weekly scores and rosters.");
+  return result.data ?? [];
+}

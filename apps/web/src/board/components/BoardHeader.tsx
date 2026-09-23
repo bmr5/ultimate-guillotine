@@ -66,6 +66,8 @@ interface BoardHeaderProps {
    * beside a live score would go on making exactly that claim.
    */
   scoresUpdatedAt: number | null;
+  /** Oldest Sleeper team-state sync, the source of the displayed FAAB balances. */
+  faabUpdatedAt: number | null;
   /**
    * When the Daily computed the odds on the cards — the week's newest `survival_snapshots.
    * snapshot_at`, or null before the week's first run. Its own line under the other stamps,
@@ -107,6 +109,9 @@ const SEASON_FALLBACK_DESCRIPTION =
 const STALE_DESCRIPTION = `Nothing has been pulled from Sleeper for over ${
   STALE_AFTER_MS / MS_PER_MINUTE
 } minutes, so these figures may be behind`;
+const FAAB_STALE_AFTER_MS = 5 * MS_PER_MINUTE;
+const FAAB_STALE_DESCRIPTION =
+  "FAAB has not synced from Sleeper for over 5 minutes; balances may be behind.";
 
 /** Both header badges wear the outline badge face; `ExplainedBadge` supplies the button. */
 const HEADER_BADGE_CLASS = badgeVariants({ variant: "outline" });
@@ -160,6 +165,7 @@ export function BoardHeader({
   onSearchTermChange,
   projectionsUpdatedAt,
   scoresUpdatedAt,
+  faabUpdatedAt,
   oddsUpdatedAt,
   isReconnecting,
 }: BoardHeaderProps) {
@@ -216,6 +222,7 @@ export function BoardHeader({
   }, [elapsed, primaryUpdatedAt, primaryLabel, now]);
 
   const stale = isStale(primaryUpdatedAt, now);
+  const faabStale = faabUpdatedAt !== null && now - faabUpdatedAt > FAAB_STALE_AFTER_MS;
 
   return (
     <header
@@ -261,6 +268,14 @@ export function BoardHeader({
             className={HEADER_BADGE_CLASS}
           >
             Stale data
+          </ExplainedBadge>
+        ) : null}
+        {faabStale ? (
+          <ExplainedBadge
+            description={FAAB_STALE_DESCRIPTION}
+            className={HEADER_BADGE_CLASS}
+          >
+            FAAB may be behind
           </ExplainedBadge>
         ) : null}
         {isReconnecting ? (

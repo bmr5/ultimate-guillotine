@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     #: messages (``is_from_me``), so without this a first-person alert from the
     #: commissioner has no announcer.
     commissioner_sleeper_username: str | None = None
+    #: Comma-separated member IDs barred from interactive bot triggers.
+    bot_blocked_member_ids: str = ""
+    #: When set, only these member IDs may trigger interactive bot requests. The Mac's own
+    #: unsigned messages are also allowed for the commissioner's account.
+    bot_allowed_member_ids: str = ""
     bluebubbles_server_url: str = "http://127.0.0.1:1234"
     bluebubbles_password: SecretStr | None = None
     webhook_listen_host: str = "127.0.0.1"

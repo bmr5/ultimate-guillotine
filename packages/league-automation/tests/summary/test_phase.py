@@ -136,6 +136,12 @@ def test_resolve_replays_when_there_are_no_events() -> None:
     assert (phase.gulag_team_ids, phase.gulag_source) == ((5, 6), "replay")
 
 
+def test_confirmed_qualifiers_remain_visible_while_substitutions_are_unresolved() -> None:
+    events = [(2, "archive_gulag_qualifiers", {"team_ids": [5, 6]})]
+    phase = resolve_phase(2, events, {}, {}, TEAMS)
+    assert (phase.gulag_team_ids, phase.gulag_source) == ((5, 6), "qualifiers")
+
+
 def test_resolve_reports_an_unknown_pairing() -> None:
     phase = resolve_phase(3, [], {}, {}, TEAMS)
     assert (phase.kind, phase.gulag_team_ids, phase.gulag_source) == ("gulag", (), "unknown")

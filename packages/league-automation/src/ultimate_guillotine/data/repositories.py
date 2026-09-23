@@ -57,14 +57,7 @@ def handle_hash(address: str) -> str:
 
 @dataclass(frozen=True)
 class DeliveryTarget:
-    """One registered chat: where a mode delivers, or a chat only listened to.
-
-    ``mode`` is ``None`` for a listen-only target, which is not a missing value
-    but the fact that the question does not apply -- a shadow chat is nobody's
-    destination. Only ``TargetRepository.get`` builds a delivering target, and it
-    asks for ``role = 'deliver'``, so ``mode`` is never ``None`` on anything the
-    delivery service is handed.
-    """
+    """A registered chat. Additional reply chats have no delivery mode."""
 
     id: int
     mode: str | None
@@ -294,19 +287,69 @@ class TargetRepository:
         """Every chat registered listen-only, oldest first.
 
         The listener processes messages from these and never posts to them: they
-        widen what the automation can *hear*, and the delivery service is
-        untouched, so in test mode a league alert is still answered in the
-        self-test chat.
+        widen what the automation can *hear*. Rows with a participant
+        fingerprint are additional reply chats and are excluded here.
         """
         with self._conn.cursor() as cur:
             cur.execute(
                 """
                 select chat_guid from private.delivery_targets
-                where role = 'listen'
+                where role = 'listen' and participant_fingerprint is null
                 order by id
                 """
             )
             return [row[0] for row in cur.fetchall()]
+
+    def reply_chat_guids(self) -> list[str]:
+        """Chats registered for replies beyond the primary and test targets.
+
+        The existing schema has one target per mode. Its listen rows with a
+        participant fingerprint are reserved for additional reply chats.
+        """
+        with self._conn.cursor() as cur:
+            cur.execute(
+                """
+                select chat_guid from private.delivery_targets
+                where role = 'listen' and participant_fingerprint is not null
+                order by id
+                """
+            )
+            return [row[0] for row in cur.fetchall()]
+
+    def get_reply(self, chat_guid: str) -> DeliveryTarget | None:
+        with self._conn.cursor() as cur:
+            cur.execute(
+                """
+                select id, mode, chat_guid, participant_fingerprint, label
+                from private.delivery_targets
+                where role = 'listen' and participant_fingerprint is not null
+                  and chat_guid_hash = %s and chat_guid = %s
+                """,
+                (chat_guid_hash(chat_guid), chat_guid),
+            )
+            row = cur.fetchone()
+            return DeliveryTarget(*row) if row else None
+
+    def upsert_reply(self, chat_guid: str, fingerprint: str, label: str) -> int:
+        """Register a reply chat with its exact current participant set."""
+        with self._conn.cursor() as cur:
+            cur.execute(
+                """
+                insert into private.delivery_targets
+                    (mode, chat_guid, chat_guid_hash, participant_fingerprint, label, role)
+                values (null, %s, %s, %s, %s, 'listen')
+                on conflict (chat_guid_hash) where role = 'listen' do update
+                    set chat_guid = excluded.chat_guid,
+                        participant_fingerprint = excluded.participant_fingerprint,
+                        label = excluded.label
+                returning id
+                """,
+                (chat_guid, chat_guid_hash(chat_guid), fingerprint, label),
+            )
+            row = cur.fetchone()
+            if row is None:
+                raise RuntimeError("insert returned no id")
+            return row[0]
 
     def upsert_listen(self, chat_guid: str, label: str) -> int:
         """Register ``chat_guid`` as listen-only, returning its row id.

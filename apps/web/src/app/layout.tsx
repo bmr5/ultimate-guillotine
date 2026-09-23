@@ -11,15 +11,10 @@ import { cn } from "@/lib/utils";
 import { REVEAL_CLASS, revealStyle } from "@/motion/reveal";
 import { MusicToggle } from "@/music/MusicToggle";
 
-/**
- * The four public pages: the board first, then the draft (Ben, 2026-09-10: "make a draft tab
- * on the site just to show the full draft"), then the two Ben ordered before it.
- *
- * `end` on `/` keeps the board link from matching every route: without it `NavLink` treats `/`
- * as a prefix of `/trades` and marks the board current on all three pages.
- */
+// Keep the active season separate from completed-season history.
 const LINKS: [to: string, label: string, end: boolean][] = [
   ["/", "Board", true],
+  ["/current-season", "Current season", false],
   ["/trades", "Trades", false],
   ["/draft", "Draft", false],
   ["/history", "History", false],
@@ -42,8 +37,8 @@ const PREFETCH_DELAY_MS = 2500;
 function PageFallback({ pathname }: { pathname: string }) {
   if (pathname.startsWith("/draft")) return <DraftPageSkeleton />;
   if (pathname.startsWith("/trades")) return <TradesPageSkeleton />;
-  if (pathname.startsWith("/history/2026"))
-    return <LoadingState label="Loading 2026 history" />;
+  if (pathname.startsWith("/current-season"))
+    return <LoadingState label="Loading current season" />;
   if (pathname.startsWith("/history")) return <HistoryListSkeleton />;
   return <BoardSkeleton />;
 }
@@ -89,11 +84,14 @@ function App() {
           className={cn("flex items-start justify-between gap-4", REVEAL_CLASS)}
           style={revealStyle(0)}
         >
-          <div>
+          <div className="min-w-0">
             <h1 className="mb-1 text-2xl leading-none figures">
               Ultimate Guillotine
             </h1>
-            <nav aria-label="Pages" className="mb-4 flex gap-5 text-sm">
+            <nav
+              aria-label="Pages"
+              className="mb-4 flex flex-wrap gap-x-5 gap-y-1 text-sm"
+            >
               {LINKS.map(([to, label, end]) => (
                 <NavLink
                   key={to}
@@ -101,7 +99,7 @@ function App() {
                   end={end}
                   className={({ isActive }) =>
                     cn(
-                      "rounded-sm py-1 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      "rounded-sm py-1 whitespace-nowrap transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring",
                       isActive
                         ? "border-b-2 border-primary font-medium text-foreground"
                         : "border-b-2 border-transparent text-muted-foreground hover:text-foreground",

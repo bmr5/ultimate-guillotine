@@ -285,7 +285,7 @@ def test_the_help_names_the_recent_trades_when_nothing_matched() -> None:
     labels = {1: "Derek", 2: "Charlie", 3: "Ryland", 4: "Ben R"}
     assert help_text([RENTAL, OTHER], labels) == (
         "No matching trade found. Recent: T-2026-002 (Derek ↔ Charlie); "
-        "T-2026-001 (Ryland ↔ Ben R). Reply with the trade code."
+        "T-2026-001 (Ryland ↔ Ben R). Send @bot make a trade video followed by the trade code."
     )
     assert help_text([], labels) == HELP
     members = SimpleNamespace(all_members=lambda: MEMBERS)

@@ -122,7 +122,8 @@ def _check_db(connection_factory: Callable[[], psycopg.Connection]) -> bool:
 
 
 def trade_chat_guids(
-    settings: Settings, production_target, listen_guids: Iterable[str] = ()
+    settings: Settings, production_target, listen_guids: Iterable[str] = (),
+    reply_guids: Iterable[str] = (),
 ) -> frozenset[str]:
     """Every chat the registrar reads trade alerts in. Empty means it does not run.
 
@@ -151,21 +152,27 @@ def trade_chat_guids(
         delivery = None
     if delivery is None:
         return frozenset()
-    return frozenset({delivery, *listen_guids})
+    return frozenset({delivery, *listen_guids, *reply_guids})
 
 
-def agent_chat_guids(settings: Settings, test_target, production_target) -> tuple[str, ...]:
-    """Registered delivery chats only, in deterministic factory order.
+def agent_chat_guids(
+    settings: Settings, test_target, production_target,
+    reply_guids: Iterable[str] = (),
+) -> tuple[str, ...]:
+    """Registered reply chats only, in deterministic factory order.
 
     Production keeps the test chat available. Test mode excludes the league chat;
-    disabled mode excludes both. Environment GUIDs and listen rows grant no access.
+    disabled mode excludes both. Listen-only rows grant no agent access.
     """
     if settings.delivery_mode is DeliveryMode.DISABLED:
         return ()
     targets = (test_target, production_target) if (
         settings.delivery_mode is DeliveryMode.PRODUCTION
     ) else (test_target,)
-    return tuple(dict.fromkeys(target.chat_guid for target in targets if target is not None))
+    registered = [target.chat_guid for target in targets if target is not None]
+    if settings.delivery_mode is DeliveryMode.PRODUCTION:
+        registered.extend(reply_guids)
+    return tuple(dict.fromkeys(registered))
 
 
 def build_agent_worker(
@@ -399,7 +406,12 @@ def build_processor(
     test_target = targets.get(DeliveryMode.TEST)
     production_target = targets.get(DeliveryMode.PRODUCTION)
     listen_guids = targets.listen_chat_guids()
-    allowed = {t.chat_guid for t in (test_target, production_target) if t} | set(listen_guids)
+    reply_guids = targets.reply_chat_guids()
+    allowed = (
+        {t.chat_guid for t in (test_target, production_target) if t}
+        | set(listen_guids)
+        | set(reply_guids)
+    )
     registry = TriggerRegistry()
     # Agents from later plans register their triggers here, next to ping_trigger.
     if settings.delivery_mode is DeliveryMode.TEST and settings.test_chat_guid:
@@ -410,7 +422,7 @@ def build_processor(
         delivery,
         notifier,
         registry,
-        trade_chat_guids(settings, production_target, listen_guids),
+        trade_chat_guids(settings, production_target, listen_guids, reply_guids),
         listen_guids,
     )
     # In production the league chat is the registrar's, and the self-test chat stays a
@@ -429,7 +441,7 @@ def build_processor(
         )
     # Requests are heard wherever alerts are, and in the self-test chat in every mode.
     # Reuse the actual registered predicate so video and Agent ownership agree.
-    video_chats = trade_chat_guids(settings, production_target, listen_guids)
+    video_chats = trade_chat_guids(settings, production_target, listen_guids, reply_guids)
     if test_target is not None:
         video_chats = video_chats | {test_target.chat_guid}
     video = _register_trade_video(conn, delivery, registry, video_chats)
@@ -440,7 +452,7 @@ def build_processor(
         delivery,
         notifier,
         registry,
-        agent_chat_guids(settings, test_target, production_target),
+        agent_chat_guids(settings, test_target, production_target, reply_guids),
         agent_worker_factory,
         reconcile_agent_runs,
         video_matches=video.matches if video is not None else None,
@@ -451,6 +463,18 @@ def build_processor(
         CommittingRepo(ReceiptRepository(conn), conn),
         CommittingRepo(SourceMessageRepository(conn), conn),
         on_error=lambda name, exc: notifier.ops(f"trigger {name} failed: {exc.__class__.__name__}"),
+        contacts=CommittingRepo(MemberContactRepository(conn), conn),
+        blocked_member_ids=frozenset(
+            int(value.strip()) for value in settings.bot_blocked_member_ids.split(",")
+            if value.strip()
+        ),
+        allowed_member_ids=(
+            frozenset(
+                int(value.strip()) for value in settings.bot_allowed_member_ids.split(",")
+                if value.strip()
+            )
+            if settings.bot_allowed_member_ids.strip() else None
+        ),
     )
     return processor, allowed
 
@@ -480,7 +504,8 @@ def main() -> None:
         settings, conn, client, delivery, notifier, reconcile_agent_runs=True
     )
     poll_chats = agent_chat_guids(
-        settings, targets.get(DeliveryMode.TEST), targets.get(DeliveryMode.PRODUCTION)
+        settings, targets.get(DeliveryMode.TEST), targets.get(DeliveryMode.PRODUCTION),
+        targets.reply_chat_guids(),
     )
     heartbeats = CommittingRepo(HeartbeatRepository(conn), conn)
     start_heartbeat_thread(settings)

@@ -6,6 +6,7 @@ is out once Sleeper has withdrawn the number behind it. It is restated here so
 the chat and the site can never disagree about who is playing.
 """
 
+from dataclasses import replace
 from decimal import Decimal
 from types import MappingProxyType
 
@@ -16,6 +17,7 @@ from ultimate_guillotine.summary.lineup import (
     coverage_pct,
     is_out,
     position_medians,
+    projected_holdings,
 )
 from ultimate_guillotine.summary.models import PlayerInfo, StarterLine, TeamLine
 from ultimate_guillotine.summary.schedule import Game
@@ -202,6 +204,45 @@ def test_a_player_the_directory_does_not_know_still_gets_a_line() -> None:
     )
     assert starters[0].nfl_team is None
     assert starters[0].status == "remaining"
+
+
+def test_projection_fills_legal_open_slots_without_moving_recorded_starters() -> None:
+    qb = _holding("qb", 0, "QB", "20")
+    rb = replace(_holding("rb", 0, "RB", "12"), slot="bench", slot_index=None)
+    wr = replace(_holding("wr", 0, "WR", "15"), slot="bench", slot_index=None)
+    extra = replace(_holding("extra", 0, "WR", "8"), slot="bench", slot_index=None)
+    holdings = (qb, rb, wr, extra)
+    players = {h.sleeper_player_id: PlayerInfo("KC", None) for h in holdings}
+    chosen = projected_holdings(holdings, ("QB", "RB", "WR", "FLEX"), players, GAMES)
+    assert {h.slot_index: h.sleeper_player_id for h in chosen if h.slot_index in (0, 1)} == {
+        0: "qb",
+        1: "rb",
+    }
+    assert {h.sleeper_player_id for h in chosen if h.slot_index in (2, 3)} == {"wr", "extra"}
+
+
+def test_projection_uses_best_legal_players_and_skips_locked_or_out_games() -> None:
+    holdings = tuple(
+        replace(_holding(pid, 0, pos, points), slot="bench", slot_index=None)
+        for pid, pos, points in (
+            ("wr-high", "WR", "18"),
+            ("wr-low", "WR", "9"),
+            ("rb", "RB", "11"),
+            ("played", "WR", "30"),
+            ("live", "WR", "25"),
+            ("out", "WR", "40"),
+        )
+    )
+    players = {h.sleeper_player_id: PlayerInfo("KC", None) for h in holdings}
+    players.update(
+        {
+            "played": PlayerInfo("PHI", None),
+            "live": PlayerInfo("SF", None),
+            "out": PlayerInfo("KC", "Out"),
+        }
+    )
+    chosen = projected_holdings(holdings, ("RB", "WR", "FLEX"), players, GAMES)
+    assert {h.sleeper_player_id for h in chosen} == {"rb", "wr-high", "wr-low"}
 
 
 # -- coverage over the players who can still score ---------------------

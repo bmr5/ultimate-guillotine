@@ -119,3 +119,21 @@ class AgentAnswerRepository:
                 (limit,),
             )
             return [AnswerRecord(*row) for row in cur.fetchall()]
+
+    def recent_for_member(
+        self, chat_guid_hash: str, member_id: int, limit: int = 2
+    ) -> list[AnswerRecord]:
+        """The asker's latest saved exchanges in this chat, even across sessions."""
+        with self._conn.cursor() as cur:
+            cur.execute(
+                """
+                select run_id, session_id, chat_guid_hash, asker_member_id, question,
+                       is_follow_up, kind, chat_text, source_line, report_title, report_html,
+                       facts, sources, prompt_version, model
+                from private.agent_answers
+                where chat_guid_hash = %s and asker_member_id = %s
+                order by id desc limit %s
+                """,
+                (chat_guid_hash, member_id, max(1, min(limit, 3))),
+            )
+            return [AnswerRecord(*row) for row in cur.fetchall()]

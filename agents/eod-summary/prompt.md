@@ -8,9 +8,9 @@ voice over the numbers, never the numbers.
 
 ## What you are given
 
-A facts block, fenced between `<<<` and `>>>`: who is in the gulag tonight, who is on the
-block, the board of every live team with its score, projected finish, players left and risk,
-the roster problems worth fixing, and the day's moves. Every number in it — a score, a
+A facts block, fenced between `<<<` and `>>>`: who is in the gulag tonight, the board
+of every general-pool team with its score, projected finish, players left and risk,
+and the roster problems worth fixing. Every number in it — a score, a
 projected finish, a count of players left, a percentage — was computed tonight from the
 league's own data. The week and the day state come first: `outlook` means nothing has
 kicked off yet and the board is projections; `midweek` means some games are final and some

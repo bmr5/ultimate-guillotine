@@ -102,8 +102,11 @@ def test_a_fixture_run_writes_only_the_artifact_and_touches_nothing(
     assert lines == [f"artifact: {artifact}"]
     html = artifact.read_text()
     assert html.startswith("<!doctype html>")
-    for expected in ("The board", "Member01", "Member17", "wk 5", "Roster watch", "Moves since"):
+    for expected in ("Monte Carlo", "Member01", "Member17", "wk 5", "Roster watch"):
         assert expected in html
+    assert "On the block" not in html
+    assert "Sweating" not in html
+    assert "Moves since" not in html
 
 
 def test_a_fixture_run_without_hermes_still_prints_when_the_colour_was_asked_for(
@@ -405,9 +408,8 @@ def _refresh_wire(monkeypatch: pytest.MonkeyPatch, *, failure: Exception | None 
 def test_the_scheduled_run_refreshes_rosters_and_transactions_before_it_reads(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Waivers clear at 10:08 and the post fires at 10:12; the roster and transaction
-    syncs run every ten minutes on their own phase, so the post pulls both itself
-    rather than trusting whatever the last fire happened to see."""
+    """The noon report refreshes rosters and transactions after the waiver window,
+    rather than trusting the last background sync."""
     calls, notes = _refresh_wire(monkeypatch)
     assert summary_cli.cmd_eod(parse("--quiet")) == 0
     assert calls == [

@@ -31,9 +31,9 @@ export const HistoryPage = lazy(() =>
   })),
 );
 
-export const SeasonHistoryPage = lazy(() =>
-  import("@/app/history/SeasonHistoryPage").then((module) => ({
-    default: module.SeasonHistoryPage,
+export const CurrentSeasonPage = lazy(() =>
+  import("@/app/season/CurrentSeasonPage").then((module) => ({
+    default: module.CurrentSeasonPage,
   })),
 );
 
@@ -48,6 +48,6 @@ export const SeasonHistoryPage = lazy(() =>
 export function prefetchPages(): void {
   void import("@/app/trades/TradesPage").catch(() => undefined);
   void import("@/app/history/HistoryPage").catch(() => undefined);
-  void import("@/app/history/SeasonHistoryPage").catch(() => undefined);
+  void import("@/app/season/CurrentSeasonPage").catch(() => undefined);
   void import("@/app/draft/DraftPage").catch(() => undefined);
 }

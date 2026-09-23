@@ -11,6 +11,7 @@ import threading
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
+from html.parser import HTMLParser
 from zoneinfo import ZoneInfo
 
 from ultimate_guillotine.agent.answer import CHAT_TEXT_LIMIT, LeagueAnswer, extract_answer
@@ -36,13 +37,62 @@ log = logging.getLogger(__name__)
 
 AGENT = "league-agent"
 COULD_NOT_FINISH = "Request failed. Try again."
-LOST_THREAD = "Previous context unavailable. "
+LOST_THREAD = "Full thread unavailable. "
 ATTACHMENT_FAILED = "Report attachment failed."
 NOT_AN_ANSWER = "your reply did not end with a valid LeagueAnswer JSON block"
 FORMER_MEMBER = "a former member"
 LOCAL_TZ = ZoneInfo("America/Chicago")
 #: Spelled out so the envelope reads the same whatever locale the process runs under.
 _WEEKDAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+PRIOR_EXCHANGE_LIMIT = 2
+PRIOR_QUESTION_CHARS = 1200
+PRIOR_ANSWER_CHARS = 1200
+PRIOR_REPORT_CHARS = 6000
+
+
+class _ReportText(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.parts: list[str] = []
+        self.in_body = False
+        self.ignored = 0
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag == "body":
+            self.in_body = True
+        elif tag in ("style", "script"):
+            self.ignored += 1
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "body":
+            self.in_body = False
+        elif tag in ("style", "script") and self.ignored:
+            self.ignored -= 1
+
+    def handle_data(self, data: str) -> None:
+        if self.in_body and not self.ignored:
+            self.parts.append(data)
+
+
+def _one_line(value: str, limit: int) -> str:
+    value = " ".join(value.split())
+    return value[:limit] + ("…" if len(value) > limit else "")
+
+
+def recent_exchange_context(answers: Sequence[AnswerRecord]) -> str:
+    """Bounded, readable past Q&A; a saved report is useful beyond its chat teaser."""
+    entries = []
+    for index, answer in enumerate(answers[:PRIOR_EXCHANGE_LIMIT], 1):
+        lines = [
+            f"{index}. Question: {_one_line(answer.question, PRIOR_QUESTION_CHARS)}",
+            f"Answer: {_one_line(answer.chat_text, PRIOR_ANSWER_CHARS)}",
+        ]
+        if answer.report_html:
+            parser = _ReportText()
+            parser.feed(answer.report_html)
+            lines.append(f"Report: {_one_line(' '.join(parser.parts), PRIOR_REPORT_CHARS)}")
+        entries.append("\n".join(lines))
+    return "\n\n".join(entries)
 
 
 @dataclass(frozen=True)
@@ -243,6 +293,13 @@ class AgentWorker:
                 self._fail(job, f"SnapshotUnavailable: {exc.reason}")
                 return "failed"
         turn = self._turn(snapshot, job)
+        if job.asker is not None:
+            with self._lock:
+                recent = self._answers.recent_for_member(
+                    chat_guid_hash(job.message.chat_guid), job.asker.member_id,
+                    PRIOR_EXCHANGE_LIMIT,
+                )
+            turn = replace(turn, prior_exchanges=recent_exchange_context(recent))
         lost = job.parent_run_id is not None and job.session is None
         resume = job.session.hermes_session_id if job.session else None
         try:

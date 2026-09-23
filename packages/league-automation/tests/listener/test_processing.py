@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
 from ultimate_guillotine.core.signature import sign
 from ultimate_guillotine.listener.processing import InboundProcessor, Trigger, TriggerRegistry
@@ -71,6 +72,78 @@ def test_matching_trigger_runs_and_persists_source() -> None:
     assert calls == ["g1"]
     assert sources.rows[0].trigger_name == "ping"
     assert sources.rows[0].excerpt == "@daddy ping"
+
+
+def test_blocked_member_cannot_run_any_bot_trigger() -> None:
+    calls = []
+    registry = TriggerRegistry()
+    registry.register(Trigger("league-agent", lambda m: True, lambda m: calls.append(m.guid), requires_bot_access=True))
+    sources = FakeSources()
+
+    class Contacts:
+        def member_for_handle_hash(self, digest):
+            return SimpleNamespace(member_id=4)
+
+    processor = InboundProcessor(
+        {CHAT}, registry, FakeReceipts(), sources,
+        contacts=Contacts(), blocked_member_ids=frozenset({4}),
+    )
+    assert processor.process(msg("@bot question"), "blocked-event") == "blocked_member"
+    assert calls == [] and sources.rows == []
+
+
+def test_member_allowlist_denies_other_and_unknown_senders() -> None:
+    calls = []
+    registry = TriggerRegistry()
+    registry.register(Trigger("league-agent", lambda m: True, lambda m: calls.append(m.guid), requires_bot_access=True))
+    sources = FakeSources()
+
+    class Contacts:
+        def member_for_handle_hash(self, digest):
+            if digest == handle_hash("+15555550100"):
+                return SimpleNamespace(member_id=11)
+            if digest == handle_hash("+15555550101"):
+                return SimpleNamespace(member_id=4)
+            return None
+
+    from ultimate_guillotine.data.repositories import handle_hash
+
+    processor = InboundProcessor(
+        {CHAT}, registry, FakeReceipts(), sources,
+        contacts=Contacts(), allowed_member_ids=frozenset({11}),
+    )
+    assert processor.process(msg("@bot mine", guid="mine"), "e1") == "handled:league-agent"
+    assert processor.process(
+        msg("@bot other", guid="other").model_copy(update={"sender_address": "+15555550101"}), "e2"
+    ) == "blocked_member"
+    assert processor.process(
+        msg("@bot unknown", guid="unknown").model_copy(update={"sender_address": None}), "e3"
+    ) == "blocked_member"
+    assert processor.process(msg("@bot mac", from_me=True, guid="mac"), "e4") == "handled:league-agent"
+    assert calls == ["mine", "mac"]
+    assert [row.source_guid for row in sources.rows] == ["mine", "mac"]
+
+
+def test_restricted_member_trade_alert_still_logs_without_running_bot() -> None:
+    calls = []
+    registry = TriggerRegistry()
+    registry.register(Trigger("trade-registrar", lambda m: m.text.startswith("🚨"),
+                              lambda m: calls.append("trade")))
+    registry.register(Trigger("league-agent", lambda m: "@bot" in m.text,
+                              lambda m: calls.append("bot"), requires_bot_access=True))
+    sources = FakeSources()
+
+    class Contacts:
+        def member_for_handle_hash(self, digest):
+            return SimpleNamespace(member_id=4)
+
+    processor = InboundProcessor(
+        {CHAT}, registry, FakeReceipts(), sources,
+        contacts=Contacts(), allowed_member_ids=frozenset({10, 11, 13}),
+    )
+    assert processor.process(msg("🚨 trade alert @bot", guid="trade"), "e") == "handled:trade-registrar"
+    assert calls == ["trade"]
+    assert sources.rows[0].trigger_name == "trade-registrar"
 
 
 def test_handler_error_is_reported_not_raised() -> None:

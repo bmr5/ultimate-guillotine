@@ -22,7 +22,7 @@ class FakeAI:
 
 def test_prompt_is_versioned_and_states_the_rules() -> None:
     prompt = load_prompt()
-    assert PROMPT_VERSION == "2026.5"
+    assert PROMPT_VERSION == "2026.9"
     assert prompt.startswith(f"<!-- prompt_version: {PROMPT_VERSION} -->")
     assert "verbatim" in prompt and "null" in prompt and "fairness" in prompt
 
@@ -37,7 +37,7 @@ def test_prompt_orders_not_a_trade_before_unclear_and_scopes_naming() -> None:
     prompt = load_prompt()
     assert "Decide `not_a_trade` first" in prompt
     assert "Only when the message announces a transaction" in prompt
-    assert "in the announcement itself" in prompt
+    assert "If fewer than two parties can then be identified" in prompt
     assert "one-sentence `unclear_reason`" in prompt
     assert prompt.index("Decide `not_a_trade` first") < prompt.index("`unclear_reason`")
 
@@ -130,8 +130,8 @@ PROMPT_RULES_2026_4 = [
         "A name that matches nobody's roster is left exactly as the announcement wrote it",
     ),
     (
-        "the rosters are a spelling aid, never an ownership check",
-        "`Rosters` says how a name is spelled. It never says who is allowed to trade whom",
+        "the rosters do not determine who is allowed to trade",
+        "It never says who is allowed to trade whom",
     ),
     (
         "a roster that disagrees with the announcement does not make it unclear",
@@ -259,8 +259,8 @@ PROMPT_RULES_2026_5 = [
         "The assets are copied through as written and never a reason to withhold a reading",
     ),
     (
-        "fewer than two people is the only unclear rule left",
-        "if fewer than two people are named in the announcement itself, set `kind` to `unclear`",
+        "fewer than two identified parties requires clarification",
+        "If fewer than two parties can then be identified, set `kind` to `unclear`",
     ),
 ]
 

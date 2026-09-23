@@ -5,12 +5,15 @@ scores, a half-played schedule and a few injuries; the repository cases run the
 same reads against the local database over ``db_seed``.
 """
 
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
-from tests.agent.fixture import fixture_snapshot
+from tests.agent.fixture import LINEUP, fixture_snapshot
 from tests.summary import db_seed
+from ultimate_guillotine.summary.agent import build_packet
 from ultimate_guillotine.summary.models import PlayerInfo
+from ultimate_guillotine.summary.render import View
 from ultimate_guillotine.summary.schedule import Game
 from ultimate_guillotine.summary.snapshot import (
     EodInputs,
@@ -111,6 +114,49 @@ def test_points_come_off_the_score_row_and_a_missing_row_is_an_absence() -> None
     assert not missing.has_score_row
     assert missing.points == Decimal(0)
     assert snap.scores_synced_at == NOW
+
+
+def test_pregame_zero_score_feed_does_not_override_the_current_roster_lineup() -> None:
+    league = fixture_snapshot(week=WEEK)
+    scores = [ScoreRow(t.team_id, Decimal(0), {}, (), NOW) for t in league.teams]
+    games = {name: _game("pregame", "KC", "DEN", "pre_game") for name in ("KC", "DEN")}
+    snap = assemble(_inputs(games=games, scores=scores))
+    assert snap.day_state == "outlook"
+    assert all(t.lineup_matches for t in snap.live_teams())
+    live = assemble(_inputs(scores=scores))
+    assert live.day_state == "midweek"
+    assert any(not t.lineup_matches for t in live.live_teams())
+
+
+def test_empty_recorded_lineup_uses_playable_bench_for_monte_carlo() -> None:
+    league = fixture_snapshot(week=WEEK)
+    original = league.teams[0]
+    benched = replace(
+        original,
+        holdings=tuple(
+            replace(h, slot="bench", slot_index=None, lineup_position=None)
+            for h in original.holdings
+        ),
+    )
+    league = replace(league, teams=(benched, *league.teams[1:]))
+    scores = [ScoreRow(t.team_id, Decimal(0), {}, (), NOW) for t in league.teams]
+    games = {name: _game("pregame", "KC", "DEN", "pre_game") for name in ("KC", "DEN")}
+    inputs = _inputs(games=games, scores=scores)
+    players = {
+        **inputs.players,
+        **{h.sleeper_player_id: PlayerInfo("KC", None) for h in benched.holdings},
+    }
+    inputs = replace(inputs, league=league, players=players, roster_positions=LINEUP)
+    snap = assemble(inputs)
+    team = snap.team(original.team_id)
+    assert team.empty_slots() == 8
+    assert len(team.assumed_starters()) == 8
+    assert len(team.projected_pending()) == 8
+    assert team.points == 0
+    packet = build_packet(snap, simulations=100)
+    assert packet.result is not None
+    assert packet.result.teams[team.team_id].projected_final > 0
+    assert View(packet).original_projected(team) == "0"
 
 
 def test_an_injury_flag_from_the_directory_takes_a_starter_out() -> None:

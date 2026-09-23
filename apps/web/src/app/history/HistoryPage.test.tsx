@@ -20,6 +20,13 @@ vi.mock("@/history/useSeasonResults", () => ({
     errors: [],
   }),
 }));
+vi.mock("@/history/useWeeklyScoreRecords", () => ({
+  useWeeklyScoreRecords: () => ({
+    data: { highs: [], lows: [], coverage: [] },
+    isPending: false,
+    isError: false,
+  }),
+}));
 
 function renderPage() {
   const client = new QueryClient({
@@ -53,7 +60,7 @@ describe("HistoryPage", () => {
     state.isPending = false;
   });
 
-  it("lists one card per season, newest first, and nothing else", () => {
+  it("keeps the past champion cards below the weekly records", () => {
     state.seasons = [
       {
         season: 2024,
@@ -87,6 +94,9 @@ describe("HistoryPage", () => {
       },
     ];
     renderPage();
+    expect(
+      screen.getByRole("heading", { name: "All-time weekly scores" }),
+    ).toBeInTheDocument();
     const headings = screen.getAllByText(/Champion 20\d\d/);
     expect(headings.map((node) => node.textContent)).toEqual([
       "Champion 2024",

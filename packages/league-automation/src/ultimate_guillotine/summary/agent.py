@@ -49,7 +49,7 @@ COVERAGE_GATE = Decimal(95)
 
 NO_SCHEDULE = "game status unavailable"
 
-Status = Literal["sent", "draft", "already_sent"]
+Status = Literal["sent", "draft", "already_sent", "skipped"]
 
 
 @dataclass(frozen=True)
@@ -112,7 +112,7 @@ def build_packet(
     elif any(
         s.status == "live" and s.remaining_fraction is None
         for t in snapshot.live_teams()
-        for s in t.starters
+        for s in t.projected_lineup()
     ):
         reason = "live game clocks unavailable"
     elif coverage < COVERAGE_GATE:
@@ -133,6 +133,7 @@ def compose_summary(
     use_ai: bool = True,
     simulations: int = DEFAULT_SIMULATIONS,
     seed: int | None = None,
+    packet: EodPacket | None = None,
 ) -> Composed:
     """The message: odds, deterministic text, and the colour when one survives.
 
@@ -141,7 +142,7 @@ def compose_summary(
     connection it has promised not to use. ``ai`` may be ``None``; ``notifier``
     hears why a colour was dropped and nothing else.
     """
-    packet = build_packet(snapshot, simulations=simulations, seed=seed)
+    packet = packet or build_packet(snapshot, simulations=simulations, seed=seed)
     facts = facts_text(packet)
     color: EodColor | None = None
     model: str | None = None
@@ -200,6 +201,7 @@ class EodSummaryAgent:
         use_ai: bool = True,
         simulations: int = DEFAULT_SIMULATIONS,
         seed: int | None = None,
+        packet: EodPacket | None = None,
     ) -> Composed:
         return compose_summary(
             snapshot,
@@ -209,6 +211,7 @@ class EodSummaryAgent:
             use_ai=use_ai,
             simulations=simulations,
             seed=seed,
+            packet=packet,
         )
 
     def run(
@@ -228,8 +231,13 @@ class EodSummaryAgent:
         if not force and self._repo.sent_today(season_id, week, kind):
             return Outcome("already_sent", "", None, False)
 
-        composed = self.compose(snapshot, now, use_ai=use_ai, simulations=simulations, seed=seed)
-        packet = composed.packet
+        packet = build_packet(snapshot, simulations=simulations, seed=seed)
+        if packet.result is None:
+            self._notifier.ops(f"EOD summary skipped: {packet.no_odds_reason}")
+            return Outcome("skipped", "", None, False)
+        composed = self.compose(
+            snapshot, now, use_ai=use_ai, simulations=simulations, seed=seed, packet=packet
+        )
         if packet.result is not None:
             self._repo.record_snapshot(season_id, week, kind, snapshot, packet.result, now)
         recap_id = self._repo.record_recap(

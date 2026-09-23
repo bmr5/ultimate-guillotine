@@ -8,7 +8,7 @@ import {
 } from "@/history/season/fixtures.test-support";
 import type { SeasonArchive } from "@/history/season/types";
 
-import { SeasonHistoryPage } from "./SeasonHistoryPage";
+import { CurrentSeasonPage } from "./CurrentSeasonPage";
 
 const state = vi.hoisted(() => ({
   archive: { weeks: [], events: [] } as SeasonArchive,
@@ -25,10 +25,13 @@ vi.mock("@/history/season/useSeasonArchive", () => ({
   }),
   useEventPlayers: () => ({ data: [], isPending: false, isError: false }),
 }));
-function renderPage(path = "/history/2026?week=1") {
+vi.mock("@/history/season/useWeeklyRosters", () => ({
+  useWeeklyRosters: () => ({ data: [], isPending: false, isError: false }),
+}));
+function renderPage(path = "/current-season?week=1&view=events") {
   return render(
     <MemoryRouter initialEntries={[path]}>
-      <SeasonHistoryPage />
+      <CurrentSeasonPage />
     </MemoryRouter>,
   );
 }
@@ -38,13 +41,27 @@ beforeEach(() => {
   state.error = false;
 });
 
-describe("2026 history page", () => {
-  it("exposes the tab and scheduled timeline without fabricating results", () => {
+describe("Current season page", () => {
+  it("opens scores by default and keeps the selected week when switching views", () => {
+    renderPage("/current-season?week=1");
+    expect(
+      screen.getByRole("button", { name: "Scores & rosters" }),
+    ).toHaveAttribute("aria-pressed", "true");
+    fireEvent.change(screen.getByRole("combobox", { name: "Week" }), {
+      target: { value: "2" },
+    });
+    expect(
+      screen.getByRole("region", { name: "Week 2 history" }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Gulag & cuts" }));
+    expect(screen.getByRole("combobox", { name: "Week" })).toHaveValue("2");
+    expect(
+      screen.getByRole("button", { name: "Gulag & cuts" }),
+    ).toHaveAttribute("aria-pressed", "true");
+  });
+  it("shows the current season and scheduled timeline without fabricating results", () => {
     renderPage();
-    expect(screen.getByRole("link", { name: "2026 season" })).toHaveAttribute(
-      "aria-current",
-      "page",
-    );
+    expect(screen.getByText("Current season · 2026")).toBeInTheDocument();
     expect(screen.getByText("Awaiting results")).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: /Week 1:.*18 teams scheduled/ }),
@@ -96,7 +113,9 @@ describe("2026 history page", () => {
   it("shows errors with a retry instead of an empty recorded history", () => {
     state.error = true;
     renderPage();
-    expect(screen.getByText("Could not load 2026 history")).toBeInTheDocument();
+    expect(
+      screen.getByText("Could not load current season"),
+    ).toBeInTheDocument();
     expect(screen.queryByText("Awaiting results")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     expect(state.refetch).toHaveBeenCalled();

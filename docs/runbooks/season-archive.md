@@ -2,7 +2,7 @@
 
 The archive records gulag qualification, actual participation, survival, official elimination, and the champion separately. Week 1 sends two teams to the next gulag and eliminates nobody. Weeks 2–11 cut the current gulag loser and select two eligible general-pool teams for the following contest. Week 12 cuts the final gulag loser and one eligible general-pool team. Weeks 13–16 cut the lowest remaining scorer. Week 17 records the champion and runner-up.
 
-Production activation completed September 10, 2026. Both migrations are applied, all four jobs are enabled, and the first capture saved 18 teams. The first weekly checkpoint is September 14 at 11:30 PM Central, followed by September 15 at 8:00 AM verification. The website tab is implemented and verified locally; this task has not published the web app.
+Production activation completed September 10, 2026. Both migrations are applied, all four jobs are enabled, and the first capture saved 18 teams. The first weekly checkpoint is September 14 at 11:30 PM Central, followed by September 15 at 8:00 AM verification. The website tab was published September 10 at 7:34 PM Central and verified at https://ultimate-guillotine-sage.vercel.app/current-season. Release dpl_BBewBdvuTnmcsW4evCwN7PwbX7vz was built from committed source f13ca32, without unrelated uncommitted edits. The board loads without the final-roster error.
 
 ## Scheduled work
 
@@ -15,9 +15,17 @@ The existing guillotine Hermes profile runs four local-output jobs:
 | `guillotine-week-close` | Monday 11:30 PM | Begin the weekly provisional result |
 | `guillotine-week-verify` | Tuesday 8:00 AM | Confirm results after games finish and score inputs stay unchanged for at least 30 minutes |
 
-The jobs use Python and Sleeper reads without LLM calls. They do not text the league or post to Discord. The existing operations run audit can detect missed executions. Reinstall only these four jobs with `.venv/bin/python hermes/guillotine/install_archive.py`. It updates jobs by name and requires a host using Central time in summer and winter. The profile gateway must remain running.
+The jobs use Python and Sleeper reads without LLM calls. After confirmation commits, `archive tick` sends a short cuts and gulag text to the registered production league chat. Capture and provisional results stay silent; archive jobs do not post to Discord. The existing operations run audit can detect missed executions. Reinstall only these four jobs with `.venv/bin/python hermes/guillotine/install_archive.py`. It updates jobs by name and requires a host using Central time in summer and winter. The profile gateway must remain running.
 
 The database stores each week's due time, observed cutoff, candidate hash, and published revision. A process restart does not lose progress. A delayed or reopened game prevents confirmation. After confirmation, corrections are checked hourly for seven days and daily through the end of the season correction window. A correction replaces the whole week's current view, withdraws dependent later weeks, and recalculates official elimination flags. Earlier snapshots remain available as evidence.
+
+## Cuts and gulag announcement
+
+Enabled September 14, 2026; gulag qualifiers added September 15. Tuesday's 8 AM Central confirmation sends the week's cut names, number of teams remaining, and the two qualifiers for the following gulag, with the usual bot signature. Week 1 says `Week 1: Nobody was cut. All 18 teams remain alive.` followed by `Week 2 gulag qualifiers: Nick R and Brandon L.` Gulag qualification is distinct from elimination and does not imply an agreed substitute is already assigned. Week 12 lists both cuts and no next gulag; subsequent weeks also omit that line. Rosters and FAAB are not included.
+
+The announcement requires a production archive, production delivery mode, and contiguous confirmed weeks. Unfinished games or unresolved rulings delay it until a retry confirms the result. The existing 15-minute retry also recovers failed delivery without requiring another score revision. It checks the stored production chat and participant fingerprint before sending.
+
+`archive-cuts` agent runs and outbound message records retain delivery state. A season lock serializes publication and announcements; reservations commit before sending. Normal retries and score-only revisions do not repeat a delivered result. A changed cut list or gulag pair sends a `Correction:` message. The original cuts-only announcement receives one complete correction with the missing gulag names; its original delivery record is preserved. An ambiguous send reuses its original run and text so the delivery layer can reconcile it with message history. Test archives and test/disabled delivery modes never send cut announcements.
 
 ## Capture limits
 
@@ -54,6 +62,18 @@ This example requires replacing the IDs and trade code with the actual records. 
 
 ## Deployment and verification
 
-Apply `20260911010000_season_event_archive.sql` and `20260911011000_archive_automation.sql`, then enable with `.venv/bin/ug archive enable --season 2026 --scope production`. Scope cannot be switched on an existing archive. Enabling checks the 18-team league identity and all 17 scheduled scoring weeks. The website route is `/history/2026`; it reads only production revisions. The board reads corrected cut rosters through `effective_final_rosters`.
+Apply `20260911010000_season_event_archive.sql` and `20260911011000_archive_automation.sql`, then enable with `.venv/bin/ug archive enable --season 2026 --scope production`. Scope cannot be switched on an existing archive. Enabling checks the 18-team league identity and all 17 scheduled scoring weeks. The website route is `/current-season`; it reads only production revisions. The board reads corrected cut rosters through `effective_final_rosters`.
 
 The 2026 rules are the only rules enabled by this implementation. Review the next season's rules and identity mapping before extending activation beyond 2026. No pre-2026 history is reconstructed. General chat queries and player career-history aggregation remain separate follow-up work.
+
+## Website release checks
+
+For a local Vercel production build, verify that both `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are nonempty after `vercel pull`. These are public browser settings. The key is the Supabase publishable key, never a privileged service-role key or database credential. Vercel had marked these values sensitive, so the CLI exported blank values and the first local release failed to start. The previous site was restored, the two public settings were made available to builds, and the corrected release was verified before promotion.
+
+The release passed its production build, lint, and 965 web tests. The isolated test run needed placeholder public environment values for the player-card suite. Browser verification confirmed the history empty state and live board data. The automatic jobs remained active throughout the website release.
+
+## Current season navigation
+
+The active season archive now has its own **Current season** tab in the main navigation, next to Board. **History** contains only past-season champion cards. Old `/history/2026` URLs redirect to `/current-season`, preserving the query string and selected week. The header wraps its links on small screens.
+
+Release `dpl_5s9Dh8Wsu72oGYM4k8oyuR8jBzGd` publishes this navigation change. Sixteen existing page/layout tests pass, along with lint and the production build. Browser checks cover the Week 12 redirect, the separate past-season view, and navigation at a 390-pixel viewport.

@@ -1,8 +1,7 @@
-"""The per-turn query: the week, the asker, the fenced message, the contract.
+"""The per-turn query: the week, asker, saved exchanges, message and contract.
 
-Nothing else. Rosters, history, prices and rules reach the agent through its
-tools and its skill, not through this envelope, so the one string that carries
-a member's own words carries no other member's anything.
+Rosters, prices and rules reach the agent through its tools. Recent saved Q&A
+is scoped to the same asker and chat before this envelope is built.
 """
 
 import json
@@ -21,8 +20,13 @@ _VERSION = re.compile(r"<!--\s*prompt_version:\s*(\S+)\s*-->")
 _TOKEN = re.compile(r"__[A-Z]+(?:_[A-Z]+)*__")
 MESSAGE_OPEN = "<<<MESSAGE"
 MESSAGE_CLOSE = "MESSAGE>>>"
+PRIOR_OPEN = "<<<PRIOR_EXCHANGES"
+PRIOR_CLOSE = "PRIOR_EXCHANGES>>>"
 #: A marker in a member's own text, respelled with a space so it cannot open or close the fence.
-DEFANGED = {MESSAGE_OPEN: "<<< MESSAGE", MESSAGE_CLOSE: "MESSAGE >>>"}
+DEFANGED = {
+    MESSAGE_OPEN: "<<< MESSAGE", MESSAGE_CLOSE: "MESSAGE >>>",
+    PRIOR_OPEN: "<<< PRIOR_EXCHANGES", PRIOR_CLOSE: "PRIOR_EXCHANGES >>>",
+}
 UNKNOWN_SENDER = (
     "unknown sender -- the league cannot place this handle; ask which team to plan for, "
     "and plan for nobody until told"
@@ -51,6 +55,7 @@ class Turn:
     asker_label: str | None
     is_follow_up: bool
     message: str
+    prior_exchanges: str = ""
 
 
 def _neutralize(text: str) -> str:
@@ -77,6 +82,7 @@ def build_envelope(turn: Turn) -> str:
             else "the first question in a new conversation"
         ),
         "__MESSAGE__": _neutralize(turn.message.strip()),
+        "__PRIOR_EXCHANGES__": _neutralize(turn.prior_exchanges or "None recorded."),
         "__CHAT_TEXT_LIMIT__": str(CHAT_TEXT_LIMIT),
         "__CHAT_MESSAGE_LIMIT__": str(CHAT_MESSAGE_LIMIT),
         "__SCHEMA__": json.dumps(LeagueAnswer.model_json_schema(), separators=(",", ":")),

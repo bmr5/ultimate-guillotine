@@ -1,7 +1,7 @@
 """The HTML artifact: the whole summary as one self-contained file for Quick Look.
 
 Ben (2026-09-10): send only the HTML file, named MonteCarlo-Date. The file contains
-every section, the full board as a table, and the odds as bars.
+the gulag, the general pool as a table, and the odds as bars.
 Tapping it on an iPhone opens Quick Look, which renders
 HTML with inline CSS and nothing else.
 
@@ -18,12 +18,7 @@ from html import escape
 
 from ultimate_guillotine.summary.color import EodColor
 from ultimate_guillotine.summary.models import LOCAL_TZ, EodPacket, TeamLine
-from ultimate_guillotine.summary.render import (
-    View,
-    build_sections,
-    move_suffix,
-    moves_heading,
-)
+from ultimate_guillotine.summary.render import View, build_sections
 
 #: The League Agent spec's cap on a rendered artifact.
 ARTIFACT_MAX_BYTES = 200 * 1024
@@ -64,7 +59,6 @@ td.team{font-weight:600}
 .bar{display:block;height:5px;border-radius:3px;background:rgba(255,255,255,.1);margin-top:4px;overflow:hidden}
 .bar i{display:block;height:100%;background:#f0a24a}
 .bar.red i{background:#ff6b7a}.bar.safe i{background:#5f6577}
-.gulag td.team::before{content:"⚔ ";color:#ff6b7a}
 .est{color:#a3a9bd}
 .out{margin:10px 0 0;color:#a3a9bd;font-size:14px}
 ul{margin:0;padding-left:18px}
@@ -96,9 +90,9 @@ def _bar(view: View, team: TeamLine) -> str:
     return f'<span class="bar {_pct_class(view, team)}"><i style="width:{width}%"></i></span>'
 
 
-def _pair_row(view: View, team: TeamLine, *, to_lose: bool) -> str:
+def _pair_row(view: View, team: TeamLine) -> str:
     """The team, its risk, and original, current and actual scoring figures."""
-    risk = view.loss_risk(team) if to_lose else view.block_risk(team)
+    risk = view.loss_risk(team)
     cells = [f'<span class="who">{escape(team.label)}</span>']
     if risk is not None:
         cells.append(f'<span class="pct {_pct_class(view, team)}">{escape(risk)}</span>')
@@ -127,34 +121,13 @@ def _gulag_card(view: View) -> str | None:
     problem = view.gulag_problem()
     if problem is not None:
         return f'<section class="card"><h2>⚔️ The gulag</h2><p class="note">{escape(problem)}</p></section>'
-    rows = "".join(_pair_row(view, team, to_lose=True) for team in view.gulag_pair())
-    note = (
-        '<p class="sweat">(pairing inferred from last week\'s scores)</p>'
-        if view.gulag_provisional()
-        else ""
-    )
+    rows = "".join(_pair_row(view, team) for team in view.gulag_pair())
+    note_text = view.gulag_note()
+    note = f'<p class="sweat">({escape(note_text)})</p>' if note_text else ""
     return (
         '<section class="card"><h2>⚔️ The gulag</h2><p class="note">loser is out</p>'
         f"{rows}{note}</section>"
     )
-
-
-def _block_card(view: View) -> str:
-    top, _sweating = view.block()
-    title = "The final" if view.block_title == "THE FINAL" else "On the block"
-    rows = "".join(_pair_row(view, team, to_lose=False) for team in top)
-    return (
-        f'<section class="card"><h2>{view.block_emoji} {title}</h2>'
-        f'<p class="note">{escape(view.block_note)}</p>{rows}</section>'
-    )
-
-
-def _sweating_card(view: View) -> str | None:
-    _top, sweating = view.block()
-    if not sweating:
-        return None
-    rows = "".join(_pair_row(view, team, to_lose=False) for team in sweating)
-    return f'<section class="card"><h2>⚰️ Sweating</h2>{rows}</section>'
 
 
 def _board_card(view: View) -> str:
@@ -173,7 +146,6 @@ def _board_card(view: View) -> str:
         heads.append('<th class="n">Risk</th>')
     rows: list[str] = []
     for rank, team in enumerate(view.ranked_board(), start=1):
-        classes = ' class="gulag"' if view.in_gulag(team) else ""
         cells = [f'<td class="rank n">{rank}</td>', f'<td class="team">{escape(team.label)}</td>']
         cells.append(f'<td class="n">{escape(view.original_projected(team))}</td>')
         projected = escape(view.projected(team))
@@ -188,16 +160,16 @@ def _board_card(view: View) -> str:
                 f'<td class="n"><span class="pct {_pct_class(view, team)}">'
                 f"{escape(view.risk(team))}</span>{_bar(view, team)}</td>"
             )
-        rows.append(f"<tr{classes}>{''.join(cells)}</tr>")
+        rows.append(f"<tr>{''.join(cells)}</tr>")
     out = view.out_line()
     out_html = f'<p class="out">{escape(out)}</p>' if out else ""
     ranking_note = (
-        "Sorted by current projection; the block is ranked by risk."
+        "Sorted by current projection."
         if odds
         else "Sorted by actual score while current projections and odds are unavailable."
     )
     return (
-        '<section class="card"><h2>📊 The board</h2>'
+        f'<section class="card"><h2>📊 {view.board_title(title_case=True)}</h2>'
         '<p class="note">Original: full-game projections for this lineup. '
         "Current: actual points plus projected scoring still to come. Actual: points scored. "
         f"{ranking_note}</p>"
@@ -215,21 +187,6 @@ def _watch_card(view: View) -> str | None:
     return f'<section class="card"><h2>🩹 Roster watch</h2><ul>{items}</ul></section>'
 
 
-def _moves_card(view: View) -> str | None:
-    moves = view.snap.moves
-    if not moves:
-        return None
-    items = []
-    for move in moves:
-        legs = [f"+{name}" for name in move.adds] + [f"−{name}" for name in move.drops]
-        items.append(
-            f"<li><b>{escape(move.team_label)}:</b> "
-            f"{escape(' '.join(legs))}{escape(move_suffix(move.kind, move.waiver_bid))}</li>"
-        )
-    heading = escape(moves_heading(view.snap, title_case=True))
-    return f'<section class="card"><h2>🔁 {heading}</h2><ul>{"".join(items)}</ul></section>'
-
-
 def render_html(packet: EodPacket, color: EodColor | None, now: datetime) -> str:
     """The whole summary as one page. Self-contained, static, escaped."""
     view = View(packet)
@@ -240,11 +197,8 @@ def render_html(packet: EodPacket, color: EodColor | None, now: datetime) -> str
         c
         for c in (
             _gulag_card(view),
-            _block_card(view),
-            _sweating_card(view),
             _board_card(view),
             _watch_card(view),
-            _moves_card(view),
         )
         if c
     )
@@ -269,8 +223,5 @@ def short_text(packet: EodPacket, color: EodColor | None, now: datetime) -> str:
     parts = [sections.header]
     if sections.gulag:
         parts.append(sections.gulag)
-    parts.append(sections.block)
-    if sections.sweating:
-        parts.append(sections.sweating)
     parts.append(sections.footer)
     return "\n\n".join(parts)

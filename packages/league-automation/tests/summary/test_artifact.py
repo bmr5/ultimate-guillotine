@@ -59,20 +59,20 @@ def test_the_page_is_self_contained_and_static() -> None:
     assert len(html.encode()) < ARTIFACT_MAX_BYTES
 
 
-def test_the_page_carries_every_section_and_every_live_team() -> None:
+def test_the_page_has_one_pool_table_without_redundant_sections() -> None:
     packet = _fixture_packet()
     html = render_html(packet, None, FIXTURE_NOW)
     for live in packet.snapshot.live_teams():
         assert live.label in html
     for heading in (
         "The gulag",
-        "On the block",
-        "Sweating",
-        "The board",
+        "The pool",
         "Roster watch",
-        "Moves since Sat 11:50 PM",
     ):
         assert heading in html
+    assert "On the block" not in html
+    assert "Sweating" not in html
+    assert "Moves since" not in html
     assert "Week 6" in html
     assert "Member17" in html and "wk 5" in html
     assert "Monte Carlo projections as of" in html
@@ -106,7 +106,7 @@ def test_the_colour_leads_the_page_when_there_is_one() -> None:
         color,
         NOW,
     )
-    assert html.index("Two graves dug") < html.index("On the block")
+    assert html.index("Two graves dug") < html.index("The board")
     assert "Member04 is toast." in html
 
 
@@ -139,16 +139,19 @@ def test_the_outlook_page_shows_both_projections_and_actual_zero_scores() -> Non
     assert '<th class="n">Original</th>' in body
     assert '<th class="n">Current</th>' in body
     assert '<th class="n">Actual</th>' in body
-    assert "actual 0.0" in body
+    assert '<td class="n">0.0</td>' in body
 
 
-def test_the_gulag_pair_are_marked_on_the_board() -> None:
+def test_the_gulag_pair_appear_only_in_their_section_not_the_pool_table() -> None:
     teams = (done_team(1, "100"), done_team(2, "95"), done_team(3, "60"), done_team(4, "50"))
     snap = snapshot(teams, week=5, phase_=phase(5, "gulag", gulag=(3, 4), source="replay"))
     html = render_html(_packet(snap), None, NOW)
     assert "The gulag" in html
     assert "inferred from last week" in html
-    assert html.count("⚔") >= 2
+    pool = html.split("<h2>📊 The pool</h2>", 1)[1].split("</section>", 1)[0]
+    assert "Member03" not in pool and "Member04" not in pool
+    assert "Member01" in pool and "Member02" in pool
+    assert "Member03" in html.split("<h2>⚔️ The gulag</h2>", 1)[1].split("</section>", 1)[0]
 
 
 def test_original_current_and_actual_stay_distinct_in_the_table_and_summary() -> None:
@@ -167,7 +170,6 @@ def test_original_current_and_actual_stay_distinct_in_the_table_and_summary() ->
         )
     )
     html = render_html(_packet(snap), None, NOW)
-    assert "original 112 · current 101 · actual 5.6" in html
     assert (
         '<td class="team">Sean</td><td class="n">112</td>'
         '<td class="n">101</td><td class="n">5.6</td>'
@@ -178,9 +180,8 @@ def test_original_current_and_actual_stay_distinct_in_the_table_and_summary() ->
 # -- the internal recap, never sent to chat -------------------------------
 
 
-def test_the_short_text_is_the_header_the_gulag_the_block_the_sweating_and_the_footer() -> None:
-    """Ben (2026-09-10): no commentary in the iMessage -- the colour stays in the
-    file -- the sweating teams as their own list, and no line about the attachment."""
+def test_the_short_text_is_only_the_header_gulag_and_footer() -> None:
+    """The stored preview stays brief; the HTML carries the full pool table."""
     packet = _fixture_packet()
     color = EodColor(headline="Knives out", blurb="Member18 is in trouble.")
     text = short_text(packet, color, FIXTURE_NOW)
@@ -188,8 +189,8 @@ def test_the_short_text_is_the_header_the_gulag_the_block_the_sweating_and_the_f
     assert lines[0] == "🗡️ GUILLOTINE DAILY · Week 6 · Sunday"
     assert "🔥" not in text and "Knives out" not in text
     assert "⚔️ THE GULAG" in text
-    assert "⚰️ ON THE BLOCK" in text
-    assert "⚰️ SWEATING" in text
+    assert "⚰️ ON THE BLOCK" not in text
+    assert "⚰️ SWEATING" not in text
     assert "📊 THE BOARD" not in text
     assert "🩹" not in text
     assert "attached" not in text  # Ben (2026-09-10): no "Full board attached" line

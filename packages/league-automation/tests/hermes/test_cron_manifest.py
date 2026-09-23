@@ -74,6 +74,13 @@ def test_the_scheduled_agents_are_the_ones_the_cli_records() -> None:
     }
 
 
+def test_sleeper_roster_sync_uses_fixed_minute_boundaries() -> None:
+    job = next(j for j in JOBS if j["name"] == "guillotine-sleeper-sync")
+    assert job["schedule"] == "* * * * *"
+    assert job["deliver"] == "local"
+    assert int(job["max_gap_minutes"]) <= 4
+
+
 def test_the_scores_jobs_all_record_the_same_agent() -> None:
     """Same arrangement as the projections rows, and for the same reason: a baseline plus
     three game-window bursts, one agent, so the baseline keeps the health check green on a
@@ -147,17 +154,15 @@ def test_the_transactions_job_is_pinned_and_the_draft_has_none() -> None:
 
 
 def test_the_summary_posts_on_the_mornings_ben_named() -> None:
-    """Ben (2026-09-10): a break on Tuesdays and Fridays; 8:15 AM Wednesday, Sunday
-    and Monday; 10:12 AM Thursday and Saturday, after each waiver round -- Ben saw them
-    finish at 10:08. Two rows, one agent, like the projections
-    jobs: the per-agent run key and the health check both see one job. The gap
-    budget clears the Monday-to-Wednesday gap."""
+    """Sunday and Monday at 8:15, Thursday and Saturday at noon after waivers.
+    Wednesday was removed; the noon buffer lets rosters settle. Both rows share
+    the agent's run key and health check."""
     rows = {j["name"]: j for j in JOBS if j["agent"] == "eod-summary"}
     assert set(rows) == {"guillotine-eod-summary", "guillotine-eod-summary-waivers"}
     assert {j["script"] for j in rows.values()} == {"guillotine_eod_summary.sh"}
     assert {j["deliver"] for j in rows.values()} == {"discord:#guillotine-ops"}
-    assert rows["guillotine-eod-summary"]["schedule"] == "15 8 * * 0,1,3"
-    assert rows["guillotine-eod-summary-waivers"]["schedule"] == "12 10 * * 4,6"
+    assert rows["guillotine-eod-summary"]["schedule"] == "15 8 * * 0,1"
+    assert rows["guillotine-eod-summary-waivers"]["schedule"] == "0 12 * * 4,6"
     assert all(int(j["max_gap_minutes"]) > 48 * 60 for j in rows.values())
 
 

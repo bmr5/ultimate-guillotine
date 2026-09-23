@@ -5,14 +5,14 @@ fixture pins the whole thing's size and that no team is left out.
 """
 
 import re
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from decimal import Decimal
 
 from tests.summary.helpers import NOW, done_team, phase, snapshot, starter, team
 from ultimate_guillotine.summary.color import EodColor
 from ultimate_guillotine.summary.fixture import FIXTURE_NOW, fixture_eod
 from ultimate_guillotine.summary.models import EodPacket, Move
-from ultimate_guillotine.summary.render import View, facts_text, percent, render, window_stamp
+from ultimate_guillotine.summary.render import View, facts_text, percent, render
 from ultimate_guillotine.summary.survival import simulate
 
 
@@ -104,7 +104,7 @@ def test_the_colour_sits_under_the_header_when_there_is_one() -> None:
 def test_no_colour_leaves_no_gap() -> None:
     text = render(_packet(_entry_week()), None, NOW)
     assert "🔥" not in text
-    assert text.splitlines()[3].startswith("⚰️")
+    assert text.splitlines()[3].startswith("📊")
 
 
 # -- the gulag ------------------------------------------------------------
@@ -138,14 +138,15 @@ def test_an_unknown_pairing_is_said_and_everyone_is_the_pool() -> None:
     teams = (done_team(1, "100"), done_team(2, "95"), done_team(3, "60"), done_team(4, "50"))
     snap = snapshot(teams, week=5, phase_=phase(5, "gulag", gulag=(), source="unknown"))
     text = render(_packet(snap), None, NOW)
-    assert "⚔️ THE GULAG · pairing unknown (a past week has no scores on file)" in text
-    assert "⚰️ ON THE BLOCK · bottom 2 enter the Week 6 gulag" in text
+    assert "⚔️ THE GULAG · pairing not yet confirmed" in text
+    assert "📊 THE BOARD" in text
+    assert "ON THE BLOCK" not in text
 
 
-# -- on the block ---------------------------------------------------------
+# -- redundant sections are omitted --------------------------------------
 
 
-def test_the_block_names_the_two_likeliest_and_who_is_sweating() -> None:
+def test_pool_odds_replace_block_and_sweating_sections() -> None:
     teams = (
         done_team(1, "100"),
         done_team(2, "52"),
@@ -154,23 +155,12 @@ def test_the_block_names_the_two_likeliest_and_who_is_sweating() -> None:
         team(5, points="40", starters=(starter("remaining", projected="20"),)),
     )
     text = render(_packet(snapshot(teams)), None, NOW)
-    block = text.split("⚰️ ON THE BLOCK · bottom 2 enter the Week 2 gulag\n", 1)[1]
-    block = block.split("\n\n", 1)[0].splitlines()
-    # Ben's line: the team, its risk, its projected finish, its actual score.
-    assert len(block) == 2
-    assert re.fullmatch(
-        r"Member0\d · \d+% · original \d+ · current \d+ · actual \d+\.\d", block[0]
-    ), block[0]
-    sweating = text.split("⚰️ SWEATING\n", 1)[1].split("\n\n", 1)[0].splitlines()
-    assert 1 <= len(sweating) <= 2
-    assert all(
-        re.fullmatch(r"Member0\d · \d+% · original \d+ · current \d+ · actual \d+\.\d", s)
-        for s in sweating
-    )
-    assert "Member01" not in text.split("⚰️ SWEATING\n", 1)[1].split("\n\n", 1)[0]
+    assert "ON THE BLOCK" not in text and "SWEATING" not in text
+    board = text.split("📊 THE BOARD · original proj · current proj · actual · left · risk\n", 1)[1]
+    assert all(f"Member0{i}" in board for i in range(1, 6))
 
 
-def test_a_cut_week_puts_one_team_on_the_block() -> None:
+def test_a_cut_week_keeps_the_risk_in_the_board_only() -> None:
     snap = snapshot(
         (done_team(1, "100"), done_team(2, "95"), done_team(3, "60")),
         week=14,
@@ -178,19 +168,21 @@ def test_a_cut_week_puts_one_team_on_the_block() -> None:
         day_state="final",
     )
     text = render(_packet(snap), None, NOW)
-    assert "⚰️ ON THE BLOCK · lowest score is cut" in text
-    assert "Member03 · locked · original 12 · current 60 · actual 60.0" in text
+    assert "ON THE BLOCK" not in text
+    assert "Member03 · 12 · 60 · 60.0 · 0 · locked" in text
     assert "SWEATING" not in text
 
 
-def test_the_final_names_the_title_at_stake() -> None:
+def test_the_final_has_no_extra_card() -> None:
     snap = snapshot(
         (done_team(1, "100"), done_team(2, "95")),
         week=17,
         phase_=phase(17, "final"),
         day_state="final",
     )
-    assert "🏆 THE FINAL · lower score is runner-up" in render(_packet(snap), None, NOW)
+    text = render(_packet(snap), None, NOW)
+    assert "THE FINAL" not in text
+    assert "📊 THE BOARD" in text
 
 
 # -- the board ------------------------------------------------------------
@@ -217,7 +209,7 @@ def test_original_keeps_finished_and_out_estimates_but_requires_complete_data() 
     assert view.actual(no_score) == "—"
 
 
-def test_the_board_ranks_by_projected_finish_and_marks_the_gulag_and_the_estimates() -> None:
+def test_the_pool_board_excludes_gulag_teams_and_ranks_the_rest() -> None:
     teams = (
         done_team(1, "100"),
         team(2, points="40", starters=(starter("remaining", projected="70"),)),
@@ -236,7 +228,7 @@ def test_the_board_ranks_by_projected_finish_and_marks_the_gulag_and_the_estimat
     )
     snap = snapshot(teams, week=5, phase_=phase(5, "gulag", gulag=(5, 6), source="events"))
     text = render(_packet(snap), None, NOW)
-    board = text.split("📊 THE BOARD · original proj · current proj · actual · left · risk\n", 1)[1]
+    board = text.split("📊 THE POOL · original proj · current proj · actual · left · risk\n", 1)[1]
     board = board.split("\n\n", 1)[0].splitlines()
     # Team 2 finishes at 110 on average but its risk of the bottom two is open.
     # Team 1 can also land there when both pending teams outscore it. Team 4's
@@ -244,13 +236,15 @@ def test_the_board_ranks_by_projected_finish_and_marks_the_gulag_and_the_estimat
     assert board[0].startswith("1. Member02 · 70 · 110 · 40.0 · 1 · ")
     assert re.fullmatch(r"2. Member01 · 12 · 100 · 100.0 · 0 · \d+%", board[1])
     assert board[2].startswith("3. Member03 · 12 · 95 · 95.0 · 0 · ")
-    assert board[3].startswith("4. Member05 · 12 · 60 · 60.0 · 0 · ⚔")
-    assert board[4].startswith("5. Member06 · 12 · 50 · 50.0 · 0 · ⚔")
-    assert board[5].startswith("6. Member04 · — · ~42 · 0.0 · 2 · ")
-    assert board[6] == "Out: Member07 (wk 3)"
+    assert board[3].startswith("4. Member04 · — · ~42 · 0.0 · 2 · ")
+    assert board[4] == "Out: Member07 (wk 3)"
+    assert "Member05" not in "\n".join(board)
+    assert "Member06" not in "\n".join(board)
+    assert "Member05" in text.split("⚔️ THE GULAG", 1)[1].split("\n\n", 1)[0]
+    assert "Member06" in text.split("⚔️ THE GULAG", 1)[1].split("\n\n", 1)[0]
 
 
-def test_before_kickoff_the_block_and_the_gulag_lines_carry_all_three_figures() -> None:
+def test_before_kickoff_the_gulag_and_pool_carry_all_three_figures() -> None:
     """The three figures stay visible even before kickoff."""
     teams = (
         team(1, starters=(starter("remaining", projected="100"),)),
@@ -273,10 +267,8 @@ def test_before_kickoff_the_block_and_the_gulag_lines_carry_all_three_figures() 
         r"Member06 · \d+% to lose · original 50 · current 50 · actual 0\.0", gulag[0]
     ), gulag[0]
     assert "actual 0.0" in gulag[0] and " left" not in gulag[0]
-    block = text.split("⚰️ ON THE BLOCK · bottom 2 enter the Week 6 gulag\n", 1)[1]
-    assert re.fullmatch(
-        r"Member0[1-4] · \d+% · original (\d+) · current \1 · actual 0\.0", block.splitlines()[0]
-    )
+    board = text.split("📊 THE POOL · original proj · current proj · actual · risk\n", 1)[1]
+    assert "1. Member01 · 100 · 100 · 0.0 · " in board
 
 
 def test_the_outlook_board_keeps_all_three_figures_and_drops_the_players_left() -> None:
@@ -333,7 +325,7 @@ def test_the_roster_watch_is_capped() -> None:
 # -- moves ----------------------------------------------------------------
 
 
-def test_the_moves_line_says_who_added_and_dropped_whom() -> None:
+def test_moves_do_not_appear_in_the_report_or_model_facts() -> None:
     moves = (
         Move("waiver", NOW, "Member03", ("New Guy",), ("Old Guy",), 12),
         Move("trade", NOW, "Member08", ("Star",), (), None),
@@ -342,35 +334,15 @@ def test_the_moves_line_says_who_added_and_dropped_whom() -> None:
     snap = snapshot(
         (done_team(1, "1"), done_team(2, "2"), done_team(3, "3")),
         moves=moves,
-        moves_since=NOW - timedelta(hours=48),
     )
     text = render(_packet(snap), None, NOW)
-    # Friday 11:50 PM Central, two days before the Sunday-night `NOW`.
-    lines = text.split("🔁 MOVES SINCE FRI 11:50 PM\n", 1)[1].split("\n\n", 1)[0].splitlines()
-    assert lines == [
-        "Member03: +New Guy −Old Guy (waiver $12)",
-        "Member08: +Star (trade)",
-        "Member09: +Pickup",
-    ]
+    facts = facts_text(_packet(snap))
+    assert "🔁" not in text and "🔁" not in facts
+    assert "New Guy" not in text and "New Guy" not in facts
 
 
 def test_no_moves_means_no_section() -> None:
     assert "🔁" not in render(_packet(_entry_week()), None, NOW)
-
-
-def test_the_window_stamp_keeps_its_meridiem_upper_case() -> None:
-    """Ben's paste read `moves since Wed 9:10 Am`: a title-casing slip."""
-    assert window_stamp(NOW - timedelta(hours=48)) == "Fri 11:50 PM"
-
-
-def test_a_moves_window_nobody_recorded_is_called_recent() -> None:
-    moves = (Move("waiver", NOW, "Member03", ("New Guy",), (), None),)
-    text = render(
-        _packet(snapshot((done_team(1, "1"), done_team(2, "2"), done_team(3, "3")), moves=moves)),
-        None,
-        NOW,
-    )
-    assert "🔁 RECENT MOVES\n" in text
 
 
 # -- footer and factual mode ---------------------------------------------
@@ -397,10 +369,7 @@ def test_factual_mode_carries_no_percentage_and_says_why() -> None:
     assert text.splitlines()[-1] == (
         "No Monte Carlo odds: coverage 50% of remaining starters · data as of 11:50 PM CST"
     )
-    assert "⚰️ ON THE BLOCK · bottom 2 enter the Week 2 gulag" in text
-    block = text.split("⚰️ ON THE BLOCK · bottom 2 enter the Week 2 gulag\n", 1)[1]
-    assert block.splitlines()[0] == "Member04 · original — · current — · actual 45.0"
-    assert block.splitlines()[1] == "Member03 · original 12 · current — · actual 50.0"
+    assert "ON THE BLOCK" not in text
     assert "SWEATING" not in text
     assert "📊 THE BOARD · original proj · current proj · actual · left" in text
 
@@ -428,7 +397,7 @@ def test_percent_rounds_whole_and_names_the_tails() -> None:
 def test_the_facts_text_is_the_middle_sections_only() -> None:
     packet = _packet(_entry_week())
     facts = facts_text(packet)
-    assert facts.startswith("⚰️ ON THE BLOCK")
+    assert facts.startswith("📊 THE BOARD")
     assert "GUILLOTINE DAILY" not in facts
     assert "Monte Carlo" not in facts
     assert "📊 THE BOARD" in facts

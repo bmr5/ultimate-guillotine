@@ -296,6 +296,7 @@ export function BoardPage() {
         onSearchTermChange={setRawSearch}
         projectionsUpdatedAt={board.projectionsUpdatedAt}
         scoresUpdatedAt={board.scoresUpdatedAt}
+        faabUpdatedAt={board.faabUpdatedAt}
         oddsUpdatedAt={board.oddsUpdatedAt}
         isReconnecting={isReconnecting}
       />

@@ -59,6 +59,21 @@ def test_a_follow_up_resumes_and_a_model_override_is_passed() -> None:
     assert command[command.index("-m") + 1] == "gpt-x"
 
 
+def test_resumed_turn_uses_current_profile_model(tmp_path: Path) -> None:
+    profile = tmp_path / "profile"
+    profile.mkdir()
+    config = profile / "config.yaml"
+    config.write_text("model:\n  default: gpt-6-astra\n")
+    runner = Runner()
+    client = HermesAgentClient(str(profile), runner=runner, binary="/bin/hermes")
+    config.write_text("model:\n  default: gpt-5.6-sol\n")
+    reply = client.run("again", resume="old-astra-session")
+    command = runner.calls[0]["command"]
+    assert command[command.index("-m") + 1] == "gpt-5.6-sol"
+    assert command[command.index("--resume") + 1] == "old-astra-session"
+    assert reply.model == "gpt-5.6-sol"
+
+
 def test_extra_env_reaches_the_subprocess() -> None:
     runner = Runner()
     _client(runner, extra_env={"UG_AGENT_FIXTURE": "1"}).run("x")

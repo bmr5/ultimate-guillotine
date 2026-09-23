@@ -58,6 +58,16 @@ export type ArchivePlayer = {
 
 export type SeasonArchive = { weeks: ArchiveWeek[]; events: ArchiveEvent[] };
 
+export type WeeklyTeam = {
+  team_id: number;
+  team_label: string;
+  manager_label: string | null;
+  points: number;
+  roster_at: string | null;
+  roster_coverage: Coverage;
+  players: Omit<ArchivePlayer, "snapshot_id" | "keeper">[];
+};
+
 type ReadTable<T> = { Row: T; Insert: never; Update: never; Relationships: [] };
 export type ArchiveDatabase = {
   public: {
@@ -67,6 +77,11 @@ export type ArchiveDatabase = {
       season_history_current_players: ReadTable<ArchivePlayer>;
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      get_weekly_rosters: {
+        Args: { p_week_revision_id: number };
+        Returns: WeeklyTeam[];
+      };
+    };
   };
 };

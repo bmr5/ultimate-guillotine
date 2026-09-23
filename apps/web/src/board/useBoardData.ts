@@ -101,6 +101,8 @@ export interface BoardDataResult {
    * so this is the stamp the header leads with whenever it exists.
    */
   scoresUpdatedAt: number | null;
+  /** Oldest team-state sync on this board; FAAB is no fresher than its oldest row. */
+  faabUpdatedAt: number | null;
   /**
    * When the Daily computed the odds on the cards: the week's newest `survival_snapshots.
    * snapshot_at`, or null before the week's first run. Ben: "just write the last time it was
@@ -198,6 +200,9 @@ export function useBoardData(options: BoardDataOptions): BoardDataResult {
     queryFn: () => fetchTeamSeasonState(boardClient, seasonId as number),
     enabled: hasSeason,
     ...shared,
+    // FAAB can change between chat announcements and the next Sleeper sync. Keep a
+    // bounded fallback even when the Realtime socket reports itself connected.
+    refetchInterval: MS_PER_MINUTE,
   });
 
   const holdings = useQuery({
@@ -475,6 +480,16 @@ export function useBoardData(options: BoardDataOptions): BoardDataResult {
     [boardTeams],
   );
 
+  const faabUpdatedAt = useMemo(() => {
+    let oldest: number | null = null;
+    for (const row of state.data ?? []) {
+      const syncedAt = Date.parse(row.synced_at);
+      if (Number.isNaN(syncedAt)) continue;
+      oldest = oldest === null ? syncedAt : Math.min(oldest, syncedAt);
+    }
+    return oldest;
+  }, [state.data]);
+
   // The odds stamp: the snapshot's own `snapshot_at`, for the same reason as the two above — a
   // refetch that returns the same row must not look fresher than the run that wrote it.
   const oddsUpdatedAt = useMemo(() => {
@@ -541,6 +556,7 @@ export function useBoardData(options: BoardDataOptions): BoardDataResult {
     errors,
     projectionsUpdatedAt,
     scoresUpdatedAt,
+    faabUpdatedAt,
     oddsUpdatedAt,
     refetchAll: () => {
       void queryClient.invalidateQueries({ queryKey: boardKeys.all });

@@ -27,6 +27,7 @@ from ultimate_guillotine.messages.bluebubbles import InboundMessage
 TEST_CHAT = "iMessage;+;chat-test"
 #: A second chat, registered listen-only: read, never posted to.
 LEAGUE_CHAT = "iMessage;+;chat-league"
+FRIENDSHIP_CHAT = "iMessage;+;chat-friendship"
 
 
 class StopLoop(Exception):
@@ -280,16 +281,24 @@ class TargetCursor(EmptyCursor):
         mode: str,
         chat_guid: str,
         listen: tuple[str, ...] = (),
+        reply: tuple[str, ...] = (),
         extra: dict[str, str] | None = None,
     ) -> None:
         self._targets = {mode: chat_guid, **(extra or {})}
         self._listen = listen
+        self._reply = reply
         self._row: tuple | None = None
         self._rows: list[tuple] = []
 
     def execute(self, sql, params=None) -> None:
         wanted = params[0] if params else None
-        self._rows = [(guid,) for guid in self._listen] if "role = 'listen'" in sql else []
+        self._rows = (
+            [(guid,) for guid in self._listen]
+            if "role = 'listen' and participant_fingerprint is null" in sql
+            else [(guid,) for guid in self._reply]
+            if "role = 'listen' and participant_fingerprint is not null" in sql
+            else []
+        )
         chat = self._targets.get(wanted) if "delivery_targets" in sql else None
         self._row = (1, wanted, chat, "fingerprint", "label") if chat else None
 
@@ -309,15 +318,17 @@ class ConfiguredConnection(EmptyConnection):
         mode: str = "test",
         chat_guid: str = TEST_CHAT,
         listen: tuple[str, ...] = (),
+        reply: tuple[str, ...] = (),
         extra: dict[str, str] | None = None,
     ) -> None:
         self._mode = mode
         self._chat_guid = chat_guid
         self._listen = listen
+        self._reply = reply
         self._extra = extra
 
     def cursor(self) -> TargetCursor:
-        return TargetCursor(self._mode, self._chat_guid, self._listen, self._extra)
+        return TargetCursor(self._mode, self._chat_guid, self._listen, self._reply, self._extra)
 
 
 class RecordingNotifier:
@@ -572,6 +583,38 @@ def test_production_keeps_the_self_test_chat_as_a_rehearsal_room(hermes_installe
     assert league.matches(_alert(LEAGUE_CHAT)) and not league.matches(_alert(TEST_CHAT))
     assert rehearsal.matches(_alert(TEST_CHAT)) and not rehearsal.matches(_alert(LEAGUE_CHAT))
     assert allowed == {TEST_CHAT, LEAGUE_CHAT}
+
+
+def test_registered_reply_chat_gets_agent_video_and_trade_triggers(
+    hermes_installed: None,
+) -> None:
+    processor, allowed = run_module.build_processor(
+        _settings(
+            delivery_mode="production",
+            production_chat_guid=LEAGUE_CHAT,
+            production_participant_fingerprint="fingerprint",
+        ),
+        ConfiguredConnection(
+            mode="production", chat_guid=LEAGUE_CHAT,
+            extra={"test": TEST_CHAT}, reply=(FRIENDSHIP_CHAT,),
+        ),
+        None, None, RecordingNotifier(),
+        agent_worker_factory=lambda chat_guid: FakeWorker(),
+    )
+    assert FRIENDSHIP_CHAT in allowed
+    assert any(t.matches(_alert(FRIENDSHIP_CHAT)) for t in _triggers_named(processor, "trade-registrar"))
+    agent = _triggers_named(processor, "league-agent")
+    assert any(
+        t.matches(_alert(FRIENDSHIP_CHAT).model_copy(update={"text": "@bot hi"}))
+        for t in agent
+    )
+    video = _trigger_named(processor, "trade-video")
+    assert video.matches(
+        _alert(FRIENDSHIP_CHAT).model_copy(update={"text": "@bot make a trade video"})
+    )
+    assert run_module.agent_chat_guids(
+        _settings(delivery_mode="test"), _target(), None, (FRIENDSHIP_CHAT,)
+    ) == (TEST_CHAT,)
 
 
 def test_a_listen_only_chat_with_nowhere_to_answer_registers_nothing() -> None:

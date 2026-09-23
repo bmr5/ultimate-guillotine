@@ -23,7 +23,7 @@ from ultimate_guillotine.summary.models import (
     TeamOdds,
 )
 
-MODEL_VERSION = "mc-2026.2"
+MODEL_VERSION = "mc-2026.3"
 DEFAULT_SIMULATIONS = 10_000
 
 _PROBABILITY = Decimal("0.0001")
@@ -98,7 +98,7 @@ def input_hash(snapshot: EodSnapshot, model: dict | None = None) -> str:
                         "points": str(s.points),
                         "remaining_fraction": str(s.remaining_fraction),
                     }
-                    for s in team.starters
+                    for s in team.projected_lineup()
                 ],
             }
             for team in sorted(snapshot.teams, key=lambda t: t.team_id)
@@ -185,7 +185,7 @@ def simulate(
         mean_total = team.points
         was_estimated = False
         left = 0
-        for starter in team.starters:
+        for starter in team.projected_lineup():
             draw = starter_draw(starter, medians, model)
             if draw is None:
                 continue

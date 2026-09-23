@@ -378,6 +378,10 @@ def current_gulag_events(conn, season_id: int):
         pair = ()
         try:
             alive, qualifiers, _ = prior_state(conn, season_id, "production", week, team_ids)
+        except Unresolved:
+            result.append((week, "archive_gulag_pair", {"team_ids": []}))
+            continue
+        try:
             ruling, _ = contest_ruling(conn, season_id, "production", week)
             subs = {int(k): int(v) for k, v in ruling["payload"].get("substitutions", {}).items()}
             if not subs.keys() <= set(qualifiers):
@@ -387,6 +391,11 @@ def current_gulag_events(conn, season_id: int):
                 raise Unresolved("invalid gulag participants")
             pair = candidate
         except Unresolved:
-            pass
+            # Confirmed qualifiers are still known even when protection terms
+            # leave the eventual participants unsettled.
+            result.append(
+                (week, "archive_gulag_qualifiers", {"team_ids": list(qualifiers)})
+            )
+            continue
         result.append((week, "archive_gulag_pair", {"team_ids": list(pair)}))
     return result

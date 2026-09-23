@@ -10,6 +10,7 @@ import yaml
 from ultimate_guillotine.agent.tools.mcp import TOOL_NAMES
 
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
+ENABLED_BUILTINS = ("web", "terminal", "file", "code_execution")
 
 
 def hermes(*args: str, input_text: str = "") -> str:
@@ -57,9 +58,9 @@ def main() -> None:
         source = read_config(ops / "config.yaml")
         if "model" in source:
             config["model"] = source["model"]
-    # Explicit lists prevent defaults and portable plugins from adding capabilities.
+    # Project inspection tools are available on every turn, alongside league and web tools.
     config["plugins"] = {"enabled": []}
-    config["platform_toolsets"] = {"cli": ["web", "league"]}
+    config["platform_toolsets"] = {"cli": [*ENABLED_BUILTINS, "league"]}
     config["memory"] = {"memory_enabled": False, "user_profile_enabled": False}
     config["platforms"] = {}
     config["agent"] = {"disabled_toolsets": []}
@@ -88,10 +89,12 @@ def main() -> None:
     listing = hermes("tools", "list")
     rows = re.findall(r"^\s*[✓✗]\s+(?:enabled|disabled)\s+(\S+)\s+(.+)$", listing, re.MULTILINE)
     labels = dict(rows)
-    if "web" not in labels:
+    if any(name not in labels for name in ENABLED_BUILTINS):
         raise ValueError("cannot audit this Hermes tools list format")
     # kanban is a native CLI builtin recovered by Hermes even though tools list omits it.
-    config["agent"]["disabled_toolsets"] = sorted((set(labels) | {"kanban"}) - {"web"})
+    config["agent"]["disabled_toolsets"] = sorted(
+        (set(labels) | {"kanban"}) - set(ENABLED_BUILTINS)
+    )
     config["known_builtin_toolsets"] = {"cli": sorted(labels)}
     save()
     # Hermes filters child environments. Forward only these non-secret caller settings,
@@ -120,8 +123,9 @@ def main() -> None:
     if len(sections) < 2:
         raise ValueError("cannot audit this Hermes tools summary format")
     enabled = re.findall(r"(?m)^\s+✓ (.+)$", sections[1])
-    if sorted(enabled) != sorted([labels["web"], "league"]):
-        raise ValueError("effective CLI tools must be exactly web and league")
+    expected = [labels[name] for name in ENABLED_BUILTINS] + ["league"]
+    if sorted(enabled) != sorted(expected):
+        raise ValueError("effective CLI tools differ from the configured project tools")
     probe = hermes("mcp", "test", "league")
     count = len(TOOL_NAMES)
     if not re.search(rf"Tools discovered: {count}\b", probe) or any(

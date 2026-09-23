@@ -36,7 +36,7 @@ PhaseKind = Literal["entry", "gulag", "double", "cut", "final", "over"]
 #: Where this week's gulag pairing came from. ``replay`` is provisional; ``events``
 #: is the Adjudicator's ruling; ``unknown`` means a replay was needed and a past
 #: week's scores are missing; ``none`` means the phase has no gulag at all.
-GulagSource = Literal["events", "replay", "unknown", "none"]
+GulagSource = Literal["events", "qualifiers", "replay", "unknown", "none"]
 
 #: The bad thing that can happen to a team this week, by the rules phase.
 AdverseEvent = Literal["gulag_entry", "gulag_loss", "cut", "title_loss"]
@@ -106,9 +106,26 @@ class TeamLine:
     #: zero above is an absence rather than a score.
     has_score_row: bool
     lineup_matches: bool = True
+    #: Forecast only: open slots filled from eligible bench players. ``None``
+    #: means the recorded lineup is also the forecast lineup.
+    projection_starters: tuple[StarterLine, ...] | None = None
 
     def pending(self) -> tuple[StarterLine, ...]:
         return tuple(s for s in self.starters if s.is_pending)
+
+    def projected_lineup(self) -> tuple[StarterLine, ...]:
+        return self.projection_starters if self.projection_starters is not None else self.starters
+
+    def projected_pending(self) -> tuple[StarterLine, ...]:
+        return tuple(s for s in self.projected_lineup() if s.is_pending)
+
+    def assumed_starters(self) -> tuple[StarterLine, ...]:
+        actual = {s.sleeper_player_id for s in self.starters if s.sleeper_player_id}
+        return tuple(
+            s
+            for s in self.projected_lineup()
+            if s.sleeper_player_id and s.sleeper_player_id not in actual
+        )
 
     def unprojected_pending(self) -> tuple[StarterLine, ...]:
         return tuple(s for s in self.pending() if s.projected is None)

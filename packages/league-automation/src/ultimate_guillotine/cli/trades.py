@@ -47,6 +47,7 @@ from ultimate_guillotine.trades.resolve import (
     resolve_extracted,
     validate,
 )
+from ultimate_guillotine.trades.transfers import recent_transfers_context
 
 #: What the model called a joke rather than a trade. A sentinel rather than a
 #: reason string so callers compare identity instead of matching prose.
@@ -213,10 +214,18 @@ def league_context(conn, members) -> str | None:
     try:
         snapshot = SnapshotRepository(conn).load()
         trades = TradeRepository(conn).list_recent(TRADE_LIMIT)
-        return context_from_snapshot(snapshot, members, trades) or None
+        pack = context_from_snapshot(snapshot, members, trades)
     except Exception as exc:  # noqa: BLE001 - any context failure degrades the same way
         print(f"no context pack: {exc.__class__.__name__}", file=sys.stderr)
         return None
+    try:
+        season = SeasonRepository(conn).current()
+        transfers = recent_transfers_context(conn, season) if season is not None else ""
+    except Exception as exc:  # noqa: BLE001 - preserve the roster pack on a history failure
+        conn.rollback()
+        print(f"no recent transfers: {exc.__class__.__name__}", file=sys.stderr)
+        transfers = ""
+    return "\n\n".join(section for section in (pack, transfers) if section) or None
 
 
 def cmd_extract(args: argparse.Namespace) -> int:

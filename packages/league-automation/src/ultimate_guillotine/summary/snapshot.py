@@ -31,7 +31,7 @@ import psycopg
 from ultimate_guillotine.agent.tools.snapshot import LeagueSnapshot, SnapshotRepository
 from ultimate_guillotine.history.archive_store import current_gulag_events
 from ultimate_guillotine.sleeper.team_projections import TeamWeekRepository
-from ultimate_guillotine.summary.lineup import build_starters
+from ultimate_guillotine.summary.lineup import build_starters, projected_holdings
 from ultimate_guillotine.summary.models import (
     LOCAL_TZ,
     EodSnapshot,
@@ -83,6 +83,7 @@ class EodInputs:
     #: ``None`` when the schedule could not be read; see the module docstring.
     week_games: Mapping[str, Game] | None
     starter_slots: int
+    roster_positions: tuple[str, ...] = ()
     #: When the moves window opened; see :func:`moves_window_start`.
     moves_since: datetime | None = None
 
@@ -144,6 +145,7 @@ def assemble(inputs: EodInputs) -> EodSnapshot:
     week_games = inputs.week_games or {}
     scores = {row.team_id: row for row in inputs.scores}
 
+    outlook = day_state(week_games) == "outlook" if available else False
     teams: list[TeamLine] = []
     for team in league.teams:
         score = scores.get(team.team_id)
@@ -155,6 +157,20 @@ def assemble(inputs: EodInputs) -> EodSnapshot:
             schedule_available=available,
             starter_slots=inputs.starter_slots,
         )
+        projected = None
+        if available and inputs.roster_positions and len(team.starters()) < inputs.starter_slots:
+            holdings = projected_holdings(
+                team.holdings, inputs.roster_positions, inputs.players, week_games
+            )
+            if len(holdings) > len(team.starters()):
+                projected = build_starters(
+                    holdings,
+                    players=inputs.players,
+                    points=score.players_points if score is not None else {},
+                    week_games=week_games,
+                    schedule_available=True,
+                    starter_slots=inputs.starter_slots,
+                )
         teams.append(
             TeamLine(
                 team_id=team.team_id,
@@ -166,12 +182,20 @@ def assemble(inputs: EodInputs) -> EodSnapshot:
                 eliminated_week=team.eliminated_week,
                 points=score.points if score is not None else Decimal(0),
                 starters=starters,
+                projection_starters=projected,
                 scores_synced_at=score.synced_at if score is not None else None,
                 has_score_row=score is not None,
                 lineup_matches=(
                     score is not None
-                    and {s.sleeper_player_id for s in starters if s.sleeper_player_id}
-                    == {pid for pid in score.starters if pid != "0"}
+                    and (
+                        {s.sleeper_player_id for s in starters if s.sleeper_player_id}
+                        == {pid for pid in score.starters if pid != "0"}
+                        or (
+                            outlook
+                            and score.points == 0
+                            and all(points == 0 for points in score.players_points.values())
+                        )
+                    )
                 ),
             )
         )
@@ -286,6 +310,12 @@ class EodRepository:
     def starter_slots(self, season_id: int) -> int:
         return TeamWeekRepository(self._conn).starter_slots(season_id)
 
+    def roster_positions(self, season_id: int) -> tuple[str, ...]:
+        with self._conn.cursor() as cur:
+            cur.execute("select roster_positions from public.seasons where id = %s", (season_id,))
+            row = cur.fetchone()
+        return tuple(row[0] or ()) if row else ()
+
     def previous_post_at(self, season_id: int) -> datetime | None:
         """When the league last got a post: the newest sent summary recap."""
         with self._conn.cursor() as cur:
@@ -314,6 +344,7 @@ class EodRepository:
             moves=moves,
             week_games=fetch_week_games(client, league.season, league.week),
             starter_slots=self.starter_slots(league.season_id),
+            roster_positions=self.roster_positions(league.season_id),
             moves_since=since,
         )
 

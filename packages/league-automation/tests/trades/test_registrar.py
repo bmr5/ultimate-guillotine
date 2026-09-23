@@ -331,7 +331,7 @@ def test_created_trade_sends_confirmation_and_records_run() -> None:
     assert delivery.sent[0][1] == "trade recorded in database"
     assert runs.reserved == ["trade:g1"] and runs.finished[0][1] == "succeeded"
     # The run records which prompt and model produced it, and hashes what was sent.
-    assert runs.finished[0][4] == "2026.5:m"
+    assert runs.finished[0][4] == "2026.9:m"
     assert runs.finished[0][3] == hashlib.sha256(delivery.sent[0][1].encode()).hexdigest()
 
 
@@ -748,6 +748,31 @@ def test_the_context_pack_reaches_the_model(monkeypatch: pytest.MonkeyPatch) -> 
     assert "Current NFL week: 4" in ai.users[0]
     # A pack that was built is a pack that did not degrade: no ops note about it.
     assert not [note for note in notifier.ops_sent if "context pack" in note]
+
+
+def test_executed_transfers_reach_the_model_with_the_current_rosters(monkeypatch):
+    monkeypatch.setattr(registrar_module, "SnapshotRepository", FakeSnapshotRepository)
+    history = "Recent executed player transfers (last 24 hours):\nPlayer Alpha: Member02 -> Member01"
+    monkeypatch.setattr(registrar_module, "recent_transfers_context", lambda *args: history)
+    ai = FakeAI(good_extraction())
+    reg, _, _ = build(ai, conn=SeasonConn([], (2026,)))
+    assert reg.handle(msg("🚨 Member02 rents Player Alpha from Member01")) == "created"
+    assert "Rosters:" in ai.users[0]
+    assert history in ai.users[0]
+
+
+def test_transfer_history_failure_preserves_the_roster_context(monkeypatch):
+    monkeypatch.setattr(registrar_module, "SnapshotRepository", FakeSnapshotRepository)
+
+    def unavailable(*args):
+        raise RuntimeError("unavailable")
+
+    monkeypatch.setattr(registrar_module, "recent_transfers_context", unavailable)
+    ai = FakeAI(good_extraction())
+    reg, _, notifier = build(ai, conn=SeasonConn([], (2026,)))
+    assert reg.handle(msg("🚨 Member01 sends Player Alpha to Member02")) == "created"
+    assert "Rosters:" in ai.users[0]
+    assert any("could not load recent transfers" in note for note in notifier.ops_sent)
 
 
 def test_a_candidate_from_a_listen_only_chat_is_reported_as_shadow() -> None:

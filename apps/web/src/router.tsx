@@ -6,9 +6,9 @@ import App from "@/app/layout";
 // The trades and history pages arrive in their own chunks; `lazyPages.ts` says why the board
 // does not.
 import {
+  CurrentSeasonPage,
   DraftPage,
   HistoryPage,
-  SeasonHistoryPage,
   TradesPage,
 } from "@/app/lazyPages";
 
@@ -53,8 +53,13 @@ export const router = createBrowserRouter([
         element: <HistoryPage />,
       },
       {
+        path: "current-season",
+        element: <CurrentSeasonPage />,
+      },
+      {
         path: "history/2026",
-        element: <SeasonHistoryPage />,
+        loader: ({ request }) =>
+          redirect(`/current-season${new URL(request.url).search}`),
       },
       // The catch-all stays last: it matches every path, and reading it after the pages it
       // is a fallback for is how the file says which routes are real.

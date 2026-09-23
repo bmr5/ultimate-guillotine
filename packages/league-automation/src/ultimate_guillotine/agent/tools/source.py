@@ -57,6 +57,8 @@ class LeagueSource(Protocol):
     def players(self) -> dict[str, PlayerInfo]: ...
     def trades(self, seasons: Sequence[int]) -> list[dict]: ...
     def catalog(self, season: int) -> list[dict]: ...
+    def historical_rosters(self, season: int, week: int | None = None) -> list[dict]: ...
+    def historical_transactions(self, season: int, week: int | None = None) -> dict: ...
     def season_results(self) -> list[SeasonResult]: ...
     def week_scores(self, week: int) -> list[WeekScore]: ...
     def gulag_entries(self, week: int) -> list[GulagEntry]: ...
@@ -102,7 +104,7 @@ class DatabaseSource:
             cur.execute(
                 """
                 select catalog_id, week, occurred_on, trade_type, structure, party_member_ids,
-                       assets, faab_total, confidence
+                       assets, faab_total, confidence, announcement
                 from public.trade_catalog where season = %s order by week nulls last, id
                 """,
                 (season,),
@@ -114,9 +116,68 @@ class DatabaseSource:
                     "trade_type": row[3], "structure": row[4],
                     "parties": [labels.get(i, "former member") for i in (row[5] or [])],
                     "assets": row[6], "faab_total": row[7], "confidence": row[8],
+                    "announcement": row[9],
                 }
                 for row in cur.fetchall()
             ]
+
+    def historical_rosters(self, season: int, week: int | None = None) -> list[dict]:
+        with self._conn.cursor() as cur:
+            cur.execute(
+                """
+                select week, manager_label, team_label, points, roster
+                from public.historical_weekly_scores
+                where season = %s and (%s::integer is null or week = %s)
+                order by week, manager_label
+                """,
+                (season, week, week),
+            )
+            return [
+                {"week": row[0], "member": row[1], "team_name": row[2],
+                 "points": float(row[3]), "roster": row[4]}
+                for row in cur.fetchall()
+            ]
+
+    def historical_transactions(self, season: int, week: int | None = None) -> dict:
+        """Read Sleeper's archived league, using the reviewed score archive as its ID source."""
+        with self._conn.cursor() as cur:
+            cur.execute(
+                "select distinct sleeper_league_id from public.historical_weekly_scores "
+                "where season = %s",
+                (season,),
+            )
+            league_ids = [row[0] for row in cur.fetchall()]
+            if len(league_ids) != 1:
+                return {"error": f"No unique archived Sleeper league for {season}."}
+            cur.execute(
+                """
+                select distinct on (sleeper_roster_id) sleeper_roster_id, manager_label
+                from public.historical_weekly_scores where season = %s
+                order by sleeper_roster_id, week desc
+                """,
+                (season,),
+            )
+            labels = dict(cur.fetchall())
+
+        league_id = league_ids[0]
+        users = {user.user_id: user.display_name for user in self._sleeper.get_users(league_id)}
+        for roster in self._sleeper.get_rosters(league_id):
+            labels.setdefault(roster.roster_id, users.get(roster.owner_id, "Former member"))
+
+        weeks = [week] if week is not None else range(1, 19)
+        raw = [tx for leg in weeks for tx in self._sleeper.get_transactions(league_id, leg)]
+        player_ids = sorted({
+            str(player_id) for tx in raw for field in ("adds", "drops")
+            for player_id in (tx.get(field) or {})
+        })
+        with self._conn.cursor() as cur:
+            cur.execute(
+                "select sleeper_player_id, full_name from public.players "
+                "where sleeper_player_id = any(%s)",
+                (player_ids,),
+            )
+            names = dict(cur.fetchall())
+        return {"raw": raw, "labels": labels, "names": names}
 
     def season_results(self) -> list[SeasonResult]:
         labels = self._labels()
@@ -261,6 +322,28 @@ class FixtureSource:
 
     def catalog(self, season: int) -> list[dict]:
         return []
+
+    def historical_rosters(self, season: int, week: int | None = None) -> list[dict]:
+        if season != 2025 or week not in (None, 6):
+            return []
+        return [{
+            "week": 6, "member": "Member05", "team_name": "Fixture 05",
+            "points": 101.5,
+            "roster": {"starters": [{"player_id": "p05s0", "player_label": "Starter 05-0",
+                                     "position": "QB", "slot": "QB", "points": 20.0}],
+                       "bench": []},
+        }]
+
+    def historical_transactions(self, season: int, week: int | None = None) -> dict:
+        if season != 2025 or week not in (None, 6):
+            return {"error": f"No unique archived Sleeper league for {season}."}
+        return {
+            "raw": [{"transaction_id": "fixture-2025-6", "type": "trade",
+                     "status": "complete", "leg": 6, "created": 1759859097873,
+                     "adds": {"p05s0": 5}, "drops": {"p05s0": 2}}],
+            "labels": {2: "Member02", 5: "Member05"},
+            "names": {"p05s0": "Starter 05-0"},
+        }
 
     def season_results(self) -> list[SeasonResult]:
         return [

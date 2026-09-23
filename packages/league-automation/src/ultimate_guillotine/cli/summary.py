@@ -162,7 +162,8 @@ def packet_json(packet: EodPacket) -> dict:
                 "faab_remaining": team.faab_remaining,
                 "points": str(team.points),
                 "has_score_row": team.has_score_row,
-                "pending": len(team.pending()),
+                "pending": len(team.projected_pending()),
+                "assumed_starters": [s.name for s in team.assumed_starters()],
                 "empty_slots": team.empty_slots(),
                 "out_starters": [f"{s.name} ({s.injury_status})" for s in team.out_starters()],
                 "unprojected_pending": [s.name for s in team.unprojected_pending()],
@@ -252,9 +253,9 @@ def _dry_run(
 def _refresh(deps, client, conn, state, now: datetime) -> None:
     """Pull the rosters and the transaction log before the read.
 
-    Waivers clear at 10:08 and the post fires at 10:12; the roster and transaction
-    syncs run every ten minutes on their own phase, so the post pulls both itself
-    rather than trusting whatever the last fire happened to see. Under a savepoint,
+    The waiver-day post fires at noon so rosters have time to settle. Roster and
+    transaction syncs run every ten minutes on their own phase, so the post refreshes
+    both rather than trusting whatever the last fire happened to see. Under a savepoint,
     so a refresh that fails leaves the run's transaction usable, and the failure is
     one ops note: the data layer's last good rows are on file and the footer
     stamps their age.
@@ -352,6 +353,6 @@ def cmd_eod(args: argparse.Namespace) -> int:
                 f"eod: {outcome.status}, week {snapshot.week}, "
                 f"odds {'yes' if outcome.odds else 'no'}, model {outcome.model or 'none'}"
             )
-        return 0
+        return 1 if outcome.status == "skipped" else 0
 
     return run_scheduled_with_notes(deps, AGENT, now, action)

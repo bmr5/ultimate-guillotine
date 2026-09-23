@@ -124,6 +124,7 @@ const result = (over: Partial<BoardDataResult> = {}): BoardDataResult => ({
   errors: [],
   projectionsUpdatedAt: Date.now(),
   scoresUpdatedAt: null,
+  faabUpdatedAt: Date.now(),
   oddsUpdatedAt: null,
   refetchAll: vi.fn(),
   ...over,
@@ -577,6 +578,17 @@ describe("BoardPage", () => {
       });
       renderPage();
       expect(screen.getByText("Stale data")).toBeInTheDocument();
+    });
+
+    it("warns about stale FAAB even when scores are fresh", () => {
+      boardData.current = result({
+        teams: [team({ teamId: 1 })],
+        scoresUpdatedAt: Date.now(),
+        faabUpdatedAt: Date.now() - 6 * MS_PER_MINUTE,
+      });
+      renderPage();
+      expect(screen.getByText("FAAB may be behind")).toBeInTheDocument();
+      expect(screen.queryByText("Stale data")).not.toBeInTheDocument();
     });
   });
 

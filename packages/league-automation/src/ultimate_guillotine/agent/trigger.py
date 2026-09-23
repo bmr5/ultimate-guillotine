@@ -111,4 +111,4 @@ def league_agent_trigger(
             log.warning("league agent could not react: %s", exc.__class__.__name__)
         worker.submit(job)
 
-    return Trigger(AGENT, matches, handle)
+    return Trigger(AGENT, matches, handle, requires_bot_access=True)

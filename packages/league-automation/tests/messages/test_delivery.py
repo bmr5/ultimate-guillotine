@@ -17,14 +17,19 @@ from ultimate_guillotine.messages.fingerprint import participant_fingerprint
 
 TEST_GUID = "iMessage;+;chat-test"
 PROD_GUID = "iMessage;+;chat-prod"
+REPLY_GUID = "iMessage;+;chat-friendship"
 PROD_MEMBERS = ["+15555550100", "+15555550101"]
+REPLY_MEMBERS = ["+15555550100", "+15555550102"]
 
 
 class FakeClient:
     def __init__(self) -> None:
         self.sent = []
         self.reactions = []
-        self.participants = {PROD_GUID: PROD_MEMBERS, TEST_GUID: ["+15555550100"]}
+        self.participants = {
+            PROD_GUID: list(PROD_MEMBERS), TEST_GUID: ["+15555550100"],
+            REPLY_GUID: list(REPLY_MEMBERS),
+        }
         self.history = []
         self.reply_guids = []
         self.info = {"private_api": True, "helper_connected": True}
@@ -67,6 +72,9 @@ class FakeTargets:
 
     def get(self, mode):
         return self.rows.get(mode)
+
+    def get_reply(self, chat_guid):
+        return self.rows.get(chat_guid)
 
 
 class FakeOutbound:
@@ -114,6 +122,9 @@ def make(mode: DeliveryMode, client=None, outbound=None, **kw):
                 participant_fingerprint(PROD_MEMBERS),
                 "league",
             ),
+            REPLY_GUID: DeliveryTarget(
+                3, None, REPLY_GUID, participant_fingerprint(REPLY_MEMBERS), "friendship",
+            ),
         }
     )
     client = client or FakeClient()
@@ -149,6 +160,22 @@ def test_production_rejects_participant_change() -> None:
     service, client, outbound, _ = make(DeliveryMode.PRODUCTION, client=client)
     with pytest.raises(TargetMismatch):
         service.deliver(None, "self-test", "hello")
+    assert client.sent == []
+    assert outbound.records == {}
+
+
+def test_registered_reply_chat_receives_its_own_answer() -> None:
+    service, client, _, _ = make(DeliveryMode.PRODUCTION)
+    service.deliver(None, "league-agent", "hello", reply_to=REPLY_GUID)
+    assert client.sent == [(REPLY_GUID, sign("hello"))]
+
+
+def test_reply_chat_rejects_changed_participants() -> None:
+    client = FakeClient()
+    client.participants[REPLY_GUID].append("+15555550199")
+    service, _, outbound, _ = make(DeliveryMode.PRODUCTION, client=client)
+    with pytest.raises(TargetMismatch):
+        service.deliver(None, "league-agent", "hello", reply_to=REPLY_GUID)
     assert client.sent == []
     assert outbound.records == {}
 

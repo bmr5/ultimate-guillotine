@@ -20,7 +20,8 @@ def test_every_tool_is_registered_and_answers_json() -> None:
     server, tools = build_server(FixtureSource())
     assert tuple(tools) == TOOL_NAMES == (
         "league_overview", "roster", "player", "projections", "trades", "price_history",
-        "trade_math", "rules", "history", "survival", "transactions",
+        "trade_math", "rules", "history", "historical_roster",
+        "historical_transactions", "survival", "transactions",
     )
     assert server.name == "league"
     overview = json.loads(tools["league_overview"]())
@@ -30,6 +31,8 @@ def test_every_tool_is_registered_and_answers_json() -> None:
     assert len(json.loads(tools["projections"]())["rows"]) == 17
     assert json.loads(tools["rules"]("trading"))["topic"] == "trading"
     assert json.loads(tools["history"]())["seasons"][0]["season"] == 2024
+    assert json.loads(tools["historical_roster"](2025, player="Starter 05-0"))["rows"][0]["member"] == "Member05"
+    assert json.loads(tools["historical_transactions"](2025, player="Starter 05-0"))["transactions"][0]["moves"][0]["member"] == "Member05"
     assert json.loads(tools["survival"]())["week"] == 6
     assert json.loads(tools["transactions"]())["transactions"][0]["type"] == "free_agent"
     assert json.loads(tools["trades"]())["trades"] == []
@@ -46,6 +49,8 @@ def test_no_tool_result_carries_a_join_key_a_hash_or_a_handle() -> None:
         "league_overview": (), "roster": ("Member05",), "player": ("Bench 05-0",),
         "projections": (), "trades": (), "price_history": ("RB",), "rules": (),
         "history": (), "survival": (), "transactions": (),
+        "historical_roster": (2025, 6),
+        "historical_transactions": (2025, 6),
         "trade_math": ([{"kind": "faab", "amount": 5, "from": "Member02", "to": "Member03"}],),
     }
     for name, args in calls.items():

@@ -472,6 +472,106 @@ def history(source: LeagueSource, season: int | None = None) -> dict:
 
 
 @tool
+def historical_roster(
+    source: LeagueSource, season: int, week: int | None = None,
+    member: str | None = None, player: str | None = None,
+) -> dict:
+    """Search saved weekly matchup rosters, including player scores and bench players."""
+    if week is None and member is None and player is None:
+        return {"error": "Give a week, member, or player to search historical rosters."}
+    rows = source.historical_rosters(season, week)
+    if not rows:
+        return {"season": season, "week": week, "rows": [],
+                "source": "public.historical_weekly_scores",
+                "scope": "No competitive matchup rosters are archived for this selection."}
+
+    if member:
+        exact = [r for r in rows if member.casefold() in
+                 (r["member"].casefold(), r["team_name"].casefold())]
+        matches = exact or [r for r in rows if member.casefold() in r["member"].casefold()]
+        labels = {r["member"] for r in matches}
+        if len(labels) != 1:
+            return {"error": f"Historical member '{member}' matched {len(labels)} managers."}
+        rows = matches
+
+    rendered = []
+    for row in rows:
+        roster = row["roster"] or {}
+        players = [
+            {"player_id": p.get("player_id"), "name": p.get("player_label"),
+             "position": p.get("position"), "slot": p.get("slot"),
+             "points": p.get("points"), "started": started}
+            for key, started in (("starters", True), ("bench", False))
+            for p in (roster.get(key) or []) if isinstance(p, dict)
+        ]
+        if player:
+            needle = player.casefold()
+            players = [p for p in players if any(
+                needle in str(value).casefold() for value in (p["player_id"], p["name"])
+            )]
+            if not players:
+                continue
+        rendered.append({
+            "week": row["week"], "member": row["member"],
+            "team_name": row["team_name"], "team_points": row["points"],
+            "players": players,
+        })
+    return {
+        "season": season, "week": week, "rows": rendered,
+        "source": "public.historical_weekly_scores",
+        "scope": "Saved competitive matchup rosters by week; not custody at the instant of a trade.",
+    }
+
+
+@tool
+def historical_transactions(
+    source: LeagueSource, season: int, week: int | None = None,
+    player: str | None = None,
+) -> dict:
+    """Search an archived Sleeper league's platform transactions by week or player."""
+    if week is None and player is None:
+        return {"error": "Give a week or player to search historical transactions."}
+    payload = source.historical_transactions(season, week)
+    if "error" in payload:
+        return payload
+    labels, names = payload["labels"], payload["names"]
+    rendered = []
+    for raw in payload["raw"]:
+        moves: dict[str, dict[str, list[str]]] = {}
+        for field in ("adds", "drops"):
+            for player_id, roster_id in (raw.get(field) or {}).items():
+                label = labels.get(roster_id, f"roster {roster_id}")
+                moves.setdefault(label, {"adds": [], "drops": []})[field].append(
+                    names.get(player_id) or player_id
+                )
+        if player and not any(
+            player.casefold() in name.casefold()
+            for move in moves.values() for field in ("adds", "drops") for name in move[field]
+        ) and not any(
+            player.casefold() == str(player_id).casefold()
+            for field in ("adds", "drops") for player_id in (raw.get(field) or {})
+        ):
+            continue
+        created = raw.get("created")
+        rendered.append({
+            "transaction_id": raw.get("transaction_id"),
+            "type": raw.get("type"), "status": raw.get("status"),
+            "week": raw.get("leg") or week,
+            "at": datetime.fromtimestamp(created / 1000, tz=UTC).isoformat()
+                  if isinstance(created, (int, float)) else None,
+            "moves": [{"member": label, **move} for label, move in moves.items()],
+            "waiver_bid": (raw.get("settings") or {}).get("waiver_bid"),
+        })
+    rendered.sort(key=lambda row: row["at"] or "")
+    return {
+        "season": season, "week": week, "transactions": rendered[:100],
+        "total_matches": len(rendered),
+        "source": "Sleeper archived league transactions",
+        "scope": "Platform transactions only; chat-announced side payments and terms may be absent.",
+    }
+
+
+@tool
 def survival(
     source: LeagueSource, week: int | None = None, *, now: datetime | None = None
 ) -> dict:

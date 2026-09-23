@@ -1,0 +1,54 @@
+{
+  "reviewed_date": "2026-09-10",
+  "reference": "https://www.tiktok.com/@ceoofcurr3ncy/video/7683297150909811981",
+  "sources": {
+    "broncos": {
+      "url": "https://www.youtube.com/watch?v=Fpx2JsZ4ITI",
+      "file": "data/media/work/player-intros/Fpx2JsZ4ITI.mp4"
+    },
+    "texans_chiefs": {
+      "url": "https://www.youtube.com/watch?v=pDFfOoD-c2w",
+      "file": "data/media/work/player-intros/broncos-texans-chiefs-2025.mp4",
+      "section": "*17:58-20:36",
+      "source_offset_seconds": 1078,
+      "note": "Clip timestamps below are relative to the downloaded section."
+    },
+    "49ers": {
+      "url": "https://www.youtube.com/watch?v=fD1t21t7fWU",
+      "file": "data/media/work/player-intros/fD1t21t7fWU.mp4"
+    },
+    "jaguars": {
+      "url": "https://www.youtube.com/watch?v=1kNh8ITp5cQ",
+      "file": "data/media/work/player-intros/1kNh8ITp5cQ.mp4"
+    },
+    "raiders": {
+      "url": "https://www.youtube.com/watch?v=XDpTJNbysCU",
+      "file": "data/media/work/player-intros/XDpTJNbysCU.mp4"
+    },
+    "price": {
+      "url": "https://www.youtube.com/watch?v=Dx_4-P8L7qE",
+      "file": "data/media/work/player-intros/Dx_4-P8L7qE.mp4",
+      "note": "NBC 2026 kickoff, Patriots at Seahawks, September 9, 2026."
+    },
+    "bowers": {
+      "url": "https://www.nfl.com/videos/first-draft-brock-bowers",
+      "file": "data/media/work/player-intros/bowers-first-draft.mp4",
+      "note": "Official NFL First Draft feature. Bowers speaks his own name, position and school directly to camera. This is a pre-draft studio recording, not an NBC Raiders lineup overlay."
+    },
+    "fairbairn": {
+      "url": "https://www.youtube.com/watch?v=I3fbj17vE7U",
+      "file": "data/media/work/player-intros/I3fbj17vE7U.mp4"
+    }
+  },
+  "players": {
+    "11563": {"name":"Bo Nix", "kind":"intro", "source":"broncos", "start":4.95, "end":6.45, "crop_x":1, "spoken_school":"Oregon"},
+    "13286": {"name":"Jadarian Price", "kind":"intro", "source":"price", "start":8.08, "end":9.91, "crop_x":0, "spoken_school":"Notre Dame"},
+    "8408": {"name":"Jordan Mason", "kind":"intro", "source":"49ers", "start":62.65, "end":64.55, "crop_x":0, "spoken_school":"Gallatin High School"},
+    "7569": {"name":"Nico Collins", "kind":"intro", "source":"texans_chiefs", "start":123.25, "end":124.95, "crop_x":0, "spoken_school":"Michigan"},
+    "9487": {"name":"Parker Washington", "kind":"intro", "source":"jaguars", "start":9.65, "end":11.25, "crop_x":0, "spoken_school":"Penn State"},
+    "9482": {"name":"Michael Mayer", "kind":"intro", "source":"raiders", "start":14.95, "end":16.62, "crop_x":0, "spoken_school":"Notre Dame"},
+    "10229": {"name":"Rashee Rice", "kind":"intro", "source":"texans_chiefs", "start":83.08, "end":84.6, "crop_x":1, "spoken_school":"SMU"},
+    "3451": {"name":"Ka'imi Fairbairn", "kind":"footage", "source":"fairbairn", "start":13.4, "end":15.6, "crop_x":0.5, "fallback_caption":"UCLA"},
+    "11604": {"name":"Brock Bowers", "kind":"intro", "source":"bowers", "start":23.14, "end":25.65, "crop_x":0.5, "caption_y":910, "stamp":"INJURED", "spoken_school":"University of Georgia"}
+  }
+}

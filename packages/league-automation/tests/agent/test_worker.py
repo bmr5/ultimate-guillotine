@@ -8,7 +8,7 @@ import pytest
 
 from ultimate_guillotine.agent.artifact import external_references
 from ultimate_guillotine.agent.envelope import PROMPT_VERSION
-from ultimate_guillotine.agent.records import Session
+from ultimate_guillotine.agent.records import AnswerRecord, Session
 from ultimate_guillotine.agent.session import AgentReply, SessionNotFound
 from ultimate_guillotine.agent.tools.source import FixtureSource
 from ultimate_guillotine.agent.worker import (
@@ -136,6 +136,12 @@ class FakeSessions:
 class FakeAnswers:
     def __init__(self):
         self.recorded = []
+        self.prior = []
+        self.lookups = []
+
+    def recent_for_member(self, chat_hash, member_id, limit):
+        self.lookups.append((chat_hash, member_id, limit))
+        return self.prior[:limit]
 
     def record(self, answer):
         self.recorded.append(answer)
@@ -155,11 +161,11 @@ class FakeNotifier:
         return True
 
 
-def _worker(*replies, delivery=None, runs=None, on_run=None):
+def _worker(*replies, delivery=None, runs=None, answers=None, on_run=None):
     parts = {
         "client": FakeClient(*replies, on_run=on_run), "source": FixtureSource(),
         "delivery": delivery or FakeDelivery(), "notifier": FakeNotifier(),
-        "runs": runs or FakeRuns(), "sessions": FakeSessions(), "answers": FakeAnswers(),
+        "runs": runs or FakeRuns(), "sessions": FakeSessions(), "answers": answers or FakeAnswers(),
         "clock": lambda: NOW,
     }
     return AgentWorker(**parts), parts
@@ -180,6 +186,34 @@ def test_a_lookup_is_answered_recorded_and_finished() -> None:
     finished = parts["runs"].finished[0]
     assert finished["status"] == "succeeded"
     assert finished["input_version"] == f"{PROMPT_VERSION}:{MODEL}"
+
+
+def test_a_new_session_receives_the_askers_saved_recent_question_and_report() -> None:
+    answers = FakeAnswers()
+    answers.prior = [AnswerRecord(
+        run_id=6, session_id=None, chat_guid_hash=chat_guid_hash(CHAT), asker_member_id=5,
+        question="@bot Which WR should I stream?", is_follow_up=False, kind="answer",
+        chat_text="Start Player A.", source_line="Source: research", report_title="WR options",
+        report_html="<html><head><style>secret-css</style></head><body><p>Player A had "
+                    "nine targets.</p></body></html>", facts={}, sources=[],
+        prompt_version="2026.8", model=MODEL,
+    )]
+    worker, parts = _worker(_reply(LOOKUP), answers=answers)
+    assert worker.run_job(Job(7, _msg("@bot compare that with Pierce"), ASKER, None)) == "answer"
+    query, resume = parts["client"].calls[0]
+    assert resume is None
+    assert "Which WR should I stream?" in query
+    assert "Player A had nine targets." in query
+    assert "secret-css" not in query
+    assert answers.lookups == [(chat_guid_hash(CHAT), 5, 2)]
+
+
+def test_unknown_asker_does_not_receive_saved_member_context() -> None:
+    answers = FakeAnswers()
+    worker, parts = _worker(_reply(LOOKUP), answers=answers)
+    assert worker.run_job(Job(7, _msg("@bot who has the most FAAB"), None, None)) == "answer"
+    assert answers.lookups == []
+    assert "None recorded." in parts["client"].calls[0][0]
 
 
 def test_a_research_answer_sends_the_text_then_the_artifact() -> None:

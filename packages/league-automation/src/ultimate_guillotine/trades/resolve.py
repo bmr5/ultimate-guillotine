@@ -227,6 +227,13 @@ def _build_member_index(members: list[MemberRef]) -> dict[str, list[MemberRef]]:
     index: dict[str, list[MemberRef]] = {}
     for member in members:
         keys = {normalize_name(member.display_name)} | {normalize_name(a) for a in member.aliases}
+        # "Nick R" also registers "Nick". Merge this with explicit aliases,
+        # so one member's saved "Ben" cannot hide another member's "Ben T".
+        # Only use first-name/initial aliases, not arbitrary team-name prefixes.
+        for alias in member.aliases:
+            words = normalize_name(alias).split()
+            if len(words) == 2 and words[0].isalpha() and len(words[1]) == 1 and words[1].isalpha():
+                keys.add(words[0])
         for key in keys:
             index.setdefault(key, []).append(member)
     return index
@@ -604,8 +611,8 @@ def resolve_extracted(
     # trading, and settling a partial player name reads the roster of the member
     # giving him away. So the players are resolved twice.
     #
-    # This first pass is the old no-roster chain, and it exists only to feed
-    # member disambiguation below. Nothing it cannot answer is reported from
+    # This first pass uses league-wide rosters to place partial player names
+    # before member disambiguation. Nothing it cannot answer is reported from
     # here -- neither a name it cannot find nor one two players share -- because
     # the roster pass further down is the step that exists for both, and a
     # question raised here would be raised about a haystack the caller has not
@@ -617,7 +624,7 @@ def resolve_extracted(
         # mentions a player in passing keeps the free text and no player id.
         if asset.kind == "player" and asset.player_name:
             try:
-                found = _resolve_directly(asset.player_name, players)
+                found = _resolve_player_with_rosters(asset.player_name, players, rosters, None)
             except Unresolved:
                 continue
             if found is not None:
@@ -664,7 +671,7 @@ def resolve_extracted(
             return candidates[0]
 
         winner: MemberRef | None = None
-        if len(candidates) in (2, 3):
+        if len(candidates) >= 2:
             sent = sent_players(norm)
             received = received_players(norm)
             if sent:

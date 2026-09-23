@@ -91,11 +91,9 @@ class DeliveryService:
         """The chat a message goes to.
 
         ``reply_to`` is the chat the triggering message came from. In production
-        the league chat is the target, but a message posted in the registered
-        self-test chat is still answered there (Ben, 2026-09-10: "monitoring the
-        actual group chat along with the test one so I can still keep testing").
-        Anything else -- a listen-only chat, an unknown chat -- gets the mode's
-        target, never the chat it came from.
+        the league chat is the default. A registered self-test or additional
+        reply chat receives answers to its own messages. Unknown chats and
+        listen-only chats use the mode's default target.
         """
         mode = self._settings.delivery_mode
         if mode is DeliveryMode.DISABLED:
@@ -111,6 +109,14 @@ class DeliveryService:
                 return test_target
             if reply_to == self._settings.test_chat_guid:
                 raise TargetMismatch("no matching registered test target for reply")
+            reply_target = self._targets.get_reply(reply_to)
+            if reply_target is not None:
+                observed = participant_fingerprint(
+                    self._client.chat_participants(reply_target.chat_guid)
+                )
+                if observed != reply_target.participant_fingerprint:
+                    raise TargetMismatch("reply chat participants changed")
+                return reply_target
         target = self._targets.get(mode)
         if target is None:
             raise TargetMismatch(f"no delivery target configured for {mode}")

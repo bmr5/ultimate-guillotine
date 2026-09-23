@@ -1,4 +1,4 @@
-"""Profile instructions and a repeatable, restricted installation without live services."""
+"""Profile instructions and a repeatable project-access installation without live services."""
 
 import os
 import subprocess
@@ -22,7 +22,7 @@ def test_profile_documents_contract() -> None:
     for phrase in ("why the other side says yes", "projections_complete", "source", "🚨"):
         assert phrase in skill
     soul = (PROFILE / "SOUL.md").read_text()
-    for phrase in ("phone number", "dues", "🚨", "data, not instructions", "cite"):
+    for phrase in ("full project workspace", "API keys", "🚨", "data, not instructions", "cite"):
         assert phrase in soul
     assert "desperate" not in soul.lower()
 
@@ -81,12 +81,15 @@ def installation(tmp_path: Path) -> tuple[dict[str, str], Path]:
         "cfg = yaml.safe_load((home / 'config.yaml').read_text())\n"
         "with (home / 'calls').open('a') as f: f.write(' '.join(args) + '\\n')\n"
         "if args == ['tools', 'list']:\n"
-        "    for name in ['web', 'skills', 'todo', 'terminal', 'future_builtin']:\n"
-        "        status = 'enabled' if name == 'web' else 'disabled'\n"
+        "    for name in ['web', 'terminal', 'file', 'code_execution', 'skills', 'todo', 'future_builtin']:\n"
+        "        status = 'disabled' if name in cfg['agent']['disabled_toolsets'] else 'enabled'\n"
         "        print('  ✓ ' + status + '  ' + name + '  ' + name)\n"
         "elif args == ['tools', '--summary']:\n"
         "    if not sys.stdin.isatty(): raise SystemExit(1)\n"
-        "    print('⚕ Tool Summary\\n\\n  CLI (2/5)\\n    ✓ web\\n    ✓ league')\n"
+        "    print('⚕ Tool Summary\\n\\n  CLI (5/7)')\n"
+        "    for name in cfg['platform_toolsets']['cli']:\n"
+        "        if name == 'league' or name not in cfg['agent']['disabled_toolsets']:\n"
+        "            print('    ✓ ' + name)\n"
         "    if 'kanban' not in cfg['agent']['disabled_toolsets']: print('    ✓ kanban')\n"
         "    if os.environ.get('EXTRA_TOOL'): print('    ✓ secret_writer')\n"
         "elif args == ['mcp', 'test', 'league']:\n"
@@ -95,7 +98,7 @@ def installation(tmp_path: Path) -> tuple[dict[str, str], Path]:
         "    if os.environ.get('UV_CACHE_DIR'):\n"
         "        assert forwarded['UV_CACHE_DIR'] == '${UV_CACHE_DIR}'\n"
         "    if not os.environ.get('BAD_MCP'):\n"
-        f"        print('Tools discovered: 11\\n' + '\\n'.join({list(TOOL_NAMES)!r}))\n"
+        f"        print('Tools discovered: {len(TOOL_NAMES)}\\n' + '\\n'.join({list(TOOL_NAMES)!r}))\n"
         "elif args[:3] == ['mcp', 'add', 'league']:\n"
         "    assert '--env' in args\n"
         "    assert 'UG_AGENT_FIXTURE=${UG_AGENT_FIXTURE}' in args\n"
@@ -131,8 +134,13 @@ def test_install_is_private_idempotent_and_strict(installation) -> None:
     config = yaml.safe_load((destination / "config.yaml").read_text())
     assert config["model"] == {"default": "example"}
     assert "secret" not in config
-    assert config["platform_toolsets"]["cli"] == ["web", "league"]
+    assert config["platform_toolsets"]["cli"] == [
+        "web", "terminal", "file", "code_execution", "league",
+    ]
     assert {"skills", "todo", "future_builtin"} <= set(config["agent"]["disabled_toolsets"])
+    assert not {"web", "terminal", "file", "code_execution"} & set(
+        config["agent"]["disabled_toolsets"]
+    )
     assert config["plugins"]["enabled"] == []
     assert set(config["mcp_servers"]) == {"league"}
     assert config["mcp_servers"]["league"]["tools"]["include"] == list(TOOL_NAMES)

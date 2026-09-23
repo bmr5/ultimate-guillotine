@@ -527,7 +527,7 @@ null. Rerunning the same name updates that one row. `ug members former list` cou
 
 | Job | Schedule (mini local time) | Delivers to |
 | --- | --- | --- |
-| `guillotine-sleeper-sync` | every 2m | `#guillotine-ops` |
+| `guillotine-sleeper-sync` | every minute requested; roughly every 2m observed with the gateway tick | local; status changes to `#guillotine-ops` |
 | `guillotine-nfl-state` | every 10m | `#guillotine-ops` |
 | `guillotine-players-sync` | `0 */4 * * *` | `#guillotine-ops` |
 | `guillotine-sleeper-projections` | `*/30 * * * *` | `#guillotine-ops` |
@@ -758,7 +758,7 @@ and fixture settings at invocation time.
 The live deployment uses the previously authenticated profile in the preserved
 League Agent worktree's ignored `.superpowers/sdd/2026-09-10-league-agent/hermes-live-profile`
 directory. Main's ignored `.env` selects it with `HERMES_LEAGUE_PROFILE_HOME`.
-Its default model is `gpt-6-astra`, and its installed MCP launcher runs from main.
+Its default model is `gpt-5.6-sol` at high reasoning, and its installed MCP launcher runs from main.
 The strict eleven-tool audit and installed-main real-league dry run passed.
 Do not delete the worktree while this profile is configured. The ops profile is unchanged.
 
@@ -851,17 +851,14 @@ A passing golden set or MCP check is not proof of deployment or live acceptance.
 
 ## 11. The Guillotine Daily (EOD Summary) rollout
 
-The Daily posts five mornings a week in Mac mini time -- 8:15 AM Wednesday,
-Sunday and Monday, and 10:12 AM Thursday and Saturday after each waiver round;
-Tuesday and Friday off -- Ben's cadence: a break on Tuesdays, Wednesday
-before waivers close, Thursday after they clear, Friday after the Thursday game,
-Sunday and Monday after Saturday's free agency and Sunday's games. Each post is a
+The Daily posts four days a week in Mac mini time: 8:15 AM Sunday and Monday,
+and noon Thursday and Saturday after each waiver round. Tuesday, Wednesday
+and Friday are off. Each post is a
 single HTML file named `MonteCarlo-YYYY-MM-DD.html`, using the Chicago date. No
 text summary, caption or follow-up message is sent to chat. The report contains
-every live team's score and projected finish,
-the gulag pair and the two teams on the block with their odds, the roster problems
-worth fixing before the next kickoff, and the moves since the previous post. The
-agent's codename is `eod-summary` and the command is `ug summary eod`. Spec:
+every live team's score and projected finish, the gulag pair, each general-pool
+team's Monte Carlo odds in one table, and the roster problems worth fixing before
+the next kickoff. The agent's codename is `eod-summary` and the command is `ug summary eod`. Spec:
 `docs/superpowers/specs/2026-09-10-eod-summary-agent-design.md`. The odds are
 Monte Carlo estimates over Sleeper's projections -- the footer reads `Monte Carlo
 projections as of <time> CST` and nothing else, by Ben's ruling -- and nothing
@@ -882,7 +879,7 @@ hermes/guillotine/install.sh
 ```
 
 Confirm with `HERMES_HOME=~/.hermes/profiles/guillotine hermes cron list` — the
-two rows are listed at `15 8 * * 0,1,3` and `12 10 * * 4,6` — and `ug ops health`
+two rows are listed at `15 8 * * 0,1` and `0 12 * * 4,6` — and `ug ops health`
 prints nothing new: a
 job registered more recently than its own gap budget (50 hours here) is not
 reported as never run until that budget passes, so the health check simply waits
@@ -900,6 +897,10 @@ with no execution recorded and the next run moved to Saturday. `hermes cron run
 <id>` ran it on the spot and it posted normally. After any schedule change, read
 `hermes cron list` and, if the next occurrence is close, expect to trigger it by
 hand once; occurrences after the first behave like every other job's.
+
+On 2026-09-16 the existing waiver-day row moved to noon on Thursday and Saturday.
+The live cron next run and `private.expected_runs` both showed Thursday, September 17
+at noon Central after the change.
 
 ### The safe dry runs
 
@@ -925,16 +926,15 @@ put in the wrong state is the likeliest way an odds number is wrong.
 
 1. Reads the week; outside the regular season it prints `eod: skipped` and stays
    green.
-2. Pulls the rosters and the transaction log from Sleeper first (waivers clear
-   at 10:08 and the post fires at 10:12; the ten-minute syncs run on their own
+2. Pulls the rosters and the transaction log from Sleeper first (the waiver-day
+   post fires at noon; the ten-minute syncs run on their own
    phase), then loads the league, the scores, the players directory, the gulag
    events, the moves since the previous post, and Sleeper's schedule.
-3. Simulates 10,000 weeks when the schedule was read and projections cover at
-   least 95 percent of the starters still to play; otherwise composes a factual
-   message with no percentages and names the reason in the footer.
-4. Asks the `guillotine` profile for a headline and a blurb, verifies that every
-   number in them is in the facts and that nothing looks like private data, and
-   drops the colour if not.
+3. Simulates 10,000 weeks when the schedule, scores, lineups and projections
+   support it. Before kickoff, a zero score feed may have an empty or stale
+   starter list; the current roster lineup supplies the simulation lineup.
+   If the inputs cannot support odds, the job reports why to ops and sends nothing.
+4. Uses the fixed report template without a generated headline or blurb.
 5. Writes `public.survival_snapshots` and a `public.recaps` draft, previews the
    internal recap in `#guillotine-drafts` (every mode but production), sends only
    the HTML file through the delivery layer (self-test chat in test mode),

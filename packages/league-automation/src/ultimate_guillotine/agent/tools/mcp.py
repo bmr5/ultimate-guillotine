@@ -22,7 +22,8 @@ from ultimate_guillotine.agent.tools.source import DatabaseSource, FixtureSource
 
 TOOL_NAMES = (
     "league_overview", "roster", "player", "projections", "trades", "price_history",
-    "trade_math", "rules", "history", "survival", "transactions",
+    "trade_math", "rules", "history", "historical_roster",
+    "historical_transactions", "survival", "transactions",
 )
 INSTRUCTIONS = (
     "Read-only data for the Ultimate Guillotine fantasy football league. Every snapshot-backed "
@@ -121,8 +122,32 @@ def build_server(source: LeagueSource) -> tuple[MCPServer, dict[str, Callable[..
     @register
     def history(season: int | None = None) -> str:
         """Past seasons: champion, runner-up, third, and the week-by-week eliminations; with
-        a season, that season's catalogued trades too."""
+        a season, that season's catalogued trades and original announcements too. Read the
+        announcement for which party sent or received an asset; the asset list alone has no
+        direction."""
         return _dump(league.history(source, season))
+
+    @register
+    def historical_roster(
+        season: int, week: int | None = None, member: str | None = None,
+        player: str | None = None,
+    ) -> str:
+        """Search saved weekly rosters and player scores in past seasons. Give a week,
+        member, or full player name/Sleeper ID. A player search across a whole season shows
+        the teams they appeared on by week. These are matchup rosters, not proof of custody
+        at a trade's exact timestamp."""
+        return _dump(league.historical_roster(source, season, week, member, player))
+
+    @register
+    def historical_transactions(
+        season: int, week: int | None = None, player: str | None = None,
+    ) -> str:
+        """Search an archived season's Sleeper add, drop, waiver and trade transactions.
+        Give a week or full player name/Sleeper ID. A player search without a week scans
+        the season and shows completed and failed transactions with their status. For an
+        old trade's direction, completed adds and drops identify the receiving and sending
+        rosters. Chat-only trade terms may be absent."""
+        return _dump(league.historical_transactions(source, season, week, player))
 
     @register
     def survival(week: int | None = None) -> str:

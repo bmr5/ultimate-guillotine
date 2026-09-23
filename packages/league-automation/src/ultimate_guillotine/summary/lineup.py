@@ -17,6 +17,7 @@ spec names is over rostered *unplayed* starters, and that is what
 """
 
 from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import replace
 from decimal import ROUND_HALF_UP, Decimal
 from statistics import median
 
@@ -138,13 +139,78 @@ def build_starters(
     return tuple(lines)
 
 
+def projected_holdings(
+    holdings: Sequence,
+    roster_positions: Sequence[str],
+    players: Mapping[str, PlayerInfo],
+    week_games: Mapping[str, Game],
+) -> tuple:
+    """Fill open slots with the highest projected legal lineup still available.
+
+    Existing starters stay put. Only bench players whose games have not begun and
+    who can play this week are candidates. This is a forecast, not a lineup edit.
+    """
+    starters = [h for h in holdings if h.slot == "starter"]
+    occupied = {h.slot_index for h in starters if h.slot_index is not None}
+    open_slots = tuple(
+        i
+        for i, slot in enumerate(roster_positions)
+        if slot not in ("BN", "IR", "TAXI") and i not in occupied
+    )
+    if not open_slots:
+        return tuple(starters)
+
+    def eligible(position: str | None, slot: str) -> bool:
+        if position == slot:
+            return True
+        if slot == "FLEX":
+            return position in ("RB", "WR", "TE")
+        if slot == "SUPER_FLEX":
+            return position in ("QB", "RB", "WR", "TE")
+        if slot == "REC_FLEX":
+            return position in ("WR", "TE")
+        return False
+
+    candidates = []
+    for h in sorted((h for h in holdings if h.slot == "bench"), key=lambda h: h.sleeper_player_id):
+        info = players.get(h.sleeper_player_id, PlayerInfo(None, None))
+        if h.projected_now is None or is_out(info.injury_status, h.projected_now):
+            continue
+        game = week_games.get(info.nfl_team or "")
+        if game is None or game_state(game) != "remaining":
+            continue
+        candidates.append(h)
+
+    # A mask represents filled open slots. The best state first fills the most
+    # slots, then maximizes projected points. Stable iteration breaks ties.
+    states: dict[int, tuple[Decimal, tuple]] = {0: (Decimal(0), ())}
+    for h in candidates:
+        next_states = dict(states)
+        for mask, (points, chosen) in states.items():
+            for bit, slot_index in enumerate(open_slots):
+                if mask & (1 << bit) or not eligible(h.position, roster_positions[slot_index]):
+                    continue
+                new_mask = mask | (1 << bit)
+                new_points = points + h.projected_now
+                previous = next_states.get(new_mask)
+                if previous is None or new_points > previous[0]:
+                    next_states[new_mask] = (new_points, chosen + ((slot_index, h),))
+        states = next_states
+    best_mask = max(states, key=lambda mask: (mask.bit_count(), states[mask][0]))
+    selected = (
+        replace(h, slot="starter", slot_index=index, lineup_position=roster_positions[index])
+        for index, h in states[best_mask][1]
+    )
+    return tuple(starters) + tuple(selected)
+
+
 def coverage_pct(teams: Sequence[TeamLine]) -> Decimal:
     """Share of pending starters on live teams that carry a projection.
 
     Nothing pending is full coverage, not zero: on a Tuesday night after the last
     game there is nobody left to project.
     """
-    pending = [s for t in teams if not t.is_eliminated for s in t.pending()]
+    pending = [s for t in teams if not t.is_eliminated for s in t.projected_pending()]
     if not pending:
         return Decimal("100.00")
     projected = sum(1 for s in pending if s.projected is not None)
@@ -160,7 +226,7 @@ def position_medians(teams: Sequence[TeamLine]) -> dict[str, Decimal]:
     """
     by_position: dict[str, list[Decimal]] = {}
     for team in teams:
-        for starter in team.starters:
+        for starter in team.projected_lineup():
             if starter.projected is None or starter.position is None:
                 continue
             by_position.setdefault(starter.position, []).append(starter.projected)

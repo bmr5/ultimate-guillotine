@@ -308,15 +308,14 @@ def test_an_unknown_player_name_is_kept_as_text() -> None:
     assert asset.player_id is None and asset.player_name == "Nobody Here"
 
 
-def test_four_members_sharing_an_alias_are_never_disambiguated() -> None:
+def test_four_members_sharing_an_alias_are_disambiguated_by_unique_holdings() -> None:
     members = [MemberRef(i, f"Member0{i}", ("crew",)) for i in (1, 2, 3, 4)]
     e = extracted(
         parties=[ExtractedParty(name="crew"), ExtractedParty(name="Member02")],
         assets=[player_asset("Player Alpha", from_party="crew")],
     )
-    with pytest.raises(Unresolved) as info:
-        resolve_extracted(e, members, PLAYERS, ROSTERS, 2026, "g1", "x", "2026.1", "m")
-    assert info.value.reason == "Two members go by 'crew'; which one?"
+    proposal = resolve_extracted(e, members, PLAYERS, ROSTERS, 2026, "g1", "x", "2026.1", "m")
+    assert [p.member_id for p in proposal.parties] == [1, 2]
 
 
 def test_receive_only_rule_settles_ambiguity_when_every_candidate_has_a_roster() -> None:

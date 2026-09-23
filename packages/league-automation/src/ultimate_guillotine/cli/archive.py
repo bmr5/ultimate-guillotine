@@ -1,4 +1,4 @@
-"""`ug archive`: automatic collection and deterministic weekly history, without messaging."""
+"""`ug archive`: automatic collection and deterministic weekly history and confirmed cut announcements."""
 
 import argparse
 import json
@@ -10,6 +10,7 @@ from psycopg.types.json import Jsonb
 from pydantic import BaseModel, ConfigDict, Field
 
 from ultimate_guillotine.cli.deps import build_deps, run_scheduled
+from ultimate_guillotine.history.announcements import announce_confirmed, build_cut_delivery
 from ultimate_guillotine.history.archive_jobs import capture_current, configuration, enable, tick
 from ultimate_guillotine.history.archive_store import rows
 from ultimate_guillotine.sleeper.client import SleeperClient
@@ -145,4 +146,9 @@ def cmd_archive(args: argparse.Namespace):
                 print(json.dumps(result))
             return 0
 
-        return run_scheduled(deps.conn, f"archive-{args.command}", now, action)
+        result = run_scheduled(deps.conn, f"archive-{args.command}", now, action)
+        if args.command == "tick" and result in (None, 0):
+            # Publication must commit before a message crosses the network boundary.
+            # Retry missed deliveries even when this tick had no newly due scoring jobs.
+            announce_confirmed(deps.conn, deps.settings, build_cut_delivery(deps))
+        return result
