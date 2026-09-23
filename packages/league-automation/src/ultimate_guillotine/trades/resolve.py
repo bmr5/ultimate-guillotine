@@ -149,11 +149,14 @@ def build_roster_index(
     bench, ir, taxi -- because a traded player is as likely to be on IR.
 
     The ``client`` remains for one guard: a season with no holdings rows at all
-    (a brand-new season the sync has not reached yet), or a newest ``synced_at``
-    older than ``HOLDINGS_MAX_AGE``, falls back to one live fetch, so a stalled
-    sync never resolves a trade against a roster that has moved on. Partial
-    coverage is not staleness: if the freshest row is recent the table is used as
-    it stands, and a team with no rows is simply absent from the index.
+    (a brand-new season the sync has not reached yet), or a sync heartbeat --
+    ``seasons.league_synced_at`` -- missing or older than ``HOLDINGS_MAX_AGE``,
+    falls back to one live fetch, so a stalled sync never resolves a trade against
+    a roster that has moved on. The rows' own ``synced_at`` cannot answer this: the
+    sync leaves an unchanged holding alone, so a quiet roster's rows are days old
+    under a sync that ran minutes ago. Partial coverage is not staleness: if the
+    sync is recent the table is used as it stands, and a team with no rows is
+    simply absent from the index.
 
     ``now`` is injectable for tests only; the registrar and CLI callers pass the
     season and let it default to the wall clock.
@@ -166,10 +169,10 @@ def build_roster_index(
     with conn.cursor() as cur:
         cur.execute(
             """
-            select max(h.synced_at)
-            from public.roster_holdings h
-            join public.seasons s on s.id = h.season_id
+            select s.league_synced_at
+            from public.seasons s
             where s.year = %s
+              and exists (select 1 from public.roster_holdings h where h.season_id = s.id)
             """,
             (season,),
         )

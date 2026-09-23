@@ -44,8 +44,9 @@ def seed_league(conn) -> tuple[int, dict[int, int]]:
         )
         cur.execute(
             "insert into public.seasons (year, sleeper_league_id, rules_version, waiver_budget,"
-            " roster_positions) values (%s, 'L1', 'v1', 1000, %s) returning id",
-            (SENTINEL_SEASON, Jsonb(["QB", "RB"])),
+            " roster_positions, league_synced_at) values (%s, 'L1', 'v1', 1000, %s, %s)"
+            " returning id",
+            (SENTINEL_SEASON, Jsonb(["QB", "RB"]), SEEDED_AT),
         )
         season_id = cur.fetchone()[0]
         for pid, name, position, nfl_team, injury in (*sum(PLAYERS.values(), ()), DROPPED):

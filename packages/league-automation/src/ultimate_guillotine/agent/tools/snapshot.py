@@ -35,6 +35,12 @@ snapshot refuses to load rather than standing in an epoch timestamp that would
 either make everything permanently stale or, coalesced the other way, make a
 missing sync invisible.
 
+The roster sync's stamp is ``seasons.league_synced_at``, not the rows'. The sync
+leaves an unchanged holding or team state alone -- both tables are in the Realtime
+publication, and every rewrite was a message to every open board -- so their own
+``synced_at`` is when they last *changed*, which on a quiet roster is days before
+the sync that confirmed them. The season row is stamped by every pass instead.
+
 **Projections are read over a horizon of weeks, not just this one.** A trade is
 paid for over the weeks that follow it, so ``load(horizon_weeks=n)`` reads
 ``player_projections`` and ``team_week_projections`` for weeks ``week`` through
@@ -239,6 +245,7 @@ class LeagueSnapshot:
 #: :meth:`SnapshotRepository.load` refuses the snapshot rather than inventing a
 #: timestamp. (SQL ``least``/``greatest`` skip nulls outright, which would erase
 #: the missing component instead of reporting it, so the fold happens in Python.)
+#: Only its presence is read: the age of the row is the roster sync's heartbeat.
 _TEAMS_SQL = """
 select t.id, t.member_id, m.display_name,
        coalesce(m.nickname, m.sleeper_display_name, m.display_name),
@@ -265,6 +272,8 @@ order by team_id, week
 #: The two arms are disjoint by construction -- ``live`` excludes an eliminated
 #: team that has a ``final_rosters`` row, and ``frozen`` selects only those --
 #: so no team can contribute a player twice however its rows happen to sit.
+#: A live holding is as old as the sync that last confirmed it, so its stamp is the
+#: season's ``league_synced_at``; a frozen one is as old as its freeze.
 _HOLDINGS_SQL = """
 with team_flags as (
     select t.id as team_id, coalesce(s.is_eliminated, false) as is_eliminated
@@ -287,9 +296,10 @@ frozen as (
 ),
 live as (
     select h.team_id, h.sleeper_player_id, h.slot, h.slot_index,
-           h.lineup_position, h.synced_at
+           h.lineup_position, ss.league_synced_at as synced_at
     from team_flags f
     join public.roster_holdings h on h.team_id = f.team_id and h.season_id = %(season_id)s
+    join public.seasons ss on ss.id = h.season_id
     where not f.is_eliminated
        or not exists (
               select 1 from public.final_rosters r
@@ -353,11 +363,15 @@ class SnapshotRepository:
         weeks = tuple(range(week, last + 1))
 
         with self._conn.cursor() as cur:
-            cur.execute("select id from public.seasons where year = %s", (season,))
+            cur.execute(
+                "select id, league_synced_at from public.seasons where year = %s", (season,)
+            )
             season_row = cur.fetchone()
             if season_row is None:
                 raise SnapshotUnavailable(f"no public.seasons row for {season}")
-            season_id = season_row[0]
+            season_id, roster_synced_at = season_row
+            if roster_synced_at is None:
+                raise SnapshotUnavailable(f"no public.seasons.league_synced_at for {season}")
 
             params = {"season": season, "season_id": season_id, "weeks": list(weeks)}
             cur.execute(_TEAMS_SQL, params)
@@ -413,7 +427,7 @@ class SnapshotRepository:
             team_id = row[0]
             if row[9] is None:
                 raise SnapshotUnavailable(f"no public.team_season_state row for team {team_id}")
-            stamps.append(row[9])
+            stamps.append(roster_synced_at)
 
             by_week = team_weeks.get(team_id, {})
             current = by_week.get(week)

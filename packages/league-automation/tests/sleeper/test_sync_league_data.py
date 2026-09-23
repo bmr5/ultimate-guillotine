@@ -201,6 +201,73 @@ def test_sync_never_clears_a_loaded_nickname(conn, sleeper_client) -> None:
         assert cur.fetchone() == ("Big Ben", "Member01")
 
 
+def _row_versions(conn, table: str) -> dict[tuple[int, str | None], str]:
+    """Each row's ``xmin`` -- the transaction that last wrote it -- keyed by team and player.
+
+    A rewrite of an unchanged row still gets a new ``xmin``, and it is the rewrite, not
+    the change, that Postgres hands Realtime as an UPDATE for every open board to receive.
+    Each ``sync_season`` pass is its own savepoint inside the test's transaction, so two
+    passes that both write a row leave it two different ``xmin`` values.
+    """
+    player = "sleeper_player_id" if table == "roster_holdings" else "null::text"
+    with conn.cursor() as cur:
+        cur.execute(f"select team_id, {player}, xmin::text from public.{table}")
+        return {(team, pid): version for team, pid, version in cur.fetchall()}
+
+
+def test_an_unchanged_resync_writes_no_holding_or_state_row(conn, sleeper_client) -> None:
+    """The sync runs every two minutes and almost every pass finds nothing new.
+
+    Every row it rewrote anyway went to every open board as a Realtime message --
+    a whole league's rosters, 720 times a day, per tab -- for a roster nobody touched.
+    """
+    sync_season(sleeper_client, conn, 2026, LEAGUE_ID, week=3)
+    before = (_row_versions(conn, "roster_holdings"), _row_versions(conn, "team_season_state"))
+    sync_season(sleeper_client, conn, 2026, LEAGUE_ID, week=3)
+    after = (_row_versions(conn, "roster_holdings"), _row_versions(conn, "team_season_state"))
+    assert after == before
+
+
+def test_a_benched_starter_rewrites_only_his_own_holding(
+    conn, rosters, sleeper_client, team_id
+) -> None:
+    sync_season(sleeper_client, conn, 2026, LEAGUE_ID, week=3)
+    before = _row_versions(conn, "roster_holdings")
+    rosters[0]["starters"] = ["0" if p == "6794" else p for p in rosters[0]["starters"]]
+    sync_season(sleeper_client, conn, 2026, LEAGUE_ID, week=3)
+    after = _row_versions(conn, "roster_holdings")
+    assert after.keys() == before.keys()
+    assert {key for key in after if after[key] != before[key]} == {(team_id(1), "6794")}
+
+
+def test_a_faab_bid_rewrites_only_that_teams_state(conn, rosters, sleeper_client, team_id) -> None:
+    sync_season(sleeper_client, conn, 2026, LEAGUE_ID, week=3)
+    before = _row_versions(conn, "team_season_state")
+    rosters[0]["settings"]["waiver_budget_used"] = 300
+    sync_season(sleeper_client, conn, 2026, LEAGUE_ID, week=3)
+    after = _row_versions(conn, "team_season_state")
+    assert {key for key in after if after[key] != before[key]} == {(team_id(1), None)}
+
+
+def test_every_sync_moves_the_season_heartbeat_even_when_nothing_changed(
+    conn, sleeper_client
+) -> None:
+    """``seasons.league_synced_at`` is the roster sync's freshness, not the rows' stamps.
+
+    A holding's own ``synced_at`` now only moves when the holding does, so the readers
+    that ask "is the roster table current?" read this stamp instead -- and ``seasons``
+    is not in the Realtime publication, so moving it costs the boards nothing.
+    """
+    sync_season(sleeper_client, conn, 2026, LEAGUE_ID, week=3)
+    with conn.cursor() as cur:
+        cur.execute("select league_synced_at from public.seasons where year = 2026")
+        first = cur.fetchone()[0]
+    sync_season(sleeper_client, conn, 2026, LEAGUE_ID, week=3)
+    with conn.cursor() as cur:
+        cur.execute("select league_synced_at from public.seasons where year = 2026")
+        assert cur.fetchone()[0] > first
+
+
 def test_repeated_syncs_produce_identical_rows(conn) -> None:
     client = FakeClient()
     sync_season(client, conn, 2026, LEAGUE_ID, week=3)

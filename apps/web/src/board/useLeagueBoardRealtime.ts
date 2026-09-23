@@ -9,6 +9,7 @@ import {
   BOARD_REALTIME_TABLES,
   keysForTable,
   REALTIME_DEBOUNCE_MS,
+  REALTIME_HIDDEN_GRACE_MS,
   REALTIME_MAX_EVENTS_PER_TABLE,
   REALTIME_MAX_WAIT_MS,
   type BoardRealtimeTable,
@@ -40,7 +41,12 @@ export interface UseLeagueBoardRealtimeArgs {
 }
 
 export interface LeagueBoardRealtime {
-  /** The page turns this into its poll interval. */
+  /**
+   * The page turns this into its poll interval. A hidden tab that has given its channel up (see
+   * `REALTIME_HIDDEN_GRACE_MS`) keeps the value it had: nobody is looking at the board, a query
+   * does not poll in the background anyway, and a suspension reported as a drop would put the
+   * paused banner up on every return to the tab.
+   */
   isConnected: boolean;
   /**
    * True from the first successful subscribe onwards, and never false again.
@@ -110,6 +116,19 @@ export function useLeagueBoardRealtime(
    * resolved; only a re-subscribe means changes were missed while the socket was down.
    */
   const wasConnectedRef = useRef(false);
+
+  /**
+   * True while a hidden tab has given its channel up. Mirrored in a ref so the visibility
+   * listener, which is bound once, can tell a return from a suspension apart from a return from
+   * a glance at another tab — only the first has a channel to rebuild.
+   */
+  const [isSuspended, setIsSuspended] = useState(false);
+  const isSuspendedRef = useRef(false);
+  /**
+   * Set when a suspension ends and cleared by the next SUBSCRIBED, which must refetch the board:
+   * every change while suspended was missed, whether or not this mount had connected before.
+   */
+  const resumingRef = useRef(false);
 
   const contextRef = useRef({ seasonId, season, week });
   useEffect(() => {
@@ -209,6 +228,53 @@ export function useLeagueBoardRealtime(
   );
 
   useEffect(() => {
+    let graceTimer: number | null = null;
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        if (graceTimer === null) {
+          graceTimer = window.setTimeout(() => {
+            graceTimer = null;
+            isSuspendedRef.current = true;
+            setIsSuspended(true);
+          }, REALTIME_HIDDEN_GRACE_MS);
+        }
+        return;
+      }
+      if (graceTimer !== null) {
+        window.clearTimeout(graceTimer);
+        graceTimer = null;
+      }
+      if (!isSuspendedRef.current) {
+        return;
+      }
+      // Back from a suspension: a fresh topic, as any rebuilt channel gets, and a retry curve
+      // started from the bottom, since whatever failure it last backed off from is long gone.
+      isSuspendedRef.current = false;
+      resumingRef.current = true;
+      attemptsRef.current = 0;
+      setReconnectAttempts(0);
+      setIsSuspended(false);
+      setReconnectNonce((nonce) => nonce + 1);
+    };
+
+    // A board opened in a background tab starts its grace at mount, not at a first hide.
+    onVisibilityChange();
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      if (graceTimer !== null) {
+        window.clearTimeout(graceTimer);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isSuspended) {
+      // The previous run's cleanup already removed the channel, which closes the socket once it
+      // was the last one; nothing is built again until the tab is visible.
+      return;
+    }
     const active = transport ?? defaultTransport;
     let retryTimer: number | null = null;
     let cancelled = false;
@@ -242,11 +308,12 @@ export function useLeagueBoardRealtime(
         attemptsRef.current = 0;
         setReconnectAttempts(0);
         onConnectionChangeRef.current?.(true);
-        if (wasConnectedRef.current) {
-          // Anything that changed while the channel was down was missed.
+        if (wasConnectedRef.current || resumingRef.current) {
+          // Anything that changed while the channel was down, or given up, was missed.
           invalidateAll();
         }
         wasConnectedRef.current = true;
+        resumingRef.current = false;
         return;
       }
       if (DISCONNECTED_STATUSES.has(status)) {
@@ -277,7 +344,15 @@ export function useLeagueBoardRealtime(
       pendingTablesRef.current = new Map();
       active.removeChannel(channel);
     };
-  }, [clearTimers, enqueue, invalidateAll, mountId, reconnectNonce, transport]);
+  }, [
+    clearTimers,
+    enqueue,
+    invalidateAll,
+    isSuspended,
+    mountId,
+    reconnectNonce,
+    transport,
+  ]);
 
   return { isConnected, hasConnectedOnce, reconnectAttempts, refreshNow };
 }

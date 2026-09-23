@@ -44,6 +44,13 @@ export const REALTIME_MAX_EVENTS_PER_TABLE = 24;
 export const REALTIME_BACKOFF_CAP_MS = 30_000;
 export const REALTIME_POLL_MS = 60_000;
 /**
+ * How long a board sits in a hidden tab before it gives its channel up. Supabase bills one
+ * Realtime message per change *per listening client*, and a background tab listens exactly as
+ * hard as a watched one: boards left open in forgotten tabs were most of the project's quota. A
+ * minute rides out a glance at another tab without costing a rejoin and a refetch on the way back.
+ */
+export const REALTIME_HIDDEN_GRACE_MS = 60_000;
+/**
  * Every open board reconnects on the same schedule after a shared outage, so an undithered
  * backoff would send the whole league at the socket in one wave. The delay is scaled by a
  * factor in [0.8, 1.2) to spread them out.

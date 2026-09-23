@@ -6,6 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { boardKeys } from "./queryKeys";
 import type { BoardRealtimeTable } from "./realtime";
 import {
+  REALTIME_BACKOFF_CAP_MS,
+  REALTIME_HIDDEN_GRACE_MS,
   REALTIME_MAX_EVENTS_PER_TABLE,
   REALTIME_MAX_WAIT_MS,
 } from "./realtime";
@@ -578,5 +580,128 @@ describe("useLeagueBoardRealtime", () => {
       vi.advanceTimersByTime(REALTIME_MAX_WAIT_MS);
     });
     expect(invalidate).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Supabase bills a Realtime message per change per *listening client*, and a background tab
+   * listens exactly as hard as a watched one — boards left open in forgotten tabs were most of
+   * the project's quota. jsdom's `visibilityState` is a fixed "visible", so each test here drives
+   * it through an own-property getter and the event the browser would fire.
+   */
+  describe("in a hidden tab", () => {
+    let visibility: DocumentVisibilityState = "visible";
+
+    function setVisibility(next: DocumentVisibilityState) {
+      visibility = next;
+      document.dispatchEvent(new Event("visibilitychange"));
+    }
+
+    beforeEach(() => {
+      visibility = "visible";
+      Object.defineProperty(document, "visibilityState", {
+        configurable: true,
+        get: () => visibility,
+      });
+    });
+
+    afterEach(() => {
+      Reflect.deleteProperty(document, "visibilityState");
+    });
+
+    it("gives the channel up once the tab has stayed hidden past the grace period", () => {
+      const fake = createFakeTransport();
+      mount(fake);
+      act(() => {
+        fake.setStatus("SUBSCRIBED");
+        setVisibility("hidden");
+        vi.advanceTimersByTime(REALTIME_HIDDEN_GRACE_MS - 1);
+      });
+      expect(fake.removeChannel).not.toHaveBeenCalled();
+
+      act(() => {
+        vi.advanceTimersByTime(1);
+      });
+      expect(fake.removeChannel).toHaveBeenCalledTimes(1);
+      expect(fake.channelCount()).toBe(1);
+    });
+
+    it("keeps the channel through a glance at another tab", () => {
+      const fake = createFakeTransport();
+      mount(fake);
+      act(() => {
+        fake.setStatus("SUBSCRIBED");
+        setVisibility("hidden");
+        vi.advanceTimersByTime(REALTIME_HIDDEN_GRACE_MS / 2);
+        setVisibility("visible");
+        vi.advanceTimersByTime(REALTIME_HIDDEN_GRACE_MS);
+      });
+      expect(fake.removeChannel).not.toHaveBeenCalled();
+      expect(fake.channelCount()).toBe(1);
+    });
+
+    it("does not report a suspension as a dropped connection", () => {
+      const fake = createFakeTransport();
+      const { result } = mount(fake);
+      act(() => {
+        fake.setStatus("SUBSCRIBED");
+        setVisibility("hidden");
+        vi.advanceTimersByTime(REALTIME_HIDDEN_GRACE_MS);
+      });
+      expect(result.current.isConnected).toBe(true);
+      // Nor does the teardown's own CLOSED, arriving late, start a reconnect behind it.
+      act(() => {
+        fake.setStatusOn(0, "CLOSED");
+        vi.advanceTimersByTime(REALTIME_BACKOFF_CAP_MS * 2);
+      });
+      expect(fake.channelCount()).toBe(1);
+      expect(result.current.isConnected).toBe(true);
+    });
+
+    it("rejoins on a fresh topic when the tab comes back, and refetches what it missed", () => {
+      const fake = createFakeTransport();
+      const invalidate = vi
+        .spyOn(queryClient, "invalidateQueries")
+        .mockResolvedValue();
+      mount(fake);
+      act(() => {
+        fake.setStatus("SUBSCRIBED");
+        setVisibility("hidden");
+        vi.advanceTimersByTime(REALTIME_HIDDEN_GRACE_MS);
+      });
+      invalidate.mockClear();
+
+      act(() => {
+        setVisibility("visible");
+      });
+      expect(fake.channelCount()).toBe(2);
+      expect(new Set(fake.channelNames()).size).toBe(2);
+
+      act(() => {
+        fake.setStatus("SUBSCRIBED");
+      });
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: boardKeys.all });
+    });
+
+    it("counts its grace from mount when the board opens in a background tab", () => {
+      visibility = "hidden";
+      const fake = createFakeTransport();
+      const invalidate = vi
+        .spyOn(queryClient, "invalidateQueries")
+        .mockResolvedValue();
+      mount(fake);
+      act(() => {
+        vi.advanceTimersByTime(REALTIME_HIDDEN_GRACE_MS);
+      });
+      expect(fake.removeChannel).toHaveBeenCalledTimes(1);
+
+      act(() => {
+        setVisibility("visible");
+      });
+      act(() => {
+        fake.setStatus("SUBSCRIBED");
+      });
+      // It never connected before it was suspended, but it still missed the whole time away.
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: boardKeys.all });
+    });
   });
 });

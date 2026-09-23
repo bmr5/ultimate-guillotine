@@ -246,6 +246,12 @@ class RosterHoldingRepository:
         keeps: ``classify_holdings`` treats ``starters`` as authoritative, so a
         started player Sleeper left out of ``players`` still has a row here, and
         deleting by ``players`` would evict him a moment after writing him.
+
+        An unchanged holding is not rewritten, so its ``synced_at`` is when it last
+        *changed*. The table is in the Realtime publication and every rewrite is a
+        message to every open board, so a pass that restamped the whole league would
+        cost a few hundred messages per tab every two minutes for nothing. Whether the
+        table is current is ``seasons.league_synced_at``, which every pass moves.
         """
         with self._conn.cursor() as cur:
             if holdings:
@@ -259,6 +265,10 @@ class RosterHoldingRepository:
                       slot = excluded.slot, slot_index = excluded.slot_index,
                       lineup_position = excluded.lineup_position,
                       synced_at = excluded.synced_at
+                    where (roster_holdings.slot, roster_holdings.slot_index,
+                           roster_holdings.lineup_position)
+                      is distinct from (excluded.slot, excluded.slot_index,
+                                        excluded.lineup_position)
                     """,
                     [
                         (
@@ -315,6 +325,12 @@ class TeamStateRepository:
         ``bump_version`` comes from ``bumps_state_version``: FAAB and points move
         every sync and are not a version-worthy change, so only a changed
         elimination fact advances the counter a consumer watches.
+
+        A row whose values all match is left alone, for the reason
+        :meth:`RosterHoldingRepository.replace_for_team` gives: ``synced_at`` here is
+        when the team's state last changed, and ``seasons.league_synced_at`` is when
+        it was last confirmed. A version bump always comes with a changed elimination
+        fact, so the guard can never swallow one.
         """
         with self._conn.cursor() as cur:
             cur.execute(
@@ -334,6 +350,17 @@ class TeamStateRepository:
                   elimination_source = excluded.elimination_source,
                   state_version = public.team_season_state.state_version + %s,
                   synced_at = excluded.synced_at
+                where (team_season_state.faab_budget, team_season_state.faab_used,
+                       team_season_state.wins, team_season_state.losses,
+                       team_season_state.ties, team_season_state.points_for,
+                       team_season_state.points_against, team_season_state.is_eliminated,
+                       team_season_state.eliminated_week,
+                       team_season_state.elimination_source)
+                  is distinct from (excluded.faab_budget, excluded.faab_used,
+                                    excluded.wins, excluded.losses, excluded.ties,
+                                    excluded.points_for, excluded.points_against,
+                                    excluded.is_eliminated, excluded.eliminated_week,
+                                    excluded.elimination_source)
                 """,
                 (
                     season_id,

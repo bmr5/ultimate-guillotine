@@ -237,12 +237,34 @@ def test_a_horizon_shorter_than_a_week_is_refused(conn) -> None:
 def test_a_stalled_roster_sync_behind_fresh_projections_reads_stale(conn) -> None:
     """The whole point of ruling 1: one fresh sync cannot vouch for a stale one."""
     stalled = SEEDED_AT - timedelta(hours=6)
-    _season_id, _member_id, _team_id = _seed_minimal_league(conn, holdings_synced_at=stalled)
+    _season_id, _member_id, _team_id = _seed_minimal_league(conn, roster_synced_at=stalled)
     snapshot = SnapshotRepository(conn).load()
     assert snapshot.synced_at == SEEDED_AT
     assert snapshot.oldest_synced_at == stalled
     assert snapshot.is_stale(SEEDED_AT + timedelta(minutes=5))
     assert snapshot.age(SEEDED_AT) == timedelta(hours=6)
+
+
+def test_a_roster_nobody_touched_for_days_reads_fresh_under_a_fresh_sync(conn) -> None:
+    """A holding's and a team state's own ``synced_at`` are when they last *changed*.
+
+    The sync leaves an unchanged row alone -- rewriting it was a Realtime message to
+    every open board -- so a quiet roster keeps a days-old stamp while the sync that
+    confirmed it ran minutes ago. ``seasons.league_synced_at`` is that confirmation.
+    """
+    _seed_minimal_league(conn, rows_changed_at=SEEDED_AT - timedelta(days=3))
+    snapshot = SnapshotRepository(conn).load()
+    assert snapshot.oldest_synced_at == SEEDED_AT
+    assert not snapshot.is_stale(SEEDED_AT + timedelta(minutes=5))
+
+
+def test_a_season_the_roster_sync_never_reached_is_unavailable(conn) -> None:
+    """No heartbeat is an unknown roster age, not an epoch-old one."""
+    season_id, _member_id, _team_id = _seed_minimal_league(conn)
+    with conn.cursor() as cur:
+        cur.execute("update public.seasons set league_synced_at = null where id = %s", (season_id,))
+    with pytest.raises(SnapshotUnavailable, match="league_synced_at"):
+        SnapshotRepository(conn).load()
 
 
 def test_a_team_without_a_projection_row_is_unavailable(conn) -> None:
@@ -391,12 +413,13 @@ def _seed_nfl_state(conn, week: int = 6) -> None:
         )
 
 
-def _seed_season(conn) -> int:
+def _seed_season(conn, roster_synced_at: datetime = SEEDED_AT) -> int:
     with conn.cursor() as cur:
         cur.execute(
-            "insert into public.seasons (year, sleeper_league_id, rules_version, waiver_budget)"
-            " values (%s, 'L1', 'v1', 1000) returning id",
-            (SENTINEL_SEASON,),
+            "insert into public.seasons"
+            " (year, sleeper_league_id, rules_version, waiver_budget, league_synced_at)"
+            " values (%s, 'L1', 'v1', 1000, %s) returning id",
+            (SENTINEL_SEASON, roster_synced_at),
         )
         return cur.fetchone()[0]
 
@@ -406,18 +429,22 @@ def _seed_minimal_league(
     *,
     week: int = 6,
     weeks: tuple[int, ...] | None = None,
-    holdings_synced_at: datetime | None = None,
+    roster_synced_at: datetime = SEEDED_AT,
+    rows_changed_at: datetime = SEEDED_AT,
 ) -> tuple[int, int, int]:
     """One sentinel season, one member, one team, one starter and one bench player.
 
     The season is :data:`SENTINEL_SEASON`, which no sync writes, so nothing here
     depends on -- or collides with -- the real rows in a developer's local stack.
     ``weeks`` is which weeks get projection rows, for the horizon tests.
+    ``roster_synced_at`` is the roster sync's heartbeat on the season row, and
+    ``rows_changed_at`` the holdings' and team state's own ``synced_at`` -- when
+    they last changed, which on a quiet roster is long before the last sync.
     """
     weeks = weeks or (week,)
-    held_at = SEEDED_AT if holdings_synced_at is None else holdings_synced_at
+    held_at = rows_changed_at
     _seed_nfl_state(conn, week)
-    season_id = _seed_season(conn)
+    season_id = _seed_season(conn, roster_synced_at)
     with conn.cursor() as cur:
         cur.execute("insert into public.members (display_name) values ('Member01') returning id")
         member_id = cur.fetchone()[0]
@@ -432,7 +459,7 @@ def _seed_minimal_league(
             "insert into public.team_season_state"
             " (season_id, team_id, faab_budget, faab_used, synced_at)"
             " values (%s, %s, 1000, 300, %s)",
-            (season_id, team_id, SEEDED_AT),
+            (season_id, team_id, rows_changed_at),
         )
         for pid, name, slot, index in (
             ("px1", "Player X1", "starter", 0),
