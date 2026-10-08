@@ -519,6 +519,7 @@ def trade_math(
     replacement = replacement_levels(snapshot)
     margins = {
         h.player_name: _points(h.projected_now - replacement[h.position])
+        if replacement[h.position] is not None else None
         for s in sides.values() for h in s["incoming"]
         if h.position in replacement and h.projected_now is not None
     }
@@ -538,6 +539,9 @@ def trade_math(
             for s in sides.values()
         },
         "points_over_replacement": margins,
+        "replacement_method": "Active-team starter depth among usable rostered players; "
+                              "FLEX demand assigned to WR. Not a measured waiver alternative. "
+                              "Insufficient projection coverage returns null.",
         "note": (
             "lineup_delta is the change to the inherited base lineup, excluding FLEX, K and DEF,"
             " summed over weeks;"

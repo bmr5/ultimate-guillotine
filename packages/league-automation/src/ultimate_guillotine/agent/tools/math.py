@@ -24,9 +24,6 @@ from ultimate_guillotine.agent.tools.snapshot import (
 POSITIONS = ("QB", "RB", "WR", "TE")
 ROSTER_POSITIONS = ("QB", "RB", "RB", "WR", "WR", "TE", "FLEX", "K", "DEF")
 FLEX_SLOT = "FLEX"
-#: The Nth-best projection at a position is what a free replacement is worth.
-#: The single FLEX is counted once, at WR, the position that in practice fills it.
-REPLACEMENT_RANK = {"QB": 18, "RB": 36, "WR": 54, "TE": 18}
 NO_POINTS = Decimal(0)
 POINT_PRECISION = Decimal("0.01")
 
@@ -47,7 +44,6 @@ __all__ = [
     "NO_POINTS",
     "POINT_PRECISION",
     "POSITIONS",
-    "REPLACEMENT_RANK",
     "STARTER_SLOTS",
     "holdings_by_id",
     "lineup_delta",
@@ -57,21 +53,22 @@ __all__ = [
 ]
 
 
-def replacement_levels(snapshot: LeagueSnapshot) -> dict[str, Decimal]:
-    """The projection of the Nth-best rostered player at each position, league-wide."""
-    levels: dict[str, Decimal] = {}
+def replacement_levels(snapshot: LeagueSnapshot) -> dict[str, Decimal | None]:
+    """An active-league starter-depth benchmark, not a verified free-agent alternative."""
+    levels: dict[str, Decimal | None] = {}
+    active = [team for team in snapshot.teams if not team.is_eliminated]
     for position in POSITIONS:
         points = sorted(
             (
                 h.projected_now
-                for team in snapshot.teams
-                for h in team.holdings
+                for team in active
+                for h in startable(team)
                 if h.position == position and h.projected_now is not None
             ),
             reverse=True,
         )
-        rank = REPLACEMENT_RANK[position]
-        levels[position] = points[rank - 1] if len(points) >= rank else NO_POINTS
+        rank = len(active) * (3 if position == "WR" else STARTER_SLOTS[position])
+        levels[position] = points[rank - 1] if rank > 0 and len(points) >= rank else None
     return levels
 
 

@@ -27,13 +27,36 @@ def test_replacement_levels_are_the_nth_best_rostered_projection() -> None:
     levels = replacement_levels(fixture_snapshot())
     assert set(levels) == set(POSITIONS)
     assert all(isinstance(v, Decimal) for v in levels.values())
-    # Eighteen QBs are started league-wide, so the 18th-best QB is the line.
+    # Only surviving teams establish current starter demand.
     qbs = sorted(
-        (h.projected_now for t in fixture_snapshot().teams for h in t.holdings
+        (h.projected_now for t in fixture_snapshot().teams if not t.is_eliminated for h in startable(t)
          if h.position == "QB" and h.projected_now is not None),
         reverse=True,
     )
-    assert levels["QB"] == qbs[17]
+    alive = sum(not t.is_eliminated for t in fixture_snapshot().teams)
+    assert levels["QB"] == qbs[alive - 1]
+
+
+def test_missing_replacement_projection_is_unknown_not_zero():
+    from dataclasses import replace
+    snapshot = fixture_snapshot()
+    teams = tuple(replace(t, holdings=()) for t in snapshot.teams)
+    assert all(v is None for v in replacement_levels(replace(snapshot, teams=teams)).values())
+
+
+def test_trade_math_with_sparse_replacement_pool_returns_null_margin():
+    from dataclasses import replace
+    from ultimate_guillotine.agent.tools.league import trade_math
+    from ultimate_guillotine.agent.tools.source import FixtureSource
+    class Sparse(FixtureSource):
+        def snapshot(self, horizon_weeks=1):
+            snapshot = super().snapshot(horizon_weeks)
+            teams = tuple(replace(t, holdings=tuple(h for h in t.holdings
+                          if h.player_name == "Bench 02-0")) for t in snapshot.teams)
+            return replace(snapshot, teams=teams)
+    result = trade_math(Sparse(), [{"kind": "player", "player": "Bench 02-0",
+                                  "from": "Member02", "to": "Member03"}])
+    assert result["points_over_replacement"] == {"Bench 02-0": None}
 
 
 def test_lineup_points_sums_the_best_legal_starters_only() -> None:
