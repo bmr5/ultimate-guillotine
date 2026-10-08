@@ -15,6 +15,42 @@ PLAYERS = [
 ]
 
 
+@pytest.mark.parametrize("both_named", [False, True])
+def test_shorthand_uses_the_explicit_party_unless_both_members_are_named(both_named):
+    extracted = ExtractedTrade(
+        kind="rental",
+        parties=[
+            ExtractedParty(name=n)
+            for n in (["Nick R", "Nick T", "Member03"] if both_named else ["Nick R", "Member03"])
+        ],
+        assets=[ExtractedAsset(kind="faab", from_party="Nick", to_party="Member03", amount=1)],
+    )
+    members = [
+        MemberRef(1, "Member01", ("Nick R",)),
+        MemberRef(2, "Member02", ("Nick T",)),
+        MemberRef(3, "Member03", ()),
+    ]
+
+    def run():
+        return resolve_extracted(
+            extracted,
+            members,
+            PLAYERS,
+            RosterIndex.empty(),
+            2026,
+            "test",
+            "synthetic alert",
+            "test",
+            "test",
+        )
+
+    if both_named:
+        with pytest.raises(Unresolved, match="which one"):
+            run()
+    else:
+        assert run().assets[0].from_member_id == 1
+
+
 def resolve(name, assets, holdings, *, other="Member03"):
     members = [
         MemberRef(1, "Member01", (name, f"{name} R")),

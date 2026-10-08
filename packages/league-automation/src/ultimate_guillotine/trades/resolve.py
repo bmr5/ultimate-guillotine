@@ -608,6 +608,13 @@ def resolve_extracted(
         raise Unresolved(extracted.unclear_reason or "The alert is unclear")
 
     member_index = _build_member_index(members)
+    # A later shorthand refers to a uniquely named party in the same alert.
+    # Keep both candidates when the alert explicitly names both members.
+    named_members = {
+        normalize_name(party.name): candidates[0].member_id
+        for party in extracted.parties
+        if len(candidates := member_index.get(normalize_name(party.name), [])) == 1
+    }
 
     # Players and parties each want the other resolved first: settling two
     # members who go by one name reads the rosters of the players they are
@@ -674,6 +681,17 @@ def resolve_extracted(
             return candidates[0]
 
         winner: MemberRef | None = None
+        named_member_ids = {
+            member_id
+            for party_name, member_id in named_members.items()
+            if party_name.startswith(norm + " ") and len(party_name.removeprefix(norm + " ")) == 1
+        }
+        named_candidates = [c for c in candidates if c.member_id in named_member_ids]
+        if len(named_candidates) == 1:
+            winner = named_candidates[0]
+        if winner is not None:
+            member_cache[norm] = winner
+            return winner
         if len(candidates) >= 2:
             sent = sent_players(norm)
             received = received_players(norm)
