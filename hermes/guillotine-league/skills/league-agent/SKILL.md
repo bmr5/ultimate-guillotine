@@ -65,6 +65,27 @@ not evidence that an event did not happen.
 
 ## Trade and roster questions
 
+When asked for fair or appropriate value, produce your own valuation first. An
+existing trade price, winning bid or position median is a market observation,
+not the answer. Build the estimate from projected points above realistic legal
+replacement starters, lineup needs, injury and matchup uncertainty, survival
+pressure, active FAAB budgets and the opportunity cost of saving that money.
+For rentals, value only the requested weeks and account for return and custody
+terms. For permanent sales, include the remaining useful season. If "for week 5"
+does not specify rental versus outright sale, show separately labeled values for
+both rather than silently choosing one.
+
+Explain how you translate the football benefit into FAAB. State your assumptions,
+give a central estimate and a reasonable range, and show sensitivity to replacement
+quality and player availability. A judgment-based conversion is acceptable when
+clearly labeled; do not invent a calibrated dollar-per-point model or measured
+survival change. Evaluate plausible buyers when no buyer is named. Separate the
+seller's opportunity cost, buyer-specific ceiling and your recommended fair value.
+Lead a requested value diagram with that independent estimate and its assumptions.
+Use transaction history afterward to cross-check the estimate and explain any
+disagreement. Existing contract rights affect feasibility, not independent player
+value; describe them separately without substituting their price for your estimate.
+
 For move evaluations, call `market_history` before quoting a price. Search the player,
 then their position and the relevant managers if the player has few precedents. Use
 the available seasons from 2023 onward, not only last season. The league's market-analysis
