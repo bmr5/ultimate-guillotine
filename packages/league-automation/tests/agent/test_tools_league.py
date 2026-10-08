@@ -70,6 +70,8 @@ def test_a_player_says_who_holds_them_or_that_nobody_does() -> None:
     assert held["holder"] == "Member07" and held["slot"] == "starter"
     free = player(SOURCE, "Free Agent One", now=NOW)
     assert free["holder"] == "free agent" and free["injury_status"] is None
+    released = player(SOURCE, "Starter 17-0", now=NOW)
+    assert released["holder"] == "free agent"
 
 
 def test_projections_compare_named_members_or_rank_the_league() -> None:

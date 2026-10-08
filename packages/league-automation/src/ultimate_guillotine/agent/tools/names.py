@@ -120,7 +120,14 @@ def resolve_player(
     if not wanted:
         raise Unknown(token)
     pool = player_pool(snapshot, players)
-    holders = {h.sleeper_player_id: t.member_label for t in snapshot.teams for h in t.holdings}
+    # Eliminated teams expose frozen historical rosters in the snapshot. They do
+    # not own those players now and must not make a current free agent look held.
+    holders = {
+        h.sleeper_player_id: t.member_label
+        for t in snapshot.teams
+        if not t.is_eliminated
+        for h in t.holdings
+    }
 
     exact = [p for p in pool.values() if normalize_name(p.full_name) == wanted]
     if len(exact) > 1:

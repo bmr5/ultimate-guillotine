@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from decimal import Decimal
 
-RULES_VERSION = "gulag-2026-v1"
+RULES_VERSION = "gulag-2026-v2"
 
 
 class Unresolved(ValueError):
@@ -54,7 +54,7 @@ def adjudicate(
     alive: set[int],
     qualifiers: tuple[int, ...],
     scores: dict[int, Decimal],
-    substitutions: dict[int, int] | None = None,
+    *,
     tie_order: tuple[int, ...] = (),
 ) -> Outcome:
     expected_start = 18 if week == 1 else expected_remaining(week - 1)
@@ -62,29 +62,23 @@ def adjudicate(
         raise Unresolved(f"week {week} needs {expected_start} surviving teams")
     if not alive <= scores.keys() or any(not scores[t].is_finite() for t in alive):
         raise Unresolved("missing or non-finite score")
-    substitutions = substitutions or {}
     events: list[Event] = []
     cuts: set[int] = set()
     participants: set[int] = set()
     if 2 <= week <= 12:
         if len(qualifiers) != 2 or len(set(qualifiers)) != 2 or not set(qualifiers) <= alive:
             raise Unresolved("previous week's finalized gulag qualifiers are required")
-        if not substitutions.keys() <= set(qualifiers):
-            raise Unresolved("substitution does not name an original qualifier")
-        actual = {q: substitutions.get(q, q) for q in qualifiers}
-        participants = set(actual.values())
-        if len(participants) != 2 or not participants <= alive:
-            raise Unresolved("gulag needs two distinct surviving participants")
+        participants = set(qualifiers)
         loser = bottom(scores, participants, 1, tie_order)[0]
         winner = next(t for t in participants if t != loser)
-        for q, t in actual.items():
-            events.append(Event("gulag_entered", t, qualifier=q, contest_week=week))
+        for team in qualifiers:
+            events.append(Event("gulag_entered", team, qualifier=team, contest_week=week))
         events.append(
             Event(
                 "gulag_survived",
                 winner,
                 opponent=loser,
-                qualifier=next(q for q, t in actual.items() if t == winner),
+                qualifier=winner,
                 contest_week=week,
             )
         )
@@ -94,12 +88,12 @@ def adjudicate(
                 loser,
                 "gulag_loss",
                 winner,
-                next(q for q, t in actual.items() if t == loser),
+                loser,
                 week,
             )
         )
         cuts.add(loser)
-    elif qualifiers or substitutions:
+    elif qualifiers:
         raise Unresolved("this phase has no active gulag")
 
     next_qualifiers: tuple[int, ...] = ()

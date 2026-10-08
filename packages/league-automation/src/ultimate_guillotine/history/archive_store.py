@@ -64,62 +64,6 @@ def latest_ruling(conn, season_id: int, scope: str, week: int) -> dict:
     return result[0] if result else {"id": None, "payload": {}}
 
 
-def protection_contracts(conn, season_id: int, scope: str, week: int) -> list[dict]:
-    # A registered protection asset does not establish when insurance was exercised.
-    # Surface unassigned accepted agreements instead of guessing the participant.
-    return rows(
-        conn,
-        """select t.trade_code, t.id, r.terms, r.id as revision_id
-        from public.trades t join public.trade_revisions r on r.id=t.current_revision_id
-        where t.season_id=%s and t.status='accepted' and t.trade_code not like 'TEST-%%'
-        and (r.effective_week <= %s or (r.effective_week is null and t.created_at <= coalesce(
-          (select first_complete_at from private.archive_week_jobs
-           where season_id=%s and scope=%s and week=%s), 'infinity'::timestamptz)))
-        and exists(select 1 from jsonb_array_elements(r.terms->'assets') a
-                   where a->>'kind'='protection')""",
-        (season_id, week, season_id, scope, week),
-    )
-
-
-def contract_assignments(conn, season_id: int, scope: str) -> dict[str, int]:
-    # Each week's newest complete ruling replaces its earlier ruling.
-    latest = rows(
-        conn,
-        """select distinct on (week) week, payload from private.archive_rulings
-        where season_id=%s and scope=%s order by week, id desc""",
-        (season_id, scope),
-    )
-    assigned: dict[str, int] = {}
-    for record in latest:
-        for code in record["payload"].get("reviewed_trade_codes", []):
-            if code in assigned and assigned[code] != record["week"]:
-                raise Unresolved("a protection agreement is assigned to multiple contests")
-            assigned[code] = record["week"]
-    return assigned
-
-
-def contest_ruling(conn, season_id: int, scope: str, week: int):
-    ruling = latest_ruling(conn, season_id, scope, week)
-    for code, revision_id in ruling["payload"].get("reviewed_trade_revisions", {}).items():
-        trade = rows(
-            conn,
-            "select current_revision_id,status from public.trades where season_id=%s and trade_code=%s",
-            (season_id, code),
-        )
-        if (
-            not trade
-            or trade[0]["status"] != "accepted"
-            or trade[0]["current_revision_id"] != revision_id
-        ):
-            raise Unresolved("A reviewed protection agreement changed; refresh the contest ruling")
-    contracts = protection_contracts(conn, season_id, scope, week) if 2 <= week <= 12 else []
-    assigned = contract_assignments(conn, season_id, scope) if contracts else {}
-    unknown = [t["trade_code"] for t in contracts if t["trade_code"] not in assigned]
-    if unknown:
-        raise Unresolved("Protection agreements need a contest ruling: " + ", ".join(unknown))
-    return ruling, contracts
-
-
 def publish(
     conn,
     *,
@@ -359,7 +303,7 @@ def update_current_state(conn, season_id: int, scope: str):
 
 
 def current_gulag_events(conn, season_id: int):
-    """Current official pairing for the Daily, including an explicit unresolved marker."""
+    """Current official pairing for the Daily from the finalized qualifiers."""
     available = conn.execute("select to_regclass('private.archive_seasons')").fetchone()[0]
     if available is None:
         return None
@@ -375,27 +319,10 @@ def current_gulag_events(conn, season_id: int):
     }
     result = []
     for week in range(2, 13):
-        pair = ()
         try:
-            alive, qualifiers, _ = prior_state(conn, season_id, "production", week, team_ids)
+            _alive, qualifiers, _ = prior_state(conn, season_id, "production", week, team_ids)
         except Unresolved:
             result.append((week, "archive_gulag_pair", {"team_ids": []}))
             continue
-        try:
-            ruling, _ = contest_ruling(conn, season_id, "production", week)
-            subs = {int(k): int(v) for k, v in ruling["payload"].get("substitutions", {}).items()}
-            if not subs.keys() <= set(qualifiers):
-                raise Unresolved("substitution does not name an original qualifier")
-            candidate = tuple(sorted(subs.get(t, t) for t in qualifiers))
-            if len(candidate) != 2 or len(set(candidate)) != 2 or not set(candidate) <= alive:
-                raise Unresolved("invalid gulag participants")
-            pair = candidate
-        except Unresolved:
-            # Confirmed qualifiers are still known even when protection terms
-            # leave the eventual participants unsettled.
-            result.append(
-                (week, "archive_gulag_qualifiers", {"team_ids": list(qualifiers)})
-            )
-            continue
-        result.append((week, "archive_gulag_pair", {"team_ids": list(pair)}))
+        result.append((week, "archive_gulag_pair", {"team_ids": list(qualifiers)}))
     return result

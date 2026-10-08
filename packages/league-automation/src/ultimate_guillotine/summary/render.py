@@ -155,8 +155,6 @@ class View:
         return None
 
     def gulag_note(self) -> str | None:
-        if self.snap.phase.gulag_source == "qualifiers":
-            return f"Week {self.snap.week - 1} qualifiers; protection substitutions not yet ruled"
         if self.snap.phase.gulag_source == "replay":
             return "pairing inferred from last week's scores"
         return None

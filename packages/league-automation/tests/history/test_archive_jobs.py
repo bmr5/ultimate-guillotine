@@ -251,29 +251,29 @@ def test_worker_can_capture_and_confirm_and_public_cannot_read_evidence(archive)
     ).fetchone()[0]
 
 
-def test_substitute_takes_the_loss_and_correction_withdraws_dependent_week(archive):
-    from ultimate_guillotine.cli.archive import Ruling, record_ruling
+def test_protection_trade_does_not_change_or_block_the_gulag(archive):
     from ultimate_guillotine.history.archive_jobs import configuration
     from ultimate_guillotine.history.archive_store import current_gulag_events
 
-    conn, client, _ = archive
+    conn, client, season_id = archive
     finalize_week_one(conn, client)
     ids = dict(conn.execute("select sleeper_roster_id,id from public.teams").fetchall())
-    record_ruling(
-        conn,
-        configuration(conn),
-        Ruling(
-            week=2,
-            actor="Commish",
-            reason="Team 3 takes Team 1's gulag place",
-            substitutions={ids[1]: ids[3]},
-        ),
-        TUESDAY,
+    trade_id = conn.execute(
+        """insert into public.trades (season_id,trade_code,status)
+        values (%s,'T-2026-998','accepted') returning id""",
+        (season_id,),
+    ).fetchone()[0]
+    revision_id = conn.execute(
+        """insert into public.trade_revisions (trade_id,revision,terms,effective_week)
+        values (%s,1,%s::jsonb,2) returning id""",
+        (trade_id, '{"assets":[{"kind":"protection","description":"gulag protection"}]}'),
+    ).fetchone()[0]
+    conn.execute(
+        "update public.trades set current_revision_id=%s where id=%s", (revision_id, trade_id)
     )
     pair = current_gulag_events(conn, configuration(conn)["season_id"])[0][2]["team_ids"]
-    assert set(pair) == {ids[2], ids[3]}
+    assert set(pair) == {ids[1], ids[2]}
     client.week = 2
-    client.points[(2, 3)] = 0
     client.complete.add(2)
     tick(conn, client, MONDAY + timedelta(weeks=1))
     tick(conn, client, TUESDAY + timedelta(weeks=1))
@@ -282,31 +282,10 @@ def test_substitute_takes_the_loss_and_correction_withdraws_dependent_week(archi
         "select * from public.team_event_snapshots where week_revision_id=%s and event_type='eliminated'",
         (current(conn, 2)["id"],),
     )[0]
-    assert event["team_id"] == ids[3]
+    assert event["team_id"] == ids[1]
     assert event["qualifier_team_id"] == ids[1]
-    assert event["beneficiary_team_id"] == ids[1]
-    assert (
-        conn.execute(
-            "select is_eliminated from public.team_season_state where team_id=%s", (ids[1],)
-        ).fetchone()[0]
-        is False
-    )
-    assert rows(conn, "select team_id from public.effective_final_rosters") == [{"team_id": ids[3]}]
-    # An earlier correction changes qualifiers. The old substitution no longer applies.
-    client.points[(1, 1)] = 100
-    later = TUESDAY + timedelta(weeks=1, days=1, hours=2)
-    tick(conn, client, later)
-    tick(conn, client, later + timedelta(minutes=30))
-    assert current(conn)["is_correction"] is True
-    assert current(conn, 2)["status"] == "retracted"
-    assert not rows(conn, "select * from public.effective_final_rosters")
-    assert (
-        conn.execute(
-            "select count(*) from public.team_season_state where is_eliminated"
-        ).fetchone()[0]
-        == 0
-    )
-    assert current_gulag_events(conn, configuration(conn)["season_id"])[0][2]["team_ids"] == []
+    assert event["beneficiary_team_id"] is None
+    assert rows(conn, "select team_id from public.effective_final_rosters") == [{"team_id": ids[1]}]
 
 
 def test_test_scope_never_changes_official_state(archive):

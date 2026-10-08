@@ -21,7 +21,7 @@ The database stores each week's due time, observed cutoff, candidate hash, and p
 
 ## Cuts and gulag announcement
 
-Enabled September 14, 2026; gulag qualifiers added September 15. Tuesday's 8 AM Central confirmation sends the week's cut names, number of teams remaining, and the two qualifiers for the following gulag, with the usual bot signature. Week 1 says `Week 1: Nobody was cut. All 18 teams remain alive.` followed by `Week 2 gulag qualifiers: Nick R and Brandon L.` Gulag qualification is distinct from elimination and does not imply an agreed substitute is already assigned. Week 12 lists both cuts and no next gulag; subsequent weeks also omit that line. Rosters and FAAB are not included.
+Enabled September 14, 2026; gulag qualifiers added September 15. Tuesday's 8 AM Central confirmation sends the week's cut names, number of teams remaining, and the two qualifiers for the following gulag, with the usual bot signature. Week 1 says `Week 1: Nobody was cut. All 18 teams remain alive.` followed by `Week 2 gulag qualifiers: Nick R and Brandon L.` Gulag qualification is distinct from elimination. Once two teams qualify, those teams remain the gulag participants for the following week. Protection terms govern player disposition and never replace a gulag team. Week 12 lists both cuts and no next gulag; subsequent weeks also omit that line. Rosters and FAAB are not included.
 
 The announcement requires a production archive, production delivery mode, and contiguous confirmed weeks. Unfinished games or unresolved rulings delay it until a retry confirms the result. The existing 15-minute retry also recovers failed delivery without requiring another score revision. It checks the stored production chat and participant fingerprint before sending.
 
@@ -31,7 +31,7 @@ The announcement requires a production archive, production delivery mode, and co
 
 The cutoff is an observation time, not an exact final-whistle timestamp. The first completion observation pins the roster and balance used for that week. A nearby preceding observation is retained if holdings changed during the completion poll. Tuesday verification and later corrections cannot replace that evidence with a cleared roster or a later FAAB balance. Missing capture coverage is labeled partial; an unavailable balance stays unknown.
 
-Gulag entry uses the preceding week's saved roster, with partial coverage, because an exact penalty/reset timestamp is not yet integrated. Explicit keeper selections are not inferred. A substitute's qualifier and beneficiary remain distinct from the actual participant. Registered dollar amounts are not automatically applied to balances.
+Gulag entry uses the preceding week's saved roster, with partial coverage, because an exact penalty/reset timestamp is not yet integrated. Explicit keeper selections are not inferred. Registered dollar amounts are not automatically applied to balances.
 
 ## Inspect and resolve
 
@@ -43,22 +43,20 @@ Run commands from the repository root. They use the configured production connec
 .venv/bin/ug archive tick
 ```
 
-Missing scores, cutoff ties, invalid identities, incomplete earlier weeks, or accepted protection agreements without a contest assignment produce an unresolved result. They do not invent an official cut. The status command shows each week's exception.
+Missing scores, cutoff ties, invalid identities, or incomplete earlier weeks produce an unresolved result. Protection agreements never affect the gulag pairing or block adjudication. The status command shows each week's exception.
 
-For a substitution or tie, write a commissioner ruling JSON file and run `.venv/bin/ug archive ruling --file /absolute/path/ruling.json`. IDs are stable `public.teams.id` values, not Sleeper roster numbers. For example:
+For a tied selection boundary, write a commissioner ruling JSON file and run `.venv/bin/ug archive ruling --file /absolute/path/ruling.json`. IDs are stable `public.teams.id` values, not Sleeper roster numbers. For example:
 
 ```json
 {
   "week": 2,
   "actor": "Commish",
-  "reason": "Accepted agreement: the substitute takes the qualifier's place",
-  "substitutions": {"101": 103},
-  "tie_order": [],
-  "reviewed_trade_codes": ["T-2026-001"]
+  "reason": "Commissioner ruling for the tied scoring boundary",
+  "tie_order": [101, 103]
 }
 ```
 
-This example requires replacing the IDs and trade code with the actual records. `week` is the contest week. Substitution keys are original qualifiers; values are actual participants. `tie_order` lists the tied teams from lowest to highest when an explicit ruling decides the boundary. `reviewed_trade_codes` assigns an accepted protection agreement to the reviewed contest even if it was not exercised. A newer ruling replaces that week's complete ruling, so include all its applicable decisions. An amended or rescinded reviewed agreement requires a refreshed ruling. The command records the actor, reason, and accepted trade revision, then makes the week due for another check. It never edits Sleeper or sends a message.
+This example requires replacing the IDs with the actual records. `week` is the scoring week. `tie_order` lists all teams tied at the selection boundary from lowest to highest. A newer ruling replaces that week's ruling. The command records the actor and reason, then makes the week due for another check. It never edits Sleeper or sends a message.
 
 ## Deployment and verification
 

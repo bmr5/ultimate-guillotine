@@ -181,12 +181,16 @@ def player(
     snapshot = source.snapshot(horizon_weeks=_horizon(weeks_ahead))
     info = resolve_player(name, snapshot, source.players())
     weeks = list(snapshot.weeks)
+    # Frozen holdings keep an eliminated roster available for historical views,
+    # but they are not current ownership. Prefer the live league here.
     for team in snapshot.teams:
+        if team.is_eliminated:
+            continue
         for holding in team.holdings:
             if holding.sleeper_player_id == info.sleeper_player_id:
                 return {
                     "holder": team.member_label,
-                    "holder_eliminated": team.is_eliminated,
+                    "holder_eliminated": False,
                     **_holding(holding, {info.sleeper_player_id: info}, weeks),
                     **_stamp(snapshot, now),
                 }

@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import type { BoardClient } from "./fetchers";
 import {
+  fetchCurrentGulagTeamIds,
   fetchFinalRosters,
   fetchLatestSeason,
   fetchLatestSurvivalSnapshot,
@@ -21,6 +22,60 @@ import {
   fetchWeeklyResults,
   IN_CHUNK_SIZE,
 } from "./fetchers";
+
+describe("fetchCurrentGulagTeamIds", () => {
+  it("reads the two confirmed prior-week qualifiers for this contest", async () => {
+    const { client, calls } = createFakeClient({
+      season_history_current_weeks: [
+        { id: 70, season: 2026, week: 2, status: "confirmed" },
+      ],
+      season_history_current_events: [
+        {
+          week_revision_id: 70,
+          event_type: "gulag_qualified",
+          team_id: 14,
+          contest_week: 3,
+        },
+        {
+          week_revision_id: 70,
+          event_type: "gulag_qualified",
+          team_id: 18,
+          contest_week: 3,
+        },
+      ],
+    });
+
+    await expect(fetchCurrentGulagTeamIds(client, 2026, 3)).resolves.toEqual([
+      14, 18,
+    ]);
+    expect(calls.map((call) => call.table)).toEqual([
+      "season_history_current_weeks",
+      "season_history_current_events",
+    ]);
+    expect(calls[0].filters).toEqual([
+      ["season", 2026],
+      ["week", 2],
+    ]);
+    expect(calls[1].filters).toEqual([
+      ["week_revision_id", 70],
+      ["event_type", "gulag_qualified"],
+      ["contest_week", 3],
+    ]);
+  });
+
+  it("does not expose a pairing from an unconfirmed prior week", async () => {
+    const { client, calls } = createFakeClient({
+      season_history_current_weeks: [
+        { id: 70, season: 2026, week: 2, status: "unresolved" },
+      ],
+    });
+
+    await expect(fetchCurrentGulagTeamIds(client, 2026, 3)).resolves.toEqual(
+      [],
+    );
+    expect(calls).toHaveLength(1);
+  });
+});
 
 interface Call {
   table: string;
@@ -68,7 +123,7 @@ function createFakeClient(
           const message = errors[table];
           const response = responses[table];
           const data =
-            typeof response === "function" ? response(call) : response ?? [];
+            typeof response === "function" ? response(call) : (response ?? []);
           return Promise.resolve(
             message === undefined
               ? { data, error: null }

@@ -1,5 +1,7 @@
 # Weekly Adjudicator Agent Implementation Plan
 
+> **Rule correction — September 24, 2026:** The substitution and insurance model described in this historical plan is incorrect. Once teams qualify for the gulag, they cannot leave or be replaced. Protection terms govern player disposition and do not change gulag participation. The production adjudicator implements this corrected rule as `gulag-2026-v2`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Deterministically compute and automatically announce every weekly gulag, elimination, cut, correction, and championship transition.

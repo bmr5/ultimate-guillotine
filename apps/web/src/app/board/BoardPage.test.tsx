@@ -119,6 +119,7 @@ const result = (over: Partial<BoardDataResult> = {}): BoardDataResult => ({
   draftPicks: [],
   memberIdByTeamId: new Map(),
   teams: [],
+  gulagTeamIds: [],
   isPending: false,
   isEmpty: false,
   errors: [],
@@ -356,6 +357,40 @@ describe("BoardPage", () => {
     const items = screen.getAllByRole("listitem");
     expect(items[0]).toHaveTextContent("owner2");
     expect(items[1]).toHaveTextContent("owner1");
+  });
+
+  it("separates the current gulag from the numbered league rankings", () => {
+    boardData.current = result({
+      gulagTeamIds: [14, 18],
+      teams: [
+        team({ teamId: 1, ownerName: "Pool leader", projectedPoints: 140 }),
+        team({
+          teamId: 14,
+          ownerName: "Derek",
+          projectedPoints: 110,
+        }),
+        team({
+          teamId: 18,
+          ownerName: "Matt",
+          projectedPoints: 100,
+        }),
+      ],
+    });
+
+    const { container } = renderPage();
+    const gulag = within(screen.getByRole("region", { name: "Gulag (2)" }));
+    const rankings = within(
+      screen.getByRole("region", { name: "League rankings (1)" }),
+    );
+
+    expect(gulag.getByText("Derek")).toBeInTheDocument();
+    expect(gulag.getByText("Matt")).toBeInTheDocument();
+    expect(gulag.queryByText("Pool leader")).not.toBeInTheDocument();
+    expect(rankings.getByText("Pool leader")).toBeInTheDocument();
+    expect(rankings.queryByText("Derek")).not.toBeInTheDocument();
+    expect(rankings.queryByText("Matt")).not.toBeInTheDocument();
+    expect(container.querySelectorAll('[data-rank="G"]')).toHaveLength(2);
+    expect(rankings.getByText("1", { selector: "[data-rank]" })).toBeVisible();
   });
 
   it("ranks the screenshot's teams and cut watch by current rather than original projection", () => {

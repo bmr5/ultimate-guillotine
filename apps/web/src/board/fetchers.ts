@@ -381,6 +381,48 @@ export async function fetchLatestSurvivalSnapshot(
   return rows[0] ?? null;
 }
 
+/** The two finalized prior-week qualifiers who must play this week's gulag. */
+export async function fetchCurrentGulagTeamIds(
+  client: BoardClient,
+  season: number,
+  week: number,
+): Promise<number[]> {
+  if (week < 2 || week > 12) return [];
+  const weeks = await unwrap<{
+    id: number;
+    season: number;
+    week: number;
+    status: "provisional" | "confirmed" | "unresolved" | "retracted";
+  }>(
+    client
+      .from("season_history_current_weeks")
+      .select("id, season, week, status")
+      .eq("season", season)
+      .eq("week", week - 1)
+      .limit(1),
+    "season_history_current_weeks",
+  );
+  const prior = weeks[0];
+  if (prior === undefined || prior.status !== "confirmed") return [];
+  const events = await unwrap<{
+    week_revision_id: number;
+    event_type: string;
+    team_id: number;
+    contest_week: number | null;
+  }>(
+    client
+      .from("season_history_current_events")
+      .select("week_revision_id, event_type, team_id, contest_week")
+      .eq("week_revision_id", prior.id)
+      .eq("event_type", "gulag_qualified")
+      .eq("contest_week", week)
+      .order("team_id", { ascending: true }),
+    "season_history_current_events",
+  );
+  const ids = [...new Set(events.map((event) => event.team_id))];
+  return ids.length === 2 ? ids : [];
+}
+
 function liveRequestSignal(signal?: AbortSignal): AbortSignal {
   const timeout = AbortSignal.timeout(10_000);
   return signal ? AbortSignal.any([signal, timeout]) : timeout;

@@ -411,7 +411,10 @@ class SnapshotRepository:
                     projected_points=MappingProxyType(dict(points_by_player.get(row[1], {}))),
                 )
             )
-            stamps.append(row[7])
+            # Live holdings are vouched for by ``seasons.league_synced_at``, which
+            # is added below for every team. A frozen eliminated roster is historical
+            # data: its freeze time must not make the current league snapshot stale
+            # forever after the first cut.
 
         team_weeks: dict[int, dict[int, tuple[Decimal, Decimal, bool, datetime]]] = {}
         for team_id, row_week, points, coverage, provisional, computed_at in team_week_rows:

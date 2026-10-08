@@ -243,6 +243,8 @@ const SummaryChip = memo(function SummaryChip({
 interface TeamCardProps {
   team: BoardTeam;
   rank: number;
+  /** Replaces the numeric league rank for cards shown in a separate competition. */
+  rankLabel?: string;
   isOpen: boolean;
   onToggle: (teamId: number) => void;
   highlightedPlayerIds: ReadonlySet<string>;
@@ -271,6 +273,7 @@ interface TeamCardProps {
 export const TeamCard = memo(function TeamCard({
   team,
   rank,
+  rankLabel,
   isOpen,
   onToggle,
   highlightedPlayerIds,
@@ -461,8 +464,11 @@ export const TeamCard = memo(function TeamCard({
                 FOCUS_RING_CLASS,
               )}
             >
-              <span className="w-5 shrink-0 pt-0.5 text-xl leading-none figures text-muted-foreground sm:w-6">
-                {rank}
+              <span
+                data-rank={rankLabel ?? rank}
+                className="w-5 shrink-0 pt-0.5 text-xl leading-none figures text-muted-foreground sm:w-6"
+              >
+                {rankLabel ?? rank}
               </span>
               <span className="min-w-0 flex-1">
                 {/*

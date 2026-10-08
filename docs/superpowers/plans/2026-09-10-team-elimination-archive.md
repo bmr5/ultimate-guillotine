@@ -1,5 +1,7 @@
 # Team elimination archive and player history
 
+> **Rule correction — September 24, 2026:** The substitution model described in this historical plan is incorrect. Once teams qualify for the gulag, they cannot leave or be replaced. Protection terms govern player disposition and do not change gulag participation. The production adjudicator implements this corrected rule as `gulag-2026-v2`.
+
 Status: the 2026 history tab, private roster capture, deterministic adjudication, correction handling, and four scheduled job definitions are implemented. Both database migrations and all four Hermes jobs are live as of September 10, 2026. The first production capture saved all 18 teams. The website is published at https://ultimate-guillotine-sage.vercel.app/current-season. The public history page and board were verified in the browser on September 10, 2026. See the [operating runbook](../../runbooks/season-archive.md) for the implemented behavior and its limits. The design below also includes later player-history and general-query work that is not part of this rollout.
 
 ## Implemented website view

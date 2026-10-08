@@ -126,6 +126,17 @@ export function BoardPage() {
     [filtered.teams, effective.mode],
   );
 
+  const activeGroups = useMemo(() => {
+    const gulagIds = new Set(board.gulagTeamIds);
+    for (const team of sorted.active) {
+      if (team.risk?.adverseEvent === "gulag_loss") gulagIds.add(team.teamId);
+    }
+    return {
+      gulag: sorted.active.filter((team) => gulagIds.has(team.teamId)),
+      ranked: sorted.active.filter((team) => !gulagIds.has(team.teamId)),
+    };
+  }, [board.gulagTeamIds, sorted.active]);
+
   const positionRows = useMemo(
     () =>
       positionFilter === null
@@ -340,28 +351,74 @@ export function BoardPage() {
 
         {showList && !tiersActive && positionFilter === null ? (
           <>
-            <ul className={BOARD_GRID}>
-              {sorted.active.map((team, index) => (
-                <TeamCard
-                  key={team.teamId}
-                  team={team}
-                  rank={index + 1}
-                  isOpen={isOpen(team.teamId)}
-                  onToggle={handleToggle}
-                  highlightedPlayerIds={filtered.matchedPlayerIds}
-                  rosterPositions={board.rosterPositions}
-                  emphasis={emphasis}
-                  onOpenPlayer={handleOpenPlayer}
-                />
-              ))}
-            </ul>
+            {activeGroups.gulag.length > 0 ? (
+              <section aria-labelledby="gulag-heading" className="space-y-3">
+                <div className="border-t border-primary/60 pt-3">
+                  <h2 id="gulag-heading" className="text-sm font-medium">
+                    Gulag ({activeGroups.gulag.length})
+                  </h2>
+                  <p className="text-xs text-muted-foreground">
+                    Head-to-head this week. Outside the league ranking.
+                  </p>
+                </div>
+                <ul aria-label="Gulag teams" className={BOARD_GRID}>
+                  {activeGroups.gulag.map((team, index) => (
+                    <TeamCard
+                      key={team.teamId}
+                      team={team}
+                      rank={index + 1}
+                      rankLabel="G"
+                      isOpen={isOpen(team.teamId)}
+                      onToggle={handleToggle}
+                      highlightedPlayerIds={filtered.matchedPlayerIds}
+                      rosterPositions={board.rosterPositions}
+                      emphasis={emphasis}
+                      onOpenPlayer={handleOpenPlayer}
+                    />
+                  ))}
+                </ul>
+              </section>
+            ) : null}
+
+            <section
+              aria-labelledby={
+                activeGroups.gulag.length > 0
+                  ? "league-ranking-heading"
+                  : undefined
+              }
+              className="space-y-3"
+            >
+              {activeGroups.gulag.length > 0 ? (
+                <h2
+                  id="league-ranking-heading"
+                  className="border-t pt-3 text-sm font-medium text-muted-foreground"
+                >
+                  League rankings ({activeGroups.ranked.length})
+                </h2>
+              ) : null}
+              <ul aria-label="League rankings" className={BOARD_GRID}>
+                {activeGroups.ranked.map((team, index) => (
+                  <TeamCard
+                    key={team.teamId}
+                    team={team}
+                    rank={index + 1}
+                    isOpen={isOpen(team.teamId)}
+                    onToggle={handleToggle}
+                    highlightedPlayerIds={filtered.matchedPlayerIds}
+                    rosterPositions={board.rosterPositions}
+                    emphasis={emphasis}
+                    onOpenPlayer={handleOpenPlayer}
+                  />
+                ))}
+              </ul>
+            </section>
 
             {sorted.eliminated.length > 0 ? (
               <>
                 <EliminatedDivider
                   count={sorted.eliminated.length}
                   // The place after the last active card, so the rule settles in with the list.
-                  revealIndex={sorted.active.length + 1}
+                  revealIndex={activeGroups.ranked.length + 1}
                 />
                 <ul className={BOARD_GRID}>
                   {sorted.eliminated.map((team, index) => (

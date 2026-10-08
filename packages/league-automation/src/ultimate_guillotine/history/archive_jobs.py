@@ -10,9 +10,9 @@ from psycopg.types.json import Jsonb
 
 from ultimate_guillotine.history.adjudicator import RULES_VERSION, Unresolved, adjudicate
 from ultimate_guillotine.history.archive_store import (
-    contest_ruling,
     digest,
     invalidate_later,
+    latest_ruling,
     prior_state,
     publish,
     rows,
@@ -347,20 +347,17 @@ def adjudicate_job(conn, config: dict, job: dict, fresh: dict, now: datetime) ->
         scores, matchups = score_inputs(fresh["payload"])
         team_ids = {int(k) for k in evidence["payload"]["teams"]}
         alive, qualifiers, dependencies = prior_state(conn, season_id, scope, week, team_ids)
-        ruling, contracts = contest_ruling(conn, season_id, scope, week)
+        ruling = latest_ruling(conn, season_id, scope, week)
         rule = ruling["payload"]
-        substitutions = {int(k): int(v) for k, v in rule.get("substitutions", {}).items()}
-        # Values and identities in a ruling are checked again by the pure adjudicator.
         outcome = adjudicate(
-            week, alive, qualifiers, scores, substitutions, tuple(rule.get("tie_order", []))
+            week, alive, qualifiers, scores, tie_order=tuple(rule.get("tie_order", []))
         )
         key = digest(
             {
                 "scores": scores,
                 "lineups": matchups,
                 "outcome": asdict(outcome),
-                "ruling": ruling,
-                "contracts": [(t["id"], t["revision_id"]) for t in contracts],
+                "ruling": {"id": ruling["id"], "tie_order": rule.get("tie_order", [])},
                 "dependencies": dependencies,
                 "cutoff": evidence["id"],
                 "rules": RULES_VERSION,

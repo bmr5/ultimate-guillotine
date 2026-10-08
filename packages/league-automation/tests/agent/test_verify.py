@@ -116,6 +116,13 @@ def test_a_free_agent_claim_is_checked_both_ways() -> None:
     assert "not a free agent" in problems[0]
 
 
+def test_a_frozen_eliminated_roster_is_not_current_ownership() -> None:
+    answer = _answer(facts={"players": [{
+        "player_id": "p17s0", "name": "Starter 17-0", "holder": "free agent",
+    }]})
+    assert _check(answer) == []
+
+
 def test_faab_balances_must_match_and_offers_must_fit() -> None:
     off = _answer(facts={"faab": [{"member": "Member05", "amount": 801, "claim": "balance"}]})
     assert _check(off) == ["Member05's FAAB is 800, not 801"]

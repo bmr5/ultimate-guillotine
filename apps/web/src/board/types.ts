@@ -371,7 +371,20 @@ export interface Database {
         results: Json;
       }>;
     };
-    Views: { [_ in never]: never };
+    Views: {
+      season_history_current_weeks: ReadOnlyTable<{
+        id: number;
+        season: number;
+        week: number;
+        status: "provisional" | "confirmed" | "unresolved" | "retracted";
+      }>;
+      season_history_current_events: ReadOnlyTable<{
+        week_revision_id: number;
+        event_type: string;
+        team_id: number;
+        contest_week: number | null;
+      }>;
+    };
     Functions: { [_ in never]: never };
     Enums: { [_ in never]: never };
     CompositeTypes: { [_ in never]: never };

@@ -342,8 +342,9 @@ def test_an_eliminated_team_reads_its_frozen_roster(conn) -> None:
     # px2 is still a live holding, but it is not the roster this team went out
     # with, so the agent never sees it.
     assert [h.sleeper_player_id for h in team.holdings] == ["px1"]
-    # The frozen roster is the oldest component, and it is what age is judged on.
-    assert snapshot.oldest_synced_at == frozen
+    # The frozen roster remains available without making current advice seven days stale.
+    assert snapshot.oldest_synced_at == SEEDED_AT
+    assert not snapshot.is_stale(SEEDED_AT + timedelta(minutes=5))
 
 
 def test_an_eliminated_team_without_a_snapshot_falls_back_to_live_holdings(conn) -> None:

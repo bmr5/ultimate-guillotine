@@ -149,5 +149,16 @@ def lineup_delta(
 def holdings_by_id(
     snapshot: LeagueSnapshot,
 ) -> Mapping[str, tuple[LeagueTeamState, LeagueHolding]]:
-    """Every rostered player, keyed by Sleeper id, with the team holding him."""
-    return {h.sleeper_player_id: (team, h) for team in snapshot.teams for h in team.holdings}
+    """Every currently held player, keyed by Sleeper id.
+
+    Eliminated teams carry frozen holdings so historical roster views remain intact.
+    Those snapshots are not current ownership: once a team is cut, its released
+    players may be free agents or may appear on another live roster.  Advice and
+    verification therefore index live teams only.
+    """
+    return {
+        h.sleeper_player_id: (team, h)
+        for team in snapshot.teams
+        if not team.is_eliminated
+        for h in team.holdings
+    }

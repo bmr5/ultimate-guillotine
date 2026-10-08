@@ -1,5 +1,7 @@
 # Weekly Adjudicator Agent
 
+> **Rule correction — September 24, 2026:** The substitution and insurance model described in this historical design is incorrect. Once teams qualify for the gulag, they cannot leave or be replaced. Protection terms govern player disposition and do not change gulag participation. The production adjudicator implements this corrected rule as `gulag-2026-v2`.
+
 ## Purpose
 
 Compute the official weekly league transition from Sleeper scores, prior league state, and accepted commissioner overrides. It automatically announces gulag entrants, gulag losers, direct cuts, survivors, and corrections.
@@ -84,4 +86,3 @@ Production activation requires a full deterministic simulation from 18 teams to 
 - Judging collusion or discretionary penalties.
 - Editing Sleeper scores or rosters.
 - Using AI to resolve ties or rule ambiguity.
-

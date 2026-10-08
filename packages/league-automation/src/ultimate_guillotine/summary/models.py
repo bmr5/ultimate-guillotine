@@ -36,7 +36,7 @@ PhaseKind = Literal["entry", "gulag", "double", "cut", "final", "over"]
 #: Where this week's gulag pairing came from. ``replay`` is provisional; ``events``
 #: is the Adjudicator's ruling; ``unknown`` means a replay was needed and a past
 #: week's scores are missing; ``none`` means the phase has no gulag at all.
-GulagSource = Literal["events", "qualifiers", "replay", "unknown", "none"]
+GulagSource = Literal["events", "replay", "unknown", "none"]
 
 #: The bad thing that can happen to a team this week, by the rules phase.
 AdverseEvent = Literal["gulag_entry", "gulag_loss", "cut", "title_loss"]

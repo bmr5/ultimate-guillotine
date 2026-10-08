@@ -21,9 +21,7 @@ class Ruling(BaseModel):
     week: int = Field(ge=1, le=17)
     actor: str = Field(min_length=1, max_length=120)
     reason: str = Field(min_length=1, max_length=1000)
-    substitutions: dict[int, int] = {}
     tie_order: list[int] = []
-    reviewed_trade_codes: list[str] = []
 
 
 def register(subparsers):
@@ -49,26 +47,10 @@ def record_ruling(conn, config: dict, ruling: Ruling, now: datetime):
             conn, "select id from public.teams where season_id=%s", (config["season_id"],)
         )
     }
-    supplied = (
-        set(ruling.substitutions) | set(ruling.substitutions.values()) | set(ruling.tie_order)
-    )
+    supplied = set(ruling.tie_order)
     if not supplied <= teams or len(ruling.tie_order) != len(set(ruling.tie_order)):
         raise ValueError("ruling contains unknown or repeated team identities")
-    if ruling.substitutions and not 2 <= ruling.week <= 12:
-        raise ValueError("substitutions require a gulag contest week, 2 through 12")
-    reviewed = {}
-    for code in ruling.reviewed_trade_codes:
-        found = rows(
-            conn,
-            """select current_revision_id from public.trades
-            where season_id=%s and trade_code=%s and status='accepted'""",
-            (config["season_id"], code),
-        )
-        if not found or (config["scope"] == "production" and code.startswith("TEST-")):
-            raise ValueError("reviewed agreements must be accepted, non-test trades")
-        reviewed[code] = found[0]["current_revision_id"]
     payload = ruling.model_dump(mode="json", exclude={"actor", "reason", "week"})
-    payload["reviewed_trade_revisions"] = reviewed
     with conn.transaction():
         conn.execute("select pg_advisory_xact_lock(82426,%s)", (config["season_id"],))
         result = conn.execute(

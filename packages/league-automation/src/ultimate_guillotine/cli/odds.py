@@ -19,6 +19,22 @@ from ultimate_guillotine.summary.snapshot import load_snapshot
 from ultimate_guillotine.summary.store import SummaryRepository, results_payload
 
 
+def require_prior_week_confirmed(conn, season_id: int, week: int) -> None:
+    """Do not publish odds from elimination state that the archive has not finalized."""
+    if week <= 1:
+        return
+    row = conn.execute(
+        """select j.status
+        from private.archive_seasons a
+        join private.archive_week_jobs j
+          on j.season_id=a.season_id and j.scope=a.scope and j.week=%s
+        where a.season_id=%s and a.enabled""",
+        (week - 1, season_id),
+    ).fetchone()
+    if row and row[0] != "confirmed":
+        raise ValueError(f"Week {week - 1} elimination state is not finalized")
+
+
 def register(subparsers):
     parser = subparsers.add_parser("odds", help="Live Monte Carlo and forecast evaluation")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -53,6 +69,7 @@ def cmd_refresh(args):
             snapshot = load_snapshot(conn, SleeperClient(http), now)
             if snapshot.phase.kind == "over":
                 return 0
+            require_prior_week_confirmed(conn, snapshot.season_id, snapshot.week)
             config = conn.execute(
                 "select scoring_settings from public.seasons where id=%s", (snapshot.season_id,)
             ).fetchone()[0]

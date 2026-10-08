@@ -14,6 +14,7 @@ import { parseRosterPositions } from "./derive/roster";
 import { newestScoreSyncedAt } from "./derive/score";
 import { MS_PER_MINUTE } from "./derive/time";
 import {
+  fetchCurrentGulagTeamIds,
   fetchDraftPicks,
   fetchFinalRosters,
   fetchLatestSeason,
@@ -81,6 +82,8 @@ export interface BoardDataResult {
   /** `teams.id` -> `members.id`, for matching a Sleeper trade to a registered one. */
   memberIdByTeamId: ReadonlyMap<number, number>;
   teams: BoardTeam[];
+  /** The two fixed qualifiers playing this week's gulag. */
+  gulagTeamIds: number[];
   isPending: boolean;
   isEmpty: boolean;
   errors: BoardQueryError[];
@@ -320,6 +323,19 @@ export function useBoardData(options: BoardDataOptions): BoardDataResult {
     refetchInterval: ODDS_REFETCH_MS,
   });
 
+  const currentGulag = useQuery({
+    queryKey: boardKeys.currentGulag(season ?? 0, week ?? 0),
+    queryFn: () =>
+      fetchCurrentGulagTeamIds(boardClient, season as number, week as number),
+    enabled:
+      hasWeekScope &&
+      season !== null &&
+      week !== null &&
+      week >= 2 &&
+      week <= 12,
+    ...shared,
+  });
+
   const finalRosters = useQuery({
     queryKey: boardKeys.finalRosters(seasonId ?? 0),
     queryFn: () => fetchFinalRosters(boardClient, seasonId as number),
@@ -493,7 +509,8 @@ export function useBoardData(options: BoardDataOptions): BoardDataResult {
 
   const rosterSyncedAt = resolvedSeason?.league_synced_at ?? null;
   const faabUpdatedAt = useMemo(() => {
-    const syncedAt = rosterSyncedAt === null ? Number.NaN : Date.parse(rosterSyncedAt);
+    const syncedAt =
+      rosterSyncedAt === null ? Number.NaN : Date.parse(rosterSyncedAt);
     return Number.isNaN(syncedAt) ? null : syncedAt;
   }, [rosterSyncedAt]);
 
@@ -518,6 +535,7 @@ export function useBoardData(options: BoardDataOptions): BoardDataResult {
     ["Projections", teamProjections],
     ["Scores", teamScores],
     ["Odds", survivalSnapshot],
+    ["Gulag", currentGulag],
     ["Rosters", holdings],
     ["Players", players],
     ["Player projections", playerProjections],
@@ -554,6 +572,7 @@ export function useBoardData(options: BoardDataOptions): BoardDataResult {
     draftPicks: draftPicks.data ?? [],
     memberIdByTeamId,
     teams: boardTeams,
+    gulagTeamIds: currentGulag.data ?? [],
     isPending,
     // No failed query at all, not just no failed teams query. The empty state claims there is
     // nothing to show, which is a different statement from "a request did not come back" — and

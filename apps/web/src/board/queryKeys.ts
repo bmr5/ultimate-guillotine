@@ -47,6 +47,8 @@ export const boardKeys = {
   /** Same scope again: the Daily's newest odds row for one season and one week. */
   survivalSnapshot: (seasonId: number, week: number) =>
     ["board", "survival_snapshots", seasonId, week] as const,
+  currentGulag: (season: number, week: number) =>
+    ["board", "current_gulag", season, week] as const,
   rosterHoldings: (seasonId: number) =>
     ["board", "roster_holdings", seasonId] as const,
   finalRosters: (seasonId: number) =>

@@ -1,0 +1,16 @@
+.claude/
+.playwright-mcp/
+.superpowers/
+.venv/
+.ruff_cache/
+.git/
+node_modules/
+**/node_modules/
+**/dist/
+data/media/generated/
+data/media/renders/
+data/media/work/
+logs/
+*.log
+__pycache__/
+*.py[cod]

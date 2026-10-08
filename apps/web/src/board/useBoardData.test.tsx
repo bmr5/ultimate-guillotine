@@ -13,6 +13,7 @@ vi.mock("./fetchers", () => ({
   fetchLiveScores: vi.fn(),
   fetchWeekSchedule: vi.fn().mockResolvedValue({}),
   fetchDraftPicks: vi.fn(),
+  fetchCurrentGulagTeamIds: vi.fn(),
   fetchFinalRosters: vi.fn(),
   fetchLatestSeason: vi.fn(),
   fetchLatestSurvivalSnapshot: vi.fn(),
@@ -65,6 +66,7 @@ function stubFetchers(): void {
   vi.mocked(fetchers.fetchNflState).mockResolvedValue(NFL_STATE);
   vi.mocked(fetchers.fetchLatestSeason).mockResolvedValue(SEASON);
   vi.mocked(fetchers.fetchLatestSurvivalSnapshot).mockResolvedValue(null);
+  vi.mocked(fetchers.fetchCurrentGulagTeamIds).mockResolvedValue([]);
   vi.mocked(fetchers.fetchSeasonByYear).mockResolvedValue(SEASON);
   vi.mocked(fetchers.fetchTeams).mockResolvedValue([TEAM]);
   vi.mocked(fetchers.fetchMembers).mockResolvedValue([]);
@@ -97,6 +99,15 @@ beforeEach(() => {
 });
 
 describe("useBoardData", () => {
+  it("loads the fixed current gulag pairing from the archive", async () => {
+    vi.mocked(fetchers.fetchCurrentGulagTeamIds).mockResolvedValue([14, 18]);
+
+    const { result } = renderBoardData();
+
+    await waitFor(() => expect(result.current.gulagTeamIds).toEqual([14, 18]));
+    expect(fetchers.fetchCurrentGulagTeamIds).toHaveBeenCalledWith({}, 2026, 3);
+  });
+
   it("uses direct Sleeper scores without waiting for the database sync", async () => {
     vi.mocked(fetchers.fetchTeamWeekScores).mockResolvedValue([
       {
