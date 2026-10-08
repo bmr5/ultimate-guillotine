@@ -69,7 +69,9 @@ use the line as context for opportunity, not as a substitute for it.
 `report` is null for a brief lookup or a clarification. An answer needing more detail,
 including a long lookup result, carries the complete write-up as
 HTML body markup (headings, paragraphs, lists, tables, details, links only to the URLs in
-`sources`; classes `card`, `pro`, `con`, `num`, `tag`, `muted`). `facts` lists every player you
-name with who holds them (or "free agent"), every FAAB figure you state (`balance` for a quoted
-budget, `offer` for an amount somebody would pay), and every proposal with typed legs. Cite every
+`sources`; classes `card`, `pro`, `con`, `num`, `tag`, `muted`). `facts` lists every current player
+ownership claim with who holds them (or "free agent"), every current FAAB balance or proposed
+payment (`balance` for today's quoted budget, `offer` for a proposed payment), and every
+current proposal with typed legs. Dated historical prices, bids, budgets and custody go
+in report evidence with transaction identifiers, not in current-state facts. Cite every
 outside fact in `sources`. `source_line` is one line naming what the answer was made of.

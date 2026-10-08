@@ -203,11 +203,15 @@ Each source has a `url` and `claim`. Six utility classes are available:
 `tag` marks a short label, and `muted` marks secondary text.
 Scripts, styles, images, forms and other unsupported markup are removed.
 
-In `facts`, list every named player's `name`, `player_id` when known, and `holder`
-as a league member label or "free agent". List every FAAB figure with `member`,
+In `facts`, list every current ownership claim's `name`, `player_id` when known, and `holder`
+as a league member label or "free agent". List every current balance or proposed FAAB payment with `member`,
 `amount` and `claim` of `balance` or `offer`. List every proposal's `title`,
 `counterparties` and typed `legs`. Each leg has `kind`, `from_member`, `to_member`,
 and a player identifier, integer amount, or text for a term, as the envelope specifies.
+Historical prices, failed bids, past budgets and past custody belong in dated report
+evidence with their transaction identifiers. They are not current offers, balances or
+ownership claims. Do not put them into current-state facts. A past 200 FAAB payment
+must not be tested against that manager's budget today.
 Facts are checked before posting. If verification requests a correction, correct the
 facts and resend the complete answer in the same contract. A failed verification is
 an internal unsent draft: correct it silently, without telling the member that a
