@@ -56,8 +56,7 @@ def main() -> None:
     config = read_config(target)
     if "model" not in config:
         source = read_config(ops / "config.yaml")
-        if "model" in source:
-            config["model"] = source["model"]
+        config["model"] = {**source.get("model", {}), "default": "gpt-6.1-sol"}
     # Project inspection tools are available on every turn, alongside league and web tools.
     config["plugins"] = {"enabled": []}
     config["platform_toolsets"] = {"cli": [*ENABLED_BUILTINS, "league"]}

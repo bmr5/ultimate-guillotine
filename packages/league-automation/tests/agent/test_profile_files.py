@@ -132,7 +132,7 @@ def test_install_is_private_idempotent_and_strict(installation) -> None:
         result = run_install(env)
         assert result.returncode == 0, result.stderr
     config = yaml.safe_load((destination / "config.yaml").read_text())
-    assert config["model"] == {"default": "example"}
+    assert config["model"] == {"default": "gpt-6.1-sol"}
     assert "secret" not in config
     assert config["platform_toolsets"]["cli"] == [
         "web", "terminal", "file", "code_execution", "league",
