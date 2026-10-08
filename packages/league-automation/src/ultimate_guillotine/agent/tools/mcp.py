@@ -185,7 +185,7 @@ def build_server(source: LeagueSource) -> tuple[MCPServer, dict[str, Callable[..
         offset: int = 0,
         limit: int = 50,
     ) -> str:
-        """All available seasons of winning and failed waiver bids, platform trades,
+        """Available seasons from 2023 onward by default: winning and failed waiver bids, platform trades,
         registered trades and archived announcements, with coverage and current active
         FAAB. Filter by player name/ID, position, member or season. Platform records are
         paginated with offset and limit (1-200); follow next_offset. Failed does not

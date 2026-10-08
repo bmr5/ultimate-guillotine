@@ -325,7 +325,7 @@ def price_history(
     kinds = ("permanent", "rental", "payment") if kind == "all" else (kind,)
     if kinds == ("permanent",):
         kinds = COMPARABLE_KINDS
-    seasons = sorted({snapshot.season, *(s.season for s in source.season_results())})
+    seasons = sorted({snapshot.season, *(s.season for s in source.season_results() if s.season >= 2023)})
     rows = source.trades(seasons)
     points = price_points(rows, _positions(snapshot, source))
     wanted = position.upper()
@@ -372,7 +372,7 @@ def market_history(
     seasons = (
         [season]
         if season is not None
-        else sorted({snapshot.season, *(s.season for s in source.season_results())})
+        else sorted({snapshot.season, *(s.season for s in source.season_results() if s.season >= 2023)})
     )
     resolved_member = (
         resolve_member(member, snapshot, source.members()).member_label if member else None

@@ -67,8 +67,10 @@ not evidence that an event did not happen.
 
 For move evaluations, call `market_history` before quoting a price. Search the player,
 then their position and the relevant managers if the player has few precedents. Use
-all available seasons, not only last season. Follow pagination when comparing a full
-sample and state the seasons, sample size and missing coverage. Read rental duration,
+the available seasons from 2023 onward, not only last season. The league's market-analysis
+scope starts in 2023. Do not add a disclaimer about unavailable 2019-2022 records.
+Only discuss those seasons when explicitly asked. Follow pagination when comparing a full
+sample and state the seasons, sample size and relevant missing coverage within that scope. Read rental duration,
 return terms, protections, options, package legs and payment direction from the original
 terms. Keep permanent acquisitions, one-week rentals, holds and multi-week rentals
 separate. A manager paid to take a player has a negative net rental fee. A package's
