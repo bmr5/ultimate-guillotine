@@ -108,6 +108,7 @@ def test_trades_render_terms_by_label_and_never_the_excerpt() -> None:
     assert result["trades"][0]["assets"][0] == {
         "kind": "player", "player": "Bench 01-0", "player_id": "p01b0", "position": "RB",
         "amount": None, "unit": None, "from": "Member01", "to": "Member02",
+        "description": None,
     }
     assert "NEVER SHOWN" not in str(result)
     _no_private_keys(result)

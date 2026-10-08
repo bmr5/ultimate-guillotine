@@ -50,7 +50,7 @@ class SleeperRoster(BaseModel, frozen=True):
     model_config = ConfigDict(extra="ignore")
 
     roster_id: int
-    owner_id: str
+    owner_id: str | None
     players: list[str] = []
     starters: list[str] = []
     reserve: list[str] = []

@@ -21,7 +21,7 @@ def test_every_tool_is_registered_and_answers_json() -> None:
     assert tuple(tools) == TOOL_NAMES == (
         "league_overview", "roster", "player", "projections", "trades", "price_history",
         "trade_math", "rules", "history", "historical_roster",
-        "historical_transactions", "survival", "transactions",
+        "historical_transactions", "survival", "transactions", "market_history",
     )
     assert server.name == "league"
     overview = json.loads(tools["league_overview"]())
@@ -37,6 +37,7 @@ def test_every_tool_is_registered_and_answers_json() -> None:
     assert json.loads(tools["transactions"]())["transactions"][0]["type"] == "free_agent"
     assert json.loads(tools["trades"]())["trades"] == []
     assert json.loads(tools["price_history"]("RB"))["comparables"] == []
+    assert json.loads(tools["market_history"]())["platform_total_matches"] == 1
     math = json.loads(tools["trade_math"]([
         {"kind": "player", "player": "Bench 02-0", "from": "Member02", "to": "Member18"},
     ]))
@@ -51,6 +52,7 @@ def test_no_tool_result_carries_a_join_key_a_hash_or_a_handle() -> None:
         "history": (), "survival": (), "transactions": (),
         "historical_roster": (2025, 6),
         "historical_transactions": (2025, 6),
+        "market_history": (),
         "trade_math": ([{"kind": "faab", "amount": 5, "from": "Member02", "to": "Member03"}],),
     }
     for name, args in calls.items():

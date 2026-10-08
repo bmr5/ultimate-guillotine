@@ -21,9 +21,20 @@ from ultimate_guillotine.agent.tools import league
 from ultimate_guillotine.agent.tools.source import DatabaseSource, FixtureSource, LeagueSource
 
 TOOL_NAMES = (
-    "league_overview", "roster", "player", "projections", "trades", "price_history",
-    "trade_math", "rules", "history", "historical_roster",
-    "historical_transactions", "survival", "transactions",
+    "league_overview",
+    "roster",
+    "player",
+    "projections",
+    "trades",
+    "price_history",
+    "trade_math",
+    "rules",
+    "history",
+    "historical_roster",
+    "historical_transactions",
+    "survival",
+    "transactions",
+    "market_history",
 )
 INSTRUCTIONS = (
     "Read-only data for the Ultimate Guillotine fantasy football league. Every snapshot-backed "
@@ -129,7 +140,9 @@ def build_server(source: LeagueSource) -> tuple[MCPServer, dict[str, Callable[..
 
     @register
     def historical_roster(
-        season: int, week: int | None = None, member: str | None = None,
+        season: int,
+        week: int | None = None,
+        member: str | None = None,
         player: str | None = None,
     ) -> str:
         """Search saved weekly rosters and player scores in past seasons. Give a week,
@@ -140,7 +153,9 @@ def build_server(source: LeagueSource) -> tuple[MCPServer, dict[str, Callable[..
 
     @register
     def historical_transactions(
-        season: int, week: int | None = None, player: str | None = None,
+        season: int,
+        week: int | None = None,
+        player: str | None = None,
     ) -> str:
         """Search an archived season's Sleeper add, drop, waiver and trade transactions.
         Give a week or full player name/Sleeper ID. A player search without a week scans
@@ -160,6 +175,24 @@ def build_server(source: LeagueSource) -> tuple[MCPServer, dict[str, Callable[..
         """Sleeper's add/drop/waiver/trade transactions for a week (default: this one), by
         member and player name -- who just dropped or picked up whom."""
         return _dump(league.transactions(source, week))
+
+    @register
+    def market_history(
+        player: str | None = None,
+        position: str | None = None,
+        member: str | None = None,
+        season: int | None = None,
+        offset: int = 0,
+        limit: int = 50,
+    ) -> str:
+        """All available seasons of winning and failed waiver bids, platform trades,
+        registered trades and archived announcements, with coverage and current active
+        FAAB. Filter by player name/ID, position, member or season. Platform records are
+        paginated with offset and limit (1-200); follow next_offset. Failed does not
+        necessarily mean outbid. Excludes unsettled bids. Read this before pricing a move;
+        distinguish rentals, durations, package/swaps and protection terms. Missing seasons
+        and at-trade projections must be disclosed."""
+        return _dump(league.market_history(source, player, position, member, season, offset, limit))
 
     return server, tools
 

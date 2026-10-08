@@ -6,7 +6,13 @@ import pytest
 import respx
 
 from ultimate_guillotine.sleeper.client import SleeperClient
-from ultimate_guillotine.sleeper.models import SleeperLeague
+from ultimate_guillotine.sleeper.models import SleeperLeague, SleeperRoster
+
+
+def test_archived_roster_can_have_no_owner():
+    roster = SleeperRoster.model_validate({"roster_id": 19, "owner_id": None, "players": None})
+    assert roster.owner_id is None
+    assert roster.players == []
 
 FIXTURES = Path(__file__).parent.parent / "fixtures" / "sleeper"
 

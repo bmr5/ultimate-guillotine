@@ -96,6 +96,19 @@ def test_a_player_for_faab_becomes_one_price_point() -> None:
     assert point.players_back == 0 and point.effective_week == 5
 
 
+def test_net_rental_fee_can_be_negative_and_excludes_third_party_payments():
+    rows = [{"trade_code": "T-2026-001", "season": 2026,
+             "terms": _terms([
+                 _asset("player", 1, 2, "pa", "Alpha"),
+                 _asset("faab", 2, 1, amount=10, unit="faab"),
+                 _asset("faab", 1, 2, amount=25, unit="faab"),
+                 _asset("faab", 3, 1, amount=900, unit="faab"),
+             ], kind="rental")}]
+    point = price_points(rows, POSITIONS)[0]
+    assert point.faab == -15
+    assert point.unit == "faab"
+
+
 def test_faab_is_split_across_the_players_it_paid_for() -> None:
     rows = [
         {

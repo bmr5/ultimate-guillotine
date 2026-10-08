@@ -6,10 +6,14 @@ answers every one of them from the closed-form league, so the whole agent --
 Hermes session and all -- can be rehearsed against nothing real.
 """
 
+import json
+import tempfile
+import time
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
+from pathlib import Path
 from typing import Any, Protocol
 
 from ultimate_guillotine.agent.tools.fixture import fixture_snapshot
@@ -91,7 +95,7 @@ class DatabaseSource:
         }
 
     def trades(self, seasons: Sequence[int]) -> list[dict]:
-        return PriceRepository(self._conn).accepted_terms(seasons)
+        return PriceRepository(self._conn).accepted_terms(seasons, limit=None)
 
     def _labels(self) -> dict[int, str]:
         with self._conn.cursor() as cur:
@@ -143,8 +147,9 @@ class DatabaseSource:
         with self._conn.cursor() as cur:
             cur.execute(
                 "select distinct sleeper_league_id from public.historical_weekly_scores "
-                "where season = %s",
-                (season,),
+                "where season = %s union select sleeper_league_id from public.seasons "
+                "where year = %s",
+                (season, season),
             )
             league_ids = [row[0] for row in cur.fetchall()]
             if len(league_ids) != 1:
@@ -159,17 +164,51 @@ class DatabaseSource:
             )
             labels = dict(cur.fetchall())
 
+            cur.execute(
+                f"select t.sleeper_roster_id, {_LABEL} from public.teams t "
+                "join public.members m on m.id=t.member_id "
+                "join public.seasons s on s.id=t.season_id where s.year=%s",
+                (season,),
+            )
+            labels.update(dict(cur.fetchall()))
+
         league_id = league_ids[0]
         users = {user.user_id: user.display_name for user in self._sleeper.get_users(league_id)}
         for roster in self._sleeper.get_rosters(league_id):
             labels.setdefault(roster.roster_id, users.get(roster.owner_id, "Former member"))
 
-        weeks = [week] if week is not None else range(1, 19)
-        raw = [tx for leg in weeks for tx in self._sleeper.get_transactions(league_id, leg)]
-        player_ids = sorted({
-            str(player_id) for tx in raw for field in ("adds", "drops")
-            for player_id in (tx.get(field) or {})
-        })
+        weeks = [week] if week is not None else range(19)
+        # Cache the complete API history separately from executed player moves.
+        # Failed claims are market evidence, but must never become roster moves.
+        cache = Path.home() / ".cache/ultimate-guillotine/transactions" / f"{league_id}.json"
+        raw = None
+        fetched_at = None
+        if week is None and cache.exists():
+            try:
+                saved = json.loads(cache.read_text())
+                ttl = 300 if season >= datetime.now(UTC).year else 86400
+                if time.time() - saved["fetched_at"] < ttl:
+                    raw = saved["raw"]
+                    fetched_at = saved["fetched_at"]
+            except (ValueError, KeyError, TypeError):
+                pass
+        if raw is None:
+            raw = [tx for leg in weeks for tx in self._sleeper.get_transactions(league_id, leg)]
+            fetched_at = time.time()
+            if week is None:
+                cache.parent.mkdir(parents=True, exist_ok=True)
+                with tempfile.NamedTemporaryFile(mode="w", dir=cache.parent, delete=False) as file:
+                    json.dump({"fetched_at": fetched_at, "raw": raw}, file)
+                    temporary = Path(file.name)
+                temporary.replace(cache)
+        player_ids = sorted(
+            {
+                str(player_id)
+                for tx in raw
+                for field in ("adds", "drops")
+                for player_id in (tx.get(field) or {})
+            }
+        )
         with self._conn.cursor() as cur:
             cur.execute(
                 "select sleeper_player_id, full_name from public.players "
@@ -177,7 +216,13 @@ class DatabaseSource:
                 (player_ids,),
             )
             names = dict(cur.fetchall())
-        return {"raw": raw, "labels": labels, "names": names}
+        return {
+            "raw": raw,
+            "labels": labels,
+            "names": names,
+            "fetched_at": datetime.fromtimestamp(fetched_at, tz=UTC).isoformat(),
+            "weeks_requested": list(weeks),
+        }
 
     def season_results(self) -> list[SeasonResult]:
         labels = self._labels()

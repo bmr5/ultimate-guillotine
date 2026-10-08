@@ -19,6 +19,7 @@ from decimal import Decimal
 from functools import wraps
 from typing import Any
 
+from ultimate_guillotine.agent.tools.market import bid_summary, market_records, select_records
 from ultimate_guillotine.agent.tools.math import (
     holdings_by_id,
     lineup_delta,
@@ -271,6 +272,7 @@ def _asset(asset: dict, labels: dict[int, str], positions: dict[str, str | None]
         "position": positions.get(player_id) if player_id else None,
         "amount": asset.get("amount"),
         "unit": asset.get("unit"),
+        "description": asset.get("description"),
         "from": labels.get(asset.get("from_member_id"), "former member"),
         "to": labels.get(asset.get("to_member_id"), "former member"),
     }
@@ -323,12 +325,18 @@ def price_history(
     kinds = ("permanent", "rental", "payment") if kind == "all" else (kind,)
     if kinds == ("permanent",):
         kinds = COMPARABLE_KINDS
-    rows = source.trades([snapshot.season, snapshot.season - 1])
+    seasons = sorted({snapshot.season, *(s.season for s in source.season_results())})
+    rows = source.trades(seasons)
     points = price_points(rows, _positions(snapshot, source))
     wanted = position.upper()
     return {
         "position": wanted,
         "kind": kind,
+        "seasons_searched": seasons,
+        "registered_trade_count": len(rows),
+        "scope": "Registered accepted trades only. Use market_history for archived "
+        "announcements and winning/failed waiver bids. Package allocations "
+        "are not measured individual prices; swaps are not cash-only comparables.",
         "median_faab": median_faab(points, wanted, kinds=kinds),
         "comparables": [
             {
@@ -340,6 +348,107 @@ def price_history(
                 "players_back": p.players_back,
             }
             for p in comparables_for(points, wanted, limit=5, kinds=kinds)
+        ],
+        **_stamp(snapshot, now),
+    }
+
+
+@tool
+def market_history(
+    source: LeagueSource,
+    player: str | None = None,
+    position: str | None = None,
+    member: str | None = None,
+    season: int | None = None,
+    offset: int = 0,
+    limit: int = 50,
+    *,
+    now: datetime | None = None,
+) -> dict:
+    """Search all available seasons, retaining losing bids and archive coverage gaps."""
+    if offset < 0 or not 1 <= limit <= 200:
+        return {"error": "offset must be nonnegative; limit must be between 1 and 200"}
+    snapshot = source.snapshot()
+    seasons = (
+        [season]
+        if season is not None
+        else sorted({snapshot.season, *(s.season for s in source.season_results())})
+    )
+    resolved_member = (
+        resolve_member(member, snapshot, source.members()).member_label if member else None
+    )
+    records, coverage = market_records(source, seasons)
+    records = select_records(records, player, resolved_member, position, source.players())
+    records.sort(key=lambda r: (r["season"], r["created"] or 0, r["id"] or ""), reverse=True)
+    registered = []
+    labels, positions = _labels(snapshot), _positions(snapshot, source)
+    for row in source.trades(seasons):
+        terms = row.get("terms") or {}
+        assets = [_asset(a, labels, positions) for a in terms.get("assets") or []]
+        if player and not any(
+            player.casefold() in (a.get("player") or "").casefold() or player == a.get("player_id")
+            for a in assets
+        ):
+            continue
+        if position and not any(a.get("position") == position.upper() for a in assets):
+            continue
+        if resolved_member and not any(resolved_member in (a["from"], a["to"]) for a in assets):
+            continue
+        registered.append(
+            {
+                "code": row["trade_code"],
+                "season": row["season"],
+                "kind": terms.get("kind"),
+                "week": terms.get("effective_week"),
+                "assets": assets,
+                "return_condition": terms.get("rental_return_condition"),
+                "special_terms": terms.get("special_terms") or [],
+            }
+        )
+    catalogs = []
+    for year in seasons:
+        for row in source.catalog(year):
+            assets = row.get("assets") or []
+            if player and not any(
+                player.casefold() in str(a.get("name") or "").casefold()
+                or player == a.get("sleeper_player_id")
+                for a in assets
+            ):
+                # Archived names often use initials; keep a position search available.
+                continue
+            if position and not any(a.get("position") == position.upper() for a in assets):
+                continue
+            if resolved_member and resolved_member not in row.get("parties", []):
+                continue
+            catalogs.append({"season": year, **row})
+    active = [t for t in snapshot.teams if not t.is_eliminated]
+    return {
+        "seasons_searched": seasons,
+        "coverage": coverage,
+        "platform_total_matches": len(records),
+        "platform_records": records[offset : offset + limit],
+        "next_offset": offset + limit if offset + limit < len(records) else None,
+        "bids": bid_summary(records),
+        "registered_trades": registered,
+        "archived_announcements": catalogs,
+        "current_market": {
+            "week": snapshot.week,
+            "active_teams": len(active),
+            "total_active_faab": sum(t.faab_remaining for t in active),
+            "budgets": [
+                {
+                    "member": t.member_label,
+                    "faab": t.faab_remaining,
+                    "projected_points": _points(t.projected_now),
+                }
+                for t in active
+            ],
+        },
+        "limitations": [
+            "Coverage is the API records returned, not a guarantee every historical bid is available.",
+            "Platform trades, registered deals and archived announcements may describe the same deal; do not sum them.",
+            "Rental duration, package legs, protections, swaps and signed payments must be read from the terms before pricing.",
+            "Current projections are not historical at-trade projections. Do not fit a fair-value curve from them without labeling that assumption.",
         ],
         **_stamp(snapshot, now),
     }

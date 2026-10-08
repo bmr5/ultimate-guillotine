@@ -79,6 +79,7 @@ def test_archived_sleeper_trade_names_sender_and_receiver():
     conn = Connection([
         [("league-2025",)],
         [(1, "Ben R"), (8, "Brandon L")],
+        [],
         [("9754", "Quentin Johnston")],
     ])
     result = historical_transactions(DatabaseSource(conn, Sleeper(), "league-2026"),

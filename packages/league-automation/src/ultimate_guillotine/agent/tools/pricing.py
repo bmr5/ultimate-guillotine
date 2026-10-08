@@ -96,6 +96,10 @@ def price_points(rows: Iterable[dict], positions: Mapping[str, str | None]) -> l
     number of FAAB, because FAAB is a whole number of dollars in this league and
     a float share of it would quote a price nobody could bid.
 
+    Only payments between the player's sender and receiver count. FAAB sent
+    back to the receiver is subtracted, so a renter paid to carry a player has
+    a negative fee. Package allocations remain estimates, not individual prices.
+
     Every trade kind is aggregated here, including rentals and payments; it is
     the reading functions that decide which kinds may be quoted. A player whose
     sender the extractor could not name is recorded with no price at all.
@@ -108,25 +112,34 @@ def price_points(rows: Iterable[dict], positions: Mapping[str, str | None]) -> l
         money = _money_assets(assets)
         for asset in players:
             sender = asset.get("from_member_id")
+            receiver = asset.get("to_member_id")
             # An unnamed sender is nobody money can flow back to. Matching
             # ``None`` against every payment with an unstated recipient would
             # conjure a price out of two things the extractor failed to
             # attribute, so an unattributed move is recorded with no price.
             paid: list[dict] = (
                 []
-                if sender is None
+                if sender is None or receiver is None
                 else [
                     m
                     for m in money
-                    if m.get("to_member_id") == sender and m.get("amount") is not None
+                    if m.get("to_member_id") == sender
+                    and m.get("from_member_id") == receiver
+                    and m.get("amount") is not None
                 ]
             )
             faab_paid = [m for m in paid if _unit_of(m) == "faab"]
-            priced = faab_paid or paid
-            bought = [p for p in players if p.get("from_member_id") == sender]
+            returned_faab = [m for m in money if sender is not None and receiver is not None
+                             and m.get("from_member_id") == sender
+                             and m.get("to_member_id") == receiver
+                             and _unit_of(m) == "faab" and m.get("amount") is not None]
+            priced = (faab_paid + returned_faab) or paid
+            bought = [p for p in players if p.get("from_member_id") == sender
+                      and p.get("to_member_id") == receiver]
             back = len([p for p in players if p.get("to_member_id") == sender])
             unit = _unit_of(priced[0]) if priced else None
-            total = sum((Decimal(int(m["amount"])) for m in priced), Decimal(0))
+            total = sum((Decimal(int(m["amount"])) *
+                         (-1 if m in returned_faab else 1) for m in priced), Decimal(0))
             share = int(total / len(bought)) if priced and bought else None
             player_id = asset.get("player_id")
             points.append(
@@ -191,7 +204,7 @@ class PriceRepository:
     def __init__(self, conn: psycopg.Connection) -> None:
         self._conn = conn
 
-    def accepted_terms(self, seasons: Sequence[int], limit: int = DEFAULT_LIMIT) -> list[dict]:
+    def accepted_terms(self, seasons: Sequence[int], limit: int | None = DEFAULT_LIMIT) -> list[dict]:
         """Current terms of every live trade in these seasons, newest first.
 
         Only the current revision of a trade counts: an amended trade was paid
