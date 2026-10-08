@@ -79,14 +79,39 @@ Explain how you translate the football benefit into FAAB. State your assumptions
 give a central estimate and a reasonable range, and show sensitivity to replacement
 quality and player availability. A judgment-based conversion is acceptable when
 clearly labeled; do not invent a calibrated dollar-per-point model or measured
-survival change. Evaluate plausible buyers when no buyer is named. Separate the
-seller's opportunity cost, buyer-specific ceiling and your recommended fair value.
+survival change. For a general player valuation with no named buyer, use a stated
+replacement benchmark and league-wide cash context. Do not search trade partners,
+build offers, scan every roster or call trade_math for an invented proposal. Buyer
+ceilings, seller floors and feasibility checks belong to an actual deal evaluation.
 Lead a requested value diagram with that independent estimate and its assumptions.
 Use transaction history afterward to cross-check the estimate and explain any
 disagreement. Existing contract rights affect feasibility, not independent player
 value; describe them separately without substituting their price for your estimate.
 
-For move evaluations, call `market_history` before quoting a price. Search the player,
+For an outright valuation, show the expected marginal benefit by period as
+replacement quality improves when eliminated rosters release players. Separate
+player availability from manager survival and remaining useful weeks; explain each
+assumption and avoid counting the same risk twice. Research the player's injury
+history and current status before assigning an availability discount. An active
+designation is not evidence of zero future injury risk. Unsupported probabilities
+must be labeled scenarios, not measured player-specific risks.
+
+Value retained FAAB explicitly: near-term lineup coverage and future purchases from
+released rosters compete with this purchase. State the spending reserve or competing
+opportunity used and how it changes the estimate. Do not attach a small arbitrary
+liquidity deduction to a large arbitrary dollar-per-point rate and call the result
+established fair value. Justify the conversion with a coherent budget allocation or
+opportunity-cost comparison; if it remains subjective, show its sensitivity and
+give a provisional range with no false precision. Do not target a previous report's
+price or another bot's ceiling. Let the assumptions determine the result.
+
+A general value report should be concise: the estimate and horizon, one value
+diagram, the derivation and a few sensitivity cases. Keep historical prices to a
+brief cross-check. Contract details need at most a short applicability note unless
+the question asks whether a specific trade can proceed. Do not turn a fair-value
+question into a trade execution or trade-partner report.
+
+For move evaluations, use `market_history` to cross-check the independent price. Search the player,
 then their position and the relevant managers if the player has few precedents. Use
 the available seasons from 2023 onward, not only last season. The league's market-analysis
 scope starts in 2023. Do not add a disclaimer about unavailable 2019-2022 records.
@@ -104,7 +129,7 @@ lower bid. Inspect its failure reason before interpreting it as willingness to p
 Do not expose pending claims or infer unobserved losing bids. Prior demand does not
 prove that a manager still needs the player or will repeat that bid.
 
-Combine this market evidence with current rosters, active FAAB distribution, starter
+For a specific proposed deal or team plan, combine this market evidence with current rosters, active FAAB distribution, starter
 replacements, usable waiver alternatives, byes, injuries, remaining weeks and Gulag
 risk for BOTH parties. Use `trade_math` for marginal lineup gains and opportunity costs,
 not gross player points. Distinguish the buyer's ceiling from the seller's floor and
