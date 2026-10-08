@@ -89,8 +89,9 @@ export function kMeansThree(values: readonly number[]): number[] {
 }
 
 export function faabTiers(teams: readonly BoardTeam[]): FaabTiers {
-  const known = teams.filter((team) => team.faabRemaining !== null);
-  const unknown = teams.filter((team) => team.faabRemaining === null);
+  const active = teams.filter((team) => !team.isEliminated);
+  const known = active.filter((team) => team.faabRemaining !== null);
+  const unknown = active.filter((team) => team.faabRemaining === null);
   const values = known.map((team) => team.faabRemaining as number);
   const labels = kMeansThree(values);
   const keys: TierKey[] = ["poor", "medium", "rich"];

@@ -26,6 +26,20 @@ describe("kMeansThree", () => {
 });
 
 describe("faabTiers", () => {
+  it("excludes eliminated teams before clustering and listing unknown balances", () => {
+    const active = [team(1, 10), team(2, 400), team(3, 900), team(4, null)];
+    const eliminated = [
+      { ...team(5, 10000), isEliminated: true },
+      { ...team(6, 0), isEliminated: true },
+      { ...team(7, null), isEliminated: true },
+    ];
+    const tiers = faabTiers([...active, ...eliminated]);
+
+    expect(tiers).toEqual(faabTiers(active));
+    expect(richestTeam(tiers)?.teamId).toBe(3);
+    expect(faabTiers(eliminated)).toEqual(faabTiers([]));
+  });
+
   it("labels the clusters rich, medium and poor, richest first within a tier", () => {
     const tiers = faabTiers([
       team(1, 10),
