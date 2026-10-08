@@ -46,6 +46,7 @@ def test_missing_replacement_projection_is_unknown_not_zero():
 
 def test_trade_math_with_sparse_replacement_pool_returns_null_margin():
     from dataclasses import replace
+
     from ultimate_guillotine.agent.tools.league import trade_math
     from ultimate_guillotine.agent.tools.source import FixtureSource
     class Sparse(FixtureSource):
