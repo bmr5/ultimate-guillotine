@@ -22,7 +22,7 @@ class FakeAI:
 
 def test_prompt_is_versioned_and_states_the_rules() -> None:
     prompt = load_prompt()
-    assert PROMPT_VERSION == "2026.9"
+    assert PROMPT_VERSION == "2026.10"
     assert prompt.startswith(f"<!-- prompt_version: {PROMPT_VERSION} -->")
     assert "verbatim" in prompt and "null" in prompt and "fairness" in prompt
 

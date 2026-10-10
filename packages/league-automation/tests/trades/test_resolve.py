@@ -854,3 +854,31 @@ def test_an_asset_with_no_currency_stated_is_faab_as_it_always_was() -> None:
     assert ExtractedAsset(kind="faab", amount=100, unit="faab").currency == "faab"
     proposal = resolve(extracted())
     assert proposal.assets[1].amount == 450
+
+
+def test_mixed_alert_keeps_permanent_legs_and_rental_deposit_separate() -> None:
+    proposal = resolve(extracted(
+        kind="rental",
+        parties=[ExtractedParty(name=m.display_name) for m in MEMBERS],
+        assets=[
+            ExtractedAsset(kind="player", from_party="Member01", to_party="Member02",
+                           player_name="Player Alpha", description="permanent"),
+            ExtractedAsset(kind="faab", from_party="Member02", to_party="Member01",
+                           amount=69, unit="faab", description="permanent purchase"),
+            ExtractedAsset(kind="player", from_party="Member03", to_party="Member04",
+                           player_name="Kansas City Chiefs", description="rental"),
+            ExtractedAsset(kind="faab", from_party="Member04", to_party="Member03",
+                           amount=150, unit="faab", description="deposit"),
+            ExtractedAsset(kind="faab", from_party="Member04", to_party="Member03",
+                           amount=40, unit="faab", description="rental fee"),
+        ],
+        special_terms=["Player Alpha is permanent; only Kansas City Chiefs is rented"],
+    ))
+    validate(proposal)
+    assert len(proposal.parties) == 4
+    assert [(a.amount, a.description) for a in proposal.assets if a.kind == "faab"] == [
+        (69, "permanent purchase"), (150, "deposit"), (40, "rental fee"),
+    ]
+    assert proposal.assets[0].description == "permanent"
+    assert proposal.assets[2].description == "rental"
+    assert proposal.rental_return_condition is None
