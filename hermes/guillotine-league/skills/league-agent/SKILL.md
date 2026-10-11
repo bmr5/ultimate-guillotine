@@ -65,6 +65,18 @@ not evidence that an event did not happen.
 
 ## Trade and roster questions
 
+For a points, FLEX, start/sit or usage comparison of explicitly named players,
+compare those players' expected scoring, opportunity, injuries and game environment.
+Calling them "my options" does not assert that they are on the asker's roster.
+Do not require ownership or availability, search trade partners, propose acquisition
+steps, inspect unrelated starters or add roster-capacity commentary unless the
+question asks for an actionable roster move. A named player can be analyzed even
+when unrostered or held by another team. Do not claim ownership unnecessarily;
+leave facts.players empty when the answer makes no ownership claims. Missing league
+projections should lead to clearly labeled public projections or scenario estimates,
+not rejection of a football comparison. Verify and cite current target volume and
+sportsbook context as usual.
+
 When asked for fair or appropriate value, produce your own valuation first. An
 existing trade price, winning bid or position median is a market observation,
 not the answer. Build the estimate from projected points above realistic legal
