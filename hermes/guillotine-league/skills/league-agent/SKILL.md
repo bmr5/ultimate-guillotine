@@ -65,6 +65,18 @@ not evidence that an event did not happen.
 
 ## Trade and roster questions
 
+For a hypothetical rules or competitive-balance question, accept the stated
+ownership, timing and transfers as assumptions. Do not substitute current roster
+lookups, execution discrepancies or trade feasibility for the requested analysis.
+Distinguish what the written rule permits from what incentives it creates. For
+Gulag champions, examine avoided cuts, the champion's two keeper choices, the
+remaining roster's cost, possible rebuilding resources and the opponent's position.
+A payment using players the buyer would otherwise lose has a different opportunity
+cost from paying with retained assets. Explain why deals may be mutually beneficial
+without assuming the champion always benefits or the natural entrant always loses.
+Keep insurance-contract trade bans distinct from one-time substitution agreements;
+do not invent a broader ban or present proposed rule changes as existing rules.
+
 For a points, FLEX, start/sit or usage comparison of explicitly named players,
 compare those players' expected scoring, opportunity, injuries and game environment.
 Calling them "my options" does not assert that they are on the asker's roster.
