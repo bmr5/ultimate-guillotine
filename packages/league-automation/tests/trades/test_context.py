@@ -304,13 +304,12 @@ def test_a_pack_with_no_league_in_it_carries_no_rules_either() -> None:
     assert build_registrar_context(None, (), []) == ""
 
 
-def test_the_rules_file_names_nobody_and_stays_short() -> None:
-    """It is read into every extraction, so its size is a per-alert cost; and it
-    is a public document about the league, not about its members."""
+def test_the_rules_file_stays_short_and_excludes_private_member_identifiers() -> None:
+    """Dated rulings may name public parties; private handles stay out."""
     rules = league_rules()
 
     assert rules
-    assert len(rules.splitlines()) <= 70
+    assert len(rules.splitlines()) <= 90
     assert "@" not in rules
     for member in ("kpbowe", "mdurgin", "chobes", "benray"):
         assert member not in rules

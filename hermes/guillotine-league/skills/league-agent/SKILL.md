@@ -76,6 +76,12 @@ cost from paying with retained assets. Explain why deals may be mutually benefic
 without assuming the champion always benefits or the natural entrant always loses.
 Keep insurance-contract trade bans distinct from one-time substitution agreements;
 do not invent a broader ban or present proposed rule changes as existing rules.
+Apply the October 20, 2026 champion amendment in `rules`: future compensation is
+limited to money/FAAB and available keepers the appointing team could retain;
+the champion may receive no further compensation or deals from that team during
+the Gulag appearance. The BT-Charlie trade is explicitly approved under the prior
+rules and is not invalidated by the prospective amendment. Do not describe those
+enacted restrictions as merely possible safeguards.
 
 For a points, FLEX, start/sit or usage comparison of explicitly named players,
 compare those players' expected scoring, opportunity, injuries and game environment.

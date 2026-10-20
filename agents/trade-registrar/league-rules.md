@@ -1,8 +1,8 @@
 # Ultimate Guillotine Gulag League — the rules that bear on trades
 
 Curated from `docs/rules/ultimate-guillotine-gulag-league-rules.docx`. Only the rules an agent
-needs in order to read or price a trade are here; the full document is the authority. No member
-is named.
+needs in order to read or price a trade are here; the full document is the authority.
+The dated champion ruling below names the parties to its approved exception.
 
 ## Shape of the league
 
@@ -56,5 +56,22 @@ is named.
   Tuesday. They rebuild through waivers and trades that week and play a separate head-to-head.
 - A team may pay somebody else to take its place as champion in the gulag; that person takes the
   gulag penalty.
+- Effective October 20, 2026, future Gulag champions may be paid only with assets the
+  appointing team would be entitled to keep going into that week: money/FAAB and
+  available keeper players. Players that team would otherwise be required to cut
+  cannot be used as champion compensation.
+- During that Gulag appearance, the champion cannot receive further compensation or
+  enter into further deals with the team that appointed them.
 - The gulag winner returns with the team they rebuilt. A Gladiator Bowl win is rewarded with one
   keeper; there is no Gladiator Bowl in an 18-team season.
+
+### Charlie vs League Balancing Committee ruling, October 20, 2026
+
+The BT-Charlie champion trade as announced is fully legal under the rules in force
+when it was made and is not league-breaking. It is approved as agreed, especially
+since the Gulag opponent accepts it. The restrictions above apply moving forward;
+they do not invalidate this trade.
+
+The trade nevertheless creates a precedent for more abusive champion deals that
+extract value from assets a Gulag-bound team would otherwise be guaranteed to lose
+through required roster cuts. That concern is the reason for the amendment.
