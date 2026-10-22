@@ -22,6 +22,7 @@ class Ruling(BaseModel):
     actor: str = Field(min_length=1, max_length=120)
     reason: str = Field(min_length=1, max_length=1000)
     tie_order: list[int] = []
+    next_gulag_champions: dict[int, int] = {}
 
 
 def register(subparsers):
@@ -47,7 +48,11 @@ def record_ruling(conn, config: dict, ruling: Ruling, now: datetime):
             conn, "select id from public.teams where season_id=%s", (config["season_id"],)
         )
     }
-    supplied = set(ruling.tie_order)
+    supplied = (
+        set(ruling.tie_order)
+        | set(ruling.next_gulag_champions)
+        | set(ruling.next_gulag_champions.values())
+    )
     if not supplied <= teams or len(ruling.tie_order) != len(set(ruling.tie_order)):
         raise ValueError("ruling contains unknown or repeated team identities")
     payload = ruling.model_dump(mode="json", exclude={"actor", "reason", "week"})

@@ -349,15 +349,47 @@ def adjudicate_job(conn, config: dict, job: dict, fresh: dict, now: datetime) ->
         alive, qualifiers, dependencies = prior_state(conn, season_id, scope, week, team_ids)
         ruling = latest_ruling(conn, season_id, scope, week)
         rule = ruling["payload"]
+        beneficiaries = (
+            {
+                row["team_id"]: row["qualifier_team_id"]
+                for row in rows(
+                    conn,
+                    """select team_id,qualifier_team_id from public.team_event_snapshots
+                where week_revision_id=(select id from public.season_history_weeks
+                where season_id=%s and scope=%s and week=%s
+                order by revision desc limit 1) and event_type='gulag_qualified'
+                and qualifier_team_id <> team_id""",
+                    (season_id, scope, week - 1),
+                )
+            }
+            if week >= 2
+            else {}
+        )
         outcome = adjudicate(
-            week, alive, qualifiers, scores, tie_order=tuple(rule.get("tie_order", []))
+            week,
+            alive,
+            qualifiers,
+            scores,
+            tie_order=tuple(rule.get("tie_order", [])),
+            next_gulag_champions={
+                int(k): v for k, v in rule.get("next_gulag_champions", {}).items()
+            },
+            gulag_beneficiaries=beneficiaries,
         )
         key = digest(
             {
                 "scores": scores,
                 "lineups": matchups,
                 "outcome": asdict(outcome),
-                "ruling": {"id": ruling["id"], "tie_order": rule.get("tie_order", [])},
+                "ruling": {
+                    "id": ruling["id"],
+                    "tie_order": rule.get("tie_order", []),
+                    **(
+                        {"next_gulag_champions": rule["next_gulag_champions"]}
+                        if rule.get("next_gulag_champions")
+                        else {}
+                    ),
+                },
                 "dependencies": dependencies,
                 "cutoff": evidence["id"],
                 "rules": RULES_VERSION,

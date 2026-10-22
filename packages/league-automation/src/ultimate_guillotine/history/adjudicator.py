@@ -56,7 +56,18 @@ def adjudicate(
     scores: dict[int, Decimal],
     *,
     tie_order: tuple[int, ...] = (),
+    next_gulag_champions: dict[int, int] | None = None,
+    gulag_beneficiaries: dict[int, int] | None = None,
 ) -> Outcome:
+    if next_gulag_champions and week >= 12:
+        raise Unresolved("this phase has no next-week Gulag champions")
+    beneficiaries = gulag_beneficiaries or {}
+    if (
+        not set(beneficiaries) <= set(qualifiers)
+        or any(t not in alive or t in qualifiers for t in beneficiaries.values())
+        or len(set(beneficiaries.values())) != len(beneficiaries)
+    ):
+        raise Unresolved("invalid Gulag champion beneficiary identities")
     expected_start = 18 if week == 1 else expected_remaining(week - 1)
     if len(alive) != expected_start:
         raise Unresolved(f"week {week} needs {expected_start} surviving teams")
@@ -72,13 +83,20 @@ def adjudicate(
         loser = bottom(scores, participants, 1, tie_order)[0]
         winner = next(t for t in participants if t != loser)
         for team in qualifiers:
-            events.append(Event("gulag_entered", team, qualifier=team, contest_week=week))
+            events.append(
+                Event(
+                    "gulag_entered",
+                    team,
+                    qualifier=beneficiaries.get(team, team),
+                    contest_week=week,
+                )
+            )
         events.append(
             Event(
                 "gulag_survived",
                 winner,
                 opponent=loser,
-                qualifier=winner,
+                qualifier=beneficiaries.get(winner, winner),
                 contest_week=week,
             )
         )
@@ -88,7 +106,7 @@ def adjudicate(
                 loser,
                 "gulag_loss",
                 winner,
-                loser,
+                beneficiaries.get(loser, loser),
                 week,
             )
         )
@@ -101,9 +119,18 @@ def adjudicate(
     pool = alive - participants
     if week <= 11:
         next_qualifiers = bottom(scores, pool, 2, tie_order)
+        champions = next_gulag_champions or {}
+        if not set(champions) <= set(next_qualifiers):
+            raise Unresolved("champion ruling must replace a next-week qualifier")
+        if any(t not in alive - cuts or t in next_qualifiers for t in champions.values()):
+            raise Unresolved("champion must be a surviving team not already qualified")
+        if len(set(champions.values())) != len(champions):
+            raise Unresolved("a champion cannot replace both qualifiers")
         events.extend(
-            Event("gulag_qualified", t, qualifier=t, contest_week=week + 1) for t in next_qualifiers
+            Event("gulag_qualified", champions.get(t, t), qualifier=t, contest_week=week + 1)
+            for t in next_qualifiers
         )
+        next_qualifiers = tuple(champions.get(t, t) for t in next_qualifiers)
     elif week <= 16:
         loser = bottom(scores, pool, 1, tie_order)[0]
         cuts.add(loser)

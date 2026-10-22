@@ -58,6 +58,22 @@ For a tied selection boundary, write a commissioner ruling JSON file and run `.v
 
 This example requires replacing the IDs with the actual records. `week` is the scoring week. `tie_order` lists all teams tied at the selection boundary from lowest to highest. A newer ruling replaces that week's ruling. The command records the actor and reason, then makes the week due for another check. It never edits Sleeper or sends a message.
 
+For an approved champion substitution, add `"next_gulag_champions": {"9": 2}` to
+the ruling for the qualification week. This means team 2 plays the following week's
+Gulag in place of qualifier team 9. Replace these IDs with the approved parties;
+the archive validates the qualifier and champion against the surviving teams.
+The public pairing uses the champion while retaining the original qualifier as
+the beneficiary. A later ruling must preserve any still-applicable champion map
+and tie order because it replaces the whole ruling for that scoring week.
+
+On October 22, 2026, Week 6 publication was repaired after reviewing Sleeper's
+removal of duplicate DAL–SEA game `202610609` from the saved Week 6 baseline.
+The saved Monday close observation 6348 was retained as roster evidence; current
+cleared rosters were not substituted. Stable official matchup inputs were checked
+against consecutive saved observations before confirmation. The commissioner’s
+approved BT-to-Charlie substitution was recorded for Week 7. This finalized Max's
+Week 6 elimination and the Nick R–Charlie pairing.
+
 ## Deployment and verification
 
 Apply `20260911010000_season_event_archive.sql` and `20260911011000_archive_automation.sql`, then enable with `.venv/bin/ug archive enable --season 2026 --scope production`. Scope cannot be switched on an existing archive. Enabling checks the 18-team league identity and all 17 scheduled scoring weeks. The website route is `/current-season`; it reads only production revisions. The board reads corrected cut rosters through `effective_final_rosters`.
