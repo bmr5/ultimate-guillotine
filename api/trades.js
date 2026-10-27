@@ -2,6 +2,7 @@ const { createHash, timingSafeEqual } = require('node:crypto');
 const { Pool } = require('pg');
 const { readFileSync } = require('node:fs');
 const { join } = require('node:path');
+const { shapeData } = require('../api-data/trades.cjs');
 
 let pool;
 const digest = (value) => createHash('sha256').update(value).digest();
@@ -61,14 +62,37 @@ function createHandler(getPool = () => {
         ORDER BY season DESC, occurred_on DESC NULLS LAST, catalog_id
       `, [season]);
       const members = await client.query('SELECT id, nickname, sleeper_display_name FROM public.members ORDER BY id');
+      const teams = await client.query(`SELECT t.id, t.member_id, t.sleeper_roster_id, t.team_name,
+          s.year AS season, s.sleeper_league_id FROM public.teams t
+          JOIN public.seasons s ON s.id=t.season_id WHERE ($1::integer IS NULL OR s.year=$1)
+          ORDER BY s.year,t.id`, [season]);
+      const executions = await client.query(`SELECT t.id, t.sleeper_transaction_id, s.year AS season,
+          s.sleeper_league_id, t.week, t.occurred_at, t.synced_at, t.team_ids, t.faab_moves,
+          t.raw->>'status' AS status, t.raw->'draft_picks' AS draft_picks
+          FROM public.transactions t JOIN public.seasons s ON s.id=t.season_id
+          WHERE t.kind='trade' AND ($1::integer IS NULL OR s.year=$1)
+          ORDER BY t.occurred_at DESC, t.id DESC`, [season]);
+      const moves = await client.query(`SELECT m.transaction_id,m.sleeper_player_id,m.team_id,m.action
+          FROM public.transaction_moves m JOIN public.transactions t ON t.id=m.transaction_id
+          JOIN public.seasons s ON s.id=t.season_id
+          WHERE t.kind='trade' AND ($1::integer IS NULL OR s.year=$1)`, [season]);
+      const playerIds = [...new Set([
+        ...registered.rows.flatMap(t => (t.terms?.assets || []).map(a => a.player_id)),
+        ...catalog.rows.flatMap(t => (t.assets || []).map(a => a.sleeper_player_id)),
+        ...moves.rows.map(m => m.sleeper_player_id),
+      ].filter(id => id != null).map(String))];
+      const players = await client.query(`SELECT sleeper_player_id, full_name, position FROM public.players
+          WHERE sleeper_player_id=ANY($1::text[])`, [playerIds]);
       await client.query('COMMIT');
+      const data = shapeData({ registered: registered.rows, catalog: catalog.rows,
+        members: members.rows, teams: teams.rows, players: players.rows,
+        executions: executions.rows, moves: moves.rows });
       return res.status(200).json({
-        generated_at: new Date().toISOString(), season,
-        counts: { registered: registered.rows.length, historical_catalog: catalog.rows.length },
-        notes: 'Registered trades contain their current revision, including rescinded records. The historical catalog is a separate source and can overlap; do not add the counts as unique trades. TEST records are excluded. Deposits and refunds are not rental profit.',
-        registered_trades: registered.rows,
-        historical_catalog: catalog.rows,
-        members: members.rows,
+        schema_version: 2, generated_at: new Date().toISOString(), season,
+        counts: { registered: registered.rows.length, historical_catalog: catalog.rows.length,
+          deals: data.deals.length, sleeper_executions: data.sleeper_executions.length },
+        notes: 'Latest registered terms and original evidence are preserved. Registration acceptance is not execution or rental completion. Empty financial categories mean unrecorded, not zero. Prices are never estimated. TEST registrations are excluded. Use deduplication guidance; counts are not a verified unique economic-trade total.',
+        ...data,
       });
     } catch {
       if (client) await client.query('ROLLBACK').catch(() => {});
