@@ -14,3 +14,7 @@ logs/
 *.log
 __pycache__/
 *.py[cod]
+data/private/
+artifacts/
+.env
+.env.*

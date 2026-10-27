@@ -13,5 +13,8 @@
     "test:agents": "uv run --project packages/league-automation pytest packages/league-automation/tests",
     "test:web": "pnpm --filter @ultimate-guillotine/web test",
     "lint:agents": "uv run --project packages/league-automation ruff check packages/league-automation services hermes"
+  },
+  "dependencies": {
+    "pg": "^8.23.1"
   }
 }
