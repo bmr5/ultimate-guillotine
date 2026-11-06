@@ -27,7 +27,10 @@ HEADER = re.compile(r"trade\s+alert", re.IGNORECASE)
 #: The word "trade" beside a siren, on the same line: `🚨 Trade alert 🚨`,
 #: `Trade alert 🚨`, `🚨 traded …`. Up to fifteen characters may sit between
 #: them, which is "alert " and a colon, not a sentence.
-TRADE_BY_SIREN = re.compile(r"🚨[^\n🚨]{0,15}\btrade|\btrade\w*[^\n🚨]{0,15}🚨", re.IGNORECASE)
+TRADE_BY_SIREN = re.compile(
+    r"🚨[^\n🚨]{0,15}\b(?:trade|deal\s+alert\b)|"
+    r"\b(?:trade\w*|deal\s+alert)[^\n🚨]{0,15}🚨", re.IGNORECASE
+)
 
 
 def is_trade_candidate(text: str) -> bool:
@@ -39,6 +42,9 @@ def is_trade_candidate(text: str) -> bool:
     big game) never costs a model call, and a trade nobody marked that way is
     the announcer's to re-post. A siren with a rescission word still counts:
     `🚨 Cancel T-2026-014 🚨` is exactly the message the registrar acts on.
+
+    The explicit `🚨 deal alert` header is also accepted after the missed
+    November 5 Henry announcement. A bare mention of a deal still does not qualify.
 
     **This function does not decide what is a trade.** The model's
     `not_a_trade` verdict does; this only decides whether a model call is worth

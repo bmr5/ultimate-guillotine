@@ -25,6 +25,18 @@ def test_the_word_trade_beside_the_siren_makes_a_candidate() -> None:
     assert is_trade_candidate("🚨 TradeAlert nothing else")
 
 
+def test_explicit_deal_alert_header_registers_the_henry_rental() -> None:
+    assert is_trade_candidate(
+        "🚨 deal alert\n\nPremature Evaluation pays Ryland $25 to play Derrick Henry. "
+        "He can’t be traded or dropped and will be returned at the end of the week.\n\n"
+        "Saquon is included in the deal but can be dropped."
+    )
+    assert is_trade_candidate("Deal alert 🚨 Kyle pays Ryland $25")
+    assert not is_trade_candidate("deal alert Kyle pays Ryland $25")
+    assert not is_trade_candidate("🚨 great deal tonight")
+    assert not is_trade_candidate("🚨 heads up\ndeal alert Kyle pays Ryland $25")
+
+
 def test_a_siren_without_trade_beside_it_is_not_a_candidate() -> None:
     """A rental, a sale or a shout under a siren is not marked as a trade; the
     announcer re-posts it with the word. The trade word on another line does
