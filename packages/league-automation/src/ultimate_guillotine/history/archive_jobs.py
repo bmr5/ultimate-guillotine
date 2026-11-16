@@ -220,12 +220,16 @@ def capture(conn, client, config: dict, week: int, now: datetime, *, schedule=No
         conn.execute("select pg_advisory_xact_lock(82426, %s)", (season_id,))
         last = rows(
             conn,
-            """select * from private.team_state_observations
+            """select id, observed_at, content_hash, payload->'teams' as prior_teams
+            from private.team_state_observations
             where season_id=%s and scope=%s and week=%s order by observed_at desc,id desc limit 1""",
             (season_id, scope, week),
         )
         if last and last[0]["content_hash"] == key and now - last[0]["observed_at"] < RETRY:
-            result = last[0]
+            # The hash matches the payload we already fetched from Sleeper. Do not
+            # download the same full historical payload just to return it again.
+            result = {"id": last[0]["id"], "observed_at": last[0]["observed_at"],
+                      "payload": payload}
         else:
             observation_id = conn.execute(
                 """insert into private.team_state_observations
@@ -244,7 +248,7 @@ def capture(conn, client, config: dict, week: int, now: datetime, *, schedule=No
                 prior = last[0]
                 # A reset between the last live-game poll and the completion poll must
                 # not become the final roster. Keep the preceding observation.
-                if prior["payload"]["teams"] != teams:
+                if prior["prior_teams"] != teams:
                     cutoff = prior
             conn.execute(
                 """update private.archive_week_jobs set cutoff_observation_id=coalesce(cutoff_observation_id,%s),

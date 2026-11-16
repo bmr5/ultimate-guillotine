@@ -290,27 +290,34 @@ class ProjectionRepository:
         Coverage is a stored column, stamped on every row of the week by
         :meth:`flag_coverage`. Drift is not stored, and does not need to be: the
         stored ``league_points`` and ``stat_line`` are precisely what the last run
-        scored, so re-running the drift rule over them recovers that run's verdict
-        exactly. A week with no rows yet is clear on both counts, so the first
-        flagged run of a week reads as a transition and says so once.
+        scored. Aggregate the same drift rule in Postgres so a five-minute health
+        check returns two booleans instead of downloading ~9,400 stat maps. A week
+        with no rows yet is clear on both counts.
         """
         with self._conn.cursor() as cur:
             cur.execute(
-                "select coverage_flagged, league_points, stat_line "
-                "from public.player_projections where season = %s and week = %s",
-                (season, week),
+                """
+                with previous as (
+                    select coverage_flagged,
+                        least(
+                            case when jsonb_typeof(stat_line->'pts_ppr') = 'number'
+                                then abs(league_points - (stat_line->>'pts_ppr')::numeric) end,
+                            case when jsonb_typeof(stat_line->'pts_half_ppr') = 'number'
+                                then abs(league_points - (stat_line->>'pts_half_ppr')::numeric) end,
+                            case when jsonb_typeof(stat_line->'pts_std') = 'number'
+                                then abs(league_points - (stat_line->>'pts_std')::numeric) end
+                        ) as nearest_drift
+                    from public.player_projections where season = %s and week = %s
+                )
+                select coalesce(bool_or(coverage_flagged), false),
+                    count(*) filter (where nearest_drift > %s)
+                        > count(nearest_drift) * %s
+                from previous
+                """,
+                (season, week, DRIFT_POINTS, DRIFT_SHARE),
             )
-            rows = cur.fetchall()
-        if not rows:
-            return WeekFlags(coverage_flagged=False, drift_flagged=False)
-        _share, drift_flagged = _drift(
-            [points for _flag, points, _line in rows],
-            [line for _flag, _points, line in rows],
-        )
-        return WeekFlags(
-            coverage_flagged=any(flag for flag, _points, _line in rows),
-            drift_flagged=drift_flagged,
-        )
+            coverage_flagged, drift_flagged = cur.fetchone()
+        return WeekFlags(coverage_flagged, drift_flagged)
 
     def flag_coverage(
         self, season: int, week: int, run_coverage_pct: Decimal, flagged: bool

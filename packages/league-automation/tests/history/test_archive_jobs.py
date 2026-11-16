@@ -218,6 +218,20 @@ def test_week_two_gulag_and_score_correction_updates_cut_without_new_roster(arch
     )
 
 
+def test_reused_capture_keeps_full_payload_without_fetching_it_again(archive):
+    from ultimate_guillotine.history.archive_jobs import capture, configuration
+
+    conn, client, _ = archive
+    config = configuration(conn)
+    first = capture(conn, client, config, 1, MONDAY)
+    second = capture(conn, client, config, 1, MONDAY + timedelta(minutes=1))
+    assert second["id"] == first["id"]
+    assert second["observed_at"] == first["observed_at"]
+    assert second["payload"] == first["payload"]
+    assert "matchups" in second["payload"]
+    assert "directory" in second["payload"]
+
+
 def test_capture_pins_unfinished_week_across_sleeper_rollover(archive):
     conn, client, _ = archive
     client.week = 2

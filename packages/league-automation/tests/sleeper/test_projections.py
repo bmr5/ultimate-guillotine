@@ -326,6 +326,31 @@ def test_week_flags_recovers_the_last_runs_drift_verdict_from_the_rows(conn) -> 
     assert repo.week_flags(2026, 1).drift_flagged is True
 
 
+def test_week_flags_sql_keeps_strict_drift_threshold_and_numeric_presets(conn) -> None:
+    repo = ProjectionRepository(conn)
+    fixture_count = len(load_projections(payload(), 1, NOW))
+    sync(conn, FakeProjClient(bulk(payload(), 250 - fixture_count)))
+    conn.execute("""update public.player_projections set league_points=0,
+        stat_line='{"pts_ppr":0}'::jsonb, coverage_flagged=false
+        where season=2026 and week=1""")
+    conn.execute("""update public.player_projections set league_points=4
+        where id in (select id from public.player_projections
+        where season=2026 and week=1 order by id limit 5)""")
+    assert repo.week_flags(2026, 1) == WeekFlags(False, False)  # exactly 2%
+    conn.execute("""update public.player_projections set league_points=4
+        where id in (select id from public.player_projections
+        where season=2026 and week=1 order by id limit 6)""")
+    assert repo.week_flags(2026, 1) == WeekFlags(False, True)
+    conn.execute("""update public.player_projections set league_points=20,
+        stat_line='{"pts_ppr":"0","pts_std":false}'::jsonb,
+        coverage_flagged=true where season=2026 and week=1""")
+    assert repo.week_flags(2026, 1) == WeekFlags(True, False)
+    conn.execute("""update public.player_projections set
+        stat_line='{"pts_ppr":0,"pts_std":20}'::jsonb
+        where season=2026 and week=1""")
+    assert repo.week_flags(2026, 1) == WeekFlags(True, False)
+
+
 def test_the_write_runs_inside_the_callers_transaction(conn) -> None:
     """The command wraps this write and the team-week recompute in one transaction,
     so the write must join the caller's and be discarded with it."""
